@@ -165,3 +165,38 @@ export async function copyText(text: string): Promise<void> {
         /* ignore */
     }
 }
+
+export interface ConfirmOptions {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    // Styles the confirm button as destructive (red) instead of the accent colour.
+    danger?: boolean;
+}
+
+// Styled replacement for window.confirm(). Resolves true only when the user
+// presses the confirm button; Cancel, Escape and a backdrop click all resolve
+// false. A call made while a confirmation is already open resolves false.
+export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
+    const dialog = document.getElementById('confirm-modal') as HTMLDialogElement | null;
+    const okBtn = document.getElementById('confirm-modal-ok');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    if (!dialog || !okBtn || !cancelBtn) return Promise.resolve(false);
+    if (dialog.open) return Promise.resolve(false);
+
+    setInnerText('confirm-modal-title', opts.title);
+    setInnerText('confirm-modal-message', opts.message);
+    okBtn.textContent = opts.confirmLabel ?? 'Confirm';
+    okBtn.classList.toggle('btn-error', !!opts.danger);
+    okBtn.classList.toggle('btn-accent', !opts.danger);
+
+    return new Promise((resolve) => {
+        dialog.returnValue = 'cancel';
+        dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), {
+            once: true,
+        });
+        dialog.showModal();
+        // Destructive confirmations default focus to Cancel so a stray Enter is safe.
+        (opts.danger ? cancelBtn : okBtn).focus();
+    });
+}

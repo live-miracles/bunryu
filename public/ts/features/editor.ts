@@ -7,6 +7,7 @@ import {
     withBusy,
     copyText,
     escapeHtml,
+    confirmDialog,
     flashSaveSuccess,
     fmtMs,
     fmtMbpsValue,
@@ -364,12 +365,13 @@ export async function logoutUser(): Promise<void> {
 }
 
 export async function regenerateStreamKeysBtn(btn?: HTMLButtonElement): Promise<void> {
-    if (
-        !confirm(
-            'Regenerate all stream keys? All existing stream key values will be replaced with new ones.',
-        )
-    )
-        return;
+    const confirmed = await confirmDialog({
+        title: 'Regenerate stream keys?',
+        message: 'All existing stream key values will be replaced with new ones.',
+        confirmLabel: 'Regenerate All',
+        danger: true,
+    });
+    if (!confirmed) return;
     await withBusy(btn, async () => {
         const result = await api.regenerateStreamKeys();
         if (result) await refreshAfterMutation();
@@ -455,7 +457,13 @@ export async function submitPipelineForm(btn?: HTMLButtonElement): Promise<void>
 }
 
 export async function confirmDeletePipeline(id: string, btn?: HTMLButtonElement): Promise<void> {
-    if (!confirm('Delete this pipeline and all its outputs?')) return;
+    const confirmed = await confirmDialog({
+        title: 'Delete pipeline?',
+        message: 'This pipeline and all its outputs will be deleted.',
+        confirmLabel: 'Delete',
+        danger: true,
+    });
+    if (!confirmed) return;
     await withBusy(btn, async () => {
         const ok = await api.deletePipeline(id);
         if (ok) {
@@ -1255,7 +1263,13 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
 }
 
 export async function confirmDeleteOutput(pipelineId: string, outId: string): Promise<void> {
-    if (!confirm(`Delete output ${outId}?`)) return;
+    const confirmed = await confirmDialog({
+        title: 'Delete output?',
+        message: `Output ${outId} will be deleted.`,
+        confirmLabel: 'Delete',
+        danger: true,
+    });
+    if (!confirmed) return;
     const ok = await api.deleteOutput(pipelineId, outId);
     if (ok) await refreshAfterMutation();
 }
@@ -1713,12 +1727,13 @@ export async function pasteOutputIntoForm(): Promise<void> {
 }
 
 export async function startAllOutputs(pipelineId: string, btn: HTMLButtonElement): Promise<void> {
-    if (
-        !confirm(
-            'Start all outputs for this pipeline? They will start staggered to avoid overloading the server.',
-        )
-    )
-        return;
+    const confirmed = await confirmDialog({
+        title: 'Start all outputs?',
+        message:
+            'All outputs for this pipeline will be started. They start staggered to avoid overloading the server.',
+        confirmLabel: 'Start All',
+    });
+    if (!confirmed) return;
     await withBusy(btn, async () => {
         const ok = await api.startAllOutputs(pipelineId);
         if (!ok) return;
@@ -1727,7 +1742,13 @@ export async function startAllOutputs(pipelineId: string, btn: HTMLButtonElement
 }
 
 export async function stopAllOutputs(pipelineId: string, btn: HTMLButtonElement): Promise<void> {
-    if (!confirm('Stop all outputs for this pipeline?')) return;
+    const confirmed = await confirmDialog({
+        title: 'Stop all outputs?',
+        message: 'All outputs for this pipeline will be stopped.',
+        confirmLabel: 'Stop All',
+        danger: true,
+    });
+    if (!confirmed) return;
     await withBusy(btn, async () => {
         const ok = await api.stopAllOutputs(pipelineId);
         if (!ok) return;
@@ -1748,12 +1769,14 @@ export async function copyOutputs(pipelineId: string): Promise<void> {
 }
 
 export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): Promise<void> {
-    if (
-        !confirm(
-            'Replace all outputs for this pipeline with the clipboard contents? This cannot be undone.',
-        )
-    )
-        return;
+    const confirmed = await confirmDialog({
+        title: 'Replace all outputs?',
+        message:
+            'All outputs for this pipeline will be replaced with the clipboard contents. This cannot be undone.',
+        confirmLabel: 'Replace',
+        danger: true,
+    });
+    if (!confirmed) return;
 
     let text: string;
     try {
