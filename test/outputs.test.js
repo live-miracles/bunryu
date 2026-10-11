@@ -202,35 +202,6 @@ describe('output watchdog', () => {
         service.shutdown();
     });
 
-    test('never stores, logs or reports a destination key, stream key or SRT passphrase', async (t) => {
-        const proc = new FakeFfmpeg();
-        const db = makeDb();
-        const diagnostics = makeDiagnosticsSpy();
-        const createOutputService = loadOutputService(t, proc);
-        const service = createOutputService(db, makeReadyInputState(), diagnostics);
-
-        await service.start('out1');
-        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
-        proc.stderr.write(
-            'Error opening output rtmp://youtube.example/live/key: I/O error\n' +
-                'Error opening input srt://127.0.0.1:10080?streamid=#!::r=live/stream-key,m=request&passphrase=SECRETSRTPASS123: timeout\n' +
-                'server echoed stream-key back\n',
-        );
-
-        await sleep(80);
-
-        const everything = JSON.stringify([db.lastError, diagnostics.events]);
-        assert.match(
-            db.lastError,
-            /Error opening output rtmp:\/\/youtube\.example\/live\/<redacted>/,
-        );
-        assert.ok(!everything.includes('SECRETSRTPASS123'), 'passphrase leaked');
-        assert.ok(!everything.includes('stream-key'), 'internal stream key leaked');
-        assert.ok(!/youtube\.example\/live\/key/.test(everything), 'destination key leaked');
-
-        service.shutdown();
-    });
-
     test('does not kill while ffmpeg output progress continues advancing', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();

@@ -40,7 +40,7 @@ describe('mediaProbe failure reporting', () => {
         delete require.cache[require.resolve('../src/utils/appConfig')];
     });
 
-    test('reports a killed probe as a timeout and redacts the pull URL from stderr', async (t) => {
+    test('reports a killed probe as a timeout with its stderr tail', async (t) => {
         const url = 'rtmp://127.0.0.1:21935/live/key04_0123456789abcdef0123456789abcdef';
         t.mock.method(childProcess, 'execFile', (_cmd, args, _opts, cb) => {
             assert.deepEqual(args.slice(0, 2), ['-v', 'error']);
@@ -60,7 +60,7 @@ describe('mediaProbe failure reporting', () => {
         assert.equal(failures.length, 1);
         assert.equal(failures[0].reason, 'timeout');
         assert.equal(failures[0].signal, 'SIGKILL');
-        assert.equal(failures[0].stderrTail, '<pull-url>: Connection timed out key04_<redacted>');
+        assert.equal(failures[0].stderrTail, `${url}: Connection timed out key04_deadbeef`);
     });
 
     test('reports a non-zero exit and unparseable output with distinct reasons', async (t) => {
@@ -84,14 +84,6 @@ describe('mediaProbe failure reporting', () => {
                 ['exit', 1],
                 ['parse', null],
             ],
-        );
-    });
-
-    test('redacts SRT passphrases', () => {
-        const { redactProbeOutput } = loadMediaProbe();
-        assert.equal(
-            redactProbeOutput('open srt://h?passphrase=s3cret%21&pbkeylen=16 failed', 'other'),
-            'open srt://h?passphrase=<redacted>&pbkeylen=16 failed',
         );
     });
 });

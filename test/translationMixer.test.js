@@ -463,35 +463,6 @@ describe('translation mixer watchdog integration', () => {
         assert.equal(restartEvent.fields.pipelineId, output.pipelineId);
     });
 
-    test('diagnostics never carry the destination stream key', async (t) => {
-        const proc = new FakeMixerFfmpeg(4242);
-        const output = {
-            ...makeTranslationOutput(),
-            url: 'rtmp://a.rtmp.youtube.com/live2/YT-SECRET-STREAMKEY-abcd',
-        };
-        const db = makeTranslationDb(output);
-        const diagnostics = makeDiagnosticsRecorder();
-        const createTranslationMixerService = loadTranslationMixerService(t, () => proc);
-        const service = createTranslationMixerService(
-            db,
-            makeTranslationInputState(),
-            { reportExternalStatus() {}, reportExternalProgress() {}, reportExternalUsage() {} },
-            diagnostics,
-        );
-
-        service.start();
-        await sleep(300);
-        service.shutdown();
-
-        const started = diagnostics.events.find((e) => e.name === 'translation-mixer-started');
-        assert.ok(started, 'expected a translation-mixer-started event');
-        assert.equal(
-            started.fields.outputDestination,
-            'rtmp://a.rtmp.youtube.com/live2/<redacted>',
-        );
-        assert.ok(!JSON.stringify(diagnostics.events).includes('YT-SECRET-STREAMKEY'));
-    });
-
     test('does not restart while still inside the startup warmup window', async (t) => {
         const procs = [];
         const spawnNext = () => {

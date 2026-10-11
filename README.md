@@ -255,13 +255,11 @@ Hardening that is on by default:
 - **Headers:** `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`,
   `Referrer-Policy: no-referrer`. A full CSP is not possible until the dashboard's
   inline event handlers are removed.
-- **Secrets in logs:** FFmpeg echoes full URLs when it fails. Everything derived
-  from its stderr (stored last-error history, diagnostics, journald, the
-  dashboard) goes through `redactSecrets` (`src/utils/redact.ts`): host and app are
-  kept, destination stream keys, internal `keyNN_` keys, and SRT `passphrase=` /
-  `streamid=` values become `<redacted>`. Rows saved by older versions are
-  scrubbed on startup; **old `diagnostics-*.jsonl` files are not rewritten — delete
-  them after upgrading from a version without redaction.**
+- **Logs are not redacted:** journald, the diagnostics files, the output Error
+  History and the dashboard keep FFmpeg's stderr as-is, including full
+  destination URLs, stream keys and SRT passphrases. They are private to the
+  server and its operators; redact before copying any of it into a commit or
+  issue.
 - **Output destinations and host probes:** the server will not connect to
   link-local/unspecified addresses (cloud metadata such as `169.254.169.254`), and
   loopback only on the app's own RTMP/SRT ports (pipeline-to-pipeline restreams).
@@ -301,10 +299,9 @@ they're hardened at the SRS/relay layer instead:
   directly.
 - RTMP listens on a non-default port (`21935`, not `1935`) to cut down on
   generic scanner noise.
-- Rejected publish/play attempts are logged (stream keys redacted to their
-  `keyNN` label; repeated rejections of the same key are throttled to one line
-  a minute), but this app does not install fail2ban; see
-  [Known issues](#why-fail2ban-is-not-used).
+- Rejected publish/play attempts are logged with the attempted stream name
+  (repeated rejections of the same key are throttled to one line a minute),
+  but this app does not install fail2ban; see [Known issues](#why-fail2ban-is-not-used).
 - Rejected publishes also appear in the dashboard under the pipeline list
   ("Rejected publish attempts", kept for 5 minutes): one row per `keyNN` label,
   plus one aggregate "Unrecognized" row per protocol for empty or non-key
@@ -641,7 +638,7 @@ succeeds:
 
 | Input check | Scope | Cadence | Notes |
 |-------------|-------|---------|-------|
-| Media validation | Connected RTMP/SRT inputs without a successful probe yet for this publisher | Immediate probe (staggered across pipelines), then retried every `FFPROBE_FAILED_REFRESH_MS` (30s) while it keeps failing | Stops re-probing once a probe succeeds for the current publisher; a new probe cycle starts on the next publisher change. Every failed probe is written to diagnostics as `media-probe-failed` (reason `timeout`/`exit`/`parse`/`unusable`, elapsed time, exit status, redacted ffprobe stderr tail) and the first failure and the later recovery per publisher are added to the pipeline log (`probe_failed` / `probe_recovered`). Input liveness and output recovery do not wait for a valid ffprobe result — ffprobe fills in media/track details when available. |
+| Media validation | Connected RTMP/SRT inputs without a successful probe yet for this publisher | Immediate probe (staggered across pipelines), then retried every `FFPROBE_FAILED_REFRESH_MS` (30s) while it keeps failing | Stops re-probing once a probe succeeds for the current publisher; a new probe cycle starts on the next publisher change. Every failed probe is written to diagnostics as `media-probe-failed` (reason `timeout`/`exit`/`parse`/`unusable`, elapsed time, exit status, ffprobe stderr tail) and the first failure and the later recovery per publisher are added to the pipeline log (`probe_failed` / `probe_recovered`). Input liveness and output recovery do not wait for a valid ffprobe result — ffprobe fills in media/track details when available. |
 
 ### Input timestamp fault detection
 

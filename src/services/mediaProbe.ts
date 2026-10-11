@@ -12,8 +12,7 @@ export interface ProbeResult {
     audioTracks: AudioTrackInfo[];
 }
 
-// Why a probe produced no result, for diagnostics. stderr is redacted: ffprobe
-// echoes the pull URL (stream key, SRT passphrase) in its error messages.
+// Why a probe produced no result, for diagnostics.
 export interface ProbeFailure {
     reason: 'timeout' | 'exit' | 'parse';
     elapsedMs: number;
@@ -23,16 +22,6 @@ export interface ProbeFailure {
 }
 
 const STDERR_TAIL_CHARS = 1000;
-
-export function redactProbeOutput(text: string, url: string): string {
-    return text
-        .split(url)
-        .join('<pull-url>')
-        .replace(/passphrase=[^&\s]*/g, 'passphrase=<redacted>')
-        .replace(/\bkey\d+_[0-9a-f]+/gi, (m) => `${m.slice(0, m.indexOf('_') + 1)}<redacted>`)
-        .trim()
-        .slice(-STDERR_TAIL_CHARS);
-}
 
 export function isProbeUsable(result: ProbeResult | null): boolean {
     const video = result?.video;
@@ -85,7 +74,7 @@ export function runFfprobe(
                 elapsedMs: Date.now() - startedAt,
                 exitCode: err?.code ?? null,
                 signal: err?.signal ?? null,
-                stderrTail: redactProbeOutput(stderr, url),
+                stderrTail: stderr.trim().slice(-STDERR_TAIL_CHARS),
             });
             resolve(null);
         };

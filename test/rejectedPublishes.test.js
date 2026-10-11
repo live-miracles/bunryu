@@ -3,7 +3,7 @@
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createRejectedPublishes, redactStreamName } = require('../src/services/rejectedPublishes');
+const { createRejectedPublishes } = require('../src/services/rejectedPublishes');
 
 function clockedStore() {
     let t = 1_000_000;
@@ -15,13 +15,6 @@ function clockedStore() {
         },
     };
 }
-
-describe('redactStreamName', () => {
-    test('keeps only the key label', () => {
-        assert.equal(redactStreamName('key05_abcdef0123'), 'key05_<redacted>');
-        assert.equal(redactStreamName('some-secret-looking-text'), '<unrecognized name>');
-    });
-});
 
 describe('rejected publishes store', () => {
     test('keeps one entry per key label and counts attempts', () => {
@@ -67,7 +60,6 @@ describe('rejected publishes store', () => {
         const { store, advance } = clockedStore();
         const first = store.record('key01_a', 'unassigned', 'srt', null);
         assert.equal(first.shouldLog, true);
-        assert.equal(first.displayName, 'key01_<redacted>');
         for (let i = 0; i < 5; i++) {
             advance(1000);
             assert.equal(store.record('key01_a', 'unassigned', 'srt', null).shouldLog, false);
@@ -84,7 +76,6 @@ describe('rejected publishes store', () => {
         const { store } = clockedStore();
         const first = store.record('whatever', 'unknown', 'rtmp', '203.0.113.9');
         assert.equal(first.shouldLog, true);
-        assert.equal(first.displayName, '<unrecognized name>');
         assert.equal(store.record('another', 'unknown', 'rtmp', null).shouldLog, false);
         store.record('', 'unknown', 'srt', '127.0.0.1');
         for (let i = 0; i < 500; i++) store.record(`junk-${i}`, 'unknown', 'rtmp', null);
@@ -158,11 +149,6 @@ describe('rejected publishes store', () => {
         assert.equal(play.reason, 'unrecognized');
         assert.equal(play.streams, 2);
         assert.equal(list.find((e) => e.kind === 'publish').streams, 1);
-    });
-
-    test('redacts an empty stream name', () => {
-        const { store } = clockedStore();
-        assert.equal(store.record('', 'unknown', 'srt', null).displayName, '<empty stream name>');
     });
 
     test('stays bounded under a flood of distinct key labels', () => {

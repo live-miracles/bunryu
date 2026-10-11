@@ -6,7 +6,6 @@ import { readAppConfig } from '../utils/appConfig.js';
 import { INPUT_TIMEOUT_US } from '../utils/ffmpeg.js';
 import type { Db } from '../types.js';
 import type { InputState } from './inputState.js';
-import { redactSecrets, secretTokensFromUrl } from '../utils/redact.js';
 import { MAX_AUDIO_TRACKS } from '../utils/inputLimits.js';
 
 const FFMPEG_CMD = readAppConfig().ffmpegPath;
@@ -279,7 +278,7 @@ export function createPreviewService(
             }
             if (code && code !== 0 && signal !== 'SIGTERM' && signal !== 'SIGKILL') {
                 console.warn(
-                    `[preview] ${pipelineId} ffmpeg exited code=${code}:\n${redactSecrets(stderrTail.trim(), [...secretTokensFromUrl(inputUrl), pipeline.streamKey])}`,
+                    `[preview] ${pipelineId} ffmpeg exited code=${code}:\n${stderrTail.trim()}`,
                 );
             } else {
                 console.log(`[preview] ${pipelineId} exited`);

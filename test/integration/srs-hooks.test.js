@@ -166,7 +166,7 @@ describe('SRS publish hook integration', () => {
         assert.deepEqual(res.body, { code: 403 });
     });
 
-    test('records a rejected unassigned key without exposing its secret', async () => {
+    test('records a rejected unassigned key, listing only its label', async () => {
         const harness = createHarness(['key01_good'], ['key02_spare']);
         const logs = [];
         const origLog = console.log;
@@ -191,9 +191,10 @@ describe('SRS publish hook integration', () => {
         assert.equal(entry.protocol, 'rtmp');
         assert.equal(entry.attempts, 2);
         assert.ok(!JSON.stringify(res.body).includes('spare'));
-        // Repeats are throttled, and the secret is never logged.
-        assert.equal(logs.filter((l) => l.includes('rejected publish')).length, 1);
-        assert.ok(logs.every((l) => !l.includes('spare')));
+        // Repeats are throttled; the logged line carries the full stream name.
+        const rejectedLogs = logs.filter((l) => l.includes('rejected publish'));
+        assert.equal(rejectedLogs.length, 1);
+        assert.ok(rejectedLogs[0].includes('"key02_spare"'));
     });
 
     test('flags a stale key (right label, wrong secret) as unknown', async () => {
@@ -282,8 +283,8 @@ describe('SRS publish hook integration', () => {
         assert.equal(aggregate.kind, 'play');
         assert.ok(!JSON.stringify(rejected).includes('good'));
         assert.ok(!JSON.stringify(rejected).includes('abc'));
-        assert.ok(logs.some((l) => l.includes('rejected play')));
-        assert.ok(logs.every((l) => !l.includes('key01_good') && !l.includes('abc')));
+        assert.ok(logs.some((l) => l.includes('rejected play') && l.includes('"key01_good"')));
+        assert.ok(logs.some((l) => l.includes('rejected play') && l.includes('"abc"')));
     });
 
     test('loopback plays (the app own ffmpeg) are allowed and not recorded', async () => {

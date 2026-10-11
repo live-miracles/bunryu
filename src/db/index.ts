@@ -2,7 +2,6 @@ import BetterSqlite3 from 'better-sqlite3';
 import crypto from 'crypto';
 import { setupDatabaseSchema } from './schema.js';
 import { readAppConfig } from '../utils/appConfig.js';
-import { redactSecrets } from '../utils/redact.js';
 import type {
     Pipeline,
     PipelineGroup,
@@ -157,33 +156,6 @@ export function createDb(dbPath?: string): Db {
         if (!existing) {
             const key = `key${String(slot).padStart(2, '0')}_${crypto.randomBytes(16).toString('hex')}`;
             sqlite.prepare('INSERT INTO stream_keys (slot, key) VALUES (?, ?)').run(slot, key);
-        }
-    }
-
-    // Older versions stored raw FFmpeg stderr (destination keys, stream keys,
-    // SRT passphrases) in the error history. Scrub whatever is already on disk;
-    // idempotent, and a handful of rows at most.
-    for (const row of sqlite
-        .prepare('SELECT id, last_error FROM outputs WHERE last_error IS NOT NULL')
-        .all() as { id: string; last_error: string }[]) {
-        try {
-            const history = JSON.parse(row.last_error) as Array<{ message?: unknown }>;
-            let changed = false;
-            for (const entry of history) {
-                if (typeof entry.message !== 'string') continue;
-                const clean = redactSecrets(entry.message);
-                if (clean !== entry.message) {
-                    entry.message = clean;
-                    changed = true;
-                }
-            }
-            if (changed) {
-                sqlite
-                    .prepare('UPDATE outputs SET last_error = ? WHERE id = ?')
-                    .run(JSON.stringify(history), row.id);
-            }
-        } catch {
-            // Unparseable legacy value: nothing structured to scrub.
         }
     }
 

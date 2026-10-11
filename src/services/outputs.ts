@@ -8,7 +8,6 @@ import {
     findPidsByExecutable,
 } from '../utils/procStats.js';
 import { red, yellow, green } from '../utils/ansiColor.js';
-import { redactSecrets, secretTokensFromUrl } from '../utils/redact.js';
 import type { Db, Output } from '../types.js';
 import type { InputState } from './inputState.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
@@ -126,9 +125,6 @@ interface OutputProgress {
     lastTotalSize: number | null;
     lastBitrateKbps: number | null;
     stderrTail: string;
-    // Standalone secrets (destination key, stream key) scrubbed from every
-    // stderr tail before it is stored, logged or shown.
-    redactTokens: string[];
     monitorMediaClock: boolean;
     fastMediaSinceMs: number | null;
     mediaClockWarning: string | null;
@@ -303,7 +299,6 @@ export function createOutputService(
             lastTotalSize: update.lastTotalSizeBytes,
             lastBitrateKbps: update.bitrateKbps,
             stderrTail: existing?.stderrTail ?? '',
-            redactTokens: existing?.redactTokens ?? [],
             monitorMediaClock: false,
             fastMediaSinceMs: null,
             mediaClockWarning: null,
@@ -631,13 +626,13 @@ export function createOutputService(
             const match = TIMESTAMP_WARNING_PATTERNS.find(({ pattern }) => pattern.test(line));
             if (!match) continue;
             p.lastTimestampWarningAtMs = now;
-            p.lastTimestampWarning = `FFmpeg reported: ${redactSecrets(line, p.redactTokens)}`;
+            p.lastTimestampWarning = `FFmpeg reported: ${line}`;
             const burst = (p.timestampBurst ??= {
                 startedAtMs: now,
                 lastAtMs: now,
                 count: 0,
                 timing: false,
-                firstLine: redactSecrets(line, p.redactTokens),
+                firstLine: line,
                 lastLine: line,
                 knownKinds: new Set<string>(),
                 lastSummaryAtMs: now,
@@ -661,10 +656,6 @@ export function createOutputService(
         evaluateTimestampBurst(outputId, p, now);
     }
 
-    function redactedTail(p: OutputProgress): string {
-        return redactSecrets(p.stderrTail.trim(), p.redactTokens);
-    }
-
     function formatNullable(value: number | null): string {
         return value == null ? 'unknown' : String(value);
     }
@@ -675,7 +666,7 @@ export function createOutputService(
             ? Math.round((now - p.lastOutputProgressAtMs) / 1000)
             : Math.round(OUTPUT_WATCHDOG_STALL_MS / 1000);
         const progressAgeSec = p ? Math.round((now - p.lastProgressAtMs) / 1000) : null;
-        const stderr = p ? redactedTail(p) : '';
+        const stderr = p?.stderrTail.trim();
 
         return [
             'watchdog: ffmpeg output stalled; restarting process',
@@ -711,8 +702,8 @@ export function createOutputService(
             `last_total_size=${formatNullable(p?.lastTotalSize ?? null)}`,
             `last_out_time_us=${formatNullable(p?.lastOutTimeMs ?? null)}`,
             `last_bitrate_kbps=${formatNullable(p?.lastBitrateKbps ?? null)}`,
-            p && redactedTail(p)
-                ? `ffmpeg stderr tail:\n${redactedTail(p)}`
+            p?.stderrTail.trim()
+                ? `ffmpeg stderr tail:\n${p.stderrTail.trim()}`
                 : 'ffmpeg stderr tail: <empty>',
             `Restarting output: ${reason}`,
         ].join('\n');
@@ -734,8 +725,8 @@ export function createOutputService(
             `rss_mb=${Math.round(rssBytes / (1024 * 1024))}`,
             `limit_mb=${Math.round(limitBytes / (1024 * 1024))}`,
             `uptime_s=${uptimeSec == null ? 'unknown' : uptimeSec}`,
-            p && redactedTail(p)
-                ? `ffmpeg stderr tail:\n${redactedTail(p)}`
+            p?.stderrTail.trim()
+                ? `ffmpeg stderr tail:\n${p.stderrTail.trim()}`
                 : 'ffmpeg stderr tail: <empty>',
             `Restarting output: RSS ${Math.round(rssBytes / (1024 * 1024))}MB exceeded ${Math.round(
                 limitBytes / (1024 * 1024),
@@ -947,11 +938,6 @@ export function createOutputService(
         const sourcePipeline = pipeline;
         // Pull the input back the same way it was published. Default to RTMP until known.
         const inputUrl = inputState.pullUrl(sourcePipeline.id, sourcePipeline.streamKey);
-        const redactTokens = [
-            ...secretTokensFromUrl(output.url),
-            ...secretTokensFromUrl(inputUrl),
-            sourcePipeline.streamKey,
-        ];
         const args = buildFfmpegArgs(
             inputUrl,
             output.url,
@@ -979,7 +965,6 @@ export function createOutputService(
             lastTotalSize: null,
             lastBitrateKbps: null,
             stderrTail: '',
-            redactTokens: redactTokens,
             monitorMediaClock:
                 inputUrl.startsWith('srt://') &&
                 (output.url.startsWith('rtmp://') || output.url.startsWith('rtmps://')),
@@ -1048,7 +1033,7 @@ export function createOutputService(
                 signal,
                 status,
                 watchdog: wasWatchdog,
-                stderrTail: redactSecrets(stderrTail.trim(), redactTokens) || null,
+                stderrTail: stderrTail.trim() || null,
                 ...(openBurst
                     ? {
                           timestampBurst: {
@@ -1062,7 +1047,7 @@ export function createOutputService(
             if (!wasStop) {
                 try {
                     if (!wasWatchdog) {
-                        const detail = redactSecrets(stderrTail.trim(), redactTokens);
+                        const detail = stderrTail.trim();
                         const exitStr = `exit=${code ?? signal}`;
                         db.setOutputLastError(
                             output.id,
@@ -1086,11 +1071,7 @@ export function createOutputService(
                 // at once and would otherwise flood each one's history with
                 // routine stop markers on every restart/deploy.
                 try {
-                    db.setOutputLastError(
-                        output.id,
-                        redactSecrets(stderrTail.trim(), redactTokens),
-                        'stopped',
-                    );
+                    db.setOutputLastError(output.id, stderrTail.trim(), 'stopped');
                 } catch {
                     /* non-critical */
                 }

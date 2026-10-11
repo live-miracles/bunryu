@@ -929,34 +929,3 @@ describe('Config revision', () => {
         assert.equal(db.getConfigRev(), rev);
     });
 });
-
-describe('Stored error scrubbing', () => {
-    test('re-opening a database redacts secrets saved by older versions', () => {
-        const fs = require('node:fs');
-        const os = require('node:os');
-        const path = require('node:path');
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-scrub-'));
-        const file = path.join(dir, 'db.sqlite');
-        try {
-            const db = createDb(file);
-            const p = db.createPipeline();
-            const o = db.createOutput({ pipelineId: p.id, name: 'YT', url: 'rtmp://h/live/k' });
-            db.setOutputLastError(
-                o.id,
-                'Error opening output rtmp://a.rtmp.youtube.com/live2/REALKEY123: refused\n' +
-                    'srt://127.0.0.1:10080?streamid=#!::r=live/key01_abcdef,m=request&passphrase=SECRETSRTPASS123',
-                'crash',
-            );
-            assert.match(JSON.stringify(db.getOutputErrorHistory(o.id)), /REALKEY123/);
-
-            const reopened = createDb(file);
-            const history = JSON.stringify(reopened.getOutputErrorHistory(o.id));
-
-            assert.ok(!history.includes('REALKEY123'));
-            assert.ok(!history.includes('SECRETSRTPASS123'));
-            assert.match(history, /rtmp:\/\/a\.rtmp\.youtube\.com\/live2\/<redacted>/);
-        } finally {
-            fs.rmSync(dir, { recursive: true, force: true });
-        }
-    });
-});

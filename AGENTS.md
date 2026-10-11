@@ -80,7 +80,9 @@ happened after the incident. When adding or changing behavior:
   actions, and important media or timestamp warnings.
 - Include useful context such as pipeline/output identifiers, exit status,
   reason, relevant configuration or threshold, and the final FFmpeg stderr
-  tail when available. Never log secrets, stream keys, or passphrases.
+  tail when available. Logs are private, so they are not redacted: stream
+  keys, destination URLs and passphrases may appear in them (see the
+  pre-commit rule on never committing them).
 - Bound the volume of any warning that can repeat per packet or per frame
   (FFmpeg timestamp warnings are grouped per output into first-of-kind events,
   periodic summaries and a recovery event; a pipeline alert covers faults

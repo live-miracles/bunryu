@@ -51,9 +51,6 @@ export interface RecordResult {
     shouldLog: boolean;
     // Rejections not logged since the last logged one for this label and kind.
     suppressed: number;
-    // Safe-to-log identifier: "key01_<redacted>", "<unrecognized name>" or
-    // "<empty stream name>".
-    displayName: string;
 }
 
 const KEY_LABEL_RE = /^(key\d{1,3})_/;
@@ -97,12 +94,6 @@ export interface RejectedPublishes {
 
 export function isKeyShaped(stream: string): boolean {
     return KEY_LABEL_RE.test(stream);
-}
-
-export function redactStreamName(stream: string): string {
-    if (!stream) return '<empty stream name>';
-    const match = KEY_LABEL_RE.exec(stream);
-    return match ? `${match[1]}_<redacted>` : '<unrecognized name>';
 }
 
 export function createRejectedPublishes(now: () => number = Date.now): RejectedPublishes {
@@ -173,11 +164,11 @@ export function createRejectedPublishes(now: () => number = Date.now): RejectedP
         const state = lastLogged.get(bucket);
         if (state && at - state.at < LOG_INTERVAL_MS) {
             state.suppressed++;
-            return { shouldLog: false, suppressed: state.suppressed, displayName: '' };
+            return { shouldLog: false, suppressed: state.suppressed };
         }
         const suppressed = state?.suppressed ?? 0;
         lastLogged.set(bucket, { at, suppressed: 0 });
-        return { shouldLog: true, suppressed, displayName: redactStreamName(stream) };
+        return { shouldLog: true, suppressed };
     }
 
     function list(): RejectedPublish[] {

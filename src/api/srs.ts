@@ -8,7 +8,6 @@ import type { InputState } from '../services/inputState.js';
 import {
     createRejectedPublishes,
     isKeyShaped,
-    redactStreamName,
     type KeyState,
     type RejectedPublishes,
 } from '../services/rejectedPublishes.js';
@@ -111,11 +110,10 @@ export function registerSrsHooks(
             ? 'srt'
             : 'rtmp';
 
-        // Records and logs a rejection. The name is redacted (never log a stream
-        // key), and repeats are throttled: the SRT relay retries a refused
-        // publish every second. The IP goes before the attacker-controlled name
-        // so logs stay easy to scan and cannot be made to look like a different
-        // client.
+        // Records and logs a rejection. Repeats are throttled: the SRT relay
+        // retries a refused publish every second. The IP goes before the
+        // attacker-controlled name, which is JSON-quoted, so logs stay easy to
+        // scan and cannot be made to look like a different client.
         const noteRejection = (name: string, keyState: KeyState, why: string): void => {
             const result = rejectedPublishes.record(
                 name,
@@ -127,7 +125,7 @@ export function registerSrsHooks(
             const suppressed =
                 result.suppressed > 0 ? ` (${result.suppressed} similar attempts suppressed)` : '';
             console.log(
-                `[srs-hook] rejected publish from ${ip}: ${result.displayName} (${protocol}, ${why})${suppressed}`,
+                `[srs-hook] rejected publish from ${ip}: ${JSON.stringify(name)} (${protocol}, ${why})${suppressed}`,
             );
         };
 
@@ -165,12 +163,12 @@ export function registerSrsHooks(
         const currentProtocol = inputState.getProtocol(pipeline.id);
         if (inputState.isLive(pipeline.id) && currentProtocol && currentProtocol !== protocol) {
             console.log(
-                `[srs-hook] rejected publish from ${ip}: ${redactStreamName(stream)} (already live via ${currentProtocol}, attempted ${protocol})`,
+                `[srs-hook] rejected publish from ${ip}: ${stream} (already live via ${currentProtocol}, attempted ${protocol})`,
             );
             return res.status(403).json({ code: 403 });
         }
 
-        console.log(`[srs-hook] allowed publish from ${ip}: ${redactStreamName(stream)}`);
+        console.log(`[srs-hook] allowed publish from ${ip}: ${stream}`);
         return res.json({ code: 0 });
     });
 
@@ -203,7 +201,7 @@ export function registerSrsHooks(
                         ? ` (${result.suppressed} similar attempts suppressed)`
                         : '';
                 console.log(
-                    `[srs-hook] rejected play from ${ip || 'unknown'}: ${result.displayName} (${protocol})${suppressed}`,
+                    `[srs-hook] rejected play from ${ip || 'unknown'}: ${JSON.stringify(stream)} (${protocol})${suppressed}`,
                 );
             }
             return res.status(403).json({ code: 403 });
