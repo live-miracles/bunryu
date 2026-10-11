@@ -457,9 +457,12 @@ export async function submitPipelineForm(btn?: HTMLButtonElement): Promise<void>
 }
 
 export async function confirmDeletePipeline(id: string, btn?: HTMLButtonElement): Promise<void> {
+    const pipeline = (state.config.pipelines ?? []).find((p) => String(p.id) === String(id));
     const confirmed = await confirmDialog({
         title: 'Delete pipeline?',
-        message: 'This pipeline and all its outputs will be deleted.',
+        message: pipeline
+            ? `Pipeline "${pipeline.name}" and all its outputs will be deleted.`
+            : 'This pipeline and all its outputs will be deleted.',
         confirmLabel: 'Delete',
         danger: true,
     });
@@ -1263,9 +1266,14 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
 }
 
 export async function confirmDeleteOutput(pipelineId: string, outId: string): Promise<void> {
+    const output = state.config.outputs?.find(
+        (o) => String(o.pipelineId) === String(pipelineId) && String(o.id) === String(outId),
+    );
     const confirmed = await confirmDialog({
         title: 'Delete output?',
-        message: `Output ${outId} will be deleted.`,
+        message: output
+            ? `Output "${output.name}" will be deleted.`
+            : 'This output will be deleted.',
         confirmLabel: 'Delete',
         danger: true,
     });
