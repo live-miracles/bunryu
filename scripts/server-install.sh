@@ -143,10 +143,6 @@ SRT_VERSION_MARKER=/usr/local/bin/.srt-bonding-relay-version
 # libstdc++/libcrypto for every program, which breaks apt-get on hosts whose
 # libstdc++ is newer than the bundled one.
 SRT_LIB_DIR=/usr/local/lib/bunryu-srt
-if [[ -f /etc/ld.so.conf.d/bunryu-srt.conf ]]; then
-    rm -f /etc/ld.so.conf.d/bunryu-srt.conf
-    ldconfig
-fi
 step "5/9 srt-bonding-relay $SRT_RELEASE_TAG"
 if [[ -x /usr/local/bin/srt-bonding-relay && -f "$SRT_VERSION_MARKER" && "$(cat "$SRT_VERSION_MARKER")" == "$SRT_RELEASE_TAG" ]]; then
     echo "srt-bonding-relay $SRT_RELEASE_TAG already installed."
