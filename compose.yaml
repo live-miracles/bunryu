@@ -1,0 +1,27 @@
+# Quick start: `docker compose up -d`, then open http://localhost:8080 and
+# log in with the password printed by `docker compose logs restream-srs`.
+services:
+    restream-srs:
+        build: .
+        image: restream-srs
+        restart: unless-stopped
+        ports:
+            - '8080:8080/tcp' # dashboard + API
+            - '21935:21935/tcp' # RTMP input
+            - '10080:10080/udp' # SRT input
+            - '10081:10081/udp' # SRT bonding input
+        volumes:
+            - restream-data:/data
+        # Leaves time for the control plane to stop every FFmpeg output cleanly.
+        stop_grace_period: 30s
+        # Same ceilings as the systemd units: one FFmpeg process per output.
+        ulimits:
+            nofile: 1048576
+        logging:
+            driver: json-file
+            options:
+                max-size: 50m
+                max-file: '5'
+
+volumes:
+    restream-data:

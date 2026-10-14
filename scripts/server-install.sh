@@ -47,6 +47,7 @@ SRS_SHA256="1eb20245a76643b2d32a1be85e71015079689a0733a10f79964f9a8189c21609"
 SRS_URL="https://github.com/ossrs/srs/releases/download/${SRS_RELEASE_TAG}/${SRS_FILENAME}"
 
 # Pinned srt-bonding-relay binary — published from the standalone relay repo.
+# The Dockerfile pins the same SRS, relay and FFmpeg builds; bump both together.
 SRT_RELEASE_TAG="${SRT_RELEASE_TAG:-v3.0.5}"
 SRT_FILENAME="srt-bonding-relay-linux-x86_64.tar.gz"
 SRT_SHA256="${SRT_SHA256:-ed8d425e51f32fcf0e8b94a77d0ebd0ef166dd7119e7660d7e8ddc6f416f182c}"
