@@ -63,13 +63,17 @@ the restream-srs layout, undo whichever of these steps already happened:
 
   systemctl stop srt-bonding-relay.service srs.service bunryu.service 2>/dev/null
   systemctl disable bunryu.service 2>/dev/null; rm -f /etc/systemd/system/bunryu.service
+  systemctl daemon-reload
   usermod -l $OLD_USER -d $OLD_APP $NEW_USER; groupmod -n $OLD_USER $NEW_USER
   mv $NEW_APP $OLD_APP; mv $NEW_DATA $OLD_DATA; mv $NEW_CONF $OLD_CONF
-  mv $OLD_APP/bunryu.json $OLD_APP/restream.json
   mv $NEW_LIB $OLD_LIB 2>/dev/null
   echo $OLD_LIB > /etc/ld.so.conf.d/restream-srs-srt.conf; ldconfig
   git -C $OLD_APP remote set-url origin https://github.com/live-miracles/bunryu
-  git -C $OLD_APP reset --hard 54a7b16   # last commit before the rename
+  git -C $OLD_APP fetch origin
+  # restream-srs-final is frozen at the last commit before the rename; the old
+  # installer updates to the tracked branch, so it must not be master. The
+  # checkout restores restream.json; the dashboard password is in the database.
+  git -C $OLD_APP checkout -f -B restream-srs-final --track origin/restream-srs-final
   bash $OLD_APP/scripts/server-install.sh -y
 
 The database backup taken before any change is $OLD_DATA/db.sqlite.pre-bunryu
@@ -142,7 +146,15 @@ git config --system --add safe.directory "$NEW_APP"
 log "updating $NEW_APP from $REPO_URL"
 git -C "$NEW_APP" remote set-url origin "$REPO_URL"
 git -C "$NEW_APP" fetch origin
-git -C "$NEW_APP" reset --hard '@{u}'
+# Always master, whatever branch the old checkout was on: the installer
+# updates to the tracked branch, and an older branch would bring back the old
+# installer, which recreates the old paths and new SRT passphrases.
+git -C "$NEW_APP" checkout -f -B master --track origin/master
+grep -q '^APP_DIR=/opt/bunryu$' "$NEW_APP/scripts/server-install.sh" \
+    || {
+        rollback_hint
+        die "$NEW_APP/scripts/server-install.sh is not the Bunryu installer; not running it"
+    }
 
 systemctl daemon-reload
 log "running the Bunryu installer"

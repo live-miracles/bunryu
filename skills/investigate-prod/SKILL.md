@@ -25,11 +25,8 @@ stream may be running. Look, don't touch.
 ## Access
 
 ```bash
-gcloud compute ssh restream-srs --zone=asia-south1-b --tunnel-through-iap --command '<read-only command>'
+gcloud compute ssh bunryu --zone=asia-south1-b --tunnel-through-iap --command '<read-only command>'
 ```
-
-The GCP instance is still named `restream-srs`, the project's name before the
-2026-10-14 rename to Bunryu; everything on it uses the new names.
 
 If it fails with "Reauthentication failed", the user must log in themselves;
 suggest they run `! gcloud auth login` in the prompt (it needs a browser).
