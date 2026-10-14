@@ -23,7 +23,8 @@ const PIPELINE_SELECT = `
 `;
 
 const STREAM_KEY_SLOTS = 99;
-// Supported ceiling for output forwards (README capacity table). Enforced on
+// Supported ceiling for output forwards (capacity table in
+// docs/1-getting-started/1-introduction.md). Enforced on
 // every create path; existing rows above it are left alone, only new ones fail.
 export const MAX_OUTPUTS = 500;
 

@@ -23,7 +23,8 @@ speech detection, source ducking, delay, and configurable restore timing.
 
 ## Intended capacity
 
-These are the supported operating ceilings described by the project README,
+These are the supported operating ceilings described in
+`docs/1-getting-started/1-introduction.md`,
 not targets to exceed:
 
 | Resource | Intended maximum |
@@ -99,7 +100,8 @@ happened after the incident. When adding or changing behavior:
 ## Operational boundaries
 
 The production deployment uses three systemd services: SRS, the shared SRT
-bonding relay, and the Node.js dashboard/API. Keep service boundaries and
+bonding relay, and the Node.js dashboard/API. The Docker image runs the same
+three processes in one container for evaluation. Keep service boundaries and
 loopback-only internal endpoints intact. Public ingest is provided through
 RTMP/SRT ports; internal SRS and relay status APIs should not be exposed.
 
@@ -119,9 +121,10 @@ timestamp-discontinuity flood) that does not touch a developer's own
 `npm run dev`; use it to exercise these paths and the dashboard end to end.
 `skills/run-restream-srs/SKILL.md` documents it.
 
-Prefer small, reversible changes. Keep the README and this guide aligned when
-capacity, service behavior, supported protocols, or operational guarantees
-change.
+Prefer small, reversible changes. Keep the documentation (`docs/`, and the
+short `README.md` when the pitch, features or install steps change) and this
+guide aligned when capacity, service behavior, supported protocols, or
+operational guarantees change.
 
 ## Code map
 
@@ -150,6 +153,17 @@ only for a new module.
   `outputs.last_error` as JSON).
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
 - `test/*.test.js` unit tests and `test/integration/` API tests (`npm test`).
+- `Dockerfile`, `compose.yaml`, `docker/entrypoint.sh` - single-container image
+  for evaluation; the entrypoint supervises the app, SRS and the relay with the
+  same readiness ordering as the systemd units. Media binary pins mirror
+  `scripts/server-install.sh`; bump both together.
+- `README.md` is a short pitch, feature list and quick start; everything else
+  lives in `docs/` (numbered section folders of numbered pages, index in
+  `docs/README.md`). Link between pages with relative `.md` links. The org
+  site (`live-miracles.github.io`, `/projects/restream-srs/`) renders the README
+  and `docs/`; this repo publishes no Pages site of its own. `.github/assets/`
+  holds the dashboard screenshots the README uses. `docs/superpowers/` and
+  `docs/srs-runtime-forward-plan.md` are local, gitignored planning notes.
 
 ## Repo skills
 

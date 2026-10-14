@@ -1,0 +1,72 @@
+# Publishing to a pipeline
+
+A **pipeline** is one live input. Creating a pipeline assigns it a stream key;
+the pipeline panel in the dashboard shows ready-to-copy publish URLs for every
+protocol, with buttons to copy the server URL, key, stream ID or passphrase
+separately for encoders that ask for them in separate fields.
+
+| Protocol | Port | URL shape |
+|----------|------|-----------|
+| RTMP | 21935/tcp | `rtmp://<public-host>:21935/live/<stream-key>` |
+| SRT | 10080/udp | `srt://<public-host>:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
+| Bonded SRT | 10081/udp | `srt://<public-host>:10081?mode=caller&grouptype=broadcast&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
+
+`<public-host>` is the **Public Host** set in Settings. The SRT passphrase is
+generated at install time; see [SRS and SRT relay config](../1-getting-started/3-install.md#srs-and-srt-relay-config).
+
+Prefer SRT when the encoder supports it: it has fixed, predictable latency,
+survives lossy networks better than RTMP, and keeps every audio track. Use
+bonded SRT for encoders that send the same stream over several network links
+(for example cellular bonding units); the
+[`srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay)
+merges the links before SRS sees the stream.
+
+The dashboard's **User Manual** (the open-book icon in the navbar) has the same
+guide, so it is at hand during an event.
+
+## Test commands
+
+These `ffmpeg` commands publish a looping file. Replace `localhost` with the
+server address, and `<stream-key>` / `<passphrase>` with the values from the
+dashboard.
+
+RTMP:
+
+```bash
+ffmpeg -re -stream_loop -1 -i video.mp4 \
+  -c:v libx264 -preset veryfast -b:v 2500k -c:a aac -b:a 128k \
+  -f flv rtmp://localhost:21935/live/<stream-key>
+```
+
+SRT (if the passphrase check is disabled, drop
+`&passphrase=<passphrase>&pbkeylen=16`):
+
+```bash
+ffmpeg -re -stream_loop -1 -i video.mp4 \
+  -c:v libx264 -preset veryfast -b:v 2500k -x264-params "repeat-headers=1" \
+  -c:a aac -b:a 128k \
+  -f mpegts 'srt://localhost:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16'
+```
+
+SRT with multiple audio tracks (for example one per language):
+
+```bash
+ffmpeg -re -stream_loop -1 -i video.mp4 \
+  -map 0 \
+  -c:v libx264 -preset veryfast -tune zerolatency -b:v 2500k \
+  -x264-params "repeat-headers=1" \
+  -force_key_frames 'expr:gte(t,n_forced*2)' -g 60 -keyint_min 60 -sc_threshold 0 \
+  -c:a aac -b:a 128k \
+  -f mpegts 'srt://localhost:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16'
+```
+
+## Checking the input
+
+Once a publisher connects, the pipeline turns live and the dashboard shows the
+input's codec, resolution, frame rate, bitrate and audio tracks (from `ffprobe`).
+**Preview** starts an HLS preview in the browser.
+
+Publishes with an unknown stream key are rejected by SRS before any output
+starts. Recent rejected attempts are listed under the pipeline list ("Rejected
+publish attempts"), which helps when an encoder is configured with a stale key;
+see [Security](../3-operations/1-security.md) for details.

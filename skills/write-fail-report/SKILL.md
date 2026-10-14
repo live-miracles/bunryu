@@ -43,7 +43,8 @@ Rules for the content:
   Say what you could not verify (e.g. viewer-visible impact on the platform).
 - State the deployed version the evidence came from; the VM often lags `master`.
 - Link the fix by commit or file path, and add tests/guards it introduced.
-- Update `README.md` / `AGENTS.md` when the incident changes documented behaviour.
+- Update the docs (`docs/`, usually `docs/3-operations/4-reliability.md` or
+  `5-known-issues.md`) / `AGENTS.md` when the incident changes documented behaviour.
 
 ## Redaction (required)
 

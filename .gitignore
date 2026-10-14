@@ -20,5 +20,7 @@ hls/
 diagnostics/
 *.wav
 *.mkv
-/docs
+# Local planning notes; the rest of docs/ is published documentation.
+/docs/superpowers/
+/docs/srs-runtime-forward-plan.md
 .codex/translation-mixing-feature-plan.md
