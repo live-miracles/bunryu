@@ -158,9 +158,6 @@ only for a new module.
   same readiness ordering as the systemd units. Media binary pins mirror
   `scripts/server-install.sh`; bump both together. `docker/README.dockerhub.md`
   is the Docker Hub description (synced by `.github/workflows/docker.yml`).
-- `scripts/migrate-from-restream-srs.sh` - one-time migration of a server
-  installed under the old name (restream-srs) to the Bunryu paths; remove it
-  once production is migrated.
 - `README.md` is a short pitch, feature list and quick start; everything else
   lives in `docs/` (numbered section folders of numbered pages, index in
   `docs/README.md`). Link between pages with relative `.md` links. The org
