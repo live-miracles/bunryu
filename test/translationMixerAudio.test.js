@@ -24,7 +24,7 @@ const ffmpegProbe = spawnSync('ffmpeg', ['-version']);
 const ffmpegAvailable = !ffmpegProbe.error && ffmpegProbe.status === 0;
 const skip = ffmpegAvailable ? false : 'ffmpeg is not available on PATH';
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-mixer-audio-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-mixer-audio-'));
 after(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });

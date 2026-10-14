@@ -19,7 +19,7 @@ const MAX_LOG_TAIL_LINES = 200;
 // systemd units in production — `npm run dev`/`npm run srs`/`npm run relay`
 // aren't systemd-managed, so these read as empty (source 'none') locally.
 const SRS_SYSTEMD_UNIT = 'srs.service';
-const APP_SYSTEMD_UNIT = 'restream-srs.service';
+const APP_SYSTEMD_UNIT = 'bunryu.service';
 const RELAY_SYSTEMD_UNIT = 'srt-bonding-relay.service';
 
 type LogSource = 'journal' | 'none';

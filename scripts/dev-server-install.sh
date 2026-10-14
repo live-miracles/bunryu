@@ -27,17 +27,17 @@ SRS_URL="https://github.com/ossrs/srs/releases/download/${SRS_RELEASE_TAG}/${SRS
 # /usr/local/bin in production, installed here into the repo instead so
 # `npm run dev` doesn't fall back to the system package (Ubuntu ships
 # FFmpeg 8, which has been observed to hang pulling from a local SRS
-# instance — see restream.json's ffmpeg_path/ffprobe_path).
+# instance — see bunryu.json's ffmpeg_path/ffprobe_path).
 #
 # Mirrored into our own releases since BtbN prunes autobuild tags after ~2 years.
 # To bump: grab a newer linux64-gpl build from BtbN/FFmpeg-Builds/releases, upload
-# it via `gh release create ffmpeg-n<ver> <file> --repo live-miracles/restream-srs`,
+# it via `gh release create ffmpeg-n<ver> <file> --repo live-miracles/bunryu`,
 # then update these values (and scripts/server-install.sh) to match.
 FFMPEG_VERSION=7.1
 FFMPEG_BUILD_TAG="ffmpeg-n7.1.4-7-gadcf20da26"
 FFMPEG_FILENAME="ffmpeg-n7.1.4-7-gadcf20da26-linux64-gpl-7.1.tar.xz"
 FFMPEG_SHA256="ce46c711e3ff79ae1e9318bf7daa54c77f41ce37b71010c44f4a0b38f1d7a29f"
-FFMPEG_URL="https://github.com/live-miracles/restream-srs/releases/download/${FFMPEG_BUILD_TAG}/${FFMPEG_FILENAME}"
+FFMPEG_URL="https://github.com/live-miracles/bunryu/releases/download/${FFMPEG_BUILD_TAG}/${FFMPEG_FILENAME}"
 
 # Verify a downloaded file against an expected SHA256 (sha256sum on Linux,
 # shasum on macOS). An empty expected hash skips the check.

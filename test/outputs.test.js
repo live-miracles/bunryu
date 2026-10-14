@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-outputs-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-outputs-'));
 const originalCwd = process.cwd();
 
 after(() => {
@@ -105,7 +105,7 @@ function makeDb() {
 
 function loadOutputService(t, fakeProc, options = {}) {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
             {
                 port: 8080,

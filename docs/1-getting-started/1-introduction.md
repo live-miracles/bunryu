@@ -1,6 +1,6 @@
 # Introduction
 
-Restream SRS is a self-hosted restreaming server for long live events. It takes
+Bunryu is a self-hosted restreaming server for long live events. It takes
 live inputs over RTMP, SRT and bonded SRT, manages each one as a **pipeline**, and
 forwards every pipeline to any number of RTMP, RTMPS or SRT destinations
 (**outputs**), such as YouTube, Facebook, Twitch, a CDN or another server.

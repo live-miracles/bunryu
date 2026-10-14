@@ -1,14 +1,14 @@
 ---
-name: run-restream-srs
-description: Run, start, drive and screenshot the Restream SRS dashboard in an isolated local test stack (own SRS + control plane + fresh DB + fake output ffmpeg), without touching a developer's own `npm run dev`. Use to test output/health/dashboard behavior, simulate FFmpeg timestamp-discontinuity floods, and take dashboard screenshots.
+name: run-bunryu
+description: Run, start, drive and screenshot the Bunryu dashboard in an isolated local test stack (own SRS + control plane + fresh DB + fake output ffmpeg), without touching a developer's own `npm run dev`. Use to test output/health/dashboard behavior, simulate FFmpeg timestamp-discontinuity floods, and take dashboard screenshots.
 ---
 
-# Run Restream SRS (isolated test stack)
+# Run Bunryu (isolated test stack)
 
 Paths are relative to the repo root. `scripts/test-stack.sh` (a tool-agnostic
 repo script; this skill is just its man page) starts a **separate** stack on
 its own ports (app 18080, hooks 18082, SRS RTMP 31935 / API 31985 / SRT 31080, Chrome 9333)
-with a **fresh database** in `$WORK` (default `${TMPDIR:-/tmp}/restream-srs-ui`),
+with a **fresh database** in `$WORK` (default `${TMPDIR:-/tmp}/bunryu-ui`),
 so it never collides with a developer's own instance on 8080/1985. The
 control plane is the real code, and the test publisher, HLS preview and ffprobe
 use the real pinned `objs/` binaries; only the *output* ffmpeg is a shim that
@@ -28,7 +28,7 @@ memory (`FORCE=1` overrides) — see Gotchas.
 ## Run (agent path)
 
 ```bash
-export WORK=/tmp/restream-srs-ui          # optional; any writable dir
+export WORK=/tmp/bunryu-ui          # optional; any writable dir
 H=scripts/test-stack.sh
 
 $H start          # builds public/js, starts SRS+app, logs in, creates pipeline
@@ -68,10 +68,10 @@ Run the repo's own tests separately with `npm test` (not part of this harness).
   ports from `srs_config_path` and SRS calls `on_publish`/`on_play` at
   the app's loopback-only hook port (`127.0.0.1:8082`) — the harness rewrites those to the isolated ports. Edit the
   `sed` lines in `scripts/test-stack.sh` if `srs.conf` changes its listen lines.
-- **`WORK` must be outside the repo**: `start` overwrites `restream.json` and
+- **`WORK` must be outside the repo**: `start` overwrites `bunryu.json` and
   `srs.conf` and deletes `db.sqlite*` in it, so the script refuses a `WORK` at or
   under the repo (it would wipe a developer's real config and database).
-- `PORT` and `DATABASE_PATH` env vars override `restream.json`, which is what
+- `PORT` and `DATABASE_PATH` env vars override `bunryu.json`, which is what
   makes the isolated instance possible.
 - **Socket watchdog**: outputs target `rtmp://192.0.2.10` (TEST-NET-1; the
   API rejects loopback destinations other than this server's own ports), which

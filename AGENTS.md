@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Restream SRS is a Linux streaming-forwarding server. It accepts live inputs
+Bunryu is a Linux streaming-forwarding server. It accepts live inputs
 over RTMP and SRT, manages them as pipelines, and forwards each pipeline to
 multiple RTMP and/or SRT destinations.
 
@@ -93,7 +93,7 @@ happened after the incident. When adding or changing behavior:
   classify it where appropriate.
 - Preserve enough history for post-incident investigation. Production uses
   journald plus rotated diagnostics under
-  `/var/lib/restream-srs/diagnostics/`; respect retention and size caps.
+  `/var/lib/bunryu/diagnostics/`; respect retention and size caps.
 - Do not silently swallow errors. If an error is intentionally tolerated,
   record the decision and the resulting degraded state.
 
@@ -119,7 +119,7 @@ configuration, or diagnostics are high-risk and should be tested for:
 and fresh database, with a fake output ffmpeg that can emit an FFmpeg
 timestamp-discontinuity flood) that does not touch a developer's own
 `npm run dev`; use it to exercise these paths and the dashboard end to end.
-`skills/run-restream-srs/SKILL.md` documents it.
+`skills/run-bunryu/SKILL.md` documents it.
 
 Prefer small, reversible changes. Keep the documentation (`docs/`, and the
 short `README.md` when the pitch, features or install steps change) and this
@@ -147,7 +147,7 @@ only for a new module.
 - `src/api/*` - REST routes. `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments; `appConfig.ts` reads
-  `restream.json` (watchdog defaults); `diagnostics.ts` is the rotated JSONL
+  `bunryu.json` (watchdog defaults); `diagnostics.ts` is the rotated JSONL
   writer; `srs*.ts`/`relayConfig.ts` generate and read SRS and relay config.
 - `src/db/` - SQLite schema and access (output Error History lives in
   `outputs.last_error` as JSON).
@@ -156,11 +156,15 @@ only for a new module.
 - `Dockerfile`, `compose.yaml`, `docker/entrypoint.sh` - single-container image
   for evaluation; the entrypoint supervises the app, SRS and the relay with the
   same readiness ordering as the systemd units. Media binary pins mirror
-  `scripts/server-install.sh`; bump both together.
+  `scripts/server-install.sh`; bump both together. `docker/README.dockerhub.md`
+  is the Docker Hub description (synced by `.github/workflows/docker.yml`).
+- `scripts/migrate-from-restream-srs.sh` - one-time migration of a server
+  installed under the old name (restream-srs) to the Bunryu paths; remove it
+  once production is migrated.
 - `README.md` is a short pitch, feature list and quick start; everything else
   lives in `docs/` (numbered section folders of numbered pages, index in
   `docs/README.md`). Link between pages with relative `.md` links. The org
-  site (`live-miracles.github.io`, `/projects/restream-srs/`) renders the README
+  site (`live-miracles.github.io`, `/projects/bunryu/`) renders the README
   and `docs/`; this repo publishes no Pages site of its own. `.github/assets/`
   holds the dashboard screenshots the README uses. `docs/superpowers/` and
   `docs/srs-runtime-forward-plan.md` are local, gitignored planning notes.
@@ -171,7 +175,7 @@ Skills live in `skills/` and are shared with Claude Code and Codex through the
 symlinks `.claude/skills` and `.agents/skills`; add new ones there, not in a
 tool folder.
 
-- `run-restream-srs` - isolated local test stack and dashboard screenshots.
+- `run-bunryu` - isolated local test stack and dashboard screenshots.
 - `investigate-prod` - read-only inspection of the production VM (logs,
   diagnostics, deployed version).
 - `write-fail-report` - incident write-ups in `fail-reports/` and the redaction

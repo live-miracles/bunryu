@@ -1,15 +1,15 @@
 # Docker
 
-Docker is the quickest way to try Restream SRS. For long-running production
+Docker is the quickest way to try Bunryu. For long-running production
 servers, use the [native install](3-install.md).
 
 ## Quick start
 
 ```bash
-git clone https://github.com/live-miracles/restream-srs
-cd restream-srs
+git clone https://github.com/live-miracles/bunryu
+cd bunryu
 docker compose up -d
-docker compose logs restream-srs | grep "dashboard password"
+docker compose logs bunryu | grep "dashboard password"
 ```
 
 Open `http://localhost:8080`, log in with the printed password, create a
@@ -26,26 +26,26 @@ logged with its status.
 
 ```bash
 docker compose up -d                       # build and start (compose.yaml)
-docker compose logs -f restream-srs        # all three processes log here
+docker compose logs -f bunryu        # all three processes log here
 docker compose down                        # stop; data stays in the volume
 ```
 
 Or without compose:
 
 ```bash
-docker build -t restream-srs .
-docker run -d --name restream-srs --restart unless-stopped \
+docker build -t bunryu .
+docker run -d --name bunryu --restart unless-stopped \
   -p 8080:8080 -p 21935:21935 -p 10080:10080/udp -p 10081:10081/udp \
-  -v restream-data:/data restream-srs
+  -v bunryu-data:/data bunryu
 ```
 
 - **Data**: everything persistent is in the `/data` volume: `db.sqlite`,
-  `restream.json`, the generated `srs.conf` / `srt-bonding-relay.json`, HLS
+  `bunryu.json`, the generated `srs.conf` / `srt-bonding-relay.json`, HLS
   previews and diagnostics. On every start the SRS and relay configs are
   refreshed from the image and keep their SRT passphrase, like a reinstall.
 - **Secrets**: on first start the container generates the dashboard password
   (printed in the logs and stored as `dashboard_password` in
-  `/data/restream.json`) and a random SRT passphrase.
+  `/data/bunryu.json`) and a random SRT passphrase.
 - **Public host**: set **Settings → Public Host** to the address encoders use,
   so the dashboard's publish URLs are correct.
 - **Limitations**: the dashboard's SRS/relay/app log viewers read journald, so

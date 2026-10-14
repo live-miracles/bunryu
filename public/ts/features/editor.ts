@@ -273,7 +273,7 @@ export async function submitPipelineGroupsForm(btn?: HTMLButtonElement): Promise
 // ── Settings ──────────────────────────────────────────
 
 export function openSettings(): void {
-    const current = state.config.serverName ?? 'Restream SRS';
+    const current = state.config.serverName ?? 'Bunryu';
     (document.getElementById('settings-server-name-input') as HTMLInputElement).value = current;
     (document.getElementById('settings-public-host-input') as HTMLInputElement).value =
         state.config.publicHost ?? '';

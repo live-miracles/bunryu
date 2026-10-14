@@ -166,7 +166,7 @@ describe('health bonded relay publish conflict detection', () => {
 
 // ── createHealthService poll orchestration ─────────────
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-health-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-health-'));
 const originalCwd = process.cwd();
 
 after(() => {
@@ -402,7 +402,7 @@ function makeFakeInputState() {
 
 function loadHealthService(t) {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
             {
                 port: 8080,

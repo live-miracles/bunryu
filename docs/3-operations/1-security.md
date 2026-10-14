@@ -49,7 +49,7 @@ Hardening that is on by default:
   audio track counts/indexes are 0–49 (preview `audioTrackCount` 1–50); `publicHost`
   must be a hostname or IP. The dashboard escapes everything it renders on top of
   this. Existing longer names are kept but must comply when edited.
-- **Installer ownership:** `/opt/restream-srs` is root-owned and read-only to the
+- **Installer ownership:** `/opt/bunryu` is root-owned and read-only to the
   service user (root runs code from it on every update); the service user writes
   only to the data and config directories. `server-reset-password.sh` also signs
   out every existing session.
@@ -89,13 +89,13 @@ talks to those over loopback.
 
 ## Authentication
 
-The dashboard is protected by a password. `dashboard_password` in `restream.json` is only the *initial* password: it is hashed into the database on first boot, and ignored whenever the database already has a password. The installer generates a random one on first install and keeps it on reinstall; if the field is absent (e.g. a dev checkout) the initial password is `admin`. Change it in **Settings → Change Password** after logging in — that updates the database only, not `restream.json`.
+The dashboard is protected by a password. `dashboard_password` in `bunryu.json` is only the *initial* password: it is hashed into the database on first boot, and ignored whenever the database already has a password. The installer generates a random one on first install and keeps it on reinstall; if the field is absent (e.g. a dev checkout) the initial password is `admin`. Change it in **Settings → Change Password** after logging in — that updates the database only, not `bunryu.json`.
 
 To reset a forgotten password:
 ```bash
-sudo bash /opt/restream-srs/scripts/server-reset-password.sh
+sudo bash /opt/bunryu/scripts/server-reset-password.sh
 ```
-This clears the stored password and restarts the service, which re-seeds it from `dashboard_password` in `restream.json` (`admin` if unset).
+This clears the stored password and restarts the service, which re-seeds it from `dashboard_password` in `bunryu.json` (`admin` if unset).
 
 ## Why fail2ban is not used
 

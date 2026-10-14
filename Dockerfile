@@ -31,7 +31,7 @@ RUN apt-get update -q \
 WORKDIR /work
 RUN set -eux; \
     mkdir -p /out/bin /out/lib; \
-    curl -fsSL -o ffmpeg.tar.xz "https://github.com/live-miracles/restream-srs/releases/download/${FFMPEG_BUILD_TAG}/${FFMPEG_FILENAME}"; \
+    curl -fsSL -o ffmpeg.tar.xz "https://github.com/live-miracles/bunryu/releases/download/${FFMPEG_BUILD_TAG}/${FFMPEG_FILENAME}"; \
     echo "${FFMPEG_SHA256}  ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf ffmpeg.tar.xz; \
     install -m 755 ffmpeg-*/bin/ffmpeg ffmpeg-*/bin/ffprobe /out/bin/; \
@@ -52,16 +52,16 @@ RUN apt-get update -q \
     && apt-get install -y -q --no-install-recommends tini iproute2 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=media /out/bin/ /usr/local/bin/
-COPY --from=media /out/lib/ /usr/local/lib/restream-srs-srt/
-RUN echo /usr/local/lib/restream-srs-srt > /etc/ld.so.conf.d/restream-srs-srt.conf && ldconfig
+COPY --from=media /out/lib/ /usr/local/lib/bunryu-srt/
+RUN echo /usr/local/lib/bunryu-srt > /etc/ld.so.conf.d/bunryu-srt.conf && ldconfig
 COPY --from=build /app/package.json /app/srs.conf /app/srt-bonding-relay.json /app/
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/dist /app/dist
 COPY --from=build /app/public /app/public
-COPY docker/entrypoint.sh /usr/local/bin/restream-srs-entrypoint
-RUN useradd --system --home /data --shell /usr/sbin/nologin restream \
-    && mkdir -p /data && chown restream:restream /data
-USER restream
+COPY docker/entrypoint.sh /usr/local/bin/bunryu-entrypoint
+RUN useradd --system --home /data --shell /usr/sbin/nologin bunryu \
+    && mkdir -p /data && chown bunryu:bunryu /data
+USER bunryu
 WORKDIR /data
 VOLUME /data
 ENV NODE_ENV=production
@@ -70,4 +70,4 @@ EXPOSE 8080/tcp 21935/tcp 10080/udp 10081/udp
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8080/api/ready || exit 1
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/restream-srs-entrypoint"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/bunryu-entrypoint"]

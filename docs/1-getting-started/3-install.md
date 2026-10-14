@@ -1,13 +1,13 @@
 # Native install
 
-The native install is the recommended way to run Restream SRS in production. It
+The native install is the recommended way to run Bunryu in production. It
 targets Debian/Ubuntu on x86_64 and sets up three systemd services:
 
 | Service | Purpose |
 |---------|---------|
-| `srs.service` | Native SRS binary, started as `/usr/local/bin/srs -c /etc/restream-srs/srs.conf` |
+| `srs.service` | Native SRS binary, started as `/usr/local/bin/srs -c /etc/bunryu/srs.conf` |
 | `srt-bonding-relay.service` | Shared SRT bonding relay, started on UDP port 10081 |
-| `restream-srs.service` | Node.js dashboard/API, started from `/opt/restream-srs/dist/index.js` |
+| `bunryu.service` | Node.js dashboard/API, started from `/opt/bunryu/dist/index.js` |
 
 The installer downloads the official SRS release binary and a pinned `srt-bonding-relay` binary from the standalone [`live-miracles/srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay) GitHub releases.
 
@@ -19,8 +19,8 @@ hooks from racing the dashboard/API process during boot.
 **Production install:**
 ```bash
 sudo apt-get update -q && sudo apt-get install -y -q git  # in case git is not installed
-sudo git clone https://github.com/live-miracles/restream-srs /opt/restream-srs
-sudo bash /opt/restream-srs/scripts/server-install.sh
+sudo git clone https://github.com/live-miracles/bunryu /opt/bunryu
+sudo bash /opt/bunryu/scripts/server-install.sh
 ```
 
 **Set server timezone (optional, for readable log timestamps):**
@@ -31,20 +31,20 @@ sudo timedatectl set-timezone Asia/Kolkata
 ```
 List available timezone names with `timedatectl list-timezones`. No reboot is needed, but already-running services may have the old timezone cached in memory, so restart them to apply it to new log lines immediately:
 ```bash
-sudo systemctl restart srs.service restream-srs.service srt-bonding-relay.service
+sudo systemctl restart srs.service bunryu.service srt-bonding-relay.service
 ```
 
 **Update an installed server:**
 ```bash
-sudo bash /opt/restream-srs/scripts/server-install.sh
+sudo bash /opt/bunryu/scripts/server-install.sh
 ```
 
 **Stop services:**
 ```bash
-sudo bash /opt/restream-srs/scripts/server-down.sh
+sudo bash /opt/bunryu/scripts/server-down.sh
 ```
 
-Open the dashboard: `http://SERVER_IP:8080` — the installer prints the generated password on first install (it is also stored as `dashboard_password` in `restream.json`).
+Open the dashboard: `http://SERVER_IP:8080` — the installer prints the generated password on first install (it is also stored as `dashboard_password` in `bunryu.json`).
 
 After the first login, set **Settings → Public Host** to the address your
 encoders use, so the publish URLs shown in the dashboard are correct. To reach
@@ -71,8 +71,8 @@ that 1985 and 8082 listen only on `127.0.0.1`.
 ## SRS and SRT relay config
 
 The repository copies both runtime config files during install:
-- `/etc/restream-srs/srs.conf`
-- `/etc/restream-srs/srt-bonding-relay.json`
+- `/etc/bunryu/srs.conf`
+- `/etc/bunryu/srt-bonding-relay.json`
 
 SRS only reads its config at startup, and the SRT bonding relay only reads its
 JSON config file at startup.

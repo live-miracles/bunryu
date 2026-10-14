@@ -49,4 +49,4 @@ npm run format:check
 `scripts/test-stack.sh` starts an isolated local stack (its own SRS, control
 plane and fresh database, with a fake output FFmpeg) that does not touch a
 developer's own `npm run dev`. It is documented in
-[`skills/run-restream-srs/SKILL.md`](../../skills/run-restream-srs/SKILL.md).
+[`skills/run-bunryu/SKILL.md`](../../skills/run-bunryu/SKILL.md).

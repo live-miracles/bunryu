@@ -6,12 +6,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-utils-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-utils-'));
 const originalCwd = process.cwd();
 const srsConfPath = path.join(tempDir, 'srs.conf');
 process.chdir(tempDir);
 fs.writeFileSync(
-    path.join(tempDir, 'restream.json'),
+    path.join(tempDir, 'bunryu.json'),
     JSON.stringify(
         {
             port: 8080,

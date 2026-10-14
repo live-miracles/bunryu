@@ -27,7 +27,7 @@ describe('HLS preview route', () => {
     const touched = [];
 
     before(async () => {
-        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-hls-'));
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-hls-'));
         const { registerAuthApi, initializePassword } = require('../../src/api/auth');
         const { registerHlsRoute } = require('../../src/api/preview');
         const db = makeDb();

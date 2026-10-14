@@ -2,7 +2,7 @@
 # Container entrypoint: prepares /data on first start, then supervises the
 # three processes that the native install runs as systemd units.
 #
-# - restream-srs (Node.js control plane) starts first.
+# - bunryu (Node.js control plane) starts first.
 # - SRS starts only after http://127.0.0.1:8080/api/ready answers, on every
 #   (re)start, like srs.service's ExecStartPre gate.
 # - srt-bonding-relay starts after SRS.
@@ -46,7 +46,7 @@ prepare_data() {
     if [[ -f srt-bonding-relay.json ]]; then
         relay_pass="$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.passphrase||"");' srt-bonding-relay.json)"
     fi
-    if [[ "$srs_pass" == restream-default-srt-passphrase || "$relay_pass" == restream-default-srt-passphrase ]]; then
+    if [[ "$srs_pass" == bunryu-default-srt-passphrase || "$relay_pass" == bunryu-default-srt-passphrase ]]; then
         srs_pass="$new_pass"
         relay_pass="$new_pass"
     fi
@@ -59,14 +59,14 @@ prepare_data() {
 
     # Dashboard password: only seeds an empty database (see the Authentication
     # section of docs/3-operations/1-security.md); generated once and kept in
-    # restream.json.
+    # bunryu.json.
     local password=""
-    if [[ -f restream.json ]]; then
-        password="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' restream.json)"
+    if [[ -f bunryu.json ]]; then
+        password="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' bunryu.json)"
     fi
     if [[ -z "$password" ]]; then
         password="$(random_secret)"
-        log "generated dashboard password: $password (stored in $DATA_DIR/restream.json; change it in Settings after logging in)"
+        log "generated dashboard password: $password (stored in $DATA_DIR/bunryu.json; change it in Settings after logging in)"
     fi
     node -e '
 const fs = require("fs");
@@ -87,8 +87,8 @@ const c = {
     dashboard_password: pass,
 };
 fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n", { mode: 0o600 });
-' restream.json "$password"
-    chmod 600 restream.json
+' bunryu.json "$password"
+    chmod 600 bunryu.json
     chmod 640 srs.conf srt-bonding-relay.json
 }
 
@@ -144,7 +144,7 @@ supervise() {
 
 prepare_data
 
-supervise restream-srs no_gate node "$APP_DIR/dist/index.js" &
+supervise bunryu no_gate node "$APP_DIR/dist/index.js" &
 app_pid=$!
 supervise srs wait_ready /usr/local/bin/srs -c "$DATA_DIR/srs.conf" &
 srs_pid=$!

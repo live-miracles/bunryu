@@ -8,12 +8,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-config-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-config-'));
 const originalCwd = process.cwd();
 
 before(() => {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
             {
                 port: 8080,
@@ -156,7 +156,7 @@ describe('Config API integration', () => {
         assert.deepEqual(res.body.outputs, []);
         assert.deepEqual(res.body.hostProbeTargets, []);
         assert.deepEqual(res.body.groups, []);
-        assert.equal(res.body.serverName, 'Restream SRS');
+        assert.equal(res.body.serverName, 'Bunryu');
         assert.equal(res.body.publicHost, 'localhost');
         assert.deepEqual(res.body.layoutOrder, []);
         assert.equal(res.body.streamKeys.length, 99);

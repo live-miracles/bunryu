@@ -1,8 +1,8 @@
 # Configuration
 
-The app reads runtime settings from `restream.json` in the app root.
+The app reads runtime settings from `bunryu.json` in the app root.
 
-`restream.json`:
+`bunryu.json`:
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -35,13 +35,13 @@ SRS values are inferred from `srs.conf`:
   console/journald instead of a file; only local dev's still sets `srs_log_file`)
 
 The dashboard's own log and the relay's log are always read via
-`journalctl -u restream-srs.service` / `-u srt-bonding-relay.service` — both only
-ever log to the journal. All three require `restream-srs.service`'s
+`journalctl -u bunryu.service` / `-u srt-bonding-relay.service` — both only
+ever log to the journal. All three require `bunryu.service`'s
 `SupplementaryGroups=systemd-journal` (set by `server-install.sh`); without it,
 the Server Logs view shows no output for whichever service's journal it can't read.
 
 The control plane also writes structured diagnostics to
-`/var/lib/restream-srs/diagnostics/` in production. The rotated JSONL files keep
+`/var/lib/bunryu/diagnostics/` in production. The rotated JSONL files keep
 output starts/exits/restarts, SRS and relay transitions, input and bonded-leg
 transitions, and FFmpeg timestamp/media-clock warnings for seven days (the last
 ffmpeg stderr tail at exit is included on the exit event; raw stderr isn't
@@ -70,7 +70,7 @@ Installer/development overrides:
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
-| `REPO_URL` | `server-install.sh` | Repository URL cloned into `/opt/restream-srs` on first install |
+| `REPO_URL` | `server-install.sh` | Repository URL cloned into `/opt/bunryu` on first install |
 | `SRT_RELEASE_TAG` | `server-install.sh` | Relay GitHub release tag to install |
 | `SRT_URL` | `server-install.sh` | Custom relay release archive URL |
 | `SRT_SHA256` | `server-install.sh` | Expected SHA256 for the relay archive; blank skips verification |

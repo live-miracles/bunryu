@@ -56,7 +56,7 @@ export function registerConfigApi(app: Express, db: Db): void {
             groups: db.listPipelineGroups(),
             encodings: Object.keys(ENCODINGS),
             streamKeys: db.listStreamKeys(),
-            serverName: db.getSetting('serverName') ?? 'Restream SRS',
+            serverName: db.getSetting('serverName') ?? 'Bunryu',
             srtPassphrase,
             publicHost: host,
             layoutOrder: parseLayoutOrder(db.getSetting('layoutOrder')),

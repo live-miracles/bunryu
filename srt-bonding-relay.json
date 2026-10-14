@@ -4,5 +4,5 @@
     "output_host": "127.0.0.1",
     "output_port": 10080,
     "status_port": 8081,
-    "passphrase": "restream-default-srt-passphrase"
+    "passphrase": "bunryu-default-srt-passphrase"
 }

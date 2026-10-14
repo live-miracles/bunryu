@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Isolated Restream SRS test stack: own SRS, own control plane, fresh DB, fake
+# Isolated Bunryu test stack: own SRS, own control plane, fresh DB, fake
 # output ffmpeg. Never touches a developer's own `npm run dev` (8080/1985).
 # Usage: scripts/test-stack.sh start | status | flood on|off | shot <png> [js] [waitMs] | stop
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/.." && pwd)
-WORK=${WORK:-${TMPDIR:-/tmp}/restream-srs-ui}
+WORK=${WORK:-${TMPDIR:-/tmp}/bunryu-ui}
 APP_PORT=18080 HOOK_PORT=18082 RTMP_PORT=31935 API_PORT=31985 SRT_PORT=31080 CDP_PORT=9333
 B=http://127.0.0.1:$APP_PORT
-# start overwrites restream.json/srs.conf and deletes db.sqlite* in $WORK, so it
+# start overwrites bunryu.json/srs.conf and deletes db.sqlite* in $WORK, so it
 # must never point at the repo (that would wipe a developer's real config and DB).
 case "$(realpath -m "$WORK")" in
     "$REPO" | "$REPO"/*)
@@ -55,7 +55,7 @@ case "${1:-}" in
             exit 1
         }
         (cd "$REPO" && npx tsc -p tsconfig.json) # public/js is gitignored build output
-        cat > "$WORK/restream.json" << JSON
+        cat > "$WORK/bunryu.json" << JSON
 { "port": $APP_PORT, "hook_port": $HOOK_PORT, "database_path": "./db.sqlite", "srs_config_path": "./srs.conf",
   "ffmpeg_path": "$WORK/ffmpeg-shim.sh", "ffprobe_path": "$REPO/objs/ffprobe",
   "output_watchdog": { "warmup_ms": 90000, "stall_ms": 45000, "interval_ms": 5000,

@@ -1,6 +1,6 @@
 ---
 name: investigate-prod
-description: Inspect the production restream-srs VM (read-only) to investigate an incident, a warning or a user report - journald logs, structured diagnostics JSONL, the deployed version, service state. Use when the user asks what happened on the server, why an output/input misbehaved, or to check logs or diagnostics there. NOT for deploying, restarting services or changing server config.
+description: Inspect the production Bunryu VM (read-only) to investigate an incident, a warning or a user report - journald logs, structured diagnostics JSONL, the deployed version, service state. Use when the user asks what happened on the server, why an output/input misbehaved, or to check logs or diagnostics there. NOT for deploying, restarting services or changing server config.
 ---
 
 # Investigate production (read-only)
@@ -28,6 +28,9 @@ stream may be running. Look, don't touch.
 gcloud compute ssh restream-srs --zone=asia-south1-b --tunnel-through-iap --command '<read-only command>'
 ```
 
+The GCP instance is still named `restream-srs`, the project's name before the
+2026-10-14 rename to Bunryu; everything on it uses the new names.
+
 If it fails with "Reauthentication failed", the user must log in themselves;
 suggest they run `! gcloud auth login` in the prompt (it needs a browser).
 
@@ -35,11 +38,11 @@ suggest they run `! gcloud auth login` in the prompt (it needs a browser).
 
 | Thing | Where |
 |---|---|
-| Services | `srs.service` (SRS), `srt-bonding-relay.service` (UDP 10081), `restream-srs.service` (Node dashboard/API) |
-| App checkout / build | `/opt/restream-srs` (`dist/index.js`) |
-| Config | `/etc/restream-srs/srs.conf`, `/etc/restream-srs/srt-bonding-relay.json` (contain secrets) |
-| Database | `/var/lib/restream-srs/db.sqlite` |
-| Diagnostics | `/var/lib/restream-srs/diagnostics/diagnostics-YYYY-MM-DD.jsonl` (file date is the host's local date, with a `.N` suffix when a file passes 100 MB; 7 days, 5 GB total) |
+| Services | `srs.service` (SRS), `srt-bonding-relay.service` (UDP 10081), `bunryu.service` (Node dashboard/API) |
+| App checkout / build | `/opt/bunryu` (`dist/index.js`) |
+| Config | `/etc/bunryu/srs.conf`, `/etc/bunryu/srt-bonding-relay.json` (contain secrets) |
+| Database | `/var/lib/bunryu/db.sqlite` |
+| Diagnostics | `/var/lib/bunryu/diagnostics/diagnostics-YYYY-MM-DD.jsonl` (file date is the host's local date, with a `.N` suffix when a file passes 100 MB; 7 days, 5 GB total) |
 
 `ts` inside the diagnostics is UTC ISO, while file names, journald and the
 older fail reports use the host's local time (IST, UTC+05:30) - convert before
@@ -49,11 +52,11 @@ comparing.
 
 ```bash
 # Deployed version and service state
-sudo -u restream-srs git -C /opt/restream-srs log --oneline -3; grep '"version"' /opt/restream-srs/package.json
-systemctl is-active srs.service srt-bonding-relay.service restream-srs.service
+sudo -u bunryu git -C /opt/bunryu log --oneline -3; grep '"version"' /opt/bunryu/package.json
+systemctl is-active srs.service srt-bonding-relay.service bunryu.service
 
 # Journals (all three only log to journald)
-sudo journalctl -u restream-srs.service --since '-2 hours' --no-pager | tail -100
+sudo journalctl -u bunryu.service --since '-2 hours' --no-pager | tail -100
 sudo journalctl -u srs.service -u srt-bonding-relay.service --since '-1 hour' --no-pager | tail -100
 sudo journalctl -k --since '-1 day' --no-pager | grep -i -E 'oom|killed process'   # OOM kills
 ```
@@ -63,11 +66,11 @@ fails because the glob expands *before* sudo. Wrap it in a shell:
 
 ```bash
 # Events of one kind, newest file
-sudo sh -c 'grep "\"event\":\"ffmpeg-exited\"" /var/lib/restream-srs/diagnostics/diagnostics-$(date +%F).jsonl' | cut -c1-900 | tail
+sudo sh -c 'grep "\"event\":\"ffmpeg-exited\"" /var/lib/bunryu/diagnostics/diagnostics-$(date +%F).jsonl' | cut -c1-900 | tail
 # Everything about one output (e.g. 3-1) without the per-minute snapshots
-sudo sh -c 'grep "\"outputId\":\"3-1\"" /var/lib/restream-srs/diagnostics/diagnostics-2026-10-06.jsonl' | grep -v health-snapshot | cut -c1-600
+sudo sh -c 'grep "\"outputId\":\"3-1\"" /var/lib/bunryu/diagnostics/diagnostics-2026-10-06.jsonl' | grep -v health-snapshot | cut -c1-600
 # Event counts for a day, to spot floods
-sudo sh -c 'grep -o "\"event\":\"[a-z-]*\"" /var/lib/restream-srs/diagnostics/diagnostics-2026-10-06.jsonl' | sort | uniq -c | sort -rn | head
+sudo sh -c 'grep -o "\"event\":\"[a-z-]*\"" /var/lib/bunryu/diagnostics/diagnostics-2026-10-06.jsonl' | sort | uniq -c | sort -rn | head
 ```
 
 Pull a file locally only when a deeper look needs it (`gcloud compute scp ... --tunnel-through-iap`),

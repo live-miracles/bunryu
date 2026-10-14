@@ -9,13 +9,13 @@ const os = require('node:os');
 const path = require('node:path');
 const childProcess = require('node:child_process');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-version-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-version-'));
 const originalCwd = process.cwd();
 const pkgVersion = require('../../package.json').version;
 
 before(() => {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
             {
                 port: 8080,

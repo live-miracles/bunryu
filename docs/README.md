@@ -1,4 +1,4 @@
-# Restream SRS documentation
+# Bunryu documentation
 
 ## Getting started
 
@@ -16,7 +16,7 @@
 
 - [Security](3-operations/1-security.md): authentication, hardening, ingest protection
 - [Remote access](3-operations/2-remote-access.md): Cloudflare Tunnel for the dashboard
-- [Configuration](3-operations/3-configuration.md): `restream.json`, diagnostics, environment overrides
+- [Configuration](3-operations/3-configuration.md): `bunryu.json`, diagnostics, environment overrides
 - [Reliability](3-operations/4-reliability.md): watchdogs and how failures are detected and recovered
 - [Known issues](3-operations/5-known-issues.md)
 

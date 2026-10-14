@@ -173,7 +173,7 @@ function warnOnWeakSrtPassphrase(): void {
     if (process.env.NODE_ENV !== 'production') return;
     try {
         const passphrase = readSrsConfigValues().srtPassphrase;
-        if (!passphrase || passphrase === 'restream-default-srt-passphrase') {
+        if (!passphrase || passphrase === 'bunryu-default-srt-passphrase') {
             console.warn(
                 `[security] SRT passphrase in srs.conf is ${passphrase ? 'the public default' : 'empty'}: anyone can publish SRT to this server if they guess a stream key`,
             );

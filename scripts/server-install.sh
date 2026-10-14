@@ -4,11 +4,11 @@
 # and registers systemd services that start on boot.
 #
 # Usage:
-#   sudo git clone https://github.com/live-miracles/restream-srs /opt/restream-srs
-#   sudo bash /opt/restream-srs/scripts/server-install.sh
+#   sudo git clone https://github.com/live-miracles/bunryu /opt/bunryu
+#   sudo bash /opt/bunryu/scripts/server-install.sh
 #
 # Optional:
-#   REPO_URL=https://github.com/your-fork/restream-srs sudo bash scripts/server-install.sh
+#   REPO_URL=https://github.com/your-fork/bunryu sudo bash scripts/server-install.sh
 set -euo pipefail
 
 ASSUME_YES=no
@@ -34,11 +34,11 @@ if [[ "$(uname -m)" != "x86_64" ]]; then
     exit 1
 fi
 
-REPO_URL="${REPO_URL:-https://github.com/live-miracles/restream-srs}"
-APP_DIR=/opt/restream-srs
-DATA_DIR=/var/lib/restream-srs
-CONF_DIR=/etc/restream-srs
-SERVICE_USER=restream-srs
+REPO_URL="${REPO_URL:-https://github.com/live-miracles/bunryu}"
+APP_DIR=/opt/bunryu
+DATA_DIR=/var/lib/bunryu
+CONF_DIR=/etc/bunryu
+SERVICE_USER=bunryu
 
 SRS_VERSION=6.0-r0
 SRS_RELEASE_TAG="v${SRS_VERSION}"
@@ -55,7 +55,7 @@ SRT_URL="${SRT_URL:-https://github.com/live-miracles/srt-bonding-relay/releases/
 
 # Mirrored into our own releases since BtbN prunes autobuild tags after ~2 years.
 # To bump: grab a newer linux64-gpl build from BtbN/FFmpeg-Builds/releases, upload
-# it via `gh release create ffmpeg-n<ver> <file> --repo live-miracles/restream-srs`,
+# it via `gh release create ffmpeg-n<ver> <file> --repo live-miracles/bunryu`,
 # then update these values (and scripts/dev-server-install.sh) to match.
 FFMPEG_VERSION=7.1
 FFMPEG_BUILD_TAG="ffmpeg-n7.1.4-7-gadcf20da26"
@@ -103,7 +103,7 @@ else
 fi
 
 step "3/9 FFmpeg $FFMPEG_VERSION"
-FFMPEG_URL="https://github.com/live-miracles/restream-srs/releases/download/${FFMPEG_BUILD_TAG}/${FFMPEG_FILENAME}"
+FFMPEG_URL="https://github.com/live-miracles/bunryu/releases/download/${FFMPEG_BUILD_TAG}/${FFMPEG_FILENAME}"
 
 if /usr/local/bin/ffmpeg -version 2> /dev/null | grep -q "ffmpeg version n${FFMPEG_VERSION}"; then
     echo "FFmpeg $FFMPEG_VERSION already installed."
@@ -152,9 +152,9 @@ else
         exit 1
     fi
     if [[ -d "$WORK/lib" ]]; then
-        install -d -m 755 /usr/local/lib/restream-srs-srt
-        install -m 755 "$WORK"/lib/* /usr/local/lib/restream-srs-srt/
-        echo /usr/local/lib/restream-srs-srt > /etc/ld.so.conf.d/restream-srs-srt.conf
+        install -d -m 755 /usr/local/lib/bunryu-srt
+        install -m 755 "$WORK"/lib/* /usr/local/lib/bunryu-srt/
+        echo /usr/local/lib/bunryu-srt > /etc/ld.so.conf.d/bunryu-srt.conf
         ldconfig
     fi
     install -m 755 "$SRT_BIN" /usr/local/bin/srt-bonding-relay
@@ -229,7 +229,7 @@ fi
 # The repo ships a public default passphrase for dev. Never keep it on a server:
 # if either deployed file still has it (an old install, or a hand-copied config),
 # replace it in both so the two stay in sync.
-PUBLIC_DEFAULT_SRT_PASSPHRASE=restream-default-srt-passphrase
+PUBLIC_DEFAULT_SRT_PASSPHRASE=bunryu-default-srt-passphrase
 if [[ "$SRS_SRT_PASSPHRASE" == "$PUBLIC_DEFAULT_SRT_PASSPHRASE" || "$RELAY_SRT_PASSPHRASE" == "$PUBLIC_DEFAULT_SRT_PASSPHRASE" ]]; then
     SRS_SRT_PASSPHRASE="$NEW_SRT_PASSPHRASE"
     RELAY_SRT_PASSPHRASE="$NEW_SRT_PASSPHRASE"
@@ -246,20 +246,20 @@ node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=fs.
     "$CONF_DIR/srs.conf" "$SRS_SRT_PASSPHRASE"
 node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
     "$CONF_DIR/srt-bonding-relay.json" "$RELAY_SRT_PASSPHRASE"
-# Dashboard password: restream.json's dashboard_password only seeds a database
-# that has no password yet; the repo's restream.json carries none, so generate
+# Dashboard password: bunryu.json's dashboard_password only seeds a database
+# that has no password yet; the repo's bunryu.json carries none, so generate
 # one on first install and keep the deployed value on reinstall.
 DASHBOARD_PASSWORD=""
-if [[ -f "$APP_DIR/restream.json" ]]; then
-    DASHBOARD_PASSWORD="$(node -e 'const fs=require("fs");try{const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' "$APP_DIR/restream.json")"
+if [[ -f "$APP_DIR/bunryu.json" ]]; then
+    DASHBOARD_PASSWORD="$(node -e 'const fs=require("fs");try{const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' "$APP_DIR/bunryu.json")"
 fi
 if [[ -n "$DASHBOARD_PASSWORD" ]]; then
-    echo "Dashboard password (restream.json): keeping existing value"
+    echo "Dashboard password (bunryu.json): keeping existing value"
 else
     DASHBOARD_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
-    echo "Dashboard password (restream.json): generated new secret"
+    echo "Dashboard password (bunryu.json): generated new secret"
 fi
-cat > "$APP_DIR/restream.json" << EOF
+cat > "$APP_DIR/bunryu.json" << EOF
 {
     "port": 8080,
     "database_path": "$DATA_DIR/db.sqlite",
@@ -278,8 +278,8 @@ EOF
 # Written via node for the same reason as the passphrases above: a hand-typed
 # password containing quotes or backslashes must not corrupt the JSON.
 node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.dashboard_password=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
-    "$APP_DIR/restream.json" "$DASHBOARD_PASSWORD"
-echo "Config: refreshed $APP_DIR/restream.json"
+    "$APP_DIR/bunryu.json" "$DASHBOARD_PASSWORD"
+echo "Config: refreshed $APP_DIR/bunryu.json"
 # Database. We don't run data migrations, so a db.sqlite left over from an older
 # version could be schema-incompatible and cause hard-to-debug issues.
 DB_FILE="$DATA_DIR/db.sqlite"
@@ -307,15 +307,15 @@ if [[ -s "$DB_FILE" ]]; then
     fi
 fi
 touch "$DB_FILE"
-chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/srt-bonding-relay.json" "$APP_DIR/restream.json" "$DB_FILE"
-# restream.json now holds the dashboard password in plain text. The database holds
+chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/srt-bonding-relay.json" "$APP_DIR/bunryu.json" "$DB_FILE"
+# bunryu.json now holds the dashboard password in plain text. The database holds
 # the password hash, stream keys and destination URLs (platform stream keys), and
 # the two configs hold the SRT passphrase: nothing here is for other local users.
-chmod 600 "$APP_DIR/restream.json" "$DB_FILE"
+chmod 600 "$APP_DIR/bunryu.json" "$DB_FILE"
 chmod 640 "$CONF_DIR/srs.conf" "$CONF_DIR/srt-bonding-relay.json"
 chmod 750 "$DATA_DIR" "$CONF_DIR"
 echo "Config: $CONF_DIR/srs.conf"
-echo "App config: $APP_DIR/restream.json"
+echo "App config: $APP_DIR/bunryu.json"
 echo "Data:   $DB_FILE"
 
 step "9/9 Systemd"
@@ -324,7 +324,7 @@ step "9/9 Systemd"
 # are intentionally conservative for the streaming VM and prevent a noisy
 # service from consuming the disk.
 mkdir -p /etc/systemd/journald.conf.d
-cat > /etc/systemd/journald.conf.d/restream-srs.conf << 'EOF'
+cat > /etc/systemd/journald.conf.d/bunryu.conf << 'EOF'
 [Journal]
 Storage=persistent
 Compress=yes
@@ -340,16 +340,16 @@ systemctl restart systemd-journald
 cat > /etc/systemd/system/srs.service << EOF
 [Unit]
 Description=SRS Streaming Server
-After=network-online.target restream-srs.service
+After=network-online.target bunryu.service
 Wants=network-online.target
-Requires=restream-srs.service
+Requires=bunryu.service
 
 [Service]
 Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_USER
 WorkingDirectory=$DATA_DIR
-ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do curl -fsS http://127.0.0.1:8080/api/ready >/dev/null && exit 0; sleep 1; done; echo "restream-srs readiness check timed out" >&2; exit 1'
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do curl -fsS http://127.0.0.1:8080/api/ready >/dev/null && exit 0; sleep 1; done; echo "bunryu readiness check timed out" >&2; exit 1'
 ExecStart=/usr/local/bin/srs -c $CONF_DIR/srs.conf
 Restart=always
 RestartSec=2
@@ -366,9 +366,9 @@ EOF
 cat > /etc/systemd/system/srt-bonding-relay.service << EOF
 [Unit]
 Description=Shared SRT Bonding Relay
-After=network-online.target restream-srs.service srs.service
+After=network-online.target bunryu.service srs.service
 Wants=network-online.target
-Requires=restream-srs.service srs.service
+Requires=bunryu.service srs.service
 
 [Service]
 Type=simple
@@ -388,9 +388,9 @@ ReadWritePaths=$DATA_DIR $CONF_DIR
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/restream-srs.service << EOF
+cat > /etc/systemd/system/bunryu.service << EOF
 [Unit]
-Description=Restream SRS Control Plane
+Description=Bunryu Control Plane
 After=network-online.target
 Wants=network-online.target
 
@@ -429,9 +429,9 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable srs.service srt-bonding-relay.service restream-srs.service
-systemctl stop srt-bonding-relay.service srs.service restream-srs.service 2> /dev/null || true
-systemctl start restream-srs.service
+systemctl enable srs.service srt-bonding-relay.service bunryu.service
+systemctl stop srt-bonding-relay.service srs.service bunryu.service 2> /dev/null || true
+systemctl start bunryu.service
 systemctl start srs.service
 systemctl start srt-bonding-relay.service
 
@@ -442,14 +442,14 @@ echo "=============================="
 echo "Dashboard: http://<server-ip>:8080/"
 if [[ "$fresh_db" == "yes" ]]; then
     echo "  Password: $DASHBOARD_PASSWORD"
-    echo "  (also stored as dashboard_password in $APP_DIR/restream.json;"
+    echo "  (also stored as dashboard_password in $APP_DIR/bunryu.json;"
     echo "   change it in Settings -> Change Password after logging in)"
 else
     echo "  Password: unchanged (kept existing database)"
     echo "  Forgot it? Run scripts/server-reset-password.sh"
 fi
 echo "  Set your public host in Settings → Public Host"
-echo "App config: $APP_DIR/restream.json"
+echo "App config: $APP_DIR/bunryu.json"
 echo "Config:    $CONF_DIR/srs.conf"
 echo "Data:      $DATA_DIR/db.sqlite"
 echo ""
@@ -462,11 +462,11 @@ echo ""
 echo "Check status:"
 echo "  systemctl status srs.service"
 echo "  systemctl status srt-bonding-relay.service"
-echo "  systemctl status restream-srs.service"
+echo "  systemctl status bunryu.service"
 echo ""
 echo "Follow logs:"
 echo "  journalctl -u srt-bonding-relay.service -f"
-echo "  journalctl -u restream-srs.service -f"
+echo "  journalctl -u bunryu.service -f"
 echo "  journalctl -u srs.service -f"
 echo ""
 echo "Update later:"

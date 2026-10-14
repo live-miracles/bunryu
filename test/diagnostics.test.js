@@ -21,7 +21,7 @@ async function closeAndSettle(logger) {
 }
 
 function mkTempDir() {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-diagnostics-'));
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-diagnostics-'));
 }
 
 const roots = [];

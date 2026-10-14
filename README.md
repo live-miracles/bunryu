@@ -1,8 +1,10 @@
-# Restream SRS
+# Bunryu
 
-[![CI](https://github.com/live-miracles/restream-srs/actions/workflows/ci.yml/badge.svg)](https://github.com/live-miracles/restream-srs/actions/workflows/ci.yml)
+_Bunryu (分流, "branching flow"): one live stream, many destinations._
+
+[![CI](https://github.com/live-miracles/bunryu/actions/workflows/ci.yml/badge.svg)](https://github.com/live-miracles/bunryu/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/website-live--miracles.github.io-blue.svg)](https://live-miracles.github.io/projects/restream-srs/)
+[![Website](https://img.shields.io/badge/website-live--miracles.github.io-blue.svg)](https://live-miracles.github.io/projects/bunryu/)
 
 **Self-hosted restreaming server for long live events.** Take inputs over RTMP, SRT and bonded SRT, and forward each one to many RTMP/RTMPS/SRT destinations (YouTube, Facebook, Twitch, CDNs) from one Linux server. Watchdogs restart a failed output without affecting the others.
 
@@ -11,7 +13,7 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`srt-bonding-
 | [Install](docs/1-getting-started/3-install.md) | [Try with Docker](docs/1-getting-started/2-docker.md) | [Documentation](docs/README.md) |
 | --- | --- | --- |
 
-![Restream SRS dashboard: a pipeline with live preview and seven running outputs](.github/assets/pipeline-view.png)
+![Bunryu dashboard: a pipeline with live preview and seven running outputs](.github/assets/pipeline-view.png)
 
 ## Features
 
@@ -33,10 +35,10 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`srt-bonding-
 Try it with Docker:
 
 ```bash
-git clone https://github.com/live-miracles/restream-srs
-cd restream-srs
+git clone https://github.com/live-miracles/bunryu
+cd bunryu
 docker compose up -d
-docker compose logs restream-srs | grep "dashboard password"
+docker compose logs bunryu | grep "dashboard password"
 ```
 
 Open `http://localhost:8080`, log in with the printed password, create a pipeline and publish to the URL the dashboard shows.
@@ -44,8 +46,8 @@ Open `http://localhost:8080`, log in with the printed password, create a pipelin
 Install on a server (Debian/Ubuntu, x86_64, systemd), the recommended setup for production:
 
 ```bash
-sudo git clone https://github.com/live-miracles/restream-srs /opt/restream-srs
-sudo bash /opt/restream-srs/scripts/server-install.sh
+sudo git clone https://github.com/live-miracles/bunryu /opt/bunryu
+sudo bash /opt/bunryu/scripts/server-install.sh
 ```
 
 The installer prints the dashboard password. See [Native install](docs/1-getting-started/3-install.md) for firewall ports, updates and the SRT passphrase, and [Remote access](docs/3-operations/2-remote-access.md) for reaching the dashboard securely.

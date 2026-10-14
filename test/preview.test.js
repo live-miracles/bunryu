@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-preview-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-preview-'));
 const originalCwd = process.cwd();
 
 after(() => {
@@ -61,7 +61,7 @@ function makeInputState() {
 
 function loadPreviewService(t, spawnImpl) {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
             {
                 port: 8080,

@@ -6,14 +6,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-destination-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-destination-'));
 const originalCwd = process.cwd();
 let destination;
 let enforceDestinationPolicy;
 
 before(() => {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify({ port: 8080, database_path: './db.sqlite', srs_config_path: './srs.conf' }),
     );
     fs.writeFileSync(

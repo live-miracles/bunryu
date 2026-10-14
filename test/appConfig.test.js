@@ -6,9 +6,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-appconfig-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-appconfig-'));
 const originalCwd = process.cwd();
-const configPath = path.join(tempDir, 'restream.json');
+const configPath = path.join(tempDir, 'bunryu.json');
 
 process.chdir(tempDir);
 
@@ -46,7 +46,7 @@ const FULL_VALID_CONFIG = {
 };
 
 describe('readAppConfig: file-level errors', () => {
-    test('throws a descriptive error when restream.json does not exist', () => {
+    test('throws a descriptive error when bunryu.json does not exist', () => {
         const readAppConfig = loadAppConfig(undefined);
         assert.throws(() => readAppConfig(), /Failed to read app config/);
     });
@@ -133,25 +133,25 @@ describe('readAppConfig: PORT/DATABASE_PATH env overrides', () => {
         delete process.env.DATABASE_PATH;
     });
 
-    test('PORT env var overrides restream.json when set', () => {
+    test('PORT env var overrides bunryu.json when set', () => {
         process.env.PORT = '9999';
         const readAppConfig = loadAppConfig(FULL_VALID_CONFIG);
         assert.equal(readAppConfig().port, 9999);
     });
 
-    test('an invalid PORT env var falls back to restream.json, not the hardcoded default', () => {
+    test('an invalid PORT env var falls back to bunryu.json, not the hardcoded default', () => {
         process.env.PORT = 'not-a-number';
         const readAppConfig = loadAppConfig({ ...FULL_VALID_CONFIG, port: 9000 });
         assert.equal(readAppConfig().port, 9000);
     });
 
-    test('DATABASE_PATH env var overrides restream.json when set', () => {
+    test('DATABASE_PATH env var overrides bunryu.json when set', () => {
         process.env.DATABASE_PATH = 'override.sqlite';
         const readAppConfig = loadAppConfig(FULL_VALID_CONFIG);
         assert.equal(readAppConfig().databasePath, path.resolve(tempDir, 'override.sqlite'));
     });
 
-    test('with no env vars set, restream.json values are used as before', () => {
+    test('with no env vars set, bunryu.json values are used as before', () => {
         const readAppConfig = loadAppConfig(FULL_VALID_CONFIG);
         assert.equal(readAppConfig().port, 8080);
         assert.ok(readAppConfig().databasePath.endsWith('db.sqlite'));
@@ -190,9 +190,9 @@ describe('readAppConfig: path resolution', () => {
     test('an absolute database_path is used verbatim', () => {
         const readAppConfig = loadAppConfig({
             ...FULL_VALID_CONFIG,
-            database_path: '/var/lib/restream/db.sqlite',
+            database_path: '/var/lib/bunryu/db.sqlite',
         });
-        assert.equal(readAppConfig().databasePath, '/var/lib/restream/db.sqlite');
+        assert.equal(readAppConfig().databasePath, '/var/lib/bunryu/db.sqlite');
     });
 
     test('a bare ffmpeg_path command name (PATH lookup) is left unresolved, not turned into a file path', () => {

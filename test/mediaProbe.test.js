@@ -12,7 +12,7 @@ let tempDir;
 
 function loadMediaProbe() {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify({
             port: 8080,
             database_path: './db.sqlite',

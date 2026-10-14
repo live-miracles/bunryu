@@ -152,7 +152,7 @@ function pruneSessions(db: Db): void {
     }
 }
 
-// initialPassword (restream.json's dashboard_password) only seeds a database
+// initialPassword (bunryu.json's dashboard_password) only seeds a database
 // that has no password hash yet; an existing hash is never overwritten.
 export async function initializePassword(db: Db, initialPassword = 'admin'): Promise<void> {
     if (!db.getSetting('dashboardPasswordHash')) {

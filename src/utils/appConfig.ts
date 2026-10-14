@@ -45,7 +45,7 @@ interface RawAppConfig {
     output_watchdog?: unknown;
 }
 
-const CONFIG_PATH = path.join(process.cwd(), 'restream.json');
+const CONFIG_PATH = path.join(process.cwd(), 'bunryu.json');
 const DEFAULT_WATCHDOG_CONFIG: OutputWatchdogConfig = {
     warmupMs: 90_000,
     stallMs: 45_000,
@@ -145,7 +145,7 @@ function resolveCommand(value: string, configDir: string): string {
 // A 4K input decodes/copies much larger frames than the baselines above were
 // measured against, so a 4K pipeline's outputs legitimately run higher RSS.
 // HIGH_RES_MEMORY_MULTIPLIER is a placeholder guess (not a measured baseline
-// like the others) — see live-miracles/restream-srs#11 to replace it with a
+// like the others) — see live-miracles/bunryu#11 to replace it with a
 // real number once we have measured 4K RSS baselines.
 const HIGH_RES_MEMORY_MULTIPLIER = 2;
 
@@ -172,7 +172,7 @@ export function readAppConfig(): AppConfig {
         throw new Error(`Failed to read app config ${CONFIG_PATH}: ${String(err)}`);
     }
 
-    // PORT/DATABASE_PATH env vars override restream.json when set — lets an
+    // PORT/DATABASE_PATH env vars override bunryu.json when set — lets an
     // isolated instance (e.g. automated UI testing) run alongside a
     // developer's own `npm run dev` without colliding on the port or
     // clobbering their database. Unset by default, so normal dev/production

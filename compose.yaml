@@ -1,9 +1,9 @@
 # Quick start: `docker compose up -d`, then open http://localhost:8080 and
-# log in with the password printed by `docker compose logs restream-srs`.
+# log in with the password printed by `docker compose logs bunryu`.
 services:
-    restream-srs:
+    bunryu:
         build: .
-        image: restream-srs
+        image: bunryu
         restart: unless-stopped
         ports:
             - '8080:8080/tcp' # dashboard + API
@@ -11,7 +11,7 @@ services:
             - '10080:10080/udp' # SRT input
             - '10081:10081/udp' # SRT bonding input
         volumes:
-            - restream-data:/data
+            - bunryu-data:/data
         # Leaves time for the control plane to stop every FFmpeg output cleanly.
         stop_grace_period: 30s
         # Same ceilings as the systemd units: one FFmpeg process per output.
@@ -24,4 +24,4 @@ services:
                 max-file: '5'
 
 volumes:
-    restream-data:
+    bunryu-data:

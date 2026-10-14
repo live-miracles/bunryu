@@ -9,11 +9,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restream-srs-translation-mixer-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-translation-mixer-'));
 const originalCwd = process.cwd();
 process.chdir(tempDir);
 fs.writeFileSync(
-    path.join(tempDir, 'restream.json'),
+    path.join(tempDir, 'bunryu.json'),
     JSON.stringify(
         {
             port: 8080,
@@ -159,7 +159,7 @@ function makeDiagnosticsRecorder() {
 
 function loadTranslationMixerService(t, spawnNext, watchdogOverrides = {}) {
     fs.writeFileSync(
-        path.join(tempDir, 'restream.json'),
+        path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
             {
                 port: 8080,
