@@ -57,7 +57,8 @@ rollback_hint() {
     cat >&2 << EOF
 
 Migration stopped part-way. Nothing was deleted except the old unit file, the
-old ld.so and journald snippets, and the old safe.directory entry. To go back to
+old ld.so and journald snippets, and the old safe.directory entry (all
+recreated by the old installer or the steps below). To go back to
 the restream-srs layout, undo whichever of these steps already happened:
 
   systemctl stop srt-bonding-relay.service srs.service bunryu.service 2>/dev/null
@@ -65,7 +66,8 @@ the restream-srs layout, undo whichever of these steps already happened:
   usermod -l $OLD_USER -d $OLD_APP $NEW_USER; groupmod -n $OLD_USER $NEW_USER
   mv $NEW_APP $OLD_APP; mv $NEW_DATA $OLD_DATA; mv $NEW_CONF $OLD_CONF
   mv $OLD_APP/bunryu.json $OLD_APP/restream.json
-  mv $NEW_LIB $OLD_LIB 2>/dev/null; rm -f /etc/ld.so.conf.d/bunryu-srt.conf; ldconfig
+  mv $NEW_LIB $OLD_LIB 2>/dev/null
+  echo $OLD_LIB > /etc/ld.so.conf.d/restream-srs-srt.conf; ldconfig
   git -C $OLD_APP remote set-url origin https://github.com/live-miracles/bunryu
   git -C $OLD_APP reset --hard 54a7b16   # last commit before the rename
   bash $OLD_APP/scripts/server-install.sh -y
@@ -121,14 +123,15 @@ usermod -l "$NEW_USER" -d "$NEW_APP" "$OLD_USER"
 groupmod -n "$NEW_USER" "$OLD_USER"
 
 # The installer skips the relay download while its version marker matches, so
-# it would not recreate the library directory: move it instead.
+# it would not recreate the library directory: move it instead. The new unit
+# loads it through LD_LIBRARY_PATH; the old system-wide ld.so registration
+# goes away.
 if [[ -d "$OLD_LIB" ]]; then
     log "moving relay libraries to $NEW_LIB"
     mv "$OLD_LIB" "$NEW_LIB"
-    rm -f /etc/ld.so.conf.d/restream-srs-srt.conf
-    echo "$NEW_LIB" > /etc/ld.so.conf.d/bunryu-srt.conf
-    ldconfig
 fi
+rm -f /etc/ld.so.conf.d/restream-srs-srt.conf
+ldconfig
 
 rm -f /etc/systemd/journald.conf.d/restream-srs.conf
 git config --system --unset-all safe.directory "^$OLD_APP\$" 2> /dev/null || true

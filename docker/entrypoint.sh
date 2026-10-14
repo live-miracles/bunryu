@@ -148,7 +148,7 @@ supervise bunryu no_gate node "$APP_DIR/dist/index.js" &
 app_pid=$!
 supervise srs wait_ready /usr/local/bin/srs -c "$DATA_DIR/srs.conf" &
 srs_pid=$!
-supervise srt-bonding-relay wait_ready /usr/local/bin/srt-bonding-relay "$DATA_DIR/srt-bonding-relay.json" &
+supervise srt-bonding-relay wait_ready env LD_LIBRARY_PATH=/usr/local/lib/bunryu-srt /usr/local/bin/srt-bonding-relay "$DATA_DIR/srt-bonding-relay.json" &
 relay_pid=$!
 
 shutdown() {

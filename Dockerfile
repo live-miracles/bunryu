@@ -52,8 +52,9 @@ RUN apt-get update -q \
     && apt-get install -y -q --no-install-recommends tini iproute2 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=media /out/bin/ /usr/local/bin/
+# The relay's bundled libsrt/C++ runtime is loaded by the relay only
+# (LD_LIBRARY_PATH in docker/entrypoint.sh), never registered system-wide.
 COPY --from=media /out/lib/ /usr/local/lib/bunryu-srt/
-RUN echo /usr/local/lib/bunryu-srt > /etc/ld.so.conf.d/bunryu-srt.conf && ldconfig
 COPY --from=build /app/package.json /app/srs.conf /app/srt-bonding-relay.json /app/
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/dist /app/dist

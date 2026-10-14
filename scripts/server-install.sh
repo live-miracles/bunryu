@@ -138,6 +138,15 @@ else
 fi
 
 SRT_VERSION_MARKER=/usr/local/bin/.srt-bonding-relay-version
+# The relay ships its own libsrt and C++ runtime. Only the relay may load them
+# (LD_LIBRARY_PATH in its unit): registered system-wide they shadow the host's
+# libstdc++/libcrypto for every program, which breaks apt-get on hosts whose
+# libstdc++ is newer than the bundled one.
+SRT_LIB_DIR=/usr/local/lib/bunryu-srt
+if [[ -f /etc/ld.so.conf.d/bunryu-srt.conf ]]; then
+    rm -f /etc/ld.so.conf.d/bunryu-srt.conf
+    ldconfig
+fi
 step "5/9 srt-bonding-relay $SRT_RELEASE_TAG"
 if [[ -x /usr/local/bin/srt-bonding-relay && -f "$SRT_VERSION_MARKER" && "$(cat "$SRT_VERSION_MARKER")" == "$SRT_RELEASE_TAG" ]]; then
     echo "srt-bonding-relay $SRT_RELEASE_TAG already installed."
@@ -152,10 +161,8 @@ else
         exit 1
     fi
     if [[ -d "$WORK/lib" ]]; then
-        install -d -m 755 /usr/local/lib/bunryu-srt
-        install -m 755 "$WORK"/lib/* /usr/local/lib/bunryu-srt/
-        echo /usr/local/lib/bunryu-srt > /etc/ld.so.conf.d/bunryu-srt.conf
-        ldconfig
+        install -d -m 755 "$SRT_LIB_DIR"
+        install -m 755 "$WORK"/lib/* "$SRT_LIB_DIR/"
     fi
     install -m 755 "$SRT_BIN" /usr/local/bin/srt-bonding-relay
     echo "$SRT_RELEASE_TAG" > "$SRT_VERSION_MARKER"
@@ -375,6 +382,7 @@ Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_USER
 WorkingDirectory=$DATA_DIR
+Environment=LD_LIBRARY_PATH=$SRT_LIB_DIR
 ExecStart=/usr/local/bin/srt-bonding-relay $CONF_DIR/srt-bonding-relay.json
 Restart=always
 RestartSec=2
