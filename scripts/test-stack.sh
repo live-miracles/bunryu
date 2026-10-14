@@ -105,7 +105,7 @@ SHIM
         curl -s -b "$WORK/cj" -H 'content-type: application/json' -d '{"name":"Test_Live"}' "$B/api/pipelines/1" > /dev/null
         for n in A_YT B_YT A_FB B_FB; do
             curl -s -b "$WORK/cj" -H 'content-type: application/json' \
-                -d "{\"name\":\"$n\",\"url\":\"rtmp://127.0.0.1:19999/live/test\"}" "$B/api/pipelines/1/outputs" > /dev/null
+                -d "{\"name\":\"$n\",\"url\":\"rtmp://192.0.2.10/live/test\"}" "$B/api/pipelines/1/outputs" > /dev/null
         done
         bg "$WORK/pub.log" "$REPO/objs/ffmpeg" -re -f lavfi -i testsrc=size=640x360:rate=25 -f lavfi -i sine=frequency=440 \
             -c:v libx264 -preset ultrafast -tune zerolatency -b:v 800k -g 50 -c:a aac -b:a 64k -f flv \

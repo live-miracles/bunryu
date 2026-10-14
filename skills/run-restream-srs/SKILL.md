@@ -73,9 +73,10 @@ Run the repo's own tests separately with `npm test` (not part of this harness).
   under the repo (it would wipe a developer's real config and database).
 - `PORT` and `DATABASE_PATH` env vars override `restream.json`, which is what
   makes the isolated instance possible.
-- **Socket watchdog**: outputs target loopback `rtmp://127.0.0.1:19999`, nothing
-  listens there, so `socket_warmup_ms`/`socket_grace_ms` are set to 1 h or the
-  watchdog would restart the shim outputs.
+- **Socket watchdog**: outputs target `rtmp://192.0.2.10` (TEST-NET-1; the
+  API rejects loopback destinations other than this server's own ports), which
+  the shim never connects to, so `socket_warmup_ms`/`socket_grace_ms` are set to
+  1 h or the watchdog would restart the shim outputs.
 - The shim treats an ffmpeg call whose **last argument is an
   rtmp/rtmps/srt URL** as an output; everything else (HLS preview) runs the
   real `objs/ffmpeg`.
