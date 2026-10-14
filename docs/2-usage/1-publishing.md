@@ -21,9 +21,6 @@ bonded SRT for encoders that send the same stream over several network links
 [`srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay)
 merges the links before SRS sees the stream.
 
-The dashboard's **User Manual** (the open-book icon in the navbar) has the same
-guide, so it is at hand during an event.
-
 ## Test commands
 
 These `ffmpeg` commands publish a looping file. Replace `localhost` with the

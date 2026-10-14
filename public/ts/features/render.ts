@@ -1760,19 +1760,16 @@ function renderPipelineInfo(selectedId: string | null): void {
     const hostsCol = document.getElementById('hosts-col');
     const logsCol = document.getElementById('srs-logs-col');
     const settingsCol = document.getElementById('settings-col');
-    const docsCol = document.getElementById('docs-col');
     const view = getUrlParam('view');
     const inHostView = view === 'hosts';
     const inLogsView = view === 'logs';
     const inSettingsView = view === 'settings';
-    const inDocsView = view === 'docs';
     if (inHostView) {
         col?.classList.add('hidden');
         outsCol?.classList.add('hidden');
         overviewCol?.classList.add('hidden');
         logsCol?.classList.add('hidden');
         settingsCol?.classList.add('hidden');
-        docsCol?.classList.add('hidden');
         hostsCol?.classList.remove('hidden');
         renderHostConnectionsOverview();
         return;
@@ -1787,7 +1784,6 @@ function renderPipelineInfo(selectedId: string | null): void {
         overviewCol?.classList.add('hidden');
         hostsCol?.classList.add('hidden');
         settingsCol?.classList.add('hidden');
-        docsCol?.classList.add('hidden');
         logsCol?.classList.remove('hidden');
         return;
     }
@@ -1798,19 +1794,7 @@ function renderPipelineInfo(selectedId: string | null): void {
         overviewCol?.classList.add('hidden');
         hostsCol?.classList.add('hidden');
         logsCol?.classList.add('hidden');
-        docsCol?.classList.add('hidden');
         settingsCol?.classList.remove('hidden');
-        return;
-    }
-
-    if (inDocsView) {
-        col?.classList.add('hidden');
-        outsCol?.classList.add('hidden');
-        overviewCol?.classList.add('hidden');
-        hostsCol?.classList.add('hidden');
-        logsCol?.classList.add('hidden');
-        settingsCol?.classList.add('hidden');
-        docsCol?.classList.remove('hidden');
         return;
     }
 
@@ -1821,7 +1805,6 @@ function renderPipelineInfo(selectedId: string | null): void {
         hostsCol?.classList.add('hidden');
         logsCol?.classList.add('hidden');
         settingsCol?.classList.add('hidden');
-        docsCol?.classList.add('hidden');
         renderOverview();
         return;
     }
@@ -1830,7 +1813,6 @@ function renderPipelineInfo(selectedId: string | null): void {
     hostsCol?.classList.add('hidden');
     logsCol?.classList.add('hidden');
     settingsCol?.classList.add('hidden');
-    docsCol?.classList.add('hidden');
 
     col?.classList.remove('hidden');
     outsCol?.classList.remove('hidden');
@@ -2166,8 +2148,6 @@ export function renderPipelines(): void {
     logsBtn?.classList.toggle('btn-active', view === 'logs');
     const settingsBtn = document.getElementById('settings-nav-btn');
     settingsBtn?.classList.toggle('btn-active', view === 'settings');
-    const docsBtn = document.getElementById('docs-nav-btn');
-    docsBtn?.classList.toggle('btn-active', view === 'docs');
     renderPipelineList();
     renderRejectedPublishes();
     renderPipelineInfo(selectedId);

@@ -65,7 +65,13 @@
               d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
           </svg>
         </button>
-        <button id="docs-nav-btn" class="btn btn-square btn-sm btn-ghost opacity-70" onclick="openDocsBtn()" title="Docs" aria-label="Docs">
+        <a
+          class="btn btn-square btn-sm btn-ghost opacity-70"
+          href="https://live-miracles.github.io/projects/bunryu/docs/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Documentation"
+          aria-label="Documentation (opens the Bunryu website)">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-4 w-4"
@@ -78,7 +84,7 @@
             <path
               d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
           </svg>
-        </button>
+        </a>
         <a
           class="btn btn-square btn-sm btn-ghost opacity-70"
           href="https://github.com/live-miracles/bunryu"
@@ -1196,174 +1202,6 @@
               <button type="button" class="btn btn-sm btn-accent" onclick="settingsHostProbesFormBtn(this)">Save</button>
             </div>
           </div>
-        </div>
-      </div>
-
-      <!-- Docs (spans middle + right columns) -->
-      <div class="bg-base-200 col-span-2 mt-4 hidden overflow-y-auto rounded-xl p-4 shadow" id="docs-col">
-        <div class="mx-auto max-w-4xl space-y-6">
-          <h2 class="text-xl font-bold">User Manual</h2>
-
-          <nav class="text-sm">
-            <p class="pt-1 pb-1 font-medium">Contents</p>
-            <ul class="list-inside list-disc space-y-1 opacity-70">
-              <li><a class="link link-hover" href="#manual-publishing">Publishing to a pipeline</a></li>
-              <li>
-                <a class="link link-hover" href="#manual-translation">Translation outputs</a>
-                <ul class="list-inside list-disc space-y-1 pl-4">
-                  <li><a class="link link-hover" href="#manual-translation-timing">Signal flow and timing</a></li>
-                  <li><a class="link link-hover" href="#manual-translation-settings">Translation settings</a></li>
-                  <li><a class="link link-hover" href="#manual-translation-known-issues">Known issues</a></li>
-                </ul>
-              </li>
-            </ul>
-          </nav>
-
-          <div class="divider my-0"></div>
-
-          <section class="space-y-2">
-            <h3 class="text-lg font-semibold" id="manual-publishing">Publishing to a pipeline</h3>
-            <p class="text-sm opacity-70">
-              Each pipeline exposes an RTMP and an SRT publish URL (see the pipeline's Stream Key panel) that any encoder or ffmpeg can push to. A few
-              ready-to-use ffmpeg test commands:
-            </p>
-
-            <p class="text-xs font-semibold uppercase opacity-50">RTMP</p>
-            <pre class="overflow-x-auto rounded-xl bg-black p-3 font-mono text-xs text-gray-300">
-ffmpeg -re -stream_loop -1 -i video.mp4 \
-  -c:v libx264 -preset veryfast -b:v 2500k -c:a aac -b:a 128k \
-  -f flv rtmp://localhost:21935/live/&lt;stream-key&gt;</pre
-            >
-
-            <p class="text-xs font-semibold uppercase opacity-50">SRT</p>
-            <p class="text-sm opacity-70">
-              The passphrase must match the server's SRT passphrase; if that's disabled, drop
-              <code class="font-mono">&amp;passphrase=&lt;passphrase&gt;&amp;pbkeylen=16</code> from the URL.
-            </p>
-            <pre class="overflow-x-auto rounded-xl bg-black p-3 font-mono text-xs text-gray-300">
-ffmpeg -re -stream_loop -1 -i video.mp4 \
-  -c:v libx264 -preset veryfast -b:v 2500k -x264-params "repeat-headers=1" \
-  -c:a aac -b:a 128k \
-  -f mpegts 'srt://localhost:10080?streamid=#!::r=live/&lt;stream-key&gt;,m=publish&amp;passphrase=&lt;passphrase&gt;&amp;pbkeylen=16'</pre
-            >
-
-            <p class="text-xs font-semibold uppercase opacity-50">SRT with multiple audio tracks</p>
-            <pre class="overflow-x-auto rounded-xl bg-black p-3 font-mono text-xs text-gray-300">
-ffmpeg -re -stream_loop -1 -i video.mp4 \
-  -map 0 \
-  -c:v libx264 -preset veryfast -tune zerolatency -b:v 2500k \
-  -x264-params "repeat-headers=1" \
-  -force_key_frames 'expr:gte(t,n_forced*2)' -g 60 -keyint_min 60 -sc_threshold 0 \
-  -c:a aac -b:a 128k \
-  -f mpegts 'srt://localhost:10080?streamid=#!::r=live/&lt;stream-key&gt;,m=publish&amp;passphrase=&lt;passphrase&gt;&amp;pbkeylen=16'</pre
-            >
-          </section>
-
-          <div class="divider my-0"></div>
-
-          <section class="space-y-2">
-            <h3 class="text-lg font-semibold" id="manual-translation">Translation outputs</h3>
-            <p class="text-sm opacity-70">
-              A translation output is configured directly on an output. The output's normal pipeline is the
-              <strong>source</strong> stream: it supplies the video and source audio. A second, user-selected pipeline supplies translator audio. The
-              mixer publishes the resulting stream directly to that output's destination, so each output can have its own translator and settings.
-            </p>
-            <p class="text-sm opacity-70">
-              The output must use the <strong>Translation</strong> audio encoding and be started by the user. The mixer does not create pipelines or
-              start translator inputs automatically. If the translator disconnects or is not live, the output keeps publishing source audio only; when
-              the translator becomes live again, the translated mix is resumed.
-            </p>
-            <p class="text-sm opacity-70">
-              Use <strong>SRT</strong> for both the source and the translator pipeline — it has fixed, predictable latency. RTMP inputs have variable
-              buffering, which works against the fixed delay/ducking timing this feature relies on; the dashboard warns on an output card when either
-              side is RTMP.
-            </p>
-
-            <p class="pt-2 text-sm font-medium" id="manual-translation-timing">Signal flow and timing</p>
-            <p class="text-sm opacity-70">
-              The translator audio is delayed before it is mixed into the output. The mixer measures the translator's undelayed audio to detect
-              speech, then uses that advance time to reduce the source volume before the translated speech becomes audible — this avoids the source
-              remaining at full volume during the first part of each translated sentence.
-            </p>
-            <pre class="overflow-x-auto rounded-xl bg-black p-3 font-mono text-xs whitespace-pre text-gray-300">
-                                      ┌─► meter / voice detection
-Translator pipeline ──audio───────────┤
-                                      └─► delay ───────────────┐
-                                                               │
-Source pipeline ──video────────────────────────────────────────┼─► output
-                 audio ──► source gain / ducking ──────────────┘
-
-Source volume
-───────●                     ●─────────
-        \                   /
-         \                 /
-          \               /
-           ●─────────────●
-           T1             T2
-
-T1: translator speech is detected; source volume fades down.
-T2: translator has been silent long enough; source restores.</pre
-            >
-            <p class="text-sm opacity-70">
-              The delay should be long enough for the mixer to detect speech before the delayed translator audio reaches the output. It is normally
-              paired with the duck fade duration — for example, an 800&nbsp;ms translation delay and a 900&nbsp;ms source duck fade give the source
-              time to move down smoothly. Increasing the delay gives more warning but also increases translation latency. If the translator starts
-              speaking again before the restore fade finishes, ducking takes over immediately from whatever level the source is currently at, instead
-              of finishing the climb back up first.
-            </p>
-
-            <p class="pt-2 text-sm font-medium" id="manual-translation-settings">Translation settings</p>
-            <div class="border-base-content/10 overflow-x-auto rounded-lg border">
-              <table class="table-sm table">
-                <thead>
-                  <tr>
-                    <th>Setting</th>
-                    <th>Meaning</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td class="font-medium">Translator Pipeline</td>
-                    <td>Pipeline carrying translator audio</td>
-                  </tr>
-                  <tr>
-                    <td class="font-medium">Translation Delay (ms)</td>
-                    <td>Delay applied to audible translator audio</td>
-                  </tr>
-                  <tr>
-                    <td class="font-medium">Voice Threshold (dB)</td>
-                    <td>Speech detection threshold; enter a non-positive value such as -20</td>
-                  </tr>
-                  <tr>
-                    <td class="font-medium">Source While Speaking (%)</td>
-                    <td>Source volume while the translator is speaking</td>
-                  </tr>
-                  <tr>
-                    <td class="font-medium">Duck Fade</td>
-                    <td>Time used to reduce source volume when speech starts</td>
-                  </tr>
-                  <tr>
-                    <td class="font-medium">Restore After / Volume / Fade</td>
-                    <td>Silence required before restoring, target source volume, and fade time</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p class="text-sm opacity-70">
-              Volume values are entered as normal percentages from 0 to 100 and are converted directly to FFmpeg gain — for example, 6 means 0.06
-              gain, or 6% of the source amplitude.
-            </p>
-
-            <p class="pt-2 text-sm font-medium" id="manual-translation-known-issues">Known issues</p>
-            <p class="text-sm opacity-70">
-              If the translator input disconnects, the source volume can take tens of seconds (sometimes a minute or more) to restore, even though the
-              output keeps publishing source audio the whole time. This is not a bug we plan to fix: recovery only starts once SRS itself detects the
-              dead SRT connection, and SRT is deliberately slow to declare a peer gone so it can tell a real disconnect apart from ordinary network
-              jitter. Reconnecting the translator is fast (a few seconds) because a new connection is unambiguous the moment it arrives. We won't tune
-              SRS's detection to be faster, since that would risk falsely dropping the <strong>main broadcast source</strong>
-              during a brief, real network hiccup — a far costlier failure than a slow translator recovery.
-            </p>
-          </section>
         </div>
       </div>
     </div>

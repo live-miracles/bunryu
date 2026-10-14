@@ -17,9 +17,6 @@ predictable latency. RTMP inputs have variable buffering, which works against
 the fixed delay and ducking timing this feature relies on; the dashboard warns on
 an output card when either side is RTMP.
 
-The dashboard's **User Manual** (the open-book icon in the navbar) has the same
-guide, so it is at hand during an event.
-
 ## Signal flow and timing
 
 The translator audio is delayed before it is mixed into the output. The mixer
