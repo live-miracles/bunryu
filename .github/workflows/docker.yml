@@ -3,7 +3,7 @@ name: Docker image
 # Builds the image on every pull request (no push) and publishes it from
 # master (:edge) and from version tags (vX.Y.Z -> :X.Y.Z, :X.Y and :latest) to
 # ghcr.io/live-miracles/bunryu and, when the DOCKERHUB_USERNAME and
-# DOCKERHUB_TOKEN secrets are set, to docker.io/livemiracles/bunryu (whose
+# DOCKERHUB_TOKEN secrets are set, to docker.io/nandisha0/bunryu (whose
 # description is synced from docker/README.dockerhub.md).
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  DOCKERHUB_IMAGE: livemiracles/bunryu
+  DOCKERHUB_IMAGE: nandisha0/bunryu
   # Secrets cannot be used in `if:` directly; an empty value means Docker Hub
   # publishing is not set up yet.
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

@@ -17,7 +17,7 @@ production servers use the native systemd install.
 ```bash
 docker run -d --name bunryu --restart unless-stopped \
   -p 8080:8080 -p 21935:21935 -p 10080:10080/udp -p 10081:10081/udp \
-  -v bunryu-data:/data livemiracles/bunryu:latest
+  -v bunryu-data:/data nandisha0/bunryu:latest
 docker logs bunryu | grep "dashboard password"
 ```
 
