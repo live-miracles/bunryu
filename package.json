@@ -1,6 +1,6 @@
 {
     "name": "bunryu",
-    "version": "3.0.0",
+    "version": "3.0.2",
     "description": "Minimal RTMP/SRT streaming server with dynamic output management",
     "license": "MIT",
     "main": "dist/index.js",
