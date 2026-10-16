@@ -9,7 +9,7 @@ targets Debian/Ubuntu on x86_64 and sets up three systemd services:
 | `srt-bonding-relay.service` | Shared SRT bonding relay, started on UDP port 10081 |
 | `bunryu.service` | Node.js dashboard/API, started from `/opt/bunryu/dist/index.js` |
 
-The installer downloads the official SRS release binary and a pinned `srt-bonding-relay` binary from the standalone [`live-miracles/srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay) GitHub releases.
+The installer downloads an SRS 6.0 release binary built from [`live-miracles/srs`](https://github.com/live-miracles/srs/blob/bunryu/6.0/BUNRYU.md) (upstream SRS 6.0 with a few fixes that are also proposed upstream) and a pinned `srt-bonding-relay` binary from the standalone [`live-miracles/srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay) GitHub releases.
 
 Startup is ordered so the Node.js control plane is reachable before SRS accepts
 publishes. `srs.service` waits for the unauthenticated readiness endpoint

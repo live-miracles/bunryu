@@ -17,9 +17,9 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 FROM debian:bookworm-slim AS media
-ARG SRS_RELEASE_TAG=v6.0-r0
-ARG SRS_FILENAME=SRS-CentOS7-x86_64-6.0-r0.zip
-ARG SRS_SHA256=1eb20245a76643b2d32a1be85e71015079689a0733a10f79964f9a8189c21609
+ARG SRS_RELEASE_TAG=bunryu-v6.0-r2-1
+ARG SRS_FILENAME=SRS-CentOS7-x86_64-6.0-r2-1.zip
+ARG SRS_SHA256=58e637aaa4daf17e987a74ec62ae5da67f76c0effa42763e475df06cf23ee4b2
 ARG SRT_RELEASE_TAG=v3.0.5
 ARG SRT_SHA256=ed8d425e51f32fcf0e8b94a77d0ebd0ef166dd7119e7660d7e8ddc6f416f182c
 ARG FFMPEG_BUILD_TAG=ffmpeg-n7.1.4-7-gadcf20da26
@@ -35,7 +35,7 @@ RUN set -eux; \
     echo "${FFMPEG_SHA256}  ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf ffmpeg.tar.xz; \
     install -m 755 ffmpeg-*/bin/ffmpeg ffmpeg-*/bin/ffprobe /out/bin/; \
-    curl -fsSL -o srs.zip "https://github.com/ossrs/srs/releases/download/${SRS_RELEASE_TAG}/${SRS_FILENAME}"; \
+    curl -fsSL -o srs.zip "https://github.com/live-miracles/srs/releases/download/${SRS_RELEASE_TAG}/${SRS_FILENAME}"; \
     echo "${SRS_SHA256}  srs.zip" | sha256sum -c -; \
     unzip -q srs.zip -d srs; \
     install -m 755 "$(find srs -type f -path '*/usr/local/srs/objs/srs' | head -1)" /out/bin/srs; \

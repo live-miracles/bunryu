@@ -17,11 +17,12 @@ SRS_OUT="$REPO_DIR/objs/srs"
 FFMPEG_OUT="$REPO_DIR/objs/ffmpeg"
 FFPROBE_OUT="$REPO_DIR/objs/ffprobe"
 
-SRS_VERSION=6.0-r0
-SRS_RELEASE_TAG="v${SRS_VERSION}"
+# SRS 6.0 with Bunryu's patches, built from branch bunryu/6.0 of live-miracles/srs (see BUNRYU.md there).
+SRS_VERSION=6.0-r2-1
+SRS_RELEASE_TAG="bunryu-v${SRS_VERSION}"
 SRS_FILENAME="SRS-CentOS7-x86_64-${SRS_VERSION}.zip"
-SRS_SHA256="1eb20245a76643b2d32a1be85e71015079689a0733a10f79964f9a8189c21609"
-SRS_URL="https://github.com/ossrs/srs/releases/download/${SRS_RELEASE_TAG}/${SRS_FILENAME}"
+SRS_SHA256="58e637aaa4daf17e987a74ec62ae5da67f76c0effa42763e475df06cf23ee4b2"
+SRS_URL="https://github.com/live-miracles/srs/releases/download/${SRS_RELEASE_TAG}/${SRS_FILENAME}"
 
 # Same pinned FFmpeg build scripts/server-install.sh installs to
 # /usr/local/bin in production, installed here into the repo instead so
