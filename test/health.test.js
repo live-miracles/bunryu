@@ -1331,3 +1331,218 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 });
+
+describe('shared encodes (renditions) in the health snapshot', () => {
+    const RENDITION_URL = 'rtmp://127.0.0.1:1935/internal/r1_720p_a0';
+    const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+    const stream = (overrides = {}) => ({
+        id: 's1',
+        name: 'key01',
+        vhost: '__defaultVhost__',
+        app: 'live',
+        tcUrl: 'rtmp://x/live',
+        live_ms: 0,
+        publish: { active: true, cid: 'cid-1' },
+        kbps: { recv_30s: 1000, send_30s: 0 },
+        clients: 1,
+        frames: 0,
+        recv_bytes: 0,
+        send_bytes: 0,
+        ...overrides,
+    });
+    const outputRow = (overrides) => ({
+        id: '1-1',
+        pipelineId: 1,
+        seq: 1,
+        name: 'out',
+        desiredState: 'running',
+        videoEncoding: 'copy',
+        url: 'rtmp://dest.example/live/k',
+        audioEncoding: 'copy',
+        translation: null,
+        lastError: null,
+        hasErrorHistory: false,
+        ...overrides,
+    });
+    const renditionRow = (overrides = {}) =>
+        outputRow({
+            id: '1-1',
+            name: 'Shared encode 720p · track 0',
+            url: RENDITION_URL,
+            videoEncoding: '720p',
+            audioEncoding: '0',
+            ...overrides,
+        });
+    const statsFor = (extra = {}) => ({
+        status: 'running',
+        pid: 1,
+        bitrateKbps: null,
+        startedAtMs: null,
+        failures: 0,
+        warningReason: null,
+        memoryUsageBytes: null,
+        memoryLimitBytes: null,
+        cpuPercent: null,
+        role: 'output',
+        renditionId: null,
+        ready: null,
+        ...extra,
+    });
+
+    beforeEach(() => {
+        process.chdir(tempDir);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        delete require.cache[require.resolve('../src/services/health')];
+        delete require.cache[require.resolve('../src/utils/appConfig')];
+        delete require.cache[require.resolve('../src/utils/srsConfig')];
+    });
+
+    async function pollOnce(t, { streams, outputs, outputStats, diagnostics, outputService }) {
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/')) return jsonResponse({ code: 0, streams });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const service = createHealthService(
+            makeFakeDb([pipeline], outputs),
+            outputService ?? { ...makeFakeOutputService(), getStats: (id) => outputStats[id] },
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            diagnostics,
+        );
+        const app = express();
+        service.registerRoutes(app);
+        t.mock.timers.reset(); // pollOnce may run twice in one test
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+        const snapshot = await getSnapshot(app);
+        service.shutdown();
+        return snapshot;
+    }
+
+    test('a rendition reports its readers: clients minus the publisher of internal/<name>', async (t) => {
+        const snapshot = await pollOnce(t, {
+            streams: [
+                stream(),
+                stream({
+                    id: 's2',
+                    name: 'r1_720p_a0',
+                    app: 'internal',
+                    clients: 3,
+                    publish: { active: true, cid: 'cid-2' },
+                }),
+            ],
+            outputs: [renditionRow()],
+            outputStats: { '1-1': statsFor({ role: 'rendition', ready: true }) },
+        });
+
+        const out = snapshot.pipelines['1'].outputs['1-1'];
+        assert.equal(out.readers, 2);
+        assert.equal(out.role, 'rendition');
+        assert.equal(out.ready, true);
+    });
+
+    test('a rendition with no live internal stream has 0 readers; other outputs have null', async (t) => {
+        const snapshot = await pollOnce(t, {
+            streams: [stream()],
+            outputs: [renditionRow(), outputRow({ id: '1-2' })],
+            outputStats: {
+                '1-1': statsFor({ role: 'rendition', ready: false }),
+                '1-2': statsFor({ renditionId: '1-1' }),
+            },
+        });
+
+        const { outputs } = snapshot.pipelines['1'];
+        assert.equal(outputs['1-1'].readers, 0);
+        assert.equal(outputs['1-2'].readers, null);
+        assert.equal(outputs['1-2'].renditionId, '1-1');
+        assert.equal(outputs['1-2'].role, 'output');
+    });
+
+    test('an internal stream that is not publishing does not count', async (t) => {
+        const snapshot = await pollOnce(t, {
+            streams: [
+                stream(),
+                stream({
+                    id: 's2',
+                    name: 'r1_720p_a0',
+                    app: 'internal',
+                    clients: 4,
+                    publish: { active: false },
+                }),
+            ],
+            outputs: [renditionRow()],
+            outputStats: { '1-1': statsFor({ role: 'rendition' }) },
+        });
+
+        assert.equal(snapshot.pipelines['1'].outputs['1-1'].readers, 0);
+    });
+
+    test('internal streams never change the pipeline input, its readers, or restart outputs', async (t) => {
+        const withInternal = [
+            stream({ clients: 2 }),
+            // Even one named exactly like the pipeline key, in the internal app.
+            stream({ id: 's2', name: 'key01', app: 'internal', clients: 9 }),
+            stream({ id: 's3', name: 'r1_720p_a0', app: 'internal', clients: 5 }),
+        ];
+        const without = [stream({ clients: 2 })];
+        const run = async (streams) => {
+            const outputService = {
+                ...makeFakeOutputService(),
+                getStats: () => statsFor(),
+            };
+            const snapshot = await pollOnce(t, {
+                streams,
+                outputs: [renditionRow()],
+                outputService,
+            });
+            return { input: snapshot.pipelines['1'].input, restarts: outputService.restarts };
+        };
+
+        const a = await run(without);
+        const b = await run(withInternal);
+
+        assert.equal(b.input.connected, true);
+        assert.equal(b.input.readers, 1);
+        // uptimeMs is wall-clock dependent; everything else must be identical.
+        const stable = ({ uptimeMs: _uptimeMs, ...rest }) => rest;
+        assert.deepEqual(stable(b.input), stable(a.input));
+        assert.equal(b.restarts.length, a.restarts.length);
+    });
+
+    test('an internal stream alone does not make a pipeline live', async (t) => {
+        const snapshot = await pollOnce(t, {
+            streams: [stream({ id: 's2', name: 'key01', app: 'internal', clients: 3 })],
+            outputs: [],
+            outputStats: {},
+        });
+
+        assert.equal(snapshot.pipelines['1'].input.connected, false);
+        assert.equal(snapshot.pipelines['1'].input.live, false);
+    });
+
+    test('the diagnostics snapshot carries role and renditionId per output', async (t) => {
+        const diagnostics = makeDiagnosticsSpy();
+        await pollOnce(t, {
+            streams: [stream()],
+            outputs: [renditionRow(), outputRow({ id: '1-2' })],
+            outputStats: {
+                '1-1': statsFor({ role: 'rendition', ready: true }),
+                '1-2': statsFor({ renditionId: '1-1' }),
+            },
+            diagnostics,
+        });
+
+        const snapshot = diagnostics.events.find((e) => e.event === 'health-snapshot');
+        const outputs = snapshot.pipelines['1'].outputs;
+        assert.equal(outputs['1-1'].role, 'rendition');
+        assert.equal(outputs['1-1'].renditionId, null);
+        assert.equal(outputs['1-1'].ready, true);
+        assert.equal(outputs['1-2'].role, 'output');
+        assert.equal(outputs['1-2'].renditionId, '1-1');
+    });
+});

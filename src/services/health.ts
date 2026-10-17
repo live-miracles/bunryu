@@ -10,6 +10,7 @@ import {
     type AudioTrackInfo,
 } from '../utils/srs.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
+import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
 import type {
@@ -101,6 +102,14 @@ interface OutputHealth {
     lastTotalSizeBytes: number | null;
     progressAgeMs: number | null;
     outputProgressAgeMs: number | null;
+    // Shared encodes (renditions, see utils/renditions.ts): `role` tells a
+    // rendition row from an ordinary output, `renditionId` is the rendition a
+    // running shared output pulls, `ready` is set for renditions only, and
+    // `readers` (renditions only, null otherwise) counts the outputs pulling it.
+    role: 'rendition' | 'output';
+    renditionId: string | null;
+    ready: boolean | null;
+    readers: number | null;
     // Only present for audioEncoding === 'translation' outputs — null bitrate
     // above is expected for these until ffmpeg progress arrives, but the duck
     // state below is what actually answers "why is the source quiet right now".
@@ -792,9 +801,17 @@ export function createHealthService(
             const outputsHealth: Record<string, OutputHealth> = {};
             for (const outId of outputsByPipeline.get(pipeline.id) ?? []) {
                 const stats = outputService.getStats(outId);
-                const isTranslation = outputById.get(outId)?.audioEncoding === 'translation';
+                const outputRow = outputById.get(outId);
+                const isTranslation = outputRow?.audioEncoding === 'translation';
+                // Internal streams never feed pipeline liveness (that looks up
+                // live/<key> only); they are read here, for a rendition's readers.
+                const isRendition = !!outputRow && isRenditionOutput(outputRow);
+                const renditionStream = isRendition
+                    ? liveByPath.get(`${RENDITION_APP}/${outputRow.url.split('/').pop()}`)
+                    : undefined;
                 outputsHealth[outId] = {
                     ...stats,
+                    readers: isRendition ? Math.max(0, (renditionStream?.clients ?? 1) - 1) : null,
                     failures: stats.failures,
                     lastError: lastErrorById.get(outId) ?? null,
                     hasErrorHistory: hasErrorHistoryById.get(outId) ?? false,
@@ -1263,6 +1280,10 @@ export function createHealthService(
                                 memoryUsageBytes: output.memoryUsageBytes,
                                 memoryLimitBytes: output.memoryLimitBytes,
                                 cpuPercent: output.cpuPercent,
+                                role: output.role,
+                                renditionId: output.renditionId,
+                                ready: output.ready,
+                                readers: output.readers,
                             },
                         ]),
                     ),

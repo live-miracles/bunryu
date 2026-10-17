@@ -70,4 +70,6 @@ ordinary output row owned by the server, so the API exposes it as one:
 - **Output stats carry extra fields** (`GET /api/health`, per output): `role`
   (`"rendition"` for a shared encode, else `"output"`), `renditionId` (the shared
   encode a running shared output is pulling, else `null`), and, for a shared
-  encode, `ready` (running and already writing data).
+  encode, `ready` (running and already writing data) and `readers` (outputs
+  currently pulling it; `null` on other outputs). The internal streams never
+  affect a pipeline's own `input` (liveness, readers).
