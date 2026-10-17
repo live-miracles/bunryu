@@ -34,6 +34,7 @@ import type {
 } from '../types.js';
 import { updateLayoutOrder, updatePipeline, updatePipelineGroups } from '../core/api.js';
 import { dupTooltip, formatOutputName, renderOutputCard, type DupRef } from './output-card.js';
+import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
 import { renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderHostConnectionsOverview } from './host-connections-view.js';
@@ -292,6 +293,11 @@ interface DerivedInputHealth {
 
 function outputHealth(o: OutputView, input: InputHealth): OutputHealth {
     if (o.desiredState === 'stopped') return { status: 'off', issues: [] };
+
+    // An output that pulls a shared encode which is not up yet is waiting, not
+    // failing: it restarts by itself once the encode is ready.
+    const sharedIssue = sharedEncodeIssue(o);
+    if (sharedIssue) return { status: 'warn', issues: [sharedIssue] };
 
     const withFailures = (message: string): string =>
         o.failures > 0
@@ -1857,6 +1863,7 @@ function renderPipelineInfo(selectedId: string | null): void {
     });
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
     if (statsEl) statsEl.innerHTML = inputHtml;
+    renderSharedEncodes(pipeline, { outStatus, formatUptime });
     const masked = maskStreamKey(pipeline.streamKey);
     const rtmpEl = document.getElementById('rtmp-publish-url');
     const srtEl = document.getElementById('srt-publish-url');

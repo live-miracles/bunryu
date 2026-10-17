@@ -6,6 +6,7 @@ import type {
     OutputView,
     SrtBondingStatus,
 } from '../types.js';
+import { isRenditionUrl, renditionKey, sharedRecipeKey } from './renditions.js';
 
 const EMPTY_INPUT: InputHealth = {
     connected: false,
@@ -130,7 +131,7 @@ export function parsePipelines(
             outsOrderByPipeline.get(String(p.id)),
             (o) => o.id,
         );
-        const outs: OutputView[] = pipelineOutputs.map((o) => {
+        const views: OutputView[] = pipelineOutputs.map((o) => {
             const oh = ph?.outputs?.[o.id];
             // Health carries the live lastError (polled every 5s); fall back to
             // config's value only on initial load before the first health response.
@@ -152,8 +153,27 @@ export function parsePipelines(
                 memoryLimitBytes: oh?.memoryLimitBytes ?? null,
                 cpuPercent: oh?.cpuPercent ?? null,
                 translationHealth: oh?.translation ?? null,
+                ready: oh?.ready ?? null,
+                readers: oh?.readers ?? null,
+                dependents: [],
+                sharedEncode: null,
             };
         });
+
+        // Shared encodes are server-managed rows that sit next to the user's
+        // outputs. They are kept out of `outs` so nothing counted or listed per
+        // output (status dots, start/stop-all, copy/paste, layout order) sees them.
+        const renditions = views.filter((o) => isRenditionUrl(o.url));
+        const outs = views.filter((o) => !isRenditionUrl(o.url));
+        const encodings = config.encodings ?? [];
+        const renditionByKey = new Map(renditions.map((r) => [renditionKey(r), r]));
+        for (const o of outs) {
+            const key = sharedRecipeKey(o, encodings);
+            const rendition = key ? renditionByKey.get(key) : undefined;
+            if (!rendition) continue;
+            o.sharedEncode = rendition;
+            rendition.dependents.push({ id: o.id, name: o.name });
+        }
 
         return {
             ...p,
@@ -161,6 +181,7 @@ export function parsePipelines(
             input,
             alerts: ph?.alerts ?? [],
             outs,
+            renditions,
             srtBonding: ph?.srtBonding ?? EMPTY_BONDING,
         };
     });

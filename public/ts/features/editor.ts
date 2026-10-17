@@ -14,6 +14,7 @@ import {
     formatLocalDateTime,
 } from '../core/utils.js';
 import { refreshAfterMutation } from './dashboard.js';
+import { noteSharedEncodeRestart } from './shared-encodes.js';
 import type {
     StreamKey,
     AudioTrackInfo,
@@ -1282,6 +1283,23 @@ export async function confirmDeleteOutput(pipelineId: string, outId: string): Pr
     if (ok) await refreshAfterMutation();
 }
 
+export async function confirmRestartSharedEncode(pipelineId: string, outId: string): Promise<void> {
+    const pipeline = state.pipelines.find((p) => p.id === pipelineId);
+    const rendition = pipeline?.renditions.find((o) => o.id === outId);
+    if (!rendition) return;
+    const count = rendition.dependents.length;
+    const confirmed = await confirmDialog({
+        title: 'Restart shared encode?',
+        message: `Restart ${rendition.name}? Its ${count} output${count === 1 ? '' : 's'} will reconnect.`,
+        confirmLabel: 'Restart',
+        danger: true,
+    });
+    if (!confirmed) return;
+    noteSharedEncodeRestart(outId);
+    const result = await api.restartOutput(pipelineId, outId);
+    if (result) await refreshAfterMutation();
+}
+
 export async function startOutput(pipelineId: string, outId: string): Promise<void> {
     await api.startOutput(pipelineId, outId);
     // desiredState lives in config, so refetch it (not just health) to flip the
@@ -1392,7 +1410,10 @@ export async function showOutputError(pipelineId: string, outId: string): Promis
     hideLogsModalRefresh();
 
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
-    const output = pipeline?.outs.find((o) => o.id === outId);
+    // A shared encode is an output row too, but lives apart from `outs`.
+    const output = [...(pipeline?.outs ?? []), ...(pipeline?.renditions ?? [])].find(
+        (o) => o.id === outId,
+    );
     if (titleEl) titleEl.textContent = `Error History - ${output?.name ?? outId}`;
     contentEl.textContent = 'Loading…';
     modal.showModal();

@@ -36,7 +36,11 @@ const {
     renditionName,
     recipeOfRendition,
 } = require('../src/utils/renditions');
-const { isRenditionUrl: isRenditionUrlFrontend } = require('../public/ts/core/renditions');
+const {
+    isRenditionUrl: isRenditionUrlFrontend,
+    sharedRecipeKey: sharedRecipeKeyFrontend,
+} = require('../public/ts/core/renditions');
+const { ENCODINGS } = require('../src/utils/ffmpeg');
 
 after(() => {
     process.chdir(originalCwd);
@@ -181,5 +185,29 @@ describe('rendition recognition', () => {
         });
         assert.deepEqual(r, { videoEncoding: '720p', audioEncoding: '1', key: '720p_a1' });
         assert.equal(renditionUrl(12, r), 'rtmp://127.0.0.1:21935/internal/r12_720p_a1');
+    });
+});
+
+describe('frontend sharedRecipeKey twin', () => {
+    test('agrees with the backend sharedRecipe on every combination', () => {
+        const videos = [...Object.keys(ENCODINGS), 'bogus'];
+        const audios = ['copy', '0', '1', '12', '0,1', 'translation', '', 'x'];
+        const urls = [
+            'rtmp://example.com/live/x',
+            'srt://h:1?mode=caller',
+            'rtmp://127.0.0.1:21935/internal/r12_720p_a1',
+        ];
+        for (const videoEncoding of videos) {
+            for (const audioEncoding of audios) {
+                for (const url of urls) {
+                    const o = { url, videoEncoding, audioEncoding };
+                    assert.equal(
+                        sharedRecipeKeyFrontend(o, Object.keys(ENCODINGS)),
+                        sharedRecipe(o)?.key ?? null,
+                        JSON.stringify(o),
+                    );
+                }
+            }
+        }
     });
 });

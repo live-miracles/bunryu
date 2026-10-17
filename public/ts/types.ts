@@ -157,6 +157,13 @@ export interface OutputStatus {
     cpuPercent: number | null;
     // Only non-null for audioEncoding === 'translation' outputs.
     translation: TranslationOutputHealth | null;
+    // Shared encodes (renditions): 'rendition' for the server-managed row, the
+    // rendition a running shared output pulls, and (renditions only) whether it is
+    // writing data and how many outputs are reading it.
+    role?: 'rendition' | 'output';
+    renditionId?: string | null;
+    ready?: boolean | null;
+    readers?: number | null;
 }
 
 export interface SrtRelayStatus {
@@ -427,7 +434,10 @@ export interface PipelineView {
     srtPublishUrl: string;
     input: InputHealth & { live: boolean };
     alerts: PipelineAlert[];
+    // Your outputs. Shared-encode rows are kept apart in `renditions` so every
+    // count, status and list built from `outs` ignores them.
     outs: OutputView[];
+    renditions: OutputView[];
 }
 
 export interface OutputView extends Output {
@@ -445,4 +455,10 @@ export interface OutputView extends Output {
     cpuPercent: number | null;
     // Named distinctly from the inherited `translation` config field (Output.translation).
     translationHealth: TranslationOutputHealth | null;
+    // Renditions: whether the encode is writing data, and the outputs reading it.
+    ready: boolean | null;
+    readers: number | null;
+    dependents: { id: string; name: string }[];
+    // Your outputs: the shared encode (rendition row) this one pulls, if any.
+    sharedEncode: OutputView | null;
 }

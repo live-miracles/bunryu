@@ -1,7 +1,5 @@
 import {
     escapeHtml,
-    formatBitrate,
-    formatBytesCompact,
     formatLocalTime,
     STATUS_COLOR_ERROR,
     STATUS_COLOR_GOOD,
@@ -10,6 +8,8 @@ import {
 } from '../core/utils.js';
 import { state } from '../core/state.js';
 import type { InputHealth, OutputView } from '../types.js';
+import { ICON_HISTORY, ICON_ITERATION_CW, outputMetricsBadge } from './output-badges.js';
+import { sharedEncodeBadge } from './shared-encodes.js';
 
 export type OutputCardStatus = 'good' | 'warn' | 'error' | 'off';
 export type DupRef = { pipelineName: string; outputName?: string };
@@ -20,28 +20,13 @@ type OutputCardDeps = {
     formatUptime: (ms: number | null) => string;
 };
 
-const METRIC_WARN_PERCENT = 70;
-const METRIC_ERROR_PERCENT = 90;
-
 const ICON_PENCIL = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
 const ICON_TRASH = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-1 2-1h4c1 0 2 1 2 2v1"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>`;
-const ICON_HISTORY = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3 2"/></svg>`;
-const ICON_ITERATION_CW = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3 3-3 3"/><path d="M15 5a9 9 0 1 1-3 16.9"/></svg>`;
 const ICON_WARN = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
 const ICON_ERROR = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`;
 
 export function formatOutputName(name: string): string {
     return name.length > 30 ? `${name.slice(0, 27)}...` : name;
-}
-
-function outputMemoryPercent(output: OutputView): number | null {
-    if (output.memoryUsageBytes == null || !output.memoryLimitBytes) return null;
-    return (output.memoryUsageBytes / output.memoryLimitBytes) * 100;
-}
-
-function formatOutputMemory(output: OutputView): string | null {
-    if (output.memoryUsageBytes == null) return null;
-    return formatBytesCompact(output.memoryUsageBytes);
 }
 
 function restreamSinkLabel(url: string): string | null {
@@ -128,6 +113,8 @@ export function renderOutputCard(
             `<span class="badge badge-sm badge-accent badge-soft whitespace-nowrap">${output.videoEncoding}</span>`,
         );
     }
+    const sharedBadge = sharedEncodeBadge(output);
+    if (sharedBadge) badges.push(sharedBadge);
     if (output.audioEncoding !== 'copy') {
         const label =
             output.audioEncoding === 'translation'
@@ -156,28 +143,8 @@ export function renderOutputCard(
             `<span class="font-mono text-xs opacity-60 whitespace-nowrap">${deps.formatUptime(uptimeMs)}</span>`,
         );
     }
-    if (
-        isRunning &&
-        (output.bitrateKbps !== null ||
-            output.cpuPercent !== null ||
-            output.memoryUsageBytes !== null)
-    ) {
-        const memPercent = outputMemoryPercent(output);
-        const memCls =
-            memPercent !== null && memPercent >= METRIC_ERROR_PERCENT
-                ? 'badge-error'
-                : memPercent !== null && memPercent >= METRIC_WARN_PERCENT
-                  ? 'badge-warning'
-                  : '';
-        const parts = [
-            output.bitrateKbps !== null ? formatBitrate(output.bitrateKbps) : null,
-            output.cpuPercent !== null ? `${output.cpuPercent}%` : null,
-            output.memoryUsageBytes !== null ? formatOutputMemory(output) : null,
-        ].filter((value): value is string => value !== null);
-        badges.push(
-            `<span class="badge badge-sm whitespace-nowrap ${memCls}" title="Bitrate / ffmpeg CPU (% of one core) / ffmpeg RSS">${parts.join(' | ')}</span>`,
-        );
-    }
+    const metricsBadge = outputMetricsBadge(output);
+    if (metricsBadge) badges.push(metricsBadge);
 
     let inlineSink = '';
     if (output.url) {
