@@ -2,10 +2,10 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-RELAY_REPO_DIR="$REPO_DIR/../srt-bonding-relay"
-OUT_BIN="$REPO_DIR/objs/srt-bonding-relay"
+RELAY_REPO_DIR="$REPO_DIR/../goryu"
+OUT_BIN="$REPO_DIR/objs/goryu"
 OUT_LIB_DIR="$REPO_DIR/objs/lib"
-RELAY_OUT_BIN="$RELAY_REPO_DIR/objs/srt-bonding-relay"
+RELAY_OUT_BIN="$RELAY_REPO_DIR/objs/goryu"
 RELAY_OUT_LIB_DIR="$RELAY_REPO_DIR/objs/lib"
 
 if [[ ! -d "$RELAY_REPO_DIR/.git" ]]; then

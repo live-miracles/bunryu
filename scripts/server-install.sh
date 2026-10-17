@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot native setup for a Linux server.
-# Installs Node.js 22, FFmpeg 7.1, SRS 6.0, srt-bonding-relay, builds the app,
+# Installs Node.js 22, FFmpeg 7.1, SRS 6.0, goryu, builds the app,
 # and registers systemd services that start on boot.
 #
 # Usage:
@@ -46,12 +46,12 @@ SRS_FILENAME="SRS-CentOS7-x86_64-${SRS_VERSION}.zip"
 SRS_SHA256="8b654eccaf2d984dd87cb4f6c8663748922c1cb529de65f6d895ac3daade89a2"
 SRS_URL="https://github.com/ossrs/srs/releases/download/${SRS_RELEASE_TAG}/${SRS_FILENAME}"
 
-# Pinned srt-bonding-relay binary — published from the standalone relay repo.
+# Pinned goryu binary — published from the standalone relay repo.
 # The Dockerfile pins the same SRS, relay and FFmpeg builds; bump both together.
 SRT_RELEASE_TAG="${SRT_RELEASE_TAG:-v3.1.0}"
-SRT_FILENAME="srt-bonding-relay-linux-x86_64.tar.gz"
+SRT_FILENAME="goryu-linux-x86_64.tar.gz"
 SRT_SHA256="${SRT_SHA256:-e5397c7ba5ac93f3c768b709ca048187f34a7918737af60d8dc7ffd91edaaa4d}"
-SRT_URL="${SRT_URL:-https://github.com/live-miracles/srt-bonding-relay/releases/download/${SRT_RELEASE_TAG}/${SRT_FILENAME}}"
+SRT_URL="${SRT_URL:-https://github.com/live-miracles/goryu/releases/download/${SRT_RELEASE_TAG}/${SRT_FILENAME}}"
 
 # Mirrored into our own releases since BtbN prunes autobuild tags after ~2 years.
 # To bump: grab a newer linux64-gpl build from BtbN/FFmpeg-Builds/releases, upload
@@ -137,32 +137,32 @@ else
     echo "Installed: $(/usr/local/bin/srs -v 2>&1 | head -1)"
 fi
 
-SRT_VERSION_MARKER=/usr/local/bin/.srt-bonding-relay-version
+SRT_VERSION_MARKER=/usr/local/bin/.goryu-version
 # The relay ships its own libsrt and C++ runtime. Only the relay may load them
 # (LD_LIBRARY_PATH in its unit): registered system-wide they shadow the host's
 # libstdc++/libcrypto for every program, which breaks apt-get on hosts whose
 # libstdc++ is newer than the bundled one.
 SRT_LIB_DIR=/usr/local/lib/bunryu-srt
-step "5/9 srt-bonding-relay $SRT_RELEASE_TAG"
-if [[ -x /usr/local/bin/srt-bonding-relay && -f "$SRT_VERSION_MARKER" && "$(cat "$SRT_VERSION_MARKER")" == "$SRT_RELEASE_TAG" ]]; then
-    echo "srt-bonding-relay $SRT_RELEASE_TAG already installed."
+step "5/9 goryu $SRT_RELEASE_TAG"
+if [[ -x /usr/local/bin/goryu && -f "$SRT_VERSION_MARKER" && "$(cat "$SRT_VERSION_MARKER")" == "$SRT_RELEASE_TAG" ]]; then
+    echo "goryu $SRT_RELEASE_TAG already installed."
 else
     echo "Downloading $SRT_FILENAME ($SRT_RELEASE_TAG)..."
     curl -fsSL "$SRT_URL" -o "$WORK/$SRT_FILENAME"
     verify_sha256 "$WORK/$SRT_FILENAME" "$SRT_SHA256"
     tar -xzf "$WORK/$SRT_FILENAME" -C "$WORK"
-    SRT_BIN="$(find "$WORK" -type f -name srt-bonding-relay -perm -111 | head -1)"
+    SRT_BIN="$(find "$WORK" -type f -name goryu -perm -111 | head -1)"
     if [[ -z "$SRT_BIN" ]]; then
-        echo "ERROR: could not find srt-bonding-relay binary in $SRT_FILENAME" >&2
+        echo "ERROR: could not find goryu binary in $SRT_FILENAME" >&2
         exit 1
     fi
     if [[ -d "$WORK/lib" ]]; then
         install -d -m 755 "$SRT_LIB_DIR"
         install -m 755 "$WORK"/lib/* "$SRT_LIB_DIR/"
     fi
-    install -m 755 "$SRT_BIN" /usr/local/bin/srt-bonding-relay
+    install -m 755 "$SRT_BIN" /usr/local/bin/goryu
     echo "$SRT_RELEASE_TAG" > "$SRT_VERSION_MARKER"
-    echo "Installed: /usr/local/bin/srt-bonding-relay"
+    echo "Installed: /usr/local/bin/goryu"
 fi
 
 step "6/9 Service user and directories"
@@ -222,12 +222,12 @@ else
     SRS_SRT_PASSPHRASE="$NEW_SRT_PASSPHRASE"
     echo "SRT passphrase (srs.conf): generated new secret"
 fi
-if [[ -f "$CONF_DIR/srt-bonding-relay.json" ]]; then
-    RELAY_SRT_PASSPHRASE="$(node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(c.passphrase||"");' "$CONF_DIR/srt-bonding-relay.json")"
-    echo "SRT passphrase (srt-bonding-relay.json): keeping existing value"
+if [[ -f "$CONF_DIR/goryu.json" ]]; then
+    RELAY_SRT_PASSPHRASE="$(node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(c.passphrase||"");' "$CONF_DIR/goryu.json")"
+    echo "SRT passphrase (goryu.json): keeping existing value"
 else
     RELAY_SRT_PASSPHRASE="$NEW_SRT_PASSPHRASE"
-    echo "SRT passphrase (srt-bonding-relay.json): generated new secret"
+    echo "SRT passphrase (goryu.json): generated new secret"
 fi
 # The repo ships a public default passphrase for dev. Never keep it on a server:
 # if either deployed file still has it (an old install, or a hand-copied config),
@@ -239,16 +239,16 @@ if [[ "$SRS_SRT_PASSPHRASE" == "$PUBLIC_DEFAULT_SRT_PASSPHRASE" || "$RELAY_SRT_P
     echo "SRT passphrase: replaced the public default with a generated secret"
 fi
 cp "$APP_DIR/srs.conf" "$CONF_DIR/srs.conf"
-cp "$APP_DIR/srt-bonding-relay.json" "$CONF_DIR/srt-bonding-relay.json"
+cp "$APP_DIR/goryu.json" "$CONF_DIR/goryu.json"
 echo "Config: refreshed $CONF_DIR/srs.conf from repository"
-echo "Config: refreshed $CONF_DIR/srt-bonding-relay.json from repository"
+echo "Config: refreshed $CONF_DIR/goryu.json from repository"
 # Written via node, not sed -i: a hand-typed passphrase containing "&" or "\"
 # would otherwise be reinterpreted as sed replacement syntax and silently
 # corrupted instead of applied verbatim.
 node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=fs.readFileSync(p,"utf8").replace(/^([ \t]*passphrase[ \t]+).*;/m,(_,prefix)=>prefix+pass+";");fs.writeFileSync(p,c);' \
     "$CONF_DIR/srs.conf" "$SRS_SRT_PASSPHRASE"
 node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
-    "$CONF_DIR/srt-bonding-relay.json" "$RELAY_SRT_PASSPHRASE"
+    "$CONF_DIR/goryu.json" "$RELAY_SRT_PASSPHRASE"
 # Dashboard password: bunryu.json's dashboard_password only seeds a database
 # that has no password yet; the repo's bunryu.json carries none, so generate
 # one on first install and keep the deployed value on reinstall.
@@ -310,12 +310,12 @@ if [[ -s "$DB_FILE" ]]; then
     fi
 fi
 touch "$DB_FILE"
-chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/srt-bonding-relay.json" "$APP_DIR/bunryu.json" "$DB_FILE"
+chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json" "$APP_DIR/bunryu.json" "$DB_FILE"
 # bunryu.json now holds the dashboard password in plain text. The database holds
 # the password hash, stream keys and destination URLs (platform stream keys), and
 # the two configs hold the SRT passphrase: nothing here is for other local users.
 chmod 600 "$APP_DIR/bunryu.json" "$DB_FILE"
-chmod 640 "$CONF_DIR/srs.conf" "$CONF_DIR/srt-bonding-relay.json"
+chmod 640 "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json"
 chmod 750 "$DATA_DIR" "$CONF_DIR"
 echo "Config: $CONF_DIR/srs.conf"
 echo "App config: $APP_DIR/bunryu.json"
@@ -366,9 +366,9 @@ ReadWritePaths=$DATA_DIR $CONF_DIR
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/srt-bonding-relay.service << EOF
+cat > /etc/systemd/system/goryu.service << EOF
 [Unit]
-Description=Shared SRT Bonding Relay
+Description=Shared Goryu relay
 After=network-online.target bunryu.service srs.service
 Wants=network-online.target
 Requires=bunryu.service srs.service
@@ -379,7 +379,7 @@ User=$SERVICE_USER
 Group=$SERVICE_USER
 WorkingDirectory=$DATA_DIR
 Environment=LD_LIBRARY_PATH=$SRT_LIB_DIR
-ExecStart=/usr/local/bin/srt-bonding-relay $CONF_DIR/srt-bonding-relay.json
+ExecStart=/usr/local/bin/goryu $CONF_DIR/goryu.json
 Restart=always
 RestartSec=2
 LimitNOFILE=1048576
@@ -403,7 +403,7 @@ Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_USER
 # Journal files are only readable by root and the systemd-journal group -
-# sharing a UID with srs.service/srt-bonding-relay.service does not itself
+# sharing a UID with srs.service/goryu.service does not itself
 # grant read access. Lets the dashboard's /api/srs-logs shell out to
 # \`journalctl -u <unit>\` for any unit's log, not just srs.service.
 SupplementaryGroups=systemd-journal
@@ -433,11 +433,11 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable srs.service srt-bonding-relay.service bunryu.service
-systemctl stop srt-bonding-relay.service srs.service bunryu.service 2> /dev/null || true
+systemctl enable srs.service goryu.service bunryu.service
+systemctl stop goryu.service srs.service bunryu.service 2> /dev/null || true
 systemctl start bunryu.service
 systemctl start srs.service
-systemctl start srt-bonding-relay.service
+systemctl start goryu.service
 
 echo
 echo "=============================="
@@ -465,11 +465,11 @@ echo "  in the SRT publish URLs shown in the dashboard."
 echo ""
 echo "Check status:"
 echo "  systemctl status srs.service"
-echo "  systemctl status srt-bonding-relay.service"
+echo "  systemctl status goryu.service"
 echo "  systemctl status bunryu.service"
 echo ""
 echo "Follow logs:"
-echo "  journalctl -u srt-bonding-relay.service -f"
+echo "  journalctl -u goryu.service -f"
 echo "  journalctl -u bunryu.service -f"
 echo "  journalctl -u srs.service -f"
 echo ""

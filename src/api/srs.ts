@@ -21,7 +21,7 @@ const MAX_LOG_TAIL_LINES = 200;
 // aren't systemd-managed, so these read as empty (source 'none') locally.
 const SRS_SYSTEMD_UNIT = 'srs.service';
 const APP_SYSTEMD_UNIT = 'bunryu.service';
-const RELAY_SYSTEMD_UNIT = 'srt-bonding-relay.service';
+const RELAY_SYSTEMD_UNIT = 'goryu.service';
 
 type LogSource = 'journal' | 'none';
 interface LogTail {

@@ -42,7 +42,7 @@ before(() => {
         'utf8',
     );
     fs.writeFileSync(
-        path.join(tempDir, 'srt-bonding-relay.json'),
+        path.join(tempDir, 'goryu.json'),
         JSON.stringify(
             {
                 input_host: '0.0.0.0',
@@ -189,7 +189,7 @@ describe('Config API integration', () => {
     test('srtPassphrase in the response comes from the relay config, not the SRS config', async () => {
         const { get } = loadHarness();
         const res = await get();
-        // The relay listener passphrase (used for the bonding-relay URL) is a
+        // The relay listener passphrase (used for the relay URL) is a
         // separate value from SRS's own srt_server passphrase.
         assert.equal(res.body.srtPassphrase, 'relay-secret-pass');
     });

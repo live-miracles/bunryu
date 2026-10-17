@@ -8,7 +8,7 @@ _Bunryu (分流, "branching flow"): one live stream, many destinations._
 
 **Self-hosted restreaming server for long live events.** Take inputs over RTMP, SRT and bonded SRT, and forward each one to many RTMP/RTMPS/SRT destinations (YouTube, Facebook, Twitch, CDNs) from one Linux server. Watchdogs restart a failed output without affecting the others.
 
-Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay) for bonded SRT ingress, and FFmpeg for outputs, with a Node.js + TypeScript control plane, web dashboard and REST API.
+Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](https://github.com/live-miracles/goryu) for bonded SRT ingress, and FFmpeg for outputs, with a Node.js + TypeScript control plane, web dashboard and REST API.
 
 | [Install](docs/1-getting-started/3-install.md) | [Try with Docker](docs/1-getting-started/2-docker.md) | [Documentation](docs/README.md) |
 | --- | --- | --- |
@@ -61,4 +61,4 @@ The installer prints the dashboard password. See [Native install](docs/1-getting
 
 ## License
 
-[MIT](LICENSE). SRS, srt-bonding-relay and FFmpeg are separate projects under their own licenses.
+[MIT](LICENSE). SRS, goryu and FFmpeg are separate projects under their own licenses.

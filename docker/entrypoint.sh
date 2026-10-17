@@ -5,7 +5,7 @@
 # - bunryu (Node.js control plane) starts first.
 # - SRS starts only after http://127.0.0.1:8080/api/ready answers, on every
 #   (re)start, like srs.service's ExecStartPre gate.
-# - srt-bonding-relay starts after SRS.
+# - goryu starts after SRS.
 # Each process is restarted 2 s after it exits (RestartSec=2 in systemd), and
 # every start/exit is logged with its status. On SIGTERM the relay and SRS are
 # stopped before the control plane, which stops its FFmpeg outputs.
@@ -43,19 +43,19 @@ prepare_data() {
     if [[ -f srs.conf ]]; then
         srs_pass="$(sed -n 's/^[[:space:]]*passphrase[[:space:]]\{1,\}\(.*\);[[:space:]]*$/\1/p' srs.conf | head -1)"
     fi
-    if [[ -f srt-bonding-relay.json ]]; then
-        relay_pass="$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.passphrase||"");' srt-bonding-relay.json)"
+    if [[ -f goryu.json ]]; then
+        relay_pass="$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(c.passphrase||"");' goryu.json)"
     fi
     if [[ "$srs_pass" == bunryu-default-srt-passphrase || "$relay_pass" == bunryu-default-srt-passphrase ]]; then
         srs_pass="$new_pass"
         relay_pass="$new_pass"
     fi
     cp "$APP_DIR/srs.conf" srs.conf
-    cp "$APP_DIR/srt-bonding-relay.json" srt-bonding-relay.json
+    cp "$APP_DIR/goryu.json" goryu.json
     node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);fs.writeFileSync(p,fs.readFileSync(p,"utf8").replace(/^([ \t]*passphrase[ \t]+).*;/m,(_,prefix)=>prefix+pass+";"));' \
         srs.conf "$srs_pass"
     node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
-        srt-bonding-relay.json "$relay_pass"
+        goryu.json "$relay_pass"
 
     # Dashboard password: only seeds an empty database (see the Authentication
     # section of docs/3-operations/1-security.md); generated once and kept in
@@ -89,7 +89,7 @@ const c = {
 fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n", { mode: 0o600 });
 ' bunryu.json "$password"
     chmod 600 bunryu.json
-    chmod 640 srs.conf srt-bonding-relay.json
+    chmod 640 srs.conf goryu.json
 }
 
 wait_ready() {
@@ -148,7 +148,7 @@ supervise bunryu no_gate node "$APP_DIR/dist/index.js" &
 app_pid=$!
 supervise srs wait_ready /usr/local/bin/srs -c "$DATA_DIR/srs.conf" &
 srs_pid=$!
-supervise srt-bonding-relay wait_ready env LD_LIBRARY_PATH=/usr/local/lib/bunryu-srt /usr/local/bin/srt-bonding-relay "$DATA_DIR/srt-bonding-relay.json" &
+supervise goryu wait_ready env LD_LIBRARY_PATH=/usr/local/lib/bunryu-srt /usr/local/bin/goryu "$DATA_DIR/goryu.json" &
 relay_pid=$!
 
 shutdown() {

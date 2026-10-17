@@ -8,7 +8,7 @@ import { readSrsConfigValues } from '../utils/srsConfig.js';
 
 const VERSION_EXEC_TIMEOUT_MS = 3000;
 const VERSION_FETCH_TIMEOUT_MS = 2000;
-const SRT_RELAY_BIN_CANDIDATES = ['/usr/local/bin/srt-bonding-relay', './objs/srt-bonding-relay'];
+const SRT_RELAY_BIN_CANDIDATES = ['/usr/local/bin/goryu', './objs/goryu'];
 const SRT_RELAY_LIB_DIR_CANDIDATES = ['/usr/local/lib/bunryu-srt', './objs/lib'];
 
 function exec(cmd: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv): Promise<string> {

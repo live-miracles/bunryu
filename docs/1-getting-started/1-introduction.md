@@ -14,13 +14,13 @@ and every failure leaves enough evidence to explain it afterwards.
 ```
 OBS / ffmpeg  ──RTMP────────►  SRS (21935)  ──FFmpeg──►  YouTube / Facebook / ...
               ──SRT─────────►  SRS (10080)  ──FFmpeg──►  rtmp:// or srt://
-              ──SRT bonding─►  srt-bonding-relay (10081) ──► SRS
+              ──SRT bonding─►  goryu (10081) ──► SRS
 ```
 
 | Component | Description |
 |-----------|-------------|
 | SRS | Ingest broker — accepts RTMP and SRT streams |
-| srt-bonding-relay | Standalone bonded SRT relay (GitHub release in prod, sibling repo in dev) |
+| goryu | Standalone bonded SRT relay (GitHub release in prod, sibling repo in dev) |
 | Node.js app | REST API + dashboard on port 8080 |
 | FFmpeg | One process per output, spawned and managed by the app |
 | SQLite | Persistent state for pipelines, outputs, stream keys, settings |

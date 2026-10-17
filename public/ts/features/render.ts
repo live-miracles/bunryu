@@ -1322,7 +1322,7 @@ function renderOverview(): void {
     const isProblem = (st: string): boolean => st === 'warn' || st === 'error';
     const isOffline = (st: string): boolean => st === 'off';
 
-    // ── SRT Bonding Relay ───────────────────────────────
+    // ── Goryu ───────────────────────────────
     const activeRelayPipelines = state.pipelines.filter(
         (p) =>
             p.srtBonding.inputActive ||
@@ -1582,7 +1582,7 @@ function renderOverview(): void {
     addRam(m.relay?.ramBytes);
     // Downlink is what SRS receives directly from publishers (excluding
     // loopback — those are locally fed by the relay or a chained pipeline
-    // output) plus what the SRT bonding relay pulls in across its bonded
+    // output) plus what Goryu pulls in across its bonded
     // legs. Uplink is what the ffmpeg outputs push out (excluding loopback
     // chaining into another pipeline).
     let srsDownlinkKbps = 0;

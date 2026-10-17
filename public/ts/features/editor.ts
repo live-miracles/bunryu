@@ -1426,7 +1426,7 @@ export function showRelayError(pipelineId: string): void {
     hideLogsModalClearErrors();
 
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
-    if (titleEl) titleEl.textContent = `SRT Bonding Relay Error — ${pipeline?.name ?? pipelineId}`;
+    if (titleEl) titleEl.textContent = `Goryu Error — ${pipeline?.name ?? pipelineId}`;
 
     const message = pipeline?.srtBonding.lastError;
     if (!message) {
@@ -1543,7 +1543,7 @@ export async function showSrsLogs(): Promise<void> {
 
     const CONNECTIVITY_SOURCE_LABEL: Record<'srs' | 'relay', string> = {
         srs: 'SRS',
-        relay: 'SRT Bonding Relay',
+        relay: 'Goryu',
     };
 
     html += '<p class="text-xs font-semibold uppercase opacity-50 mt-4 mb-2">Connectivity</p>';

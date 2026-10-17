@@ -12,7 +12,7 @@ public/output.css
 data.db
 *.sqlite
 .env
-srt-bonding-relay.env
+goryu.env
 *.mp4
 objs/
 build/

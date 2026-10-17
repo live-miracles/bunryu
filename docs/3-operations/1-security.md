@@ -113,10 +113,10 @@ act on:
   way, the rejection happens *inside* the SRT handshake, before
   `srt_accept()` returns, so SRS's own log (`ERROR:UNSECURE` / "Password
   required or unexpected") never records the peer's IP.
-- `srt-bonding-relay`'s listener (port `10081`) used to log a matchable
+- `goryu`'s listener (port `10081`) used to log a matchable
   `[srt-relay] rejected connection (bad passphrase) from <HOST>` line from
-  its own `srt_accept()` KMSTATE check, and a dedicated `srt-bonding-relay`
-  fail2ban jail watched it. As of `srt-bonding-relay` v2.1.0 that line is no
+  its own `srt_accept()` KMSTATE check, and a dedicated `goryu`
+  fail2ban jail watched it. As of `goryu` v2.1.0 that line is no
   longer logged, so a jail would have nothing left to match.
 
 The app still logs rejected `on_publish` and `on_play` attempts (publish

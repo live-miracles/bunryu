@@ -37,7 +37,7 @@ const {
 
 describe('getRelayConfigPath', () => {
     test('sits alongside srs.conf', () => {
-        assert.equal(getRelayConfigPath(), path.join(tempDir, 'srt-bonding-relay.json'));
+        assert.equal(getRelayConfigPath(), path.join(tempDir, 'goryu.json'));
     });
 });
 

@@ -8,7 +8,7 @@ watchdogs that restart a failed output without affecting the others.
 - Source, issues and full documentation: https://github.com/live-miracles/bunryu
 - Website: https://live-miracles.github.io/projects/bunryu/
 
-This image bundles the control plane, SRS, srt-bonding-relay and a pinned
+This image bundles the control plane, SRS, goryu and a pinned
 FFmpeg build (linux/amd64). It is the quickest way to try Bunryu; long-running
 production servers use the native systemd install.
 

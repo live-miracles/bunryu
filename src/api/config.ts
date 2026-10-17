@@ -32,7 +32,7 @@ function parseLayoutOrder(raw: string | null): { id: number; outs: string[] }[] 
 
 export function registerConfigApi(app: Express, db: Db): void {
     app.get('/api/config', (_req, res) => {
-        // srtPassphrase feeds the bonding-relay URL (relay listener, port 10081);
+        // srtPassphrase feeds the relay URL (relay listener, port 10081);
         // direct SRT publish URLs go to SRS itself, which enforces its own
         // srt_server passphrase. The install script sets both to the same value,
         // but each URL must reflect the config its endpoint actually checks.

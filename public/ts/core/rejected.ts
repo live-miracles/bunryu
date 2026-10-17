@@ -3,7 +3,7 @@ import type { RejectedPublish } from '../types.js';
 const LOOPBACK_IP = /^(127\.|::1$|::ffff:127\.)/;
 
 // Plain text (callers escape it): where the refused attempt came from. Direct SRT
-// from loopback is the bonding relay forwarding its remote encoders.
+// from loopback is Goryu forwarding its remote encoders.
 export function rejectedVia(r: RejectedPublish): string {
     if (r.protocol === 'srt') {
         return r.ip && !LOOPBACK_IP.test(r.ip) ? `SRT from ${r.ip}` : 'SRT (via relay)';

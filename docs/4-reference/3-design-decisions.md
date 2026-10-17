@@ -8,7 +8,7 @@ in October 2026 against SRS 6.0-r2, MediaMTX v1.21.2 and the pinned FFmpeg 7.1.
 ## Current architecture in one paragraph
 
 SRS accepts RTMP and plain SRT publishes and authorizes them through its HTTP
-hooks. Bonded SRT goes through `srt-bonding-relay`, which merges the legs and
+hooks. Bonded SRT goes through `goryu`, which merges the legs and
 forwards one SRT stream to SRS. Every output is its own FFmpeg process that
 pulls its input from SRS over loopback, in the input's own protocol, and pushes
 to one destination. The diagram is in the
@@ -156,7 +156,7 @@ stream with 50 copy readers measured 17% CPU and 68 MB for SRT readers, against
 fix is then one FFmpeg remux per SRT input published back into SRS as RTMP, not a
 relay fan-out.
 
-### Keep `srt-bonding-relay` in its own repository
+### Keep `goryu` in its own repository
 
 **Decision:** the relay stays a separate repository with its own releases, and
 Bunryu pins a release binary like it pins SRS and FFmpeg.
@@ -164,7 +164,7 @@ Bunryu pins a release binary like it pins SRS and FFmpeg.
 **Why:**
 - It's a different toolchain (C, libsrt, a Docker build) from Bunryu's Node.js
   and TypeScript.
-- It's useful on its own as a bonding relay.
+- It's useful on its own as a standalone SRT relay.
 - It changes much less often than Bunryu.
 - Each release bundles its own libsrt (v3.0.6 and later have 1.5.6, which fixes
   CVE-2026-55868/55869), so a libsrt security fix needs a relay release and a

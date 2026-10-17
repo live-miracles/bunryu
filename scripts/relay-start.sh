@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Entry point for `npm run relay`: runs the local SRT bonding relay built by
+# Entry point for `npm run relay`: runs the local Goryu built by
 # scripts/dev-server-install.sh. Does not build anything itself - run
 # `npm run dev-install` first if the binary isn't there yet, or
 # `npm run relay:update` to pull relay source changes and rebuild.
@@ -9,8 +9,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-CONFIG_PATH="$REPO_DIR/srt-bonding-relay.json"
-BIN="$REPO_DIR/objs/srt-bonding-relay"
+CONFIG_PATH="$REPO_DIR/goryu.json"
+BIN="$REPO_DIR/objs/goryu"
 LIB_DIR="$REPO_DIR/objs/lib"
 
 if [[ ! -x "$BIN" ]]; then

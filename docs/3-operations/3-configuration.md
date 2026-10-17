@@ -35,7 +35,7 @@ SRS values are inferred from `srs.conf`:
   console/journald instead of a file; only local dev's still sets `srs_log_file`)
 
 The dashboard's own log and the relay's log are always read via
-`journalctl -u bunryu.service` / `-u srt-bonding-relay.service` — both only
+`journalctl -u bunryu.service` / `-u goryu.service` — both only
 ever log to the journal. All three require `bunryu.service`'s
 `SupplementaryGroups=systemd-journal` (set by `server-install.sh`); without it,
 the Server Logs view shows no output for whichever service's journal it can't read.
@@ -64,7 +64,7 @@ cap that removes the oldest rotated files first. The installer configures
 persistent journald with a seven-day retention limit, 1 GB system journal cap,
 256 MB runtime cap, and one-day journal file rotation.
 
-Relay ports and status polling are read from `srt-bonding-relay.json`, located beside `srs_config_path`.
+Relay ports and status polling are read from `goryu.json`, located beside `srs_config_path`.
 
 Installer/development overrides:
 

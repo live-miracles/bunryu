@@ -6,10 +6,10 @@ targets Debian/Ubuntu on x86_64 and sets up three systemd services:
 | Service | Purpose |
 |---------|---------|
 | `srs.service` | Native SRS binary, started as `/usr/local/bin/srs -c /etc/bunryu/srs.conf` |
-| `srt-bonding-relay.service` | Shared SRT bonding relay, started on UDP port 10081 |
+| `goryu.service` | Shared Goryu relay, started on UDP port 10081 |
 | `bunryu.service` | Node.js dashboard/API, started from `/opt/bunryu/dist/index.js` |
 
-The installer downloads the official SRS release binary and a pinned `srt-bonding-relay` binary from the standalone [`live-miracles/srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay) GitHub releases.
+The installer downloads the official SRS release binary and a pinned `goryu` binary from the standalone [`live-miracles/goryu`](https://github.com/live-miracles/goryu) GitHub releases.
 
 Startup is ordered so the Node.js control plane is reachable before SRS accepts
 publishes. `srs.service` waits for the unauthenticated readiness endpoint
@@ -31,7 +31,7 @@ sudo timedatectl set-timezone Asia/Kolkata
 ```
 List available timezone names with `timedatectl list-timezones`. No reboot is needed, but already-running services may have the old timezone cached in memory, so restart them to apply it to new log lines immediately:
 ```bash
-sudo systemctl restart srs.service bunryu.service srt-bonding-relay.service
+sudo systemctl restart srs.service bunryu.service goryu.service
 ```
 
 **Update an installed server:**
@@ -52,7 +52,7 @@ the dashboard securely from outside, see [Remote access](../3-operations/2-remot
 
 ## Firewall ports
 
-Default ports from `srs.conf` and `srt-bonding-relay.json`:
+Default ports from `srs.conf` and `goryu.json`:
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
@@ -72,9 +72,9 @@ that 1985 and 8082 listen only on `127.0.0.1`.
 
 The repository copies both runtime config files during install:
 - `/etc/bunryu/srs.conf`
-- `/etc/bunryu/srt-bonding-relay.json`
+- `/etc/bunryu/goryu.json`
 
-SRS only reads its config at startup, and the SRT bonding relay only reads its
+SRS only reads its config at startup, and Goryu only reads its
 JSON config file at startup.
 
 The repo configs ship a public default SRT passphrase; on first install the
@@ -86,7 +86,7 @@ dashboard's SRT publish URLs include it.
 
 To change or disable it, edit both files by hand and restart SRS and the
 relay: `passphrase ;` in `srs.conf`, `"passphrase": ""` in
-`srt-bonding-relay.json`. An empty value in both disables the passphrase
+`goryu.json`. An empty value in both disables the passphrase
 check entirely — SRS and the relay treat empty the same as unset.
 
 Ingest is further locked down by SRS HTTP hooks handled by the app:

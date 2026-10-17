@@ -7,25 +7,25 @@ Prerequisites: Node.js 22+ plus `curl`, `unzip`, `tar`, and `xz-utils`.
 npm install
 npm run dev-install   # downloads SRS and pinned FFmpeg into ./objs
 ```
-Rerunning `npm run dev-install` also refreshes the sibling `../srt-bonding-relay`
-repo when it has no local changes and rebuilds `./objs/srt-bonding-relay`.
+Rerunning `npm run dev-install` also refreshes the sibling `../goryu`
+repo when it has no local changes and rebuilds `./objs/goryu`.
 
 To use a local SRS binary:
 ```bash
 SRS_LOCAL_BIN=./build/srs npm run dev-install
 ```
 
-The standalone relay now lives in the sibling `../srt-bonding-relay` repo during development and in `live-miracles/srt-bonding-relay` GitHub Releases for production installs.
+The standalone relay now lives in the sibling `../goryu` repo during development and in `live-miracles/goryu` GitHub Releases for production installs.
 
 **2. Start SRS** (terminal 1):
 ```bash
 npm run srs           # runs ./objs/srs -c srs.conf in the foreground
 ```
 
-**3. Start the SRT bonding relay** (terminal 2):
+**3. Start Goryu** (terminal 2):
 ```bash
-npm run relay         # runs the ./objs/srt-bonding-relay binary built by dev-install
-npm run relay:update   # pulls the latest ../srt-bonding-relay source and rebuilds ./objs/srt-bonding-relay
+npm run relay         # runs the ./objs/goryu binary built by dev-install
+npm run relay:update   # pulls the latest ../goryu source and rebuilds ./objs/goryu
 ```
 
 The relay also exposes a local HTTP status endpoint on the default

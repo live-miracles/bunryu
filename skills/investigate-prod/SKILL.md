@@ -17,7 +17,7 @@ stream may be running. Look, don't touch.
 - **Never copy secrets into the repo, chat summaries or reports**: stream keys,
   SRT passphrases, destination RTMP/SRT URLs (they embed the platform's stream
   key), customer/encoder IPs. Redact as described in `skills/write-fail-report`.
-  Don't `cat` the DB, `srs.conf`, `srt-bonding-relay.json` or env files; query
+  Don't `cat` the DB, `srs.conf`, `goryu.json` or env files; query
   only what the question needs.
 - Keep output small: filter on the VM (`grep`, `tail`, `cut -c1-600`) rather than
   pulling whole files into the conversation.
@@ -35,9 +35,9 @@ suggest they run `! gcloud auth login` in the prompt (it needs a browser).
 
 | Thing | Where |
 |---|---|
-| Services | `srs.service` (SRS), `srt-bonding-relay.service` (UDP 10081), `bunryu.service` (Node dashboard/API) |
+| Services | `srs.service` (SRS), `goryu.service` (UDP 10081), `bunryu.service` (Node dashboard/API) |
 | App checkout / build | `/opt/bunryu` (`dist/index.js`) |
-| Config | `/etc/bunryu/srs.conf`, `/etc/bunryu/srt-bonding-relay.json` (contain secrets) |
+| Config | `/etc/bunryu/srs.conf`, `/etc/bunryu/goryu.json` (contain secrets) |
 | Database | `/var/lib/bunryu/db.sqlite` |
 | Diagnostics | `/var/lib/bunryu/diagnostics/diagnostics-YYYY-MM-DD.jsonl` (file date is the host's local date, with a `.N` suffix when a file passes 100 MB; 7 days, 5 GB total) |
 
@@ -50,11 +50,11 @@ comparing.
 ```bash
 # Deployed version and service state
 sudo -u bunryu git -C /opt/bunryu log --oneline -3; grep '"version"' /opt/bunryu/package.json
-systemctl is-active srs.service srt-bonding-relay.service bunryu.service
+systemctl is-active srs.service goryu.service bunryu.service
 
 # Journals (all three only log to journald)
 sudo journalctl -u bunryu.service --since '-2 hours' --no-pager | tail -100
-sudo journalctl -u srs.service -u srt-bonding-relay.service --since '-1 hour' --no-pager | tail -100
+sudo journalctl -u srs.service -u goryu.service --since '-1 hour' --no-pager | tail -100
 sudo journalctl -k --since '-1 day' --no-pager | grep -i -E 'oom|killed process'   # OOM kills
 ```
 

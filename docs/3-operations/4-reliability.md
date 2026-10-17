@@ -95,7 +95,7 @@ Restarting outputs automatically whenever the input restarts is **not implemente
 because the server cannot reliably tell an encoder restart from a network
 interruption, and restarting after a mere network drop would add downtime to a line
 that would otherwise have recovered on its own. This was tested (SRS 6.0.184 and the
-SRT bonding relay, RTMP, SRT and bonded SRT inputs; network faults simulated with a
+Goryu, RTMP, SRT and bonded SRT inputs; network faults simulated with a
 userspace proxy that silently drops traffic, not kernel firewall rules, so RST/ICMP
 failures and NAT remapping were not covered) and **no deterministic signal exists**:
 
@@ -109,7 +109,7 @@ failures and NAT remapping were not covered) and **no deterministic signal exist
   about 5 s of silence followed by `6002 SrtTimeout` in both cases. (Over RTMP a
   killed process still closes its TCP connection, so it looks like a clean stop, while
   a network loss is only detected after about 18 s.)
-- **Behind the bonding relay SRS sees nothing useful.** The relay always closes its
+- **Behind Goryu SRS sees nothing useful.** The relay always closes its
   downstream side gracefully, so SRS logs the same `6001 SrtIo` for every end of a
   bonded stream. Only the relay's own data differs.
 
@@ -170,8 +170,8 @@ stepped in.
 That kernel-level kill is the actual danger, not the leak itself: FFmpeg output
 processes share a cgroup with the `bunryu` control-plane service, so
 systemd treats any OOM kill inside that cgroup as the whole service failing and
-restarts it — which cascades (via `Requires=`) into restarting SRS and the SRT
-bonding relay too, forcing every stream on the box to reconnect simultaneously.
+restarts it — which cascades (via `Requires=`) into restarting SRS and
+Goryu too, forcing every stream on the box to reconnect simultaneously.
 That mass reconnect can reintroduce the same corrupt-resync conditions on another
 output, repeating the cycle. Full timeline and log evidence from the 2026-07-10
 incident: [`fail-reports/2026-07-10-pipeline1-output-oom-cascade.md`](../../fail-reports/2026-07-10-pipeline1-output-oom-cascade.md).
@@ -187,7 +187,7 @@ per-encoding limits for transcoding profiles; far below the 1.5 GB+ range where
 the kernel OOM-killer struck) — well before the kernel ever needs to get
 involved, so the cascading restart doesn't happen.
 
-## Why the SRT bonding relay exists
+## Why Goryu exists
 
 The relay exists to work around two constraints:
 
@@ -195,4 +195,4 @@ The relay exists to work around two constraints:
 
 2. **SRS has no native SRT bonding support.** SRS accepts normal SRT publishers, but it does not accept bonded/redundant SRT groups directly.
 
-**How it is fixed:** `srt-bonding-relay` starts as its own systemd service, listens on `10081` with `SRTO_GROUPCONNECT=1`, accepts each bonded source session, reads its incoming `streamid`, and opens a normal SRT publisher connection to SRS using the same `streamid`. It only connects to SRS after an encoder connects, so SRS's idle-publisher timeout is not triggered by an empty boot-time publisher.
+**How it is fixed:** `goryu` starts as its own systemd service, listens on `10081` with `SRTO_GROUPCONNECT=1`, accepts each bonded source session, reads its incoming `streamid`, and opens a normal SRT publisher connection to SRS using the same `streamid`. It only connects to SRS after an encoder connects, so SRS's idle-publisher timeout is not triggered by an empty boot-time publisher.

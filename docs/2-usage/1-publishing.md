@@ -18,7 +18,7 @@ Prefer SRT when the encoder supports it: it has fixed, predictable latency,
 survives lossy networks better than RTMP, and keeps every audio track. Use
 bonded SRT for encoders that send the same stream over several network links
 (for example cellular bonding units); the
-[`srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay)
+[`goryu`](https://github.com/live-miracles/goryu)
 merges the links before SRS sees the stream.
 
 The bonded port also accepts an ordinary single-link SRT connection: use the

@@ -216,20 +216,20 @@ describe('Version API integration', () => {
         assert.equal(res.body.srs, 'should-not-be-used');
     });
 
-    test('detects a present srt-bonding-relay binary and runs --version on it', async (t) => {
+    test('detects a present goryu binary and runs --version on it', async (t) => {
         const { get } = loadHarness(t, {
             execImpl: (cmd, args, _opts, cb) => {
-                if (String(cmd).includes('srt-bonding-relay')) {
-                    return queueMicrotask(() => cb(null, 'srt-bonding-relay v1.2.3\n', ''));
+                if (String(cmd).includes('goryu')) {
+                    return queueMicrotask(() => cb(null, 'goryu v1.2.3\n', ''));
                 }
                 queueMicrotask(() => cb(null, '', ''));
             },
-            existsSyncImpl: (candidate) => String(candidate).includes('srt-bonding-relay'),
+            existsSyncImpl: (candidate) => String(candidate).includes('goryu'),
         });
 
         const res = await get();
         assert.equal(res.status, 200);
-        assert.equal(res.body.srtRelay, 'srt-bonding-relay v1.2.3');
+        assert.equal(res.body.srtRelay, 'goryu v1.2.3');
     });
 
     test('the response is cached: a second request does not re-invoke external tools', async (t) => {

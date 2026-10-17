@@ -3,8 +3,8 @@
 // rejected from outside (an SRT stream id without "m=publish" is a play request
 // to SRS, so an encoder with a typo'd id lands there), so the dashboard can show
 // them. An
-// encoder on an unassigned key looks healthy on its side (SRT through the
-// bonding relay even connects and streams at full bitrate until SRS refuses the
+// encoder on an unassigned key looks healthy on its side (SRT through
+// Goryu even connects and streams at full bitrate until SRS refuses the
 // downstream publish), and without this the only trace is a journal line.
 //
 // Names shaped like a stream key ("key01_<secret>") are tracked one entry per

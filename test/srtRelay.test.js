@@ -25,7 +25,7 @@ fs.writeFileSync(
     'utf8',
 );
 fs.writeFileSync(path.join(tempDir, 'srs.conf'), 'listen 1935;\n', 'utf8');
-const relayConfigPath = path.join(tempDir, 'srt-bonding-relay.json');
+const relayConfigPath = path.join(tempDir, 'goryu.json');
 
 function writeRelayConfig(overrides = {}) {
     fs.writeFileSync(

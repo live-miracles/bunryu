@@ -140,7 +140,7 @@ if [[ -z "${SRS_LOCAL_BIN:-}" ]]; then
 fi
 
 bash "$REPO_DIR/scripts/relay-repo-sync.sh"
-bash "$REPO_DIR/scripts/build-srt-bonding-relay-local.sh"
+bash "$REPO_DIR/scripts/build-goryu-local.sh"
 
 echo ""
 echo "Run SRS:  npm run srs"

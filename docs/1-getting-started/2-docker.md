@@ -17,7 +17,7 @@ pipeline and [publish](../2-usage/1-publishing.md) to it.
 
 ## Details
 
-The image bundles the control plane, SRS, srt-bonding-relay and the same
+The image bundles the control plane, SRS, goryu and the same
 pinned FFmpeg build as the native installer (x86_64 only). One container runs
 all three processes under a small supervisor (`docker/entrypoint.sh`) that
 keeps the native startup order: SRS starts only after `/api/ready` answers,
@@ -40,7 +40,7 @@ docker run -d --name bunryu --restart unless-stopped \
 ```
 
 - **Data**: everything persistent is in the `/data` volume: `db.sqlite`,
-  `bunryu.json`, the generated `srs.conf` / `srt-bonding-relay.json`, HLS
+  `bunryu.json`, the generated `srs.conf` / `goryu.json`, HLS
   previews and diagnostics. On every start the SRS and relay configs are
   refreshed from the image and keep their SRT passphrase, like a reinstall.
 - **Secrets**: on first start the container generates the dashboard password
@@ -50,5 +50,5 @@ docker run -d --name bunryu --restart unless-stopped \
   so the dashboard's publish URLs are correct.
 - **Limitations**: the dashboard's SRS/relay/app log viewers read journald, so
   they are empty in Docker; use `docker compose logs`. The version panel
-  shows the commit as `unknown`. The SRT bonding relay needs UDP port 10081
+  shows the commit as `unknown`. The Goryu needs UDP port 10081
   published as above.

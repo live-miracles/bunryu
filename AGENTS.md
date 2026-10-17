@@ -9,7 +9,7 @@ multiple RTMP and/or SRT destinations.
 The system is built around:
 
 - SRS for RTMP/SRT ingest and publish authorization hooks.
-- `srt-bonding-relay` for bonded SRT ingress.
+- `goryu` for bonded SRT ingress.
 - A Node.js + TypeScript control plane with a REST API and dashboard.
 - FFmpeg processes for output forwarding, previews, media probing, and
   optional audio/video processing.
@@ -99,8 +99,8 @@ happened after the incident. When adding or changing behavior:
 
 ## Operational boundaries
 
-The production deployment uses three systemd services: SRS, the shared SRT
-bonding relay, and the Node.js dashboard/API. The Docker image runs the same
+The production deployment uses three systemd services: SRS, the shared Goryu
+relay, and the Node.js dashboard/API. The Docker image runs the same
 three processes in one container for evaluation. Keep service boundaries and
 loopback-only internal endpoints intact. Public ingest is provided through
 RTMP/SRT ports; internal SRS and relay status APIs should not be exposed.

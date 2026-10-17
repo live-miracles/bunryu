@@ -3,7 +3,7 @@ import path from 'path';
 import { readAppConfig } from './appConfig.js';
 
 const CONF_PATH = readAppConfig().srsConfigPath;
-const RELAY_CONFIG_PATH = path.join(path.dirname(CONF_PATH), 'srt-bonding-relay.json');
+const RELAY_CONFIG_PATH = path.join(path.dirname(CONF_PATH), 'goryu.json');
 
 export interface SrtBondingRelayConfig {
     input_host: string;

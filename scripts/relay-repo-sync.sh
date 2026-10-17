@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clone the srt-bonding-relay source repo next to this one if it isn't there
+# Clone the goryu source repo next to this one if it isn't there
 # yet, then fast-forward it to the latest master (skipped if it has local
 # changes). Used by dev-server-install.sh's first-time setup and by
 # `npm run relay:update`.
@@ -9,8 +9,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-RELAY_REPO_DIR="$REPO_DIR/../srt-bonding-relay"
-RELAY_REPO_URL="https://github.com/live-miracles/srt-bonding-relay.git"
+RELAY_REPO_DIR="$REPO_DIR/../goryu"
+RELAY_REPO_URL="https://github.com/live-miracles/goryu.git"
 
 if [[ -d "$RELAY_REPO_DIR/.git" ]]; then
     echo "Relay repo already present at $RELAY_REPO_DIR"

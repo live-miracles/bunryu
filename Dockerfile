@@ -1,4 +1,4 @@
-# Single-container image: the Node.js control plane, SRS and srt-bonding-relay,
+# Single-container image: the Node.js control plane, SRS and goryu,
 # supervised by docker/entrypoint.sh with the same readiness ordering as the
 # systemd install (SRS starts only after /api/ready answers).
 #
@@ -39,10 +39,10 @@ RUN set -eux; \
     echo "${SRS_SHA256}  srs.zip" | sha256sum -c -; \
     unzip -q srs.zip -d srs; \
     install -m 755 "$(find srs -type f -path '*/usr/local/srs/objs/srs' | head -1)" /out/bin/srs; \
-    curl -fsSL -o relay.tar.gz "https://github.com/live-miracles/srt-bonding-relay/releases/download/${SRT_RELEASE_TAG}/srt-bonding-relay-linux-x86_64.tar.gz"; \
+    curl -fsSL -o relay.tar.gz "https://github.com/live-miracles/goryu/releases/download/${SRT_RELEASE_TAG}/goryu-linux-x86_64.tar.gz"; \
     echo "${SRT_SHA256}  relay.tar.gz" | sha256sum -c -; \
     mkdir relay; tar -xzf relay.tar.gz -C relay; \
-    install -m 755 "$(find relay -type f -name srt-bonding-relay -perm -111 | head -1)" /out/bin/srt-bonding-relay; \
+    install -m 755 "$(find relay -type f -name goryu -perm -111 | head -1)" /out/bin/goryu; \
     if [ -d relay/lib ]; then install -m 755 relay/lib/* /out/lib/; fi
 
 FROM node:22-bookworm-slim
@@ -55,7 +55,7 @@ COPY --from=media /out/bin/ /usr/local/bin/
 # The relay's bundled libsrt/C++ runtime is loaded by the relay only
 # (LD_LIBRARY_PATH in docker/entrypoint.sh), never registered system-wide.
 COPY --from=media /out/lib/ /usr/local/lib/bunryu-srt/
-COPY --from=build /app/package.json /app/srs.conf /app/srt-bonding-relay.json /app/
+COPY --from=build /app/package.json /app/srs.conf /app/goryu.json /app/
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/dist /app/dist
 COPY --from=build /app/public /app/public
