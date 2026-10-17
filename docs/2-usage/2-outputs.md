@@ -98,8 +98,11 @@ recipes, other pipelines and outputs that read the input directly are not
 affected. See [Reliability](../3-operations/4-reliability.md#shared-encodes).
 
 **Trade-offs.**
-- Starting a shared output takes a few seconds longer than a direct one: the
-  encode starts first and the output connects once it is writing data.
+- Starting a shared output takes longer than a direct one when its encode is not
+  running yet: the encode starts first and the output connects once it is writing
+  data. Measured: about 5 s from the encode's start to its first output. With the
+  encode already running an output starts at once, so an output stopped and started
+  again within the 15 s grace, or a further output of the same recipe, reuses it.
 - The encode is a single point of failure for its outputs: when it restarts, all
   of them reconnect at once.
 - CPU is counted once per recipe per pipeline. Sharing is never across pipelines.

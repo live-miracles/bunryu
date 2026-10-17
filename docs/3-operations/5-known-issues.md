@@ -26,6 +26,19 @@ sudo systemctl mask --runtime apt-news.service esm-cache.service
 This temporarily affects GCP OS patch/inventory reporting or Ubuntu Pro update
 messaging; re-enable after the event or reboot.
 
+## An input outage over 5 s makes shared encodes restart when the input returns
+
+SRS closes any publisher that sends no data for 5 s. After an input drops for
+longer than that, SRS closes the internal publish of each
+[shared encode](../2-usage/2-outputs.md#shared-encodes) on that pipeline. Each
+encode fails with `Broken pipe` when the input comes back, restarts, and takes its
+outputs with it, so every output that reads one records "Shared encode … failed: …
+Broken pipe" and reconnects (measured: about 4 s after the input returned).
+Everything recovers on its own and other pipelines are unaffected. Outputs that
+read the input directly (plain copy, several tracks) are not interrupted. See
+[Reliability](4-reliability.md#shared-encodes). Workaround: none needed; the
+history records are expected after an input outage.
+
 ## SRS `srt_to_rtmp` damages audio and video (avoided, not used)
 
 SRS's native `srt_to_rtmp` remuxes an SRT publish into the RTMP layer so it can

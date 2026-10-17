@@ -240,6 +240,25 @@ outputs pull that stream in copy mode.
   each gets an Error History record naming the cause. After 15 s with no running
   reader it stops, so a quick stop/start does not restart the shared encode.
 
+**Evidence** (local isolated stack, 2026-10-17, SRS 6.0-r2, FFmpeg 7.1.4, one
+1280×720 SRT input with two audio tracks, two outputs on track 1, CPU summed over 60 s):
+
+| | Processes | CPU | RSS |
+|---|---|---|---|
+| Before: each output pulls SRT and encodes AAC | 2 | 29.5% of a core (14.6% + 14.8%) | 74 MB |
+| Shared: one encode (12.3%) and two copy readers (0.4% each) | 3 | 13.1% of a core | 93 MB |
+
+CPU more than halves with two outputs and the saving grows with each further
+output (a reader costs 0.4%); memory is slightly higher for few outputs, from the
+extra process. In the same stack the end-to-end behaviour matched the design:
+killing an encode restarted its readers after one back-off step with one record
+each (about 6 s outage); a restart from the dashboard did not count a failure; the
+encode idle-stopped at 15.0 s; a crashed app's orphaned encodes were swept at
+startup and everything was running 7 s later; and stop-all then start-all
+restarted each encode exactly once. An input outage over 5 s costs one failure
+cycle (SRS drops the idle internal publish; see
+[Known issues](../3-operations/5-known-issues.md)).
+
 **Tradeoffs:**
 - A failed rendition affects every output that shares it. The blast radius is one
   recipe on one pipeline.

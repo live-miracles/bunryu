@@ -61,7 +61,14 @@ diagnostics. The outputs that read it are ordinary outputs that copy from it.
 - **While the input is down** the encode and its outputs are left running, as for
   direct outputs, and their watchdogs do not act: an output's watchdog also pauses
   while its shared encode is not ready, because a missing feed is then not that
-  output's fault.
+  output's fault. One consequence: SRS closes a publisher that sends nothing for 5 s
+  (`rtmp: publish timeout 5000ms`), so an input outage longer than that makes SRS
+  drop the shared encode's internal publish. The FFmpeg process stays up and fails
+  with `Broken pipe` when data returns, which restarts it and its outputs (the
+  "exits on its own" case above, so each output records "Shared encode … failed: …
+  Broken pipe"). Measured with an RTMP input stopped for 40 s: nothing restarted
+  during the outage, and the outputs were reading again 4 s after the input came back.
+  Direct outputs are not affected, since they only read.
 - **Idle stop with a 15 s grace.** The encode runs while at least one output that
   uses it is desired running and stops 15 s after the last one stops. The timer is
   in memory: after an app restart an encode with no running output stops 15 s later.

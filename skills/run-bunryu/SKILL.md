@@ -13,7 +13,10 @@ so it never collides with a developer's own instance on 8080/1985. The
 control plane is the real code, and the test publisher, HLS preview and ffprobe
 use the real pinned `objs/` binaries; only the *output* ffmpeg is a shim that
 reports healthy progress and can emit an FFmpeg timestamp-discontinuity flood
-on demand. The dashboard is driven with headless Chrome over CDP
+on demand. [Shared encodes](../../docs/2-usage/2-outputs.md#shared-encodes) are
+real: the shared encode's FFmpeg (it publishes to the `internal` app) runs the
+real `objs/ffmpeg`, and an output that reads one runs the real FFmpeg too, writing
+to `/dev/null`, so reader counts, fan-out through SRS and restarts are genuine. The dashboard is driven with headless Chrome over CDP
 (`scripts/test-stack-cdp.mjs`) because `chromium-cli`/playwright are not installed here.
 
 ## Prerequisites
@@ -34,7 +37,8 @@ H=scripts/test-stack.sh
 $H start          # builds public/js, starts SRS+app, logs in, creates pipeline
                   # "Test_Live" with 4 outputs, publishes a test stream, starts
                   # outputs, prints health (~20 s). Safe to pipe through tail.
-$H status         # per-output status/warning + pipeline alerts from /api/health
+$H status         # per-output status/warning, shared encodes (status, ready, readers)
+                  # and pipeline alerts from /api/health
 $H flood on       # fake ffmpeg starts emitting ~80 discontinuity lines/s/output
 $H flood off
 $H shot $WORK/shot.png "history.replaceState({},'','/?p=1')" 1500
@@ -79,15 +83,24 @@ Run the repo's own tests separately with `npm test` (not part of this harness).
   1 h or the watchdog would restart the shim outputs.
 - The shim treats an ffmpeg call whose **last argument is an
   rtmp/rtmps/srt URL** as an output; everything else (HLS preview) runs the
-  real `objs/ffmpeg`.
+  real `objs/ffmpeg`. Exceptions that run the real ffmpeg: a call whose last
+  argument is `rtmp://127.0.0.1:$RTMP_PORT/internal/…` (a shared encode), and a call
+  that reads such a stream as its input (a shared output; its destination is
+  replaced by `/dev/null`). `touch $WORK/real-outputs` makes **every** output do
+  that (for CPU comparisons); `start` and `stop` remove the file. Kill a shared
+  encode by pid (find it with `ps -eo pid,args`, not `pkill -f`).
+- Shared encodes need an output with a video encoding other than `copy` or an
+  audio track number, e.g. `{"videoEncoding":"720p","audioEncoding":"0"}`; the
+  default four outputs are plain copy and stay direct.
 - `public/js` is gitignored build output; `start` runs `npx tsc -p tsconfig.json`
   so the served frontend matches `public/ts`.
 - **Resource use**: on a 15 GB dev laptop with full swap, the stack plus a
   sustained flood pushed the machine into thrashing (load average >80, the
   publisher died). Check `free -m` first, keep floods to a few minutes, and
   `stop` when done.
-- The SRT *pull* path is not exercised (local ffmpeg 8 stalls on SRS SRT
-  pulls); the test input is RTMP.
+- The test input is RTMP. To exercise the SRT *pull* path publish SRT with the
+  pinned `objs/ffmpeg` (7.1; the system ffmpeg 8 stalls on SRS SRT pulls) to
+  `srt://127.0.0.1:31080?streamid=#!::r=live/<key>,m=publish&passphrase=<from $WORK/srs.conf>&pbkeylen=16`.
 
 ## Troubleshooting
 

@@ -37,7 +37,9 @@ import sys,json
 d=json.load(sys.stdin)
 for pid,p in d['pipelines'].items():
     print('pipeline',pid,'input',{k:p['input'][k] for k in ('connected','live')})
-    for k,v in p['outputs'].items(): print(' ',k,v['status'],v['bitrateKbps'],(v['warningReason'] or '')[:100])
+    for k,v in p['outputs'].items():
+        if v.get('role')=='rendition': print('  shared encode',k,v['status'],'ready',v.get('ready'),'readers',v.get('readers'),(v['warningReason'] or '')[:100])
+        else: print(' ',k,v['status'],v['bitrateKbps'],(v['warningReason'] or '')[:100]+(' (reads '+v['renditionId']+')' if v.get('renditionId') else ''))
     print('  alerts',[(a['severity'],a['code']) for a in p['alerts']])"
 }
 
@@ -67,14 +69,32 @@ JSON
             -e "s#127.0.0.1:8082#127.0.0.1:$HOOK_PORT#g" "$REPO/srs.conf" > "$WORK/srs.conf"
         # Fake output ffmpeg: destination URL as last arg => healthy copy output
         # (progress on stdout, discontinuity flood on stderr while $WORK/flood exists);
-        # anything else (preview) runs the real ffmpeg.
+        # anything else (preview) runs the real ffmpeg. Shared encodes are real too:
+        # - a shared encode publishes to the internal app, so it runs the real ffmpeg;
+        # - an output that reads one (its input is an internal stream) runs the real
+        #   ffmpeg with the destination replaced by /dev/null, so it really reads the
+        #   shared encode from SRS (readers, fan-out, restarts are real);
+        # - while $WORK/real-outputs exists every output does that (CPU comparisons).
+        # Real runs use `exec -a` so argv[0] stays the configured ffmpeg_path, which is
+        # how the app's startup sweep recognises orphaned ffmpeg processes.
         cat > "$WORK/ffmpeg-shim.sh" << SHIM
 #!/bin/bash
 last="\${@: -1}"
 case "\$last" in
+  rtmp://127.0.0.1:$RTMP_PORT/internal/*) exec -a \$0 $REPO/objs/ffmpeg "\$@" ;;
   rtmp://*|rtmps://*|srt://*) ;;
-  *) exec $REPO/objs/ffmpeg "\$@" ;;
+  *) exec -a \$0 $REPO/objs/ffmpeg "\$@" ;;
 esac
+real=
+[ -e "$WORK/real-outputs" ] && real=1
+for a in "\$@"; do
+  case "\$a" in rtmp://127.0.0.1:$RTMP_PORT/internal/*) real=1 ;; esac
+done
+if [ -n "\$real" ]; then
+  args=("\$@")
+  args[\$((\${#args[@]} - 1))]=/dev/null
+  exec -a \$0 $REPO/objs/ffmpeg -y "\${args[@]}"
+fi
 trap 'exit 0' TERM INT
 start=\$(date +%s%N); i=0
 while true; do
@@ -91,7 +111,7 @@ while true; do
 done
 SHIM
         chmod +x "$WORK/ffmpeg-shim.sh"
-        rm -f "$WORK/flood" "$WORK/db.sqlite"*
+        rm -f "$WORK/flood" "$WORK/real-outputs" "$WORK/db.sqlite"*
         PORT=$APP_PORT DATABASE_PATH="$WORK/db.sqlite" bg "$WORK/app.log" "$REPO/node_modules/.bin/tsx" "$REPO/src/index.ts"
         bg "$WORK/srs.out" "$REPO/objs/srs" -c "$WORK/srs.conf"
         for _ in $(seq 40); do
@@ -132,7 +152,7 @@ SHIM
         node "$HERE/test-stack-cdp.mjs" "$out" "${3:-}" "${4:-3000}"
         ;;
     stop)
-        rm -f "$WORK/flood"
+        rm -f "$WORK/flood" "$WORK/real-outputs"
         for port in $APP_PORT $API_PORT $CDP_PORT; do
             pids=$(listener $port)
             [ -z "$pids" ] || kill $pids
