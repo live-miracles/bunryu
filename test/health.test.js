@@ -306,6 +306,8 @@ function makeBondingStatus(overrides = {}) {
         lastError: null,
         ...rest,
         input: {
+            bonded: true,
+            peer: null,
             recvPacketsTotal: 0,
             recvUniquePacketsTotal: 0,
             recvLossTotal: 0,
@@ -985,7 +987,69 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         );
         assert.ok(qualityAlert, 'expected a bonded-leg-quality alert');
         assert.equal(qualityAlert.severity, 'error');
+        assert.match(qualityAlert.message, /^Bonded leg 203\.0\.113\.10:10081: Leg packet drops/);
+        assert.equal(transition.bonded, true);
         assert.equal(snapshot.pipelines['1'].srtBonding.input.legs[0].health, 'error');
+
+        service.shutdown();
+    });
+
+    test('describes a plain relay input as an SRT input, not a bonded leg', async (t) => {
+        const stream = streamFixture();
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [stream] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const plainLink = (overrides) =>
+            makeLeg({ ip: '198.51.100.7', port: 49152, state: 'running', ...overrides });
+        const plainStatus = (linkOverrides) =>
+            makeBondingStatus({
+                input: {
+                    bonded: false,
+                    peer: { ip: '198.51.100.7', port: 49152 },
+                    legs: [plainLink(linkOverrides)],
+                },
+            });
+        const relay = makeFakeSrtRelayMutable(
+            plainStatus({ recvUniquePacketsTotal: 500, recvDropTotal: 0 }),
+        );
+        const diagnostics = makeDiagnosticsSpy();
+        const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+        const service = createHealthService(
+            makeFakeDb([pipeline]),
+            makeFakeOutputService(),
+            relay,
+            makeFakeInputState(),
+            diagnostics,
+        );
+        const app = express();
+        service.registerRoutes(app);
+
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+
+        relay.setStatus(plainStatus({ recvUniquePacketsTotal: 1100, recvDropTotal: 50 }));
+        await tickPoll(t);
+
+        const snapshot = await getSnapshot(app);
+        const input = snapshot.pipelines['1'].srtBonding.input;
+        assert.equal(input.bonded, false);
+        assert.deepEqual(input.peer, { ip: '198.51.100.7', port: 49152 });
+        assert.equal(input.legs[0].health, 'error');
+
+        const qualityAlert = snapshot.pipelines['1'].alerts.find(
+            (a) => a.code === 'bonded-leg-quality',
+        );
+        assert.ok(qualityAlert, 'expected a quality alert for the plain input');
+        assert.match(
+            qualityAlert.message,
+            /^SRT input from 198\.51\.100\.7:49152: Connection packet drops/,
+        );
+        assert.doesNotMatch(qualityAlert.message, /leg/i);
+        assert.equal(input.legs[0].healthReason.startsWith('Connection packet drops'), true);
 
         service.shutdown();
     });

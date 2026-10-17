@@ -4,6 +4,8 @@ import type { InputHealth } from '../types.js';
 type InputStatsDeps = {
     displayInputBitrateKbps: (input: InputHealth) => number | null;
     fmtFieldOrder: (fieldOrder: string | null | undefined) => string | null;
+    // Overrides the publisher IP when SRS only sees the relay (loopback).
+    sourceIp?: string | null;
 };
 
 export function formatUptime(ms: number | null): string {
@@ -62,7 +64,7 @@ export function renderInputStats(input: InputHealth, deps: InputStatsDeps): stri
             v
                 ? `
         <div class="input-meta-row input-meta-row-sm my-0.5">
-            ${compactStat('IP', input.publisherIp)}
+            ${compactStat('IP', deps.sourceIp ?? input.publisherIp)}
             ${compactStat('In', formatBitrate(deps.displayInputBitrateKbps(input)))}
             ${compactStat('Codec', v.codec)}
             ${compactStat('Size', v.width && v.height ? `${v.width}×${v.height}` : null)}

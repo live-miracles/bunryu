@@ -66,6 +66,8 @@ async function waitFor(fn, timeoutMs = 3000) {
 }
 
 const EMPTY_INPUT = {
+    bonded: true,
+    peer: null,
     recvPacketsTotal: 0,
     recvUniquePacketsTotal: 0,
     recvLossTotal: 0,
@@ -221,6 +223,8 @@ describe('SRT relay service', () => {
             lastPacketAt: startedAtMs + 900,
             lastInputPacketAt: startedAtMs + 900,
             input: {
+                bonded: true,
+                peer: null,
                 recvPacketsTotal: 120,
                 recvUniquePacketsTotal: 118,
                 recvLossTotal: 2,
@@ -303,6 +307,108 @@ describe('SRT relay service', () => {
         const stream = service.getStreamStatus('#!::r=live/key01,m=publish');
         assert.equal(stream.input.belatedAvgMs, null);
         assert.equal(stream.input.legs[0].belatedAvgMs, null);
+    });
+
+    describe('plain (non-bonded) SRT input', () => {
+        const STREAM_ID = '#!::r=live/key01,m=publish';
+
+        async function readStream(streamState) {
+            global.fetch = async () =>
+                new Response(
+                    JSON.stringify({
+                        pid: 1,
+                        startedAtMs: Date.now() - 1000,
+                        updatedAtMs: Date.now(),
+                        streamStates: [{ streamId: STREAM_ID, ...streamState }],
+                    }),
+                    { status: 200, headers: { 'Content-Type': 'application/json' } },
+                );
+            const service = createSrtRelayService();
+            cleanup.push(async () => service.shutdown());
+            service.start();
+            await waitFor(() => service.getStats().pid === 1);
+            return service.getStreamStatus(STREAM_ID);
+        }
+
+        const plainInput = {
+            bonded: false,
+            peer: { ip: '198.51.100.7', port: 49152 },
+            recvPacketsTotal: 500,
+            recvUniquePacketsTotal: 498,
+            recvLossTotal: 2,
+            recvDropTotal: 1,
+            retransTotal: 4,
+            rttMs: 18.5,
+            latencyMs: 240,
+            bandwidthMbps: 12,
+            recvRateMbps: 4.2,
+            belatedTotal: 0,
+            belatedAvgMs: 0,
+            undecryptTotal: 0,
+            reorderDistance: 1,
+            rcvBufMs: 200,
+            legs: [],
+        };
+
+        test('exposes the encoder address and presents an active input as a single link', async () => {
+            const status = await readStream({ inputActive: true, input: plainInput });
+
+            assert.equal(status.input.bonded, false);
+            assert.deepEqual(status.input.peer, { ip: '198.51.100.7', port: 49152 });
+            assert.equal(status.input.legs.length, 1);
+            assert.deepEqual(status.input.legs[0], {
+                ip: '198.51.100.7',
+                port: 49152,
+                state: 'running',
+                rttMs: 18.5,
+                latencyMs: 240,
+                recvPacketsTotal: 500,
+                recvUniquePacketsTotal: 498,
+                recvLossTotal: 2,
+                recvDropTotal: 1,
+                retransTotal: 4,
+                bandwidthMbps: 12,
+                recvRateMbps: 4.2,
+                belatedTotal: 0,
+                belatedAvgMs: 0,
+                undecryptTotal: 0,
+                reorderDistance: 1,
+                rcvBufMs: 200,
+            });
+        });
+
+        test('does not invent a link for an input that is no longer active', async () => {
+            const status = await readStream({ inputActive: false, input: plainInput });
+
+            assert.equal(status.input.bonded, false);
+            assert.deepEqual(status.input.peer, { ip: '198.51.100.7', port: 49152 });
+            assert.deepEqual(status.input.legs, []);
+        });
+
+        test('leaves a bonded group untouched: its legs stay the only source of addresses', async () => {
+            const leg = { ip: '203.0.113.10', port: 10081, state: 'running' };
+            const status = await readStream({
+                inputActive: true,
+                input: { ...plainInput, bonded: true, peer: null, legs: [leg] },
+            });
+
+            assert.equal(status.input.bonded, true);
+            assert.equal(status.input.peer, null);
+            assert.equal(status.input.legs.length, 1);
+            assert.equal(status.input.legs[0].ip, '203.0.113.10');
+        });
+
+        test('treats a status without the bonded field as bonded and ignores a malformed peer', async () => {
+            const { bonded: _bonded, ...withoutBonded } = plainInput;
+            const status = await readStream({
+                inputActive: true,
+                input: { ...withoutBonded, peer: { ip: 42, port: 'x' } },
+            });
+
+            assert.equal(status.input.bonded, true);
+            assert.equal(status.input.peer, null);
+            assert.deepEqual(status.input.legs, []);
+        });
     });
 
     test('matches stream status by resource path when encoder streamid includes extra fields', async () => {

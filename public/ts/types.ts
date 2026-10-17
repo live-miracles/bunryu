@@ -192,6 +192,11 @@ export interface SrtBondingLeg {
 }
 
 export interface SrtBondingInputStatus {
+    // False for a plain single-link SRT input. Its encoder address is `peer`, and
+    // it is also presented as the one entry of `legs`; a bonded group has no
+    // `peer` and carries the addresses in `legs`.
+    bonded: boolean;
+    peer: { ip: string; port: number } | null;
     recvPacketsTotal: number | null;
     recvUniquePacketsTotal: number;
     recvLossTotal: number | null;

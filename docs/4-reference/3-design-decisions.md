@@ -100,12 +100,16 @@ stream.
 
 ## SRT ingest
 
-### Plain SRT goes directly to SRS; the relay handles only bonded SRT
+### Plain SRT goes directly to SRS by default; the relay also accepts it
 
-**Decision:** encoders publish plain SRT to SRS's SRT port. Only bonded encoders
-use the relay's port.
+**Decision:** encoders publish plain SRT to SRS's SRT port by default. The
+relay's listener accepts a plain single-link SRT caller as well as a bonded
+group, so an operator can choose to send plain SRT through the relay. The
+dashboard shows such an input as a single link with the encoder's address
+(`input.peer` in the relay's `/status`), without the bonded-leg redundancy
+warnings.
 
-**Why not route all SRT through the relay:**
+**Why direct stays the default, and what choosing the relay costs:**
 - SRS's SRT is also libsrt, so a bad network is handled by the same retransmission
   code either way.
 - Through the relay, SRS would only see `127.0.0.1`. That hides the encoder's IP

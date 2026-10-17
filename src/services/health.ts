@@ -16,8 +16,6 @@ import type {
     SrtRelayService,
     SrtRelayStats,
     SrtRelayStreamStatus,
-    SrtRelayInputStatus,
-    SrtRelayLegStatus,
     SrtRelayLegState,
 } from './srtRelay.js';
 import { inputPullUrl, type InputProtocol, type InputState } from './inputState.js';
@@ -62,46 +60,6 @@ const bytesToMb = (bytes: number): number => Math.round(bytes / (1024 * 1024));
 function counterDelta(current: number | null, previous: number | null | undefined): number | null {
     if (current === null || previous === null || previous === undefined) return null;
     return current >= previous ? current - previous : current;
-}
-
-const AGGREGATE_HISTORY_LEG_IP = 'SRT input';
-
-// Some SRT sessions are reported by the relay with aggregate input statistics
-// but no `legs` array. This is the representation used for a single/non-
-// bonded SRT connection by older relay builds. Keep the real per-leg data when
-// it is available, but expose the aggregate as one history series so the
-// dashboard still has something to graph.
-function historyLegs(input: SrtRelayInputStatus, inputActive: boolean): SrtRelayLegStatus[] {
-    if (input.legs.length > 0 || !inputActive) return input.legs;
-    const hasStats =
-        input.recvPacketsTotal !== null ||
-        input.recvUniquePacketsTotal > 0 ||
-        input.recvRateMbps !== null ||
-        (input.recvLossTotal ?? 0) > 0 ||
-        (input.recvDropTotal ?? 0) > 0 ||
-        (input.retransTotal ?? 0) > 0;
-    if (!hasStats) return [];
-    return [
-        {
-            ip: AGGREGATE_HISTORY_LEG_IP,
-            port: 0,
-            state: 'running',
-            rttMs: input.rttMs,
-            latencyMs: input.latencyMs,
-            recvPacketsTotal: input.recvPacketsTotal,
-            recvUniquePacketsTotal: input.recvUniquePacketsTotal,
-            recvLossTotal: input.recvLossTotal,
-            recvDropTotal: input.recvDropTotal,
-            retransTotal: input.retransTotal,
-            bandwidthMbps: input.bandwidthMbps,
-            recvRateMbps: input.recvRateMbps,
-            belatedTotal: input.belatedTotal,
-            belatedAvgMs: input.belatedAvgMs,
-            undecryptTotal: input.undecryptTotal,
-            reorderDistance: input.reorderDistance,
-            rcvBufMs: input.rcvBufMs,
-        },
-    ];
 }
 
 export interface InputHealth {
@@ -1000,6 +958,11 @@ export function createHealthService(
                 string,
                 { health: 'ok' | 'warn' | 'error'; reason: string | null }
             >();
+            // A plain input is one link with no redundancy: same health rules,
+            // but it is the whole connection rather than one leg of a group.
+            const linkNoun = relayInput.bonded ? 'Leg' : 'Connection';
+            const linkAlertPrefix = (transportKey: string): string =>
+                relayInput.bonded ? `Bonded leg ${transportKey}` : `SRT input from ${transportKey}`;
             for (const leg of relayInput.legs) {
                 const key = leg.ip;
                 const transportKey = `${leg.ip}:${leg.port}`;
@@ -1025,18 +988,18 @@ export function createHealthService(
                 let reason: string | null = null;
                 if (leg.state === 'broken' || leg.state === 'unknown') {
                     health = 'error';
-                    reason = `Leg state is ${leg.state}.`;
+                    reason = `${linkNoun} state is ${leg.state}.`;
                 } else if (leg.state === 'pending' || leg.state === 'idle') {
                     health = 'warn';
-                    reason = `Leg is ${leg.state}.`;
+                    reason = `${linkNoun} is ${leg.state}.`;
                 }
                 if (noFlowSinceMs !== null && now - noFlowSinceMs >= 10_000) {
                     health = health === 'error' ? health : 'warn';
-                    reason = 'Leg is connected but has stopped delivering packets.';
+                    reason = `${linkNoun} is connected but has stopped delivering packets.`;
                     alerts.push({
                         severity: 'warning',
                         code: 'bonded-leg-no-flow',
-                        message: `Bonded leg ${transportKey} is connected but has stopped delivering packets.`,
+                        message: `${linkAlertPrefix(transportKey)} is connected but has stopped delivering packets.`,
                         sinceMs: noFlowSinceMs,
                     });
                 }
@@ -1045,6 +1008,7 @@ export function createHealthService(
                     diagnostics?.event('bonded-leg-transition', {
                         pipelineId: pipeline.id,
                         leg: transportKey,
+                        bonded: relayInput.bonded,
                         from: previousLeg.state,
                         to: leg.state,
                         health,
@@ -1055,14 +1019,7 @@ export function createHealthService(
             legPacketSamples.set(pipeline.id, currentLegs);
             const pipelineLegHistory =
                 legHistory.get(pipeline.id) ?? new Map<string, LegHistorySeries>();
-            const graphLegs = srtStream
-                ? [...historyLegs(relayInput, rawBondingStatus.inputActive)]
-                : [];
-            if (relayInput.legs.length > 0) {
-                pipelineLegHistory.delete(AGGREGATE_HISTORY_LEG_IP);
-            }
-            const trackedLegs = graphLegs.length > 0 ? graphLegs : relayInput.legs;
-            for (const leg of trackedLegs) {
+            for (const leg of relayInput.legs) {
                 const key = leg.ip;
                 const transportKey = `${leg.ip}:${leg.port}`;
                 const previousLeg = previousLegs.get(key);
@@ -1133,20 +1090,20 @@ export function createHealthService(
                 let reason = legHealth.get(transportKey)?.reason ?? null;
                 if (receivedPackets >= 100 && (dropPct >= 5 || dropPackets >= 1000)) {
                     health = 'error';
-                    reason = `Leg packet drops are ${dropPct.toFixed(1)}% over the last minute (${dropPackets} packets).`;
+                    reason = `${linkNoun} packet drops are ${dropPct.toFixed(1)}% over the last minute (${dropPackets} packets).`;
                 } else if (
                     receivedPackets >= 100 &&
                     (dropPct >= 1 || lossPct >= 1 || dropPackets >= 100 || lossPackets >= 100)
                 ) {
                     health = health === 'error' ? health : 'warn';
-                    reason = `Leg packet quality is degraded over the last minute (${lossPct.toFixed(1)}% loss, ${dropPct.toFixed(1)}% drop).`;
+                    reason = `${linkNoun} packet quality is degraded over the last minute (${lossPct.toFixed(1)}% loss, ${dropPct.toFixed(1)}% drop).`;
                 } else if (receivedPackets >= 100 && retransmissionPct >= 5) {
                     health = health === 'error' ? health : 'warn';
-                    reason = `Leg retransmissions are ${retransmissionPct.toFixed(1)}% over the last minute.`;
+                    reason = `${linkNoun} retransmissions are ${retransmissionPct.toFixed(1)}% over the last minute.`;
                 }
                 if (leg.latencyMs !== null && leg.latencyMs >= SRT_HIGH_LATENCY_WARN_MS) {
                     health = health === 'error' ? health : 'warn';
-                    reason = `Leg latency is high (${Math.round(leg.latencyMs)} ms).`;
+                    reason = `${linkNoun} latency is high (${Math.round(leg.latencyMs)} ms).`;
                 }
                 sample.health = health;
                 legHealth.set(transportKey, { health, reason });
@@ -1154,7 +1111,7 @@ export function createHealthService(
                     alerts.push({
                         severity: health === 'error' ? 'error' : 'warning',
                         code: 'bonded-leg-quality',
-                        message: `Bonded leg ${transportKey}: ${reason}`,
+                        message: `${linkAlertPrefix(transportKey)}: ${reason}`,
                         sinceMs: windowSamples[0]?.ts ?? now,
                     });
                 }

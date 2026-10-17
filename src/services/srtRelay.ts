@@ -37,6 +37,13 @@ export interface SrtRelayLegStatus {
 }
 
 export interface SrtRelayInputStatus {
+    // False for an ordinary single-link SRT caller. Such an input has no legs in
+    // the relay's own status; parseStreamStatus presents it as one link (see
+    // plainInputLink) so everything downstream can treat both kinds alike.
+    bonded: boolean;
+    // The encoder's address for a plain input; null for a bonded group, whose
+    // legs[] carry the addresses.
+    peer: { ip: string; port: number } | null;
     recvPacketsTotal: number | null;
     recvUniquePacketsTotal: number;
     // Bonded group sockets do not expose deduplicated loss or receive-
@@ -116,6 +123,8 @@ interface RelayStatusResponseLeg {
 }
 
 interface RelayStatusResponseInput {
+    bonded?: boolean;
+    peer?: { ip?: unknown; port?: unknown } | null;
     recvPacketsTotal?: number | null;
     recvUniquePacketsTotal?: number;
     recvLossTotal?: number | null;
@@ -220,6 +229,8 @@ function extractStreamResource(streamId: string): string | null {
 }
 
 const EMPTY_INPUT_STATUS: SrtRelayInputStatus = {
+    bonded: true,
+    peer: null,
     recvPacketsTotal: null,
     recvUniquePacketsTotal: 0,
     recvLossTotal: null,
@@ -264,9 +275,16 @@ const EMPTY_STREAM_STATUS: SrtRelayStreamStatus = {
     lastError: null,
 };
 
+function parsePeer(peer: RelayStatusResponseInput['peer']): SrtRelayInputStatus['peer'] {
+    if (!peer || typeof peer.ip !== 'string' || typeof peer.port !== 'number') return null;
+    return { ip: peer.ip, port: peer.port };
+}
+
 function parseInputStatus(input: RelayStatusResponseInput | undefined): SrtRelayInputStatus {
     if (!input) return { ...EMPTY_INPUT_STATUS };
     return {
+        bonded: input.bonded !== false,
+        peer: input.bonded === false ? parsePeer(input.peer) : null,
         recvPacketsTotal: numOrNull(input.recvPacketsTotal),
         recvUniquePacketsTotal:
             typeof input.recvUniquePacketsTotal === 'number' ? input.recvUniquePacketsTotal : 0,
@@ -302,9 +320,40 @@ function parseOutputStatus(output: RelayStatusResponseOutput | undefined): SrtRe
     };
 }
 
+// A plain input has full aggregate statistics but no legs. Presenting it as a
+// single running link gives the health poll, the history graphs, the downlink
+// total and the dashboard tables one shape to handle for both kinds of input;
+// `bonded` tells them which wording and redundancy rules apply.
+function plainInputLink(input: SrtRelayInputStatus, peer: { ip: string; port: number }) {
+    const link: SrtRelayLegStatus = {
+        ip: peer.ip,
+        port: peer.port,
+        state: 'running',
+        rttMs: input.rttMs,
+        latencyMs: input.latencyMs,
+        recvPacketsTotal: input.recvPacketsTotal,
+        recvUniquePacketsTotal: input.recvUniquePacketsTotal,
+        recvLossTotal: input.recvLossTotal,
+        recvDropTotal: input.recvDropTotal,
+        retransTotal: input.retransTotal,
+        bandwidthMbps: input.bandwidthMbps,
+        recvRateMbps: input.recvRateMbps,
+        belatedTotal: input.belatedTotal,
+        belatedAvgMs: input.belatedAvgMs,
+        undecryptTotal: input.undecryptTotal,
+        reorderDistance: input.reorderDistance,
+        rcvBufMs: input.rcvBufMs,
+    };
+    return link;
+}
+
 function parseStreamStatus(
     s: NonNullable<RelayStatusResponse['streamStates']>[number],
 ): SrtRelayStreamStatus {
+    const input = parseInputStatus(s.input);
+    if (s.inputActive && !input.bonded && input.peer && input.legs.length === 0) {
+        input.legs = [plainInputLink(input, input.peer)];
+    }
     return {
         inputActive: !!s.inputActive,
         outputConnected: !!s.outputConnected,
@@ -313,7 +362,7 @@ function parseStreamStatus(
         forwardedBytes: typeof s.forwardedBytes === 'number' ? s.forwardedBytes : 0,
         lastPacketAt: typeof s.lastPacketAt === 'number' ? s.lastPacketAt : null,
         lastInputPacketAt: typeof s.lastInputPacketAt === 'number' ? s.lastInputPacketAt : null,
-        input: parseInputStatus(s.input),
+        input,
         output: parseOutputStatus(s.output),
         lastErrorAt: typeof s.lastErrorAt === 'number' ? s.lastErrorAt : null,
         lastError: s.lastError ?? null,

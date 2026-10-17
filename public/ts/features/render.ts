@@ -639,6 +639,17 @@ function deriveOutputMedia(
     return { video, audio: input.audio };
 }
 
+// SRS only sees the relay on loopback for a relay-fed input, so the encoder's
+// own address (known for a plain input) is what the input stats should show.
+function relaySourceIp(pipeline: PipelineView): string | null {
+    const { acceptedBySrs, input } = pipeline.srtBonding;
+    return acceptedBySrs && !input.bonded ? (input.peer?.ip ?? null) : null;
+}
+
+function relayTypeLabel(pipeline: PipelineView): string {
+    return pipeline.srtBonding.input.bonded ? 'Bonded' : 'Relay';
+}
+
 function brokenLegCount(pipeline: PipelineView): number {
     return pipeline.srtBonding.input.legs.filter((leg) => leg.state === 'broken').length;
 }
@@ -669,13 +680,18 @@ function relayInputReasons(pipeline: PipelineView, relayProcessRunning: boolean)
     const broken = brokenLegCount(pipeline);
     const reasons: string[] = [];
 
+    const bonded = pipeline.srtBonding.input.bonded;
+
     for (const leg of legs) {
         if (leg.health && leg.health !== 'ok' && leg.healthReason) {
-            reasons.push(`Leg ${leg.ip}: ${leg.healthReason}`);
+            reasons.push(`${bonded ? 'Leg ' : 'Input '}${leg.ip}: ${leg.healthReason}`);
         }
     }
 
-    if (legs.length > 0 && broken === legs.length) {
+    if (!bonded) {
+        // One plain connection: it is up (it is listed) or the input is not active.
+        if (broken > 0) reasons.push('SRT connection is down');
+    } else if (legs.length > 0 && broken === legs.length) {
         reasons.push(`All ${legs.length} bonded leg${legs.length === 1 ? '' : 's'} are down`);
     } else if (broken > 0) {
         reasons.push(`${broken}/${legs.length} legs down`);
@@ -739,7 +755,7 @@ function getBondingIndicator(
             leftColor: STATUS_COLOR_OFF,
             rightColor: STATUS_COLOR_OFF,
             issues: [],
-            offMessage: 'SRT bonding relay is not running; bonded input unavailable',
+            offMessage: 'SRT relay is not running; relay SRT input unavailable',
         };
     }
 
@@ -748,7 +764,7 @@ function getBondingIndicator(
             leftColor: STATUS_COLOR_OFF,
             rightColor: STATUS_COLOR_OFF,
             issues: [],
-            offMessage: 'No bonded SRT input for this stream key',
+            offMessage: 'No relay SRT input for this stream key',
         };
     }
 
@@ -763,7 +779,7 @@ function getBondingIndicator(
         offMessage:
             issues.length > 0
                 ? null
-                : 'Bonded SRT input active and forwarding to downstream output',
+                : `${pipeline.srtBonding.input.bonded ? 'Bonded SRT input' : 'SRT input via relay'} active and forwarding to downstream output`,
     };
 }
 
@@ -804,7 +820,10 @@ function relayInputStatus(pipeline: PipelineView, relayProcessRunning: boolean):
     if (allLegsBroken(pipeline)) return 'error';
     if (!relayHasRecentInputFlow(pipeline)) return 'warn';
     if (brokenLegCount(pipeline) > 0) return 'warn';
-    if (pipeline.srtBonding.input.legs.length <= 1) return 'warn';
+    // A plain input has no redundancy by design; only a bonded group that is
+    // down to one leg has lost something.
+    if (pipeline.srtBonding.input.bonded && pipeline.srtBonding.input.legs.length <= 1)
+        return 'warn';
     return 'good';
 }
 
@@ -933,7 +952,7 @@ function renderPipelineList(): void {
                 ? `<span class="font-mono text-xs opacity-60 shrink-0">${formatUptime(p.input.uptimeMs)}</span>`
                 : '';
         const inputTypeBadge = p.input.connected
-            ? `<span class="badge badge-sm badge-outline shrink-0">${p.srtBonding.acceptedBySrs ? 'Relay' : p.input.isSrt ? 'SRT' : 'RTMP'}</span>`
+            ? `<span class="badge badge-sm badge-outline shrink-0">${p.srtBonding.acceptedBySrs ? relayTypeLabel(p) : p.input.isSrt ? 'SRT' : 'RTMP'}</span>`
             : '';
         const dupKeyRefs = dupKeys.get(p.streamKeyId);
         const nameClass = dupKeyRefs ? 'truncate min-w-0 text-warning' : 'truncate min-w-0';
@@ -1341,7 +1360,7 @@ function renderOverview(): void {
 
     let relayRows = '';
     if (activeRelayPipelines.length === 0) {
-        relayRows = `<tr><td colspan="12" class="py-4 text-center opacity-50">No active SRT bonding relay sessions.</td></tr>`;
+        relayRows = `<tr><td colspan="12" class="py-4 text-center opacity-50">No active SRT relay sessions.</td></tr>`;
     } else {
         for (const p of activeRelayPipelines) {
             const inputSt = relayInputStatus(p, relayProcessRunning);
@@ -1398,7 +1417,7 @@ function renderOverview(): void {
             if (activeOnly && isOffline(st)) continue;
             const protocolLabel = inp.connected
                 ? p.srtBonding.acceptedBySrs
-                    ? 'Relay'
+                    ? relayTypeLabel(p)
                     : inp.isSrt
                       ? 'SRT'
                       : 'RTMP'
@@ -1618,7 +1637,7 @@ function renderOverview(): void {
     const appTotalTitle =
         'App = node + SRS + relay + every running ffmpeg output.\nSystem = whole-system usage.';
     const downlinkTotalTitle =
-        'App = SRS direct inputs + SRT bonding relay legs.\nSystem = whole-system downlink.';
+        'App = SRS direct inputs + SRT relay links (bonded legs or plain inputs).\nSystem = whole-system downlink.';
     const uplinkTotalTitle = 'App = every running ffmpeg output.\nSystem = whole-system uplink.';
     const flowTotalTitle = `${downlinkTotalTitle}\n\n${uplinkTotalTitle}`;
 
@@ -1687,10 +1706,10 @@ function renderOverview(): void {
         ${chartsHtml}
         ${systemUsageHtml}
         ${filterChips}
-        <h2 class="mb-2 text-lg font-bold">SRT Bonding Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
+        <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm table-relay">
-                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Bonded group inputs show deduplicated Drop; non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D</span>', 'State', 'Leg IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop">L / R / D</span>'])}
+                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Bonded group inputs show deduplicated Drop; non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D</span>', 'State', 'Source IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop">L / R / D</span>'])}
                 <tbody>${relayRows}</tbody>
             </table>
         </div>
@@ -1831,7 +1850,11 @@ function renderPipelineInfo(selectedId: string | null): void {
 
     const statsContainer = document.getElementById('input-stats-container');
     const statsEl = document.getElementById('input-stats');
-    const inputHtml = renderInputStats(pipeline.input, { displayInputBitrateKbps, fmtFieldOrder });
+    const inputHtml = renderInputStats(pipeline.input, {
+        displayInputBitrateKbps,
+        fmtFieldOrder,
+        sourceIp: relaySourceIp(pipeline),
+    });
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
     if (statsEl) statsEl.innerHTML = inputHtml;
     const masked = maskStreamKey(pipeline.streamKey);
@@ -1939,7 +1962,7 @@ function renderPipelineInfo(selectedId: string | null): void {
         });
     }
     if (bondingLegs) {
-        bondingLegs.innerHTML = renderBondedLegs(pipeline.srtBonding.input.legs, {
+        bondingLegs.innerHTML = renderBondedLegs(pipeline.srtBonding.input, {
             formatCompactCount,
             fmtMs,
             fmtMbpsValue,

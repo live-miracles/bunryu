@@ -484,7 +484,7 @@ function renderSrtStatsSections(pipelineId: string): string {
 
     const legsHtml =
         input.legs.length === 0
-            ? '<p class="opacity-50 text-sm">No bonded legs.</p>'
+            ? `<p class="opacity-50 text-sm">${input.bonded ? 'No bonded legs.' : 'No active SRT connection.'}</p>`
             : input.legs
                   .map((leg, idx) => {
                       const legRows = [
@@ -518,7 +518,10 @@ function renderSrtStatsSections(pipelineId: string): string {
                           srtDetailRow('Reorder Distance', fmtRawCount(leg.reorderDistance)),
                           srtDetailRow('Recv Buffer', fmtMs(leg.rcvBufMs)),
                       ].join('');
-                      return srtDetailSection(`Leg ${idx + 1} — ${escapeHtml(leg.ip)}`, legRows);
+                      return srtDetailSection(
+                          `${input.bonded ? `Leg ${idx + 1}` : 'Source'} — ${escapeHtml(leg.ip)}`,
+                          legRows,
+                      );
                   })
                   .join('');
 

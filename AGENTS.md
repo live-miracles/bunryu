@@ -141,7 +141,7 @@ only for a new module.
   state, input live/media state (schedules ffprobe via `mediaProbe.ts`),
   alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
   readiness/protocol and builds the pull URL outputs read.
-- `src/services/srtRelay.ts` (bonding relay), `translationMixer.ts`
+- `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `translationMixer.ts`
   (translation output mixer), `preview.ts` (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`, `hostProbes.ts`.
 - `src/api/*` - REST routes. `srs.ts` has the SRS `on_publish`/`on_play` hooks

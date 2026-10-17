@@ -21,6 +21,13 @@ bonded SRT for encoders that send the same stream over several network links
 [`srt-bonding-relay`](https://github.com/live-miracles/srt-bonding-relay)
 merges the links before SRS sees the stream.
 
+The bonded port also accepts an ordinary single-link SRT connection: use the
+bonded URL without `grouptype=broadcast`. The dashboard then shows it as an
+"SRT input via relay" with the encoder's IP, instead of a bonded group. This is
+optional. Plain SRT sent straight to port 10080 avoids the relay's extra hop
+(about 200 ms) and keeps the stream independent of the relay process; see
+[SRT ingest](../4-reference/3-design-decisions.md#srt-ingest).
+
 ## Test commands
 
 These `ffmpeg` commands publish a looping file. Replace `localhost` with the

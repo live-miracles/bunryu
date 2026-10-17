@@ -39,6 +39,8 @@ const EMPTY_BONDING: SrtBondingStatus = {
     lastPacketAt: null,
     lastInputPacketAt: null,
     input: {
+        bonded: true,
+        peer: null,
         recvPacketsTotal: null,
         recvUniquePacketsTotal: 0,
         recvLossTotal: null,

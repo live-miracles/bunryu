@@ -85,13 +85,15 @@ export function renderBondingStats(
     return items.length > 0 ? deps.renderCompactMetaRow(items, 'input-meta-row-sm') : '';
 }
 
-export function renderBondedLegs(legs: SrtBondingLeg[], deps: BondingViewDeps): string {
+export function renderBondedLegs(input: SrtBondingStatus['input'], deps: BondingViewDeps): string {
+    const legs = input.legs;
     if (legs.length === 0) return '';
-    return `<div class="text-xs font-semibold opacity-60 mb-1">Bonded legs (${legs.length})</div>
+    const heading = input.bonded ? `Bonded legs (${legs.length})` : 'SRT input via relay';
+    return `<div class="text-xs font-semibold opacity-60 mb-1">${heading}</div>
                    <div class="overflow-x-auto">
                    <table class="table table-xs">
                        <thead><tr>
-                           <th>State</th><th>Leg IP</th><th>RTT</th>
+                           <th>State</th><th>${input.bonded ? 'Leg IP' : 'Source IP'}</th><th>RTT</th>
                            <th>Rate</th><th>Buffer</th>
                            <th><span title="Loss / Rexmit / Drop">L / R / D</span></th>
                        </tr></thead>
