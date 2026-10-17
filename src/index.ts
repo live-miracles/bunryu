@@ -29,6 +29,7 @@ import { readAppConfig } from './utils/appConfig.js';
 import { createHostProbeService } from './services/hostProbes.js';
 import { createDiagnosticsLogger } from './utils/diagnostics.js';
 import { createTranslationMixerService } from './services/translationMixer.js';
+import { createRenditionReconciler } from './services/renditions.js';
 import { enforceDestinationPolicy } from './services/destinationPolicy.js';
 import { readSrsConfigValues } from './utils/srsConfig.js';
 
@@ -81,6 +82,7 @@ const translationMixerService = createTranslationMixerService(
     outputService,
     diagnostics,
 );
+const renditionReconciler = createRenditionReconciler(db, outputService, diagnostics);
 const healthService = createHealthService(
     db,
     outputService,
@@ -194,6 +196,7 @@ async function main(): Promise<void> {
     warnOnWeakSrtPassphrase();
     srtRelayService.start();
     translationMixerService.start();
+    renditionReconciler.start();
     healthService.start();
     hostProbeService.start();
 
@@ -217,6 +220,7 @@ function shutdown(signal: string): void {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[server] ${signal} received, killing media jobs`);
+    renditionReconciler.shutdown();
     outputService.shutdown();
     translationMixerService.shutdown();
     healthService.shutdown();

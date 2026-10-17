@@ -4,6 +4,7 @@ import type { Db } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import type { PreviewService } from '../services/preview.js';
 import type { SrtRelayService } from '../services/srtRelay.js';
+import { isRenditionOutput } from '../utils/renditions.js';
 
 export function registerPipelineApi(
     app: Express,
@@ -80,7 +81,12 @@ export function registerPipelineApi(
         if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
         if (!db.getPipeline(id)) return res.status(404).json({ error: 'Pipeline not found' });
 
-        const active = db.listOutputsForPipeline(id).some((o) => o.desiredState !== 'stopped');
+        // Shared encodes follow their outputs and idle-stop 15 s after the last one
+        // stops, so one may still be desired-running right after the user stopped
+        // everything; only the user's own outputs block the delete.
+        const active = db
+            .listOutputsForPipeline(id)
+            .some((o) => !isRenditionOutput(o) && o.desiredState !== 'stopped');
         if (active) {
             return res
                 .status(409)
@@ -89,6 +95,11 @@ export function registerPipelineApi(
 
         previewService.stop(id);
         const outputs = db.listOutputsForPipeline(id);
+        // Desired-stopped before the kill: otherwise the output service respawns a
+        // still-desired-running shared encode right after it exits.
+        for (const o of outputs) {
+            if (o.desiredState === 'running') db.setOutputDesiredState(o.id, 'stopped');
+        }
         await Promise.all(outputs.map((o) => outputService.stopAndWait(o.id)));
 
         try {

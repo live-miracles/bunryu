@@ -356,6 +356,9 @@ export function registerOutputApi(
         }
 
         for (const r of renditions) {
+            // Desired-stopped first, or the output service respawns the process it
+            // was just asked to stop (see removeRendition in services/renditions.ts).
+            db.setOutputDesiredState(r.id, 'stopped');
             await outputService.stopAndWait(r.id);
             outputService.clearRetryState(r.id);
         }

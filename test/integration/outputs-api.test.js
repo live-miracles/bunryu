@@ -588,10 +588,17 @@ describe('Outputs API integration', () => {
             const r = makeRendition(harness, p);
             harness.db.setOutputDesiredState(r.id, 'running');
             await harness.outputService.start(r.id);
+            const desiredAtKill = [];
+            const realStopAndWait = harness.outputService.stopAndWait;
+            harness.outputService.stopAndWait = async (id) => {
+                desiredAtKill.push(harness.db.getOutput(id)?.desiredState);
+                return realStopAndWait.call(harness.outputService, id);
+            };
 
             const res = await harness.request('DELETE', `/api/pipelines/${p.id}/outputs`);
 
             assert.equal(res.status, 200);
+            assert.deepEqual(desiredAtKill, ['stopped'], 'not respawned by its close handler');
             assert.equal(harness.db.listOutputsForPipeline(p.id).length, 0);
             assert.equal(harness.outputService.getStats(r.id).status, 'stopped');
             assert.ok(user);

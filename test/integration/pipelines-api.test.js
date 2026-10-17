@@ -328,6 +328,33 @@ describe('Pipelines API integration', () => {
             assert.deepEqual(harness.outputService.stoppedAndWaited, []);
         });
 
+        test('a shared encode still winding down does not block deleting; it is set stopped, then stopped and waited', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const user = harness.db.createOutput({ pipelineId: p.id, name: 'U', url: 'rtmp://u' });
+            const r = harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'Shared encode 720p · track 0',
+                url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
+                videoEncoding: '720p',
+                audioEncoding: '0',
+            });
+            harness.db.setOutputDesiredState(r.id, 'running');
+            const desiredAtKill = {};
+            const realStopAndWait = harness.outputService.stopAndWait;
+            harness.outputService.stopAndWait = async (id) => {
+                desiredAtKill[id] = harness.db.getOutput(id)?.desiredState;
+                return realStopAndWait.call(harness.outputService, id);
+            };
+
+            const res = await harness.request('DELETE', `/api/pipelines/${p.id}`);
+
+            assert.equal(res.status, 200);
+            assert.equal(harness.db.getPipeline(p.id), undefined);
+            assert.equal(desiredAtKill[r.id], 'stopped', 'not respawned by its close handler');
+            assert.equal(desiredAtKill[user.id], 'stopped');
+        });
+
         test('stops the preview and every output, then deletes the pipeline and cascades its outputs', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
