@@ -32,6 +32,7 @@ function parseDestination(
     return { url, audioEncoding };
 }
 
+const RESTART_LOCKOUT_MS = 5000;
 const MANAGED_ERROR = { error: 'Shared encodes are managed automatically' };
 const RESERVED_APP_ERROR = 'the internal app is reserved for shared encodes';
 
@@ -425,6 +426,43 @@ export function registerOutputApi(
             }
             return res.status(400).json({ error: (err as Error).message });
         }
+    });
+
+    // A double click (or two operators) must not restart the same output twice in a
+    // row: every restart interrupts the destination. In-memory is enough, the
+    // lockout is five seconds.
+    const lastRestartAt = new Map<string, number>();
+    app.post('/api/pipelines/:pipelineId/outputs/:outId/restart', (req, res) => {
+        const { pipelineId, outId } = req.params;
+        const output = db.getOutput(outId);
+        if (!output || output.pipelineId !== parseInt(pipelineId)) {
+            return res.status(404).json({ error: 'Output not found' });
+        }
+        // Translation outputs are published by the translation mixer, which has its
+        // own restart logic; this service has no process to restart for them.
+        if (output.audioEncoding === 'translation') {
+            return res
+                .status(409)
+                .json({ error: 'Translation outputs are restarted by the translation mixer' });
+        }
+        if (outputService.getStats(outId).status !== 'running') {
+            return res.status(409).json({ error: 'Output is not running' });
+        }
+        const now = Date.now();
+        for (const [id, at] of lastRestartAt) {
+            if (now - at >= RESTART_LOCKOUT_MS) lastRestartAt.delete(id);
+        }
+        if (lastRestartAt.has(outId)) {
+            return res.status(409).json({
+                error: 'Restarted moments ago; wait a few seconds before restarting again',
+            });
+        }
+        if (!outputService.restart(outId)) {
+            return res.status(409).json({ error: 'Output is not running' });
+        }
+        lastRestartAt.set(outId, now);
+        console.log(cyan(`[outputs] user restart requested: ${outId} (${output.name})`));
+        return res.json({ ok: true });
     });
 
     app.post('/api/pipelines/:pipelineId/outputs/:outId/stop', async (req, res) => {

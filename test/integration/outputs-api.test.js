@@ -114,6 +114,12 @@ function makeFakeOutputService() {
         async stopAndWait(id) {
             statuses.set(id, 'stopped');
         },
+        restarted: [],
+        restart(id) {
+            if ((statuses.get(id) ?? 'stopped') !== 'running') return false;
+            this.restarted.push(id);
+            return true;
+        },
         restartPipelineOutputs() {
             return 0;
         },
@@ -920,6 +926,148 @@ describe('Outputs API integration', () => {
                 `/api/pipelines/${p.id}/outputs/nope-1/start`,
             );
             assert.equal(res.status, 404);
+        });
+    });
+
+    describe('POST /api/pipelines/:pipelineId/outputs/:outId/restart', () => {
+        const RENDITION_URL = 'rtmp://127.0.0.1:21935/internal/r1_720p_a0';
+
+        test('restarts a running output', async (t) => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+            harness.db.setOutputDesiredState(o.id, 'running');
+            await harness.outputService.start(o.id);
+
+            const res = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${o.id}/restart`,
+            );
+
+            assert.equal(res.status, 200);
+            assert.deepEqual(res.body, { ok: true });
+            assert.deepEqual(harness.outputService.restarted, [o.id]);
+            assert.equal(harness.db.getOutput(o.id).desiredState, 'running');
+        });
+
+        test('works for a rendition, which has no start or stop of its own', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const r = harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'Shared encode 720p · track 0',
+                url: RENDITION_URL,
+                videoEncoding: '720p',
+                audioEncoding: '0',
+            });
+            await harness.outputService.start(r.id);
+
+            const res = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${r.id}/restart`,
+            );
+
+            assert.equal(res.status, 200);
+            assert.deepEqual(harness.outputService.restarted, [r.id]);
+        });
+
+        test('409s when the output is not running', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+
+            const res = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${o.id}/restart`,
+            );
+
+            assert.equal(res.status, 409);
+            assert.match(res.body.error, /not running/);
+            assert.deepEqual(harness.outputService.restarted, []);
+        });
+
+        test('409s when the service cannot restart it (e.g. it just exited)', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+            await harness.outputService.start(o.id);
+            harness.outputService.restart = () => false;
+
+            const res = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${o.id}/restart`,
+            );
+
+            assert.equal(res.status, 409);
+            // A refused restart must not start the 5 s lockout.
+            harness.outputService.restart = () => true;
+            const again = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${o.id}/restart`,
+            );
+            assert.equal(again.status, 200);
+        });
+
+        test('refuses a second restart of the same output within 5 s, then allows it', async (t) => {
+            t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const a = harness.db.createOutput({ pipelineId: p.id, name: 'A', url: 'rtmp://a' });
+            const b = harness.db.createOutput({ pipelineId: p.id, name: 'B', url: 'rtmp://b' });
+            await harness.outputService.start(a.id);
+            await harness.outputService.start(b.id);
+            const restart = (o) =>
+                harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}/restart`);
+
+            assert.equal((await restart(a)).status, 200);
+            t.mock.timers.tick(4999);
+            const tooSoon = await restart(a);
+            assert.equal(tooSoon.status, 409);
+            assert.match(tooSoon.body.error, /few seconds/);
+            assert.equal((await restart(b)).status, 200, 'another output is not affected');
+            t.mock.timers.tick(1);
+            assert.equal((await restart(a)).status, 200);
+            assert.deepEqual(harness.outputService.restarted, [a.id, b.id, a.id]);
+        });
+
+        test('translation outputs are restarted by the mixer, not here', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'T',
+                url: 'rtmp://t',
+                audioEncoding: 'translation',
+            });
+            await harness.outputService.start(o.id);
+
+            const res = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${o.id}/restart`,
+            );
+
+            assert.equal(res.status, 409);
+            assert.match(res.body.error, /translation/i);
+            assert.deepEqual(harness.outputService.restarted, []);
+        });
+
+        test('404s for an unknown output and for a mismatched pipeline', async () => {
+            const harness = createHarness();
+            const p1 = harness.db.createPipeline();
+            const p2 = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p1.id, name: 'X', url: 'rtmp://x' });
+
+            const unknown = await harness.request(
+                'POST',
+                `/api/pipelines/${p1.id}/outputs/nope-1/restart`,
+            );
+            const mismatched = await harness.request(
+                'POST',
+                `/api/pipelines/${p2.id}/outputs/${o.id}/restart`,
+            );
+
+            assert.equal(unknown.status, 404);
+            assert.equal(mismatched.status, 404);
         });
     });
 
