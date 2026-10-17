@@ -11,16 +11,17 @@ import { MAX_AUDIO_TRACKS } from '../utils/inputLimits.js';
 const FFMPEG_CMD = readAppConfig().ffmpegPath;
 const STDERR_TAIL_BYTES = 2000;
 const STOP_WAIT_MS = 200;
-// A preview transcodes continuously (~half a core), and stopping it relies on
-// the browser calling /preview/stop — which does not always happen when the
-// operator closes the tab (the dashboard also sends a beacon on pagehide, but
-// a crash or lost network skips it). A preview counts as watched while either
-// the dashboard's keepalive arrives or anyone fetches its HLS playlist/segments
-// (touched from the /hls route; a live player refreshes the playlist every
-// ~2s). Previews with no such signal within the TTL are reaped. 20s tolerates
-// a network hiccup; the cost of a wrongly reaped preview is a ~10s restart.
-// A tab hidden for minutes gets its timers throttled, so it is reaped too —
-// nobody is watching, and the dashboard tears the player down on active=false.
+// A preview runs an ffmpeg (video copy, audio encode) continuously, and
+// stopping it relies on the browser calling /preview/stop — which does not
+// always happen when the operator closes the tab (the dashboard also sends a
+// beacon on pagehide, but a crash or lost network skips it). A preview counts
+// as watched while either the dashboard's keepalive arrives or anyone fetches
+// its HLS playlist/segments (touched from the /hls route; a live player
+// refreshes the playlist every ~2s). Previews with no such signal within the
+// TTL are reaped. 20s tolerates a network hiccup; the cost of a wrongly reaped
+// preview is a ~10s restart. A tab hidden for minutes gets its timers
+// throttled, so it is reaped too — nobody is watching, and the dashboard tears
+// the player down on active=false.
 const KEEPALIVE_TTL_MS = 20_000;
 const REAP_INTERVAL_MS = 5_000;
 
@@ -75,7 +76,7 @@ export function createPreviewService(
     const reapIntervalMs = options.reapIntervalMs ?? REAP_INTERVAL_MS;
 
     // Reap previews whose dashboard client went away without stopping them
-    // (closed tab, crashed browser) — otherwise the transcode runs forever.
+    // (closed tab, crashed browser) — otherwise the ffmpeg runs forever.
     const reapTimer = setInterval(() => {
         const now = Date.now();
         for (const [pipelineId, entry] of previews) {
@@ -132,31 +133,14 @@ export function createPreviewService(
         fs.rmSync(outDir, { recursive: true, force: true });
         fs.mkdirSync(outDir, { recursive: true });
 
-        // Keep dashboard preview intentionally lightweight for small cloud VMs.
-        // Always transcode to a low-res HLS rendition, independent of the ingest
-        // protocol; production outputs still use their own output settings.
-        const videoArgs = [
-            '-c:v',
-            'libx264',
-            '-preset',
-            'ultrafast',
-            '-tune',
-            'zerolatency',
-            '-vf',
-            'scale=w=854:h=480:force_original_aspect_ratio=decrease,scale=w=trunc(iw/2)*2:h=trunc(ih/2)*2,fps=25',
-            '-pix_fmt',
-            'yuv420p',
-            '-crf',
-            '30',
-            '-g',
-            '50',
-            '-keyint_min',
-            '50',
-            '-sc_threshold',
-            '0',
-            '-force_key_frames',
-            'expr:gte(t,n_forced*2)',
-        ];
+        // Copy the video as-is: re-encoding it to a 480p rendition took ~80% of
+        // a core per open preview for a 1080p input (one copy takes ~3%), which
+        // made previews unusable on a 2 vCPU server. The browser gets the
+        // source bitrate instead. Only Chrome is supported, so no transcode
+        // fallback: an HEVC input previews only where Chrome can decode it.
+        // Segments can only start on a keyframe, so an encoder with a long GOP
+        // gives longer segments and a later start than -hls_time suggests.
+        const videoArgs = ['-c:v', 'copy'];
 
         // SRT/MPEG-TS sources deliver audio with jittery, occasionally discontinuous
         // timestamps (PCR rounding + SRT packet-loss gaps). Re-encoding those 1:1

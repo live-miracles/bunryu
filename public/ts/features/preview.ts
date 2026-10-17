@@ -210,7 +210,7 @@ function teardownMeter(): void {
 // ── HLS lifecycle ─────────────────────────────────────
 
 // The server reaps a preview nobody is watching (no keepalive and no HLS fetch
-// within ~20s), so a crashed tab cannot leave a transcode running. Beat well
+// within ~20s), so a crashed tab cannot leave a preview ffmpeg running. Beat well
 // inside that TTL; the player's own playlist refreshes count too.
 const KEEPALIVE_INTERVAL_MS = 8_000;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;

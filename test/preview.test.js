@@ -128,6 +128,52 @@ describe('preview lifecycle', () => {
         service.shutdown();
     });
 
+    // Re-encoding video took ~80% of a core per open preview (1080p input),
+    // which saturates a 2 vCPU server. Video is copied; only audio is encoded.
+    test('copies video and encodes only audio', async (t) => {
+        const proc = new FakeFfmpeg();
+        let spawnArgs = null;
+        const createPreviewService = loadPreviewService(t, (_cmd, args) => {
+            spawnArgs = args;
+            return proc;
+        });
+        const service = createPreviewService(makeDb(), makeInputState());
+
+        await startWithPlaylist(service, 1, 1);
+
+        const cv = spawnArgs.indexOf('-c:v');
+        assert.notEqual(cv, -1, 'ffmpeg args should set -c:v');
+        assert.equal(spawnArgs[cv + 1], 'copy');
+        assert.ok(!spawnArgs.includes('libx264'), 'video must not be re-encoded');
+        assert.ok(!spawnArgs.includes('-vf'), 'video must not be filtered');
+        const ca = spawnArgs.indexOf('-c:a');
+        assert.equal(spawnArgs[ca + 1], 'aac');
+
+        service.shutdown();
+    });
+
+    test('copies video for a multi-track preview too', async (t) => {
+        const proc = new FakeFfmpeg();
+        let spawnArgs = null;
+        const createPreviewService = loadPreviewService(t, (_cmd, args) => {
+            spawnArgs = args;
+            return proc;
+        });
+        const service = createPreviewService(makeDb(), makeInputState());
+
+        const { hlsUrl } = await startWithPlaylist(service, 1, 2);
+
+        assert.equal(hlsUrl, '/hls/1/master.m3u8');
+        assert.equal(spawnArgs[spawnArgs.indexOf('-c:v') + 1], 'copy');
+        assert.ok(!spawnArgs.includes('libx264'), 'video must not be re-encoded');
+        assert.deepEqual(
+            spawnArgs.filter((a) => a.startsWith('0:a:')),
+            ['0:a:0', '0:a:1'],
+        );
+
+        service.shutdown();
+    });
+
     // TTL values must exceed start()'s playlist-poll cadence (200ms) so the
     // preview is fully started before the reaper is allowed to consider it.
     test('reaps a preview that receives no keepalive within the TTL', async (t) => {

@@ -61,7 +61,9 @@ ffmpeg -re -stream_loop -1 -i video.mp4 \
 
 Once a publisher connects, the pipeline turns live and the dashboard shows the
 input's codec, resolution, frame rate, bitrate and audio tracks (from `ffprobe`).
-**Preview** starts an HLS preview in the browser.
+**Preview** starts an HLS preview in the browser (Chrome). It shows the input's
+own video at full quality and costs little server CPU, but each viewer receives
+the input's full bitrate.
 
 Publishes with an unknown stream key are rejected by SRS before any output
 starts. Recent rejected attempts are listed under the pipeline list ("Rejected

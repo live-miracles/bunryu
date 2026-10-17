@@ -192,17 +192,28 @@ FFmpeg.
   today's workaround of looping an SRT pipeline into a second pipeline.
 - **Tradeoff:** a failed rendition affects every output that shares it.
 
-### Preview is a 480p FFmpeg transcode
+### Preview copies the video; only audio is encoded
 
-**Decision:** the dashboard preview is a 480p HLS rendition made by FFmpeg, about
-half a core while a preview is open. Previews are stopped automatically when no
-viewer remains.
+**Decision:** the dashboard preview is an HLS stream made by FFmpeg that copies
+the input's video unchanged and re-encodes only the audio to AAC (one rendition
+per audio track). Only Chrome is supported. Previews are stopped automatically
+when no viewer remains.
 
 **Why:**
-- It works the same for RTMP and SRT inputs and for any codec.
-- It supports switching between audio tracks.
-- It costs little bandwidth to the browser.
-- SRS's native HLS was used briefly but depended on `srt_to_rtmp` for SRT inputs.
+- **CPU:** the previous 480p video transcode took about 80% of a core per open
+  preview for a 1080p input, which made previews unusable on a 2 vCPU server.
+  With video copy the same preview takes about 9% (3% for a single-track input).
+- **Audio is still encoded** because it's cheap and keeps the timestamp
+  smoothing for SRT inputs, MP2/AC-3 inputs playable in the browser, and audio
+  track switching.
+- **Same pipeline for RTMP and SRT inputs,** played by the existing hls.js player.
+- **No SRS feature needed:** SRS's native HLS was used briefly but depended on
+  `srt_to_rtmp` for SRT inputs.
 
-**Revisit for:** native HTTP-FLV from SRS for RTMP inputs. It costs no CPU, but
-sends the full source bitrate to each viewer through the app.
+**Costs:**
+- **Bandwidth:** each viewer receives the source bitrate (e.g. 6 Mbps for a
+  1080p input instead of ~1 Mbps).
+- **Keyframe interval:** HLS segments can only start on a keyframe, so an input
+  with a long keyframe interval starts slower and runs further behind live.
+- **HEVC** inputs preview only where Chrome can decode HEVC; there is no
+  transcode fallback.
