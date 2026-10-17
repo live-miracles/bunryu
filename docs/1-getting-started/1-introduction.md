@@ -56,6 +56,10 @@ encoding at any one time**; everything else should be `copy`. Putting many outpu
 into custom-encoding mode will saturate the CPU long before the 500-output ceiling
 and starve the `copy` outputs and the dashboard alike.
 
+**Previews** copy the input's video, so an open preview costs only a few percent
+of one core, but each viewer receives the input's full bitrate. See
+[Preview](../2-usage/1-publishing.md#preview).
+
 **Parallel dashboard clients.** Health is computed once every 5s and shared by
 all clients, so extra browser tabs do not multiply SRS/SRT-FFprobe work. API
 responses are gzip-compressed, and config changes from another session are

@@ -121,10 +121,32 @@ timestamp-discontinuity flood) that does not touch a developer's own
 `npm run dev`; use it to exercise these paths and the dashboard end to end.
 `skills/run-bunryu/SKILL.md` documents it.
 
-Prefer small, reversible changes. Keep the documentation (`docs/`, and the
-short `README.md` when the pitch, features or install steps change) and this
-guide aligned when capacity, service behavior, supported protocols, or
-operational guarantees change.
+Prefer small, reversible changes.
+
+**Documentation is part of every change.** When you add a feature or change
+behavior, architecture, capacity, supported protocols or operational guarantees,
+find every doc page that describes it and update it in the same change. Search
+`docs/` and `README.md` for the feature's name, and check these places:
+
+- **`docs/2-usage/`** for what users see and do: publishing, outputs, preview,
+  translation.
+- **`docs/3-operations/`**:
+  - security, configuration (`bunryu.json` keys), reliability (watchdogs and
+    recovery);
+  - known issues: add workarounds, and remove entries that no longer apply.
+- **`docs/4-reference/1-api.md`** for any added or changed route, request body or
+  response.
+- **`docs/4-reference/3-design-decisions.md`** when you choose or reject an
+  approach, a component or an upstream feature. Record the decision, the reasons,
+  the evidence (measurements, test results), and when to revisit it.
+- **`docs/1-getting-started/`**:
+  - the introduction for capacity, costs or the architecture diagram;
+  - install and Docker for install steps or pinned components.
+- **`README.md`** only when the pitch, feature list or install steps change.
+- **This guide's code map** when you add a module or a code map entry goes stale.
+
+Remove or correct text that the change makes wrong; don't just append. A stale
+statement is worse than a missing one.
 
 ## Code map
 

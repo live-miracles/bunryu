@@ -68,9 +68,29 @@ ffmpeg -re -stream_loop -1 -i video.mp4 \
 
 Once a publisher connects, the pipeline turns live and the dashboard shows the
 input's codec, resolution, frame rate, bitrate and audio tracks (from `ffprobe`).
-**Preview** starts an HLS preview in the browser (Chrome). It shows the input's
-own video at full quality and costs little server CPU, but each viewer receives
-the input's full bitrate.
+**Preview** plays the input in the dashboard.
+
+### Preview
+
+The preview is an HLS stream made by the server's FFmpeg. The input's video is
+copied unchanged, and only the audio is re-encoded to AAC.
+
+- **Browser:** only Chrome is supported. HEVC inputs play only where Chrome can
+  decode HEVC; otherwise you get audio without picture.
+- **Server cost:** a few percent of one core per open preview (about 9% for a
+  1080p input with two audio tracks). Previewing is fine even on a 2 vCPU server.
+- **Bandwidth:** each viewer receives the input's full bitrate, for example about
+  6 Mbps for a typical 1080p input, through the dashboard (and the Cloudflare
+  Tunnel, if used).
+- **Audio tracks:** an input with several audio tracks gets a track selector; the
+  switch happens in the browser, without restarting the preview.
+- **Delay:** segments start on the input's keyframes, so an encoder with a long
+  keyframe interval (e.g. 6–10 s) makes the preview start slower and run further
+  behind live. A 2 s keyframe interval, which platforms recommend anyway, keeps it
+  short.
+- **Stopping:** a preview stops when you press Stop or close the tab, and on its
+  own about 20 s after nobody is watching (see
+  [Security](../3-operations/1-security.md)).
 
 Publishes with an unknown stream key are rejected by SRS before any output
 starts. Recent rejected attempts are listed under the pipeline list ("Rejected
