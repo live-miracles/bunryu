@@ -53,6 +53,17 @@ v6.0-r2):
 FFmpeg's MPEG-TS demuxer handled all of these cases correctly, including
 HEVC and a 33-bit timestamp wrap.
 
+**The bridge looks immature.** These aren't corner cases: a 48 kHz AAC track, a
+second audio track or MP2 audio are ordinary encoder output.
+- The 48 kHz bug has been present since the SRS 5.0 SRT rewrite.
+- Its audio is only audibly broken where players place audio by timestamp (HLS in
+  a browser, YouTube ingest). Players such as ffplay and the HTTP-FLV web player
+  hide it.
+
+This suggests few people run the bridge in production. FFmpeg's MPEG-TS demuxer,
+by contrast, handles damaged broadcast streams every day, in Bunryu's own outputs
+too.
+
 **Revisit when:** a release fixes the issues above and passes the same tests:
 frame count, two audio tracks, MP2/AC-3, HEVC, timestamp wrap.
 
@@ -86,6 +97,13 @@ frame count, two audio tracks, MP2/AC-3, HEVC, timestamp wrap.
     codecs. FFmpeg 7.1 can't announce them when reading.
   - **An MP2 audio track makes the whole RTMP read fail**, video included.
   - It cleanly kept the first of two audio tracks and handled a timestamp wrap.
+- **Less mature than FFmpeg on damaged input.** With realistic packet loss, holes
+  remain in the MPEG-TS stream after SRT's retransmissions; this is common for
+  SRT over real networks. MediaMTX's conversion did worse than FFmpeg's in every
+  loss test:
+  - it disconnected readers under random loss, where FFmpeg kept going;
+  - after long outages it passed on more out-of-order timestamps (9 against 1);
+  - it logged nothing about the holes.
 
 ### Don't build our own media server
 
@@ -148,7 +166,7 @@ Bunryu pins a release binary like it pins SRS and FFmpeg.
   and TypeScript.
 - It's useful on its own as a bonding relay.
 - It changes much less often than Bunryu.
-- Each release bundles its own libsrt (v3.0.6 has 1.5.6, which fixes
+- Each release bundles its own libsrt (v3.0.6 and later have 1.5.6, which fixes
   CVE-2026-55868/55869), so a libsrt security fix needs a relay release and a
   pin bump here.
 
