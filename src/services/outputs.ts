@@ -11,6 +11,7 @@ import { red, yellow, green } from '../utils/ansiColor.js';
 import type { Db, Output } from '../types.js';
 import type { InputState } from './inputState.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
+import { isRenditionOutput, renditionUrl, sharedRecipe } from '../utils/renditions.js';
 import {
     destinationSocketWarning,
     parseTcpSocketSnapshot,
@@ -22,6 +23,9 @@ const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
 // incident and must come back on its own when it returns. While the input/SRS is
 // not ready we only re-check (no ffmpeg spawned), so an idle retry is cheap.
 const RECHECK_DELAY_MS = 5000;
+// A shared output waits for its rendition (a local process a few seconds from
+// ready after it starts), so it polls faster than one waiting for an input.
+const RENDITION_RECHECK_DELAY_MS = 1000;
 const SIGKILL_DELAY_MS = 5000;
 const STDERR_TAIL_BYTES = 3000;
 const RESTART_STAGGER_MS = 200;
@@ -102,6 +106,12 @@ interface OutputStats {
     lastTotalSizeBytes: number | null;
     progressAgeMs: number | null;
     outputProgressAgeMs: number | null;
+    // 'rendition' for a shared-encode row (see utils/renditions.ts), else 'output'.
+    role: 'rendition' | 'output';
+    // The rendition a running shared output is currently pulling, else null.
+    renditionId: string | null;
+    // Renditions only: running and already writing data (null for other outputs).
+    ready: boolean | null;
 }
 
 interface TimestampBurst {
@@ -143,6 +153,10 @@ export interface OutputService {
     start(outputId: string): Promise<void>;
     stop(outputId: string): void;
     stopAndWait(outputId: string): Promise<void>;
+    // Stops a running output and starts it again, recording the restart in its
+    // Error History as a deliberate stop (not a failure). Restarting a rendition
+    // also restarts the outputs pulling from it. False when it is not running.
+    restart(outputId: string): boolean;
     restartPipelineOutputs(pipelineId: number, staggerBase?: number): number;
     clearRetryState(outputId: string): void;
     // Lets a service that publishes an output outside this service's own
@@ -229,6 +243,13 @@ export function createOutputService(
     // Open episodes of the card-only warnings (see warningStarted).
     const warningEpisodes = new Map<string, { startedAtMs: number; message: string }>();
     const watchdogKills = new Set<string>();
+    // Why a watchdog killed a process; explains the failure to a rendition's
+    // dependents and goes on the ffmpeg-exited event.
+    const watchdogReasons = new Map<string, string>();
+    // Shared outputs: the rendition each running one pulls from.
+    const renditionOf = new Map<string, string>();
+    // Text for the 'stopped' record of a user-requested restart.
+    const restartNotes = new Map<string, string>();
     const startLocks = new Set<string>();
     let shuttingDown = false;
     const retryState = new Map<string, { failures: number; timer: NodeJS.Timeout | null }>();
@@ -239,6 +260,8 @@ export function createOutputService(
 
     function getStats(outputId: string): OutputStats {
         const s = statuses.get(outputId) ?? { status: 'stopped' as const, pid: null };
+        const row = db.getOutput(outputId);
+        const role = row && isRenditionOutput(row) ? 'rendition' : 'output';
         const usage = memoryUsage.get(outputId);
         const p = progress.get(outputId);
         const timingWarning = p ? timingWarningFor(p, Date.now()) : null;
@@ -258,7 +281,53 @@ export function createOutputService(
             lastTotalSizeBytes: p?.lastTotalSize ?? null,
             progressAgeMs: p ? Date.now() - p.lastProgressAtMs : null,
             outputProgressAgeMs: p ? Date.now() - p.lastOutputProgressAtMs : null,
+            role,
+            renditionId: renditionOf.get(outputId) ?? null,
+            ready: role === 'rendition' ? isRenditionReady(outputId) : null,
         };
+    }
+
+    // A rendition is ready once its process runs and has written data, which means
+    // SRS accepted its publish. Local on purpose: no waiting for the health poll.
+    function isRenditionReady(renditionId: string): boolean {
+        return processes.has(renditionId) && (progress.get(renditionId)?.lastTotalSize ?? 0) > 0;
+    }
+
+    // The rendition row a shared output pulls from, or null when the output is not
+    // shared or the reconciler has not created the row yet.
+    function renditionFor(output: Output): Output | null {
+        const recipe = sharedRecipe(output);
+        if (!recipe) return null;
+        const url = renditionUrl(output.pipelineId, recipe);
+        return db.listOutputsForPipeline(output.pipelineId).find((o) => o.url === url) ?? null;
+    }
+
+    // Whether the output's source can be pulled now: the input for a direct output,
+    // the rendition (and the input behind it) for a shared one. Shared outputs
+    // also need the input: while it is down the rendition process may still be up
+    // but has nothing to give.
+    function sourceReady(output: Output): boolean {
+        if (!inputState.isReady(output.pipelineId)) return false;
+        if (!sharedRecipe(output)) return true;
+        const rendition = renditionFor(output);
+        return rendition !== null && isRenditionReady(rendition.id);
+    }
+
+    function recheckDelayMs(output: Output): number {
+        return sharedRecipe(output) ? RENDITION_RECHECK_DELAY_MS : RECHECK_DELAY_MS;
+    }
+
+    function roleFields(output: Output): { role: string; renditionId?: string } {
+        const renditionId = renditionOf.get(output.id);
+        return {
+            role: isRenditionOutput(output) ? 'rendition' : 'output',
+            ...(renditionId ? { renditionId } : {}),
+        };
+    }
+
+    function noteWatchdogKill(outputId: string, reason: string): void {
+        watchdogKills.add(outputId);
+        watchdogReasons.set(outputId, reason);
     }
 
     function setStatus(
@@ -271,6 +340,7 @@ export function createOutputService(
             startTimes.set(outputId, Date.now());
         } else {
             startTimes.delete(outputId);
+            renditionOf.delete(outputId);
             endWarningEpisodes(outputId, 'ended with ffmpeg exit');
             progress.delete(outputId);
             socketWarnings.delete(outputId);
@@ -358,8 +428,8 @@ export function createOutputService(
 
     // Schedule a tryStart without counting a failure — used when the input/SRS is
     // not yet ready, so we keep checking cheaply until it is.
-    function scheduleRecheck(outputId: string): void {
-        scheduleTryStart(outputId, RECHECK_DELAY_MS);
+    function scheduleRecheck(output: Output): void {
+        scheduleTryStart(output.id, recheckDelayMs(output));
     }
 
     function scheduleTryStart(outputId: string, delayMs: number): void {
@@ -385,8 +455,8 @@ export function createOutputService(
             if (output.audioEncoding === 'translation') return;
             if (statuses.get(outputId)?.status === 'running') return;
             // Don't spawn a doomed ffmpeg against a dead input; re-check until ready.
-            if (!inputState.isReady(output.pipelineId)) {
-                scheduleRecheck(outputId);
+            if (!sourceReady(output)) {
+                scheduleRecheck(output);
                 return;
             }
             await startJob(output);
@@ -791,10 +861,11 @@ export function createOutputService(
         diagnostics?.event('ffmpeg-restart', {
             outputId,
             outputName: output.name,
+            ...roleFields(output),
             reason: `socket unhealthy: ${reason}`,
             pid: proc.pid ?? null,
         });
-        watchdogKills.add(outputId);
+        noteWatchdogKill(outputId, `socket unhealthy: ${reason}`);
         void killProcess(outputId, proc, false);
         return true;
     }
@@ -812,10 +883,16 @@ export function createOutputService(
             const p = progress.get(outputId);
             if (!startedAtMs || !p) continue;
             if (!inputState.isReady(output.pipelineId)) continue;
+            // A shared output reads the rendition, not the input: while the
+            // rendition is not ready (restarting, or about to be restarted by its
+            // own watchdog) a lack of data is not this output's fault.
+            const renditionId = renditionOf.get(outputId);
+            if (renditionId !== undefined && !isRenditionReady(renditionId)) continue;
 
             const rssBytes = proc.pid == null ? null : readProcRssBytes(proc.pid);
+            // A shared output only copies, whatever preset its recipe names.
             const limitBytes = memoryLimitBytesFor(
-                output.videoEncoding,
+                renditionId !== undefined ? 'copy' : output.videoEncoding,
                 inputState.isHighRes(output.pipelineId),
             );
             if (rssBytes != null) {
@@ -869,12 +946,13 @@ export function createOutputService(
                     diagnostics?.event('ffmpeg-restart', {
                         outputId,
                         outputName: output.name,
+                        ...roleFields(output),
                         reason: 'memory limit exceeded',
                         pid: proc.pid ?? null,
                         rssMb: Math.round(rssBytes / (1024 * 1024)),
                         limitMb: Math.round(limitBytes / (1024 * 1024)),
                     });
-                    watchdogKills.add(outputId);
+                    noteWatchdogKill(outputId, 'memory limit exceeded');
                     void killProcess(outputId, proc, false);
                     continue;
                 }
@@ -899,11 +977,12 @@ export function createOutputService(
             diagnostics?.event('ffmpeg-restart', {
                 outputId,
                 outputName: output.name,
+                ...roleFields(output),
                 reason: 'output progress stalled',
                 pid: proc.pid ?? null,
                 stalledSeconds: Math.round((now - p.lastOutputProgressAtMs) / 1000),
             });
-            watchdogKills.add(outputId);
+            noteWatchdogKill(outputId, 'output progress stalled');
             void killProcess(outputId, proc, false);
         }
     }
@@ -930,20 +1009,80 @@ export function createOutputService(
         });
     }
 
+    // The user outputs that pull this rendition (same pipeline, same recipe) and
+    // are meant to be running.
+    function dependentsOf(rendition: Output): Output[] {
+        return db.listOutputsForPipeline(rendition.pipelineId).filter((o) => {
+            if (isRenditionOutput(o) || o.desiredState !== 'running') return false;
+            const recipe = sharedRecipe(o);
+            return recipe !== null && renditionUrl(o.pipelineId, recipe) === rendition.url;
+        });
+    }
+
+    function failDependents(rendition: Output, reason: string): void {
+        const message = `${rendition.name} failed: ${reason}`;
+        const affected: string[] = [];
+        const killed: string[] = [];
+        for (const dep of dependentsOf(rendition)) {
+            affected.push(dep.id);
+            try {
+                db.setOutputLastError(dep.id, message, 'crash');
+            } catch {
+                /* non-critical */
+            }
+            const proc = processes.get(dep.id);
+            if (!proc || watchdogKills.has(dep.id) || stopRequested.has(dep.id)) continue;
+            // Marked as a watchdog kill so its own exit writes no second crash
+            // record; the normal close path then retries it, and the readiness
+            // gate makes it wait for the rendition.
+            noteWatchdogKill(dep.id, 'shared encode failed');
+            killed.push(dep.id);
+            console.warn(
+                yellow(
+                    `[outputs] ${dep.id} (${dep.name}) restarting: ${rendition.name} failed, killing pid=${proc.pid}`,
+                ),
+            );
+            diagnostics?.event('ffmpeg-restart', {
+                outputId: dep.id,
+                outputName: dep.name,
+                ...roleFields(dep),
+                reason: 'shared encode failed',
+                pid: proc.pid ?? null,
+            });
+            void killProcess(dep.id, proc, false);
+        }
+        if (affected.length === 0) return;
+        diagnostics?.event('rendition-dependents-restarted', {
+            renditionId: rendition.id,
+            outputIds: affected,
+            killedIds: killed,
+            reason,
+        });
+    }
+
     async function startJob(output: Output): Promise<void> {
         if (!validateOutputUrl(output.url)) throw new Error('Invalid output URL');
 
         const pipeline = db.getPipeline(output.pipelineId);
         if (!pipeline) throw new Error('Pipeline not found');
         const sourcePipeline = pipeline;
-        // Pull the input back the same way it was published. Default to RTMP until known.
-        const inputUrl = inputState.pullUrl(sourcePipeline.id, sourcePipeline.streamKey);
-        const args = buildFfmpegArgs(
-            inputUrl,
-            output.url,
-            output.audioEncoding === 'translation' ? 'copy' : output.audioEncoding,
-            output.videoEncoding,
-        );
+        // A shared output (see utils/renditions.ts) copies its rendition's internal
+        // stream; every other output, including the rendition itself, pulls the
+        // input back the same way it was published (default RTMP until known).
+        const shared = sharedRecipe(output) !== null;
+        const rendition = shared ? renditionFor(output) : null;
+        if (shared && !rendition) throw new Error('Shared encode not found');
+        const inputUrl = rendition
+            ? rendition.url
+            : inputState.pullUrl(sourcePipeline.id, sourcePipeline.streamKey);
+        const args = rendition
+            ? buildFfmpegArgs(inputUrl, output.url, 'copy', 'copy')
+            : buildFfmpegArgs(
+                  inputUrl,
+                  output.url,
+                  output.audioEncoding === 'translation' ? 'copy' : output.audioEncoding,
+                  output.videoEncoding,
+              );
 
         // stdout and stderr must stay as 'pipe' (not 'ignore' or 'inherit').
         // When Node.js exits for any reason — including SIGKILL or a crash — the OS
@@ -958,6 +1097,7 @@ export function createOutputService(
 
         processes.set(output.id, child);
         setStatus(output.id, 'running', child.pid ?? null);
+        if (rendition) renditionOf.set(output.id, rendition.id);
         progress.set(output.id, {
             lastProgressAtMs: Date.now(),
             lastOutputProgressAtMs: Date.now(),
@@ -980,6 +1120,7 @@ export function createOutputService(
             outputId: output.id,
             outputName: output.name,
             pid: child.pid ?? null,
+            ...roleFields(output),
             inputProtocol: inputUrl.split(':', 1)[0],
             outputProtocol: output.url.split(':', 1)[0],
         });
@@ -1012,6 +1153,12 @@ export function createOutputService(
         child.on('close', (code, signal) => {
             const wasStop = stopRequested.delete(output.id);
             const wasWatchdog = watchdogKills.delete(output.id);
+            const watchdogReason = watchdogReasons.get(output.id) ?? null;
+            watchdogReasons.delete(output.id);
+            const restartNote = restartNotes.get(output.id) ?? null;
+            restartNotes.delete(output.id);
+            // setStatus() below forgets which rendition this output was pulling.
+            const roles = roleFields(output);
             const status = wasStop ? 'stopped' : 'failed';
             // setStatus() below drops the progress entry, so capture any open
             // timestamp-warning burst now to record it on the exit event.
@@ -1032,7 +1179,9 @@ export function createOutputService(
                 code,
                 signal,
                 status,
+                ...roles,
                 watchdog: wasWatchdog,
+                reason: watchdogReason,
                 stderrTail: stderrTail.trim() || null,
                 ...(openBurst
                     ? {
@@ -1071,10 +1220,26 @@ export function createOutputService(
                 // at once and would otherwise flood each one's history with
                 // routine stop markers on every restart/deploy.
                 try {
-                    db.setOutputLastError(output.id, stderrTail.trim(), 'stopped');
+                    const detail = stderrTail.trim();
+                    db.setOutputLastError(
+                        output.id,
+                        restartNote ? (detail ? `${restartNote}\n${detail}` : restartNote) : detail,
+                        'stopped',
+                    );
                 } catch {
                     /* non-critical */
                 }
+            }
+
+            // A rendition that dies on its own takes its readers' input with it:
+            // restart them (they wait for it to be ready again) and leave each a
+            // record saying why, so their cards do not just show a reconnect.
+            if (!wasStop && !shuttingDown && isRenditionOutput(output)) {
+                const detail = stderrTail.trim();
+                const what = wasWatchdog
+                    ? `watchdog: ${watchdogReason ?? 'restarted'}`
+                    : `exit=${code ?? signal}`;
+                failDependents(output, detail ? `${what}\n${detail}` : what);
             }
 
             if (shuttingDown) return;
@@ -1121,8 +1286,8 @@ export function createOutputService(
             // Input not live yet — keep the output "running" (desiredState) but
             // don't spawn a doomed ffmpeg. The recheck loop starts it once the
             // input comes online.
-            if (!inputState.isReady(output.pipelineId)) {
-                scheduleRecheck(outputId);
+            if (!sourceReady(output)) {
+                scheduleRecheck(output);
                 return;
             }
             await startJob(output);
@@ -1147,6 +1312,49 @@ export function createOutputService(
                     /* non-critical */
                 }
             }
+        },
+
+        restart(outputId: string): boolean {
+            const proc = processes.get(outputId);
+            const output = db.getOutput(outputId);
+            if (
+                !proc ||
+                !output ||
+                statuses.get(outputId)?.status !== 'running' ||
+                stopRequested.has(outputId)
+            ) {
+                return false;
+            }
+            // Readers first: marked as deliberate stops before the rendition goes, so
+            // they never see its end-of-stream as a failure. Each close handler then
+            // restarts the output (desired running) and the readiness gate makes it
+            // wait for the rendition.
+            if (isRenditionOutput(output)) {
+                for (const dep of dependentsOf(output)) {
+                    const depProc = processes.get(dep.id);
+                    if (!depProc || stopRequested.has(dep.id)) continue;
+                    restartNotes.set(dep.id, 'Shared encode restarted by user');
+                    diagnostics?.event('ffmpeg-restart', {
+                        outputId: dep.id,
+                        outputName: dep.name,
+                        ...roleFields(dep),
+                        reason: 'shared encode restarted by user',
+                        pid: depProc.pid ?? null,
+                    });
+                    void killProcess(dep.id, depProc, true);
+                }
+            }
+            restartNotes.set(outputId, 'Restarted by user');
+            console.log(yellow(`[outputs] ${outputId} (${output.name}) restarted by user`));
+            diagnostics?.event('ffmpeg-restart', {
+                outputId,
+                outputName: output.name,
+                ...roleFields(output),
+                reason: 'restarted by user',
+                pid: proc.pid ?? null,
+            });
+            void killProcess(outputId, proc, true);
+            return true;
         },
 
         async stopAndWait(outputId: string): Promise<void> {

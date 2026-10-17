@@ -135,8 +135,8 @@ function loadOutputService(t, fakeProc, options = {}) {
         'utf8',
     );
 
-    t.mock.method(childProcess, 'spawn', () =>
-        typeof fakeProc === 'function' ? fakeProc() : fakeProc,
+    t.mock.method(childProcess, 'spawn', (_cmd, args) =>
+        typeof fakeProc === 'function' ? fakeProc(args) : fakeProc,
     );
     if (options.ssError) {
         t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
@@ -954,6 +954,9 @@ describe('output service control surface', () => {
             lastTotalSizeBytes: null,
             progressAgeMs: null,
             outputProgressAgeMs: null,
+            role: 'output',
+            renditionId: null,
+            ready: null,
         });
 
         service.shutdown();
@@ -1602,6 +1605,786 @@ describe('output diagnostics events', () => {
             const exited = eventsNamed(diagnostics, 'ffmpeg-exited')[0];
             assert.deepEqual(exited.timestampBurst, { durationMs: 0, count: 2 });
 
+            service.shutdown();
+        });
+    });
+});
+
+// ── Shared renditions ──────────────────────────────────────────────────────
+describe('shared renditions', () => {
+    const { buildFfmpegArgs } = require('../src/utils/ffmpeg');
+    const RENDITION_URL = 'rtmp://127.0.0.1:1935/internal/r1_720p_a1';
+    const YOUTUBE = 'rtmp://youtube.example/live/key';
+    const TWITCH = 'rtmp://twitch.example/live/key';
+
+    beforeEach(() => {
+        process.chdir(tempDir);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        delete require.cache[require.resolve('../src/services/outputs')];
+        delete require.cache[require.resolve('../src/utils/appConfig')];
+    });
+
+    // A pipeline with a 720p/track-1 rendition (1-1) and two outputs sharing it
+    // (1-2, 1-3). Rows can be replaced to build other shapes.
+    function makeFleetDb(rows) {
+        const outputs = new Map();
+        const add = (o) =>
+            outputs.set(o.id, {
+                pipelineId: 1,
+                seq: 1,
+                desiredState: 'running',
+                videoEncoding: 'copy',
+                audioEncoding: 'copy',
+                translation: null,
+                lastError: null,
+                ...o,
+            });
+        for (const row of rows ?? [
+            {
+                id: '1-1',
+                name: 'Shared encode 720p · track 1',
+                url: RENDITION_URL,
+                videoEncoding: '720p',
+                audioEncoding: '1',
+            },
+            { id: '1-2', name: 'YouTube', url: YOUTUBE, videoEncoding: '720p', audioEncoding: '1' },
+            { id: '1-3', name: 'Twitch', url: TWITCH, videoEncoding: '720p', audioEncoding: '1' },
+        ]) {
+            add(row);
+        }
+        return {
+            outputs,
+            errorRecords: [],
+            appendPipelineLog() {
+                throw new Error('outputs must not write to the pipeline History');
+            },
+            getPipeline: (id) =>
+                id === 1 ? { id: 1, name: 'Live', streamKey: 'stream-key', streamKeyId: 1 } : null,
+            getOutput: (id) => outputs.get(id) ?? null,
+            listOutputsForPipeline: () => [...outputs.values()],
+            setOutputLastError(id, message, kind) {
+                this.errorRecords.push({ id, message, kind });
+            },
+            recordsFor(id, kind) {
+                return this.errorRecords.filter((r) => r.id === id && (!kind || r.kind === kind));
+            },
+        };
+    }
+
+    // Every spawn is recorded; each process exits when killed, like a real one.
+    function makeFleet(t, options = {}) {
+        const spawned = [];
+        let pid = 100;
+        const factory = (args) => {
+            const proc = new FakeFfmpeg(pid++);
+            spawned.push({ args, proc, dest: args[args.length - 1] });
+            return proc;
+        };
+        const createOutputService = loadOutputService(t, factory, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 1e9,
+            ...options,
+        });
+        return {
+            spawned,
+            createOutputService,
+            procFor: (dest) => spawned.findLast((s) => s.dest === dest)?.proc,
+            spawnsTo: (dest) => spawned.filter((s) => s.dest === dest),
+        };
+    }
+
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    const markReady = (proc) => proc.stdout.write('total_size=4096\nout_time_ms=1000000\n');
+    const crashRecords = (db, id) => db.recordsFor(id, 'crash');
+
+    describe('arguments', () => {
+        test('outputs that are not shared spawn with byte-identical arguments', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb([
+                { id: '1-1', name: 'plain', url: YOUTUBE },
+                {
+                    id: '1-2',
+                    name: 'multi',
+                    url: 'srt://dest.example:9000?mode=caller',
+                    audioEncoding: '0,1',
+                },
+            ]);
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            const srtService = fleet.createOutputService(db, makeReadyInputState({ srt: true }));
+
+            await service.start('1-1');
+            await srtService.start('1-2');
+
+            assert.deepEqual(fleet.spawned[0].args, [
+                '-nostats',
+                '-loglevel',
+                'warning',
+                '-stats_period',
+                '3',
+                '-fflags',
+                '+discardcorrupt',
+                '-err_detect',
+                'crccheck+bitstream',
+                '-rw_timeout',
+                '600000000',
+                '-i',
+                'rtmp://127.0.0.1:1935/live/stream-key',
+                '-progress',
+                'pipe:1',
+                '-map',
+                '0:v:0?',
+                '-map',
+                '0:a:0?',
+                '-c:v',
+                'copy',
+                '-c:a',
+                'copy',
+                '-f',
+                'flv',
+                'rtmp://youtube.example/live/key',
+            ]);
+            assert.deepEqual(fleet.spawned[1].args, [
+                '-nostats',
+                '-loglevel',
+                'warning',
+                '-stats_period',
+                '3',
+                '-fflags',
+                '+discardcorrupt',
+                '-err_detect',
+                'crccheck+bitstream',
+                '-rw_timeout',
+                '600000000',
+                '-i',
+                'srt://127.0.0.1:10080?streamid=stream-key',
+                '-progress',
+                'pipe:1',
+                '-map',
+                '0:v:0',
+                '-map',
+                '0:a:0',
+                '-map',
+                '0:a:1',
+                '-c:v',
+                'copy',
+                '-af',
+                'aresample=async=1:first_pts=0',
+                '-c:a',
+                'aac',
+                '-b:a',
+                '128k',
+                '-ac',
+                '2',
+                '-ar',
+                '48000',
+                '-f',
+                'mpegts',
+                'srt://dest.example:9000?mode=caller',
+            ]);
+
+            service.shutdown();
+            srtService.shutdown();
+        });
+
+        test('a translation output is never started by this service, shared recipe or not', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb([
+                {
+                    id: '1-1',
+                    name: 'tr',
+                    url: YOUTUBE,
+                    videoEncoding: '720p',
+                    audioEncoding: 'translation',
+                },
+            ]);
+            const service = fleet.createOutputService(db, makeReadyInputState());
+
+            await service.start('1-1');
+
+            assert.equal(fleet.spawned.length, 0);
+            service.shutdown();
+        });
+
+        test('a shared output copies the rendition stream and nothing else', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+
+            await service.start('1-2');
+
+            assert.deepEqual(
+                fleet.spawnsTo(YOUTUBE)[0].args,
+                buildFfmpegArgs(RENDITION_URL, YOUTUBE, 'copy', 'copy'),
+            );
+            assert.equal(
+                fleet.spawnsTo(YOUTUBE)[0].args[fleet.spawnsTo(YOUTUBE)[0].args.indexOf('-i') + 1],
+                RENDITION_URL,
+            );
+            service.shutdown();
+        });
+
+        test('a shared output to an SRT destination copies the rendition into mpegts', async (t) => {
+            const fleet = makeFleet(t);
+            const srtDest = 'srt://dest.example:9000?mode=caller';
+            const db = makeFleetDb([
+                {
+                    id: '1-1',
+                    name: 'r',
+                    url: RENDITION_URL,
+                    videoEncoding: '720p',
+                    audioEncoding: '1',
+                },
+                { id: '1-2', name: 'srt', url: srtDest, videoEncoding: '720p', audioEncoding: '1' },
+            ]);
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+
+            await service.start('1-2');
+
+            assert.deepEqual(
+                fleet.spawnsTo(srtDest)[0].args,
+                buildFfmpegArgs(RENDITION_URL, srtDest, 'copy', 'copy'),
+            );
+            service.shutdown();
+        });
+
+        test('the rendition itself takes the existing path: pull the input, encode, publish', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState({ srt: true }));
+
+            await service.start('1-1');
+
+            const args = fleet.spawnsTo(RENDITION_URL)[0].args;
+            assert.deepEqual(
+                args,
+                buildFfmpegArgs(
+                    'srt://127.0.0.1:10080?streamid=stream-key',
+                    RENDITION_URL,
+                    '1',
+                    '720p',
+                ),
+            );
+            assert.ok(args.includes('-readrate'), 'SRT origin to RTMP is paced');
+            assert.ok(args.includes('aresample=async=1:first_pts=0'));
+            service.shutdown();
+        });
+    });
+
+    describe('readiness', () => {
+        test('a shared output waits for its rendition and re-checks every second', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            await service.start('1-2');
+            assert.equal(fleet.spawned.length, 0, 'no rendition yet: nothing to pull');
+            t.mock.timers.tick(1000);
+            await flush();
+            assert.equal(fleet.spawned.length, 0);
+
+            // Rendition process is up but has not written anything: still not ready.
+            await service.start('1-1');
+            assert.equal(fleet.spawned.length, 1);
+            t.mock.timers.tick(1000);
+            await flush();
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 0);
+            assert.equal(service.getStats('1-1').ready, false);
+
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            assert.equal(service.getStats('1-1').ready, true);
+            t.mock.timers.tick(999);
+            await flush();
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 0, 'next re-check is 1 s after the last');
+            t.mock.timers.tick(1);
+            await flush();
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 1);
+            service.shutdown();
+        });
+
+        test('total_size=0 is not ready', async (t) => {
+            const fleet = makeFleet(t);
+            const service = fleet.createOutputService(makeFleetDb(), makeReadyInputState());
+            await service.start('1-1');
+
+            fleet.procFor(RENDITION_URL).stdout.write('total_size=0\n');
+            await flush();
+
+            assert.equal(service.getStats('1-1').ready, false);
+            service.shutdown();
+        });
+
+        test('a shared output does not start while the input is down, even with the rendition running', async (t) => {
+            const fleet = makeFleet(t);
+            let ready = true;
+            const inputState = { ...makeReadyInputState(), isReady: () => ready };
+            const service = fleet.createOutputService(makeFleetDb(), inputState);
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            ready = false;
+
+            await service.start('1-2');
+
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 0);
+            service.shutdown();
+        });
+
+        test('direct outputs still gate on the input, with the 5 s re-check', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb([{ id: '1-1', name: 'plain', url: YOUTUBE }]);
+            let ready = false;
+            const service = fleet.createOutputService(db, {
+                ...makeReadyInputState(),
+                isReady: () => ready,
+            });
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            await service.start('1-1');
+            ready = true;
+            t.mock.timers.tick(4999);
+            await flush();
+            assert.equal(fleet.spawned.length, 0);
+            t.mock.timers.tick(1);
+            await flush();
+            assert.equal(fleet.spawned.length, 1);
+            service.shutdown();
+        });
+    });
+
+    describe('rendition failure', () => {
+        async function runningFleet(t, options) {
+            const fleet = makeFleet(t, options);
+            const db = makeFleetDb([
+                {
+                    id: '1-1',
+                    name: 'Shared encode 720p · track 1',
+                    url: RENDITION_URL,
+                    videoEncoding: '720p',
+                    audioEncoding: '1',
+                },
+                {
+                    id: '1-2',
+                    name: 'YouTube',
+                    url: YOUTUBE,
+                    videoEncoding: '720p',
+                    audioEncoding: '1',
+                },
+                {
+                    id: '1-3',
+                    name: 'Twitch',
+                    url: TWITCH,
+                    videoEncoding: '720p',
+                    audioEncoding: '1',
+                },
+                { id: '1-4', name: 'Direct', url: 'rtmp://direct.example/live/k' },
+                {
+                    id: '1-5',
+                    name: 'Other recipe',
+                    url: 'rtmp://other.example/live/k',
+                    videoEncoding: 'copy',
+                    audioEncoding: '0',
+                },
+                {
+                    id: '1-6',
+                    name: 'Other rendition',
+                    url: 'rtmp://127.0.0.1:1935/internal/r1_copy_a0',
+                    videoEncoding: 'copy',
+                    audioEncoding: '0',
+                },
+            ]);
+            const diagnostics = makeDiagnosticsSpy();
+            const service = fleet.createOutputService(db, makeReadyInputState(), diagnostics);
+            await service.start('1-1');
+            await service.start('1-6');
+            markReady(fleet.procFor(RENDITION_URL));
+            markReady(fleet.procFor('rtmp://127.0.0.1:1935/internal/r1_copy_a0'));
+            await flush();
+            for (const id of ['1-2', '1-3', '1-4', '1-5']) await service.start(id);
+            assert.equal(service.getStats('1-2').status, 'running');
+            assert.equal(service.getStats('1-5').status, 'running');
+            return { fleet, db, diagnostics, service };
+        }
+
+        test('an unexpected exit restarts every running dependent, with one explanatory record each', async (t) => {
+            const { fleet, db, diagnostics, service } = await runningFleet(t);
+            const rendition = fleet.procFor(RENDITION_URL);
+
+            rendition.stderr.write('Connection reset by peer\n');
+            rendition.emit('exit', 1, null);
+            rendition.emit('close', 1, null);
+            await flush();
+            await flush();
+
+            for (const id of ['1-2', '1-3']) {
+                const proc = fleet.procFor(id === '1-2' ? YOUTUBE : TWITCH);
+                assert.deepEqual(proc.killSignals, ['SIGTERM'], id);
+                const records = crashRecords(db, id);
+                assert.equal(records.length, 1, `${id}: no second crash from its own kill`);
+                assert.match(
+                    records[0].message,
+                    /^Shared encode 720p · track 1 failed: exit=1\nConnection reset by peer/,
+                );
+                assert.equal(service.getStats(id).status, 'failed');
+                assert.equal(service.getStats(id).failures, 1);
+            }
+            // The rendition's own record is the usual one; unrelated outputs are untouched.
+            assert.equal(crashRecords(db, '1-1').length, 1);
+            assert.match(crashRecords(db, '1-1')[0].message, /^exit=1/);
+            for (const [id, dest] of [
+                ['1-4', 'rtmp://direct.example/live/k'],
+                ['1-5', 'rtmp://other.example/live/k'],
+            ]) {
+                assert.deepEqual(fleet.procFor(dest).killSignals, [], id);
+                assert.equal(service.getStats(id).status, 'running', id);
+            }
+            assert.deepEqual(
+                fleet.procFor('rtmp://127.0.0.1:1935/internal/r1_copy_a0').killSignals,
+                [],
+            );
+
+            const event = diagnostics.events.find(
+                (e) => e.event === 'rendition-dependents-restarted',
+            );
+            assert.deepEqual(event.outputIds.sort(), ['1-2', '1-3']);
+            assert.equal(event.renditionId, '1-1');
+            assert.match(event.reason, /exit=1/);
+            service.shutdown();
+        });
+
+        test('a dependent that was only waiting to start also gets the record', async (t) => {
+            const { fleet, db, service } = await runningFleet(t);
+            await service.stopAndWait('1-3');
+            db.outputs.get('1-3').desiredState = 'running'; // desired running, not running
+            db.errorRecords.length = 0;
+            const rendition = fleet.procFor(RENDITION_URL);
+
+            rendition.emit('exit', 1, null);
+            rendition.emit('close', 1, null);
+            await flush();
+
+            assert.equal(crashRecords(db, '1-3').length, 1);
+            assert.equal(
+                fleet.procFor(TWITCH).killSignals.length,
+                1,
+                'only the earlier stop signal',
+            );
+            service.shutdown();
+        });
+
+        test('a dependent whose desired state is stopped gets nothing', async (t) => {
+            const { fleet, db, service } = await runningFleet(t);
+            await service.stopAndWait('1-3');
+            db.outputs.get('1-3').desiredState = 'stopped';
+            db.errorRecords.length = 0;
+
+            const rendition = fleet.procFor(RENDITION_URL);
+            rendition.emit('exit', 1, null);
+            rendition.emit('close', 1, null);
+            await flush();
+
+            assert.equal(db.recordsFor('1-3').length, 0);
+            service.shutdown();
+        });
+
+        test('a deliberate stop of the rendition leaves its dependents alone', async (t) => {
+            const { fleet, db, service } = await runningFleet(t);
+            db.errorRecords.length = 0;
+
+            await service.stopAndWait('1-1');
+            await flush();
+
+            assert.deepEqual(fleet.procFor(YOUTUBE).killSignals, []);
+            assert.deepEqual(fleet.procFor(TWITCH).killSignals, []);
+            assert.equal(db.recordsFor('1-2').length, 0);
+            assert.equal(db.recordsFor('1-3').length, 0);
+            service.shutdown();
+        });
+
+        test('a watchdog-killed rendition explains the watchdog reason to its dependents', async (t) => {
+            const fleet = makeFleet(t, { progressStallMs: 20 });
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+            fleet.procFor(YOUTUBE).stdout.write('total_size=10\n');
+            // The rendition now stops making output progress; the dependent keeps going.
+            const keepAlive = setInterval(
+                () => fleet.procFor(YOUTUBE)?.stdout.write(`total_size=${Date.now()}\n`),
+                5,
+            );
+            t.after(() => clearInterval(keepAlive));
+
+            await sleep(120);
+
+            assert.deepEqual(fleet.procFor(RENDITION_URL).killSignals, ['SIGTERM']);
+            const records = crashRecords(db, '1-2');
+            assert.equal(records.length, 1);
+            assert.match(
+                records[0].message,
+                /^Shared encode 720p · track 1 failed: watchdog: output progress stalled/,
+            );
+            service.shutdown();
+        });
+    });
+
+    describe('watchdog and limits', () => {
+        test('the watchdog skips a shared output while its rendition is not ready', async (t) => {
+            const fleet = makeFleet(t, { progressStallMs: 20 });
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+            fleet.procFor(YOUTUBE).stdout.write('total_size=10\n');
+            // Rendition goes away deliberately: not ready from now on.
+            await service.stopAndWait('1-1');
+            db.outputs.get('1-1').desiredState = 'stopped';
+
+            await sleep(120);
+
+            assert.equal(service.getStats('1-1').ready, false);
+            assert.deepEqual(fleet.procFor(YOUTUBE).killSignals, [], 'not killed for stalling');
+            assert.equal(service.getStats('1-2').status, 'running');
+            service.shutdown();
+        });
+
+        test('control: the same stall with a ready rendition does kill the shared output', async (t) => {
+            const fleet = makeFleet(t, { progressStallMs: 20 });
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            const keepAlive = setInterval(
+                () => fleet.procFor(RENDITION_URL)?.stdout.write(`total_size=${Date.now()}\n`),
+                5,
+            );
+            t.after(() => clearInterval(keepAlive));
+            await flush();
+            await service.start('1-2');
+            fleet.procFor(YOUTUBE).stdout.write('total_size=10\n');
+
+            await sleep(120);
+
+            assert.deepEqual(fleet.procFor(YOUTUBE).killSignals, ['SIGTERM']);
+            service.shutdown();
+        });
+
+        test('the watchdog still skips a shared output while the input is down', async (t) => {
+            const fleet = makeFleet(t, { progressStallMs: 20 });
+            let ready = true;
+            const service = fleet.createOutputService(makeFleetDb(), {
+                ...makeReadyInputState(),
+                isReady: () => ready,
+            });
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            const keepAlive = setInterval(
+                () => fleet.procFor(RENDITION_URL)?.stdout.write(`total_size=${Date.now()}\n`),
+                5,
+            );
+            t.after(() => clearInterval(keepAlive));
+            await flush();
+            await service.start('1-2');
+            fleet.procFor(YOUTUBE).stdout.write('total_size=10\n');
+            ready = false;
+
+            await sleep(120);
+
+            assert.deepEqual(fleet.procFor(YOUTUBE).killSignals, []);
+            service.shutdown();
+        });
+
+        test('the memory limit of a shared output is the copy limit; the rendition keeps its preset limit', async (t) => {
+            const fleet = makeFleet(t, { memoryLimitMb: 200 });
+            const db = makeFleetDb();
+            const originalReadFileSync = fs.readFileSync;
+            t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
+                if (/^\/proc\/\d+\/status$/.test(String(filePath))) return 'VmRSS:  100000 kB\n';
+                return originalReadFileSync(filePath, ...rest);
+            });
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+
+            await sleep(60);
+
+            assert.equal(service.getStats('1-2').memoryLimitBytes, 200 * 1024 * 1024);
+            assert.ok(
+                service.getStats('1-1').memoryLimitBytes > 200 * 1024 * 1024,
+                'the 720p preset limit applies to the encode',
+            );
+            service.shutdown();
+        });
+    });
+
+    describe('restart', () => {
+        test('returns false for an output that is not running', async (t) => {
+            const fleet = makeFleet(t);
+            const service = fleet.createOutputService(makeFleetDb(), makeReadyInputState());
+
+            assert.equal(service.restart('1-2'), false);
+            assert.equal(service.restart('nope'), false);
+            service.shutdown();
+        });
+
+        test('restarting an ordinary output stops it with a "Restarted by user" record and starts it again', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb([{ id: '1-1', name: 'plain', url: YOUTUBE }]);
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            assert.equal(service.restart('1-1'), true);
+            await flush();
+
+            assert.deepEqual(fleet.spawnsTo(YOUTUBE)[0].proc.killSignals, ['SIGTERM']);
+            assert.equal(db.recordsFor('1-1', 'crash').length, 0);
+            const stopped = db.recordsFor('1-1', 'stopped');
+            assert.equal(stopped.length, 1);
+            assert.match(stopped[0].message, /^Restarted by user/);
+            assert.equal(service.getStats('1-1').failures, 0);
+
+            t.mock.timers.tick(0);
+            await flush();
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 2, 'respawned');
+            assert.equal(service.getStats('1-1').status, 'running');
+            service.shutdown();
+        });
+
+        test('restarting a rendition restarts its dependents first, none of it counted as a failure', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+            await service.start('1-3');
+            const order = [];
+            for (const [id, dest] of [
+                ['1-1', RENDITION_URL],
+                ['1-2', YOUTUBE],
+                ['1-3', TWITCH],
+            ]) {
+                const proc = fleet.procFor(dest);
+                const kill = proc.kill.bind(proc);
+                proc.kill = (signal) => {
+                    order.push(id);
+                    return kill(signal);
+                };
+            }
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            assert.equal(service.restart('1-1'), true);
+            await flush();
+            await flush();
+
+            assert.deepEqual(order.slice(0, 2).sort(), ['1-2', '1-3']);
+            assert.equal(order[2], '1-1', 'the encode goes last so dependents see a stop, not EOF');
+            for (const id of ['1-2', '1-3']) {
+                assert.equal(db.recordsFor(id, 'crash').length, 0, id);
+                const stopped = db.recordsFor(id, 'stopped');
+                assert.equal(stopped.length, 1, id);
+                assert.match(stopped[0].message, /^Shared encode restarted by user/);
+                assert.equal(service.getStats(id).failures, 0, id);
+            }
+            const own = db.recordsFor('1-1', 'stopped');
+            assert.equal(own.length, 1);
+            assert.match(own[0].message, /^Restarted by user/);
+            assert.equal(service.getStats('1-1').failures, 0);
+
+            // The rendition comes back first; dependents wait for it to be ready.
+            t.mock.timers.tick(0);
+            await flush();
+            assert.equal(fleet.spawnsTo(RENDITION_URL).length, 2);
+            t.mock.timers.tick(0);
+            t.mock.timers.tick(1000);
+            await flush();
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 1, 'still waiting for the new encode');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            t.mock.timers.tick(1000);
+            await flush();
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 2);
+            assert.equal(fleet.spawnsTo(TWITCH).length, 2);
+            service.shutdown();
+        });
+    });
+
+    describe('stats and diagnostics', () => {
+        test('getStats tells renditions from outputs and links shared outputs to their rendition', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+
+            assert.equal(service.getStats('1-1').role, 'rendition');
+            assert.equal(service.getStats('1-2').role, 'output');
+            assert.equal(service.getStats('1-2').renditionId, null);
+            assert.equal(service.getStats('1-2').ready, null);
+
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+
+            assert.equal(service.getStats('1-1').ready, true);
+            assert.equal(service.getStats('1-2').renditionId, '1-1');
+            await service.stopAndWait('1-2');
+            assert.equal(service.getStats('1-2').renditionId, null, 'only while it pulls one');
+            service.shutdown();
+        });
+
+        test('started, exited and restart events carry role and renditionId', async (t) => {
+            const fleet = makeFleet(t, { progressStallMs: 20 });
+            const db = makeFleetDb();
+            const diagnostics = makeDiagnosticsSpy();
+            const service = fleet.createOutputService(db, makeReadyInputState(), diagnostics);
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+            const keepAlive = setInterval(
+                () => fleet.procFor(RENDITION_URL)?.stdout.write(`total_size=${Date.now()}\n`),
+                5,
+            );
+            t.after(() => clearInterval(keepAlive));
+            fleet.procFor(YOUTUBE).stdout.write('total_size=10\n');
+
+            await sleep(120);
+
+            const started = diagnostics.events.filter((e) => e.event === 'ffmpeg-started');
+            assert.deepEqual(
+                started.map((e) => [e.outputId, e.role, e.renditionId]),
+                [
+                    ['1-1', 'rendition', undefined],
+                    ['1-2', 'output', '1-1'],
+                ],
+            );
+            const restart = diagnostics.events.find((e) => e.event === 'ffmpeg-restart');
+            assert.equal(restart.outputId, '1-2');
+            assert.equal(restart.role, 'output');
+            assert.equal(restart.renditionId, '1-1');
+            const exited = diagnostics.events.find(
+                (e) => e.event === 'ffmpeg-exited' && e.outputId === '1-2',
+            );
+            assert.equal(exited.role, 'output');
+            assert.equal(exited.renditionId, '1-1');
             service.shutdown();
         });
     });
