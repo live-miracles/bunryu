@@ -87,9 +87,6 @@ frame count, two audio tracks, MP2/AC-3, HEVC, timestamp wrap.
   - **An MP2 audio track makes the whole RTMP read fail**, video included.
   - It cleanly kept the first of two audio tracks and handled a timestamp wrap.
 
-**Revisit for:** a forwarding hub for copy-mode RTMP outputs (below), fed with
-RTMP produced by FFmpeg, never through its SRT conversion.
-
 ### Don't build our own media server
 
 **Decision:** no in-house RTMP/SRT server, and no adoption of new projects as the
@@ -168,10 +165,11 @@ else.
 custom video encoding. That's acceptable within the supported envelope
 ([Introduction](../1-getting-started/1-introduction.md#capacity-and-limits)).
 
-**Revisit when:** RAM at hundreds of copy outputs becomes the limit. A MediaMTX
-forwarding hub used about 10x less RAM but about 1.5x more CPU than FFmpeg for
-RTMP→RTMP copy outputs. It would be fed RTMP by FFmpeg, and transcode, SRT
-destinations and translation would stay on FFmpeg.
+**Not planned: a MediaMTX forwarding hub for copy outputs.** It used about 10x
+less RAM but about 1.5x more CPU than FFmpeg for RTMP→RTMP copy outputs. It
+would mean a second media server in the output path, while FFmpeg would still be
+needed for every transcode, SRT destination and translation mix. Outputs stay on
+FFmpeg.
 
 ### Each output re-encodes its own audio (shared renditions under consideration)
 
