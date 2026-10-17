@@ -19,8 +19,8 @@ RTMP input → RTMP pull), so there is no pull-method setting.
 | GET | `/api/ready` | Unauthenticated readiness check used by systemd before starting SRS |
 | POST | `/api/pipelines` | Create pipeline (auto-names and assigns stream key) |
 | GET | `/api/pipelines/:id` | Pipeline details including relay health and bonded-input activity |
-| POST | `/api/pipelines/:id` | Rename pipeline `{ name }`, optionally reassign key `{ name, streamKeyId }` |
-| DELETE | `/api/pipelines/:id` | Delete pipeline (stream key is freed, not deleted) |
+| POST | `/api/pipelines/:id` | Rename pipeline `{ name }`, optionally reassign key `{ name, streamKeyId }` — a key change returns 409 while any of your outputs is running; a shared encode still running is stopped first, so the next one pulls the new key |
+| DELETE | `/api/pipelines/:id` | Delete pipeline (stream key is freed, not deleted) — 409 while any of your outputs is running; its shared encodes are stopped and removed with it |
 | GET | `/api/pipelines/:id/logs` | Pipeline online/offline event log |
 | POST | `/api/pipelines/:id/preview/start` | Start an HLS preview `{ audioTrackCount? }` (1–50, default 1); returns `{ hlsUrl }`. Video is copied, audio is AAC, one rendition per track |
 | POST | `/api/pipelines/:id/preview/keepalive` | Refresh the preview TTL — a preview with no keepalive and no HLS fetch for 20s is stopped automatically; closing the tab also stops it immediately |

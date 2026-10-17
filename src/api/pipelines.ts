@@ -31,7 +31,7 @@ export function registerPipelineApi(
         });
     });
 
-    app.post('/api/pipelines/:id', (req, res) => {
+    app.post('/api/pipelines/:id', async (req, res) => {
         const id = parseInt(req.params.id);
         if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
         const existing = db.getPipeline(id);
@@ -44,11 +44,24 @@ export function registerPipelineApi(
         const keyChanged = streamKeyId !== undefined && streamKeyId !== existing.streamKeyId;
 
         if (keyChanged) {
-            const active = db.listOutputsForPipeline(id).some((o) => o.desiredState !== 'stopped');
+            const outputs = db.listOutputsForPipeline(id);
+            // Shared encodes idle-stop 15 s after the last output stops, so one may
+            // still be desired-running right after the user stopped everything; only
+            // the user's own outputs block the change.
+            const active = outputs.some(
+                (o) => !isRenditionOutput(o) && o.desiredState !== 'stopped',
+            );
             if (active) {
                 return res
                     .status(409)
                     .json({ error: 'Stop all outputs before changing the stream key' });
+            }
+            // A shared encode pulls the input by its key. Stop the ones still running
+            // (desired-stopped first, see the pipeline delete below) so the next one
+            // starts on the new key instead of holding the old pull.
+            for (const r of outputs.filter(isRenditionOutput)) {
+                if (r.desiredState === 'running') db.setOutputDesiredState(r.id, 'stopped');
+                await outputService.stopAndWait(r.id);
             }
             // The preview pulls a fixed stream key and has no retry loop, so a
             // key reassignment would leave it pinned to the old key. Stop it;

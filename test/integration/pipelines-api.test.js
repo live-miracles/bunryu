@@ -230,6 +230,65 @@ describe('Pipelines API integration', () => {
             assert.deepEqual(harness.previewService.stopped, []);
         });
 
+        test('a shared encode still winding down does not block a key change; it is set stopped and stopped first', async () => {
+            const harness = createHarness();
+            const p1 = harness.db.createPipeline();
+            const p2 = harness.db.createPipeline();
+            const user = harness.db.createOutput({ pipelineId: p1.id, name: 'U', url: 'rtmp://u' });
+            const r = harness.db.createOutput({
+                pipelineId: p1.id,
+                name: 'Shared encode 720p · track 0',
+                url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
+                videoEncoding: '720p',
+                audioEncoding: '0',
+            });
+            harness.db.setOutputDesiredState(r.id, 'running');
+            const desiredAtKill = {};
+            const realStopAndWait = harness.outputService.stopAndWait;
+            harness.outputService.stopAndWait = async (id) => {
+                desiredAtKill[id] = harness.db.getOutput(id)?.desiredState;
+                return realStopAndWait.call(harness.outputService, id);
+            };
+
+            const res = await harness.request('POST', `/api/pipelines/${p1.id}`, {
+                name: p1.name,
+                streamKeyId: p2.streamKeyId,
+            });
+
+            assert.equal(res.status, 200);
+            assert.equal(res.body.streamKeyId, p2.streamKeyId);
+            // It pulled the old key: stopped (not respawned by its close handler) so
+            // the next one starts on the new key. User outputs are not touched.
+            assert.equal(desiredAtKill[r.id], 'stopped');
+            assert.equal(user.id in desiredAtKill, false);
+            assert.deepEqual(harness.previewService.stopped, [p1.id]);
+        });
+
+        test('a rendition-only change of key still refuses while a user output runs, touching no encode', async () => {
+            const harness = createHarness();
+            const p1 = harness.db.createPipeline();
+            const p2 = harness.db.createPipeline();
+            const user = harness.db.createOutput({ pipelineId: p1.id, name: 'U', url: 'rtmp://u' });
+            harness.db.setOutputDesiredState(user.id, 'running');
+            const r = harness.db.createOutput({
+                pipelineId: p1.id,
+                name: 'Shared encode 720p · track 0',
+                url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
+                videoEncoding: '720p',
+                audioEncoding: '0',
+            });
+            harness.db.setOutputDesiredState(r.id, 'running');
+
+            const res = await harness.request('POST', `/api/pipelines/${p1.id}`, {
+                name: p1.name,
+                streamKeyId: p2.streamKeyId,
+            });
+
+            assert.equal(res.status, 409);
+            assert.deepEqual(harness.outputService.stoppedAndWaited, []);
+            assert.equal(harness.db.getOutput(r.id).desiredState, 'running');
+        });
+
         test('renaming with an unchanged streamKeyId succeeds even with a running output', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
