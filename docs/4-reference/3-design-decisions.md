@@ -1,0 +1,207 @@
+# Design decisions
+
+Why Bunryu is built the way it is, and why some obvious alternatives are not
+used. Each entry gives the decision, the reasons, the evidence behind them, and
+what would make it worth revisiting. Most of the evidence comes from tests run
+in October 2026 against SRS 6.0-r2, MediaMTX v1.21.2 and the pinned FFmpeg 7.1.
+
+## Current architecture in one paragraph
+
+SRS accepts RTMP and plain SRT publishes and authorizes them through its HTTP
+hooks. Bonded SRT goes through `srt-bonding-relay`, which merges the legs and
+forwards one SRT stream to SRS. Every output is its own FFmpeg process that
+pulls its input from SRS over loopback, in the input's own protocol, and pushes
+to one destination. The diagram is in the
+[Introduction](../1-getting-started/1-introduction.md#how-it-works).
+
+## Media server
+
+### Use SRS for ingest, from the official release
+
+**Decision:** SRS handles RTMP ingest, plain SRT ingest, the publish/play hooks,
+the stream API and the local fan-out to outputs. The installer pins the official
+release binary (currently v6.0-r2) by SHA-256.
+
+**Why:**
+- These are SRS's core features: widely deployed, and stable in production here.
+- v6.0-r2 bundles libsrt 1.5.6, which fixes CVE-2026-55868/55869.
+- A custom build was tried (a 6.0 branch with one patch, built by CI). It was
+  dropped once its only patch turned out to be in a feature Bunryu doesn't use
+  (`srt_to_rtmp`, below).
+
+**Revisit when:** Bunryu needs an SRS change before upstream releases it, for
+example per-client SRT stats (ossrs/srs#4769). The release pipeline for a
+patched build still exists (`bunryu/6.0` in `live-miracles/srs`).
+
+### Keep SRS's `srt_to_rtmp` off; FFmpeg converts SRT inputs
+
+**Decision:** SRT inputs stay native MPEG-TS inside SRS. Anything that needs RTMP
+from an SRT input gets it from FFmpeg, not from SRS's built-in bridge.
+
+**Why:** the bridge failed in several independent ways (tested on the official
+v6.0-r2):
+- **Video frames dropped.** A plain H.264 + AAC SRT stream came out at about
+  13 fps instead of 25, with regular gaps over 200 ms. The same stream pulled
+  over SRT, and the same source published over RTMP, both kept 25 fps.
+- **Multiple audio tracks are interleaved** into the single RTMP audio track,
+  producing garbage audio. They aren't reduced to one track.
+- **Non-AAC audio** (MP2, as many hardware encoders send) gives a silent RTMP
+  side, and SRS logs about 8 warnings a second for as long as the input is live.
+- **48 kHz AAC got wrong frame timestamps**, which broke the audio. A fix was
+  submitted upstream (ossrs/srs#4765, backport #4774) but isn't in a release.
+
+FFmpeg's MPEG-TS demuxer handled all of these cases correctly, including
+HEVC and a 33-bit timestamp wrap.
+
+**Revisit when:** a release fixes the issues above and passes the same tests:
+frame count, two audio tracks, MP2/AC-3, HEVC, timestamp wrap.
+
+### Don't use SRS's built-in forwarding for outputs
+
+**Decision:** outputs are FFmpeg processes, not SRS `forward` destinations.
+
+**Why:**
+- SRS 6.0 can't add or remove a forward destination on a live stream without
+  kicking the publisher, which cuts every other destination. A runtime API was
+  proposed upstream (ossrs/srs#4760) and declined.
+- A forward runs inside the SRS process, so a bug there affects every stream.
+  An FFmpeg output can only fail on its own.
+
+### Don't use MediaMTX for SRT ingest or SRT→RTMP conversion
+
+**Decision:** MediaMTX isn't in the ingest path.
+
+**Why:**
+- **Its SRT stack is gosrt,** which is much less used and maintained than
+  Haivision's libsrt (used by SRS, FFmpeg and the relay). On public ingest, SRT's
+  loss recovery is the part that matters most.
+- **Its SRT→RTMP conversion was tested behind the libsrt relay**, so MediaMTX
+  only ever saw a clean loopback connection. Results:
+  - **Readers are disconnected under realistic loss.** With 80 ms one-way delay
+    and 5–10% loss, MediaMTX closed the RTMP reader within seconds (`too many
+    reordered frames`). It rebuilds DTS from the H.264 bitstream for RTMP output,
+    and missing frames break that calculation. Every output of the pipeline would
+    reconnect at once. The FFmpeg path stayed connected through 10% loss.
+  - **HEVC video is dropped** for RTMP readers that don't announce enhanced-RTMP
+    codecs. FFmpeg 7.1 can't announce them when reading.
+  - **An MP2 audio track makes the whole RTMP read fail**, video included.
+  - It cleanly kept the first of two audio tracks and handled a timestamp wrap.
+
+**Revisit for:** a forwarding hub for copy-mode RTMP outputs (below), fed with
+RTMP produced by FFmpeg, never through its SRT conversion.
+
+### Don't build our own media server
+
+**Decision:** no in-house RTMP/SRT server, and no adoption of new projects as the
+core server until they have production history.
+
+**Why:** a small server is feasible in line count, but the cost is in encoder
+compatibility (RTMP handshake and command variants, chunking, extended
+timestamps, enhanced RTMP) and behavior on bad networks, which only show up in
+real use. A new server carries every input at once, so its bugs reach every
+stream.
+
+## SRT ingest
+
+### Plain SRT goes directly to SRS; the relay handles only bonded SRT
+
+**Decision:** encoders publish plain SRT to SRS's SRT port. Only bonded encoders
+use the relay's port.
+
+**Why not route all SRT through the relay:**
+- SRS's SRT is also libsrt, so a bad network is handled by the same retransmission
+  code either way.
+- Through the relay, SRS would only see `127.0.0.1`. That hides the encoder's IP
+  from the publish hook, the dashboard and rejected-publish tracking, and turns
+  SRS's per-client SRT stats into stats of the loopback hop.
+- It would add ~200 ms of latency and a second process every SRT input depends on;
+  a relay restart would drop all SRT inputs instead of only the bonded ones.
+
+### Outputs pull from SRS, not from the relay
+
+**Decision:** the relay stays a byte-level pipe (one input, one downstream SRT
+connection) and doesn't serve readers.
+
+**Why:**
+- Serving pulls would make the relay a media server. It would need fan-out with
+  isolation for slow readers, play authorization, a stream registry for health
+  checks, and the ability to kick publishers.
+- RTMP inputs would still be on SRS, so the control plane would track streams in
+  two places.
+
+**Cost of the SRS hop:** about 200 ms per SRT hop, and CPU in SRS. One 3 Mbps
+stream with 50 copy readers measured 17% CPU and 68 MB for SRT readers, against
+5% and 30 MB for RTMP readers.
+
+**Revisit when:** SRT fan-out in SRS becomes a measured bottleneck. The cheaper
+fix is then one FFmpeg remux per SRT input published back into SRS as RTMP, not a
+relay fan-out.
+
+### Keep `srt-bonding-relay` in its own repository
+
+**Decision:** the relay stays a separate repository with its own releases, and
+Bunryu pins a release binary like it pins SRS and FFmpeg.
+
+**Why:**
+- It's a different toolchain (C, libsrt, a Docker build) from Bunryu's Node.js
+  and TypeScript.
+- It's useful on its own as a bonding relay.
+- It changes much less often than Bunryu.
+
+The coupling is the relay's config file and its `/status` JSON. Treat `/status`
+as a contract: add fields, and bump the relay's major version for anything
+else.
+
+## Outputs and preview
+
+### One FFmpeg process per output
+
+**Decision:** each output runs in its own FFmpeg process with its own watchdogs.
+
+**Why:**
+- A stalled destination, a corrupt input frame or a memory blow-up affects only
+  that output, and it can be restarted on its own (see
+  [Reliability](../3-operations/4-reliability.md)).
+- FFmpeg also does every transcode, audio-track selection and translation mix.
+
+**Cost:** roughly 12–16 MB of RAM per copy-mode output, and a full core per
+custom video encoding. That's acceptable within the supported envelope
+([Introduction](../1-getting-started/1-introduction.md#capacity-and-limits)).
+
+**Revisit when:** RAM at hundreds of copy outputs becomes the limit. A MediaMTX
+forwarding hub used about 10x less RAM but about 1.5x more CPU than FFmpeg for
+RTMP→RTMP copy outputs. It would be fed RTMP by FFmpeg, and transcode, SRT
+destinations and translation would stay on FFmpeg.
+
+### Each output re-encodes its own audio (shared renditions under consideration)
+
+**Current behavior:**
+- An output that selects an audio track re-encodes that track to AAC on its own,
+  with timestamp smoothing for SRT inputs.
+- This is the recommended setting for SRT inputs forwarded to RTMP (see
+  [Outputs](../2-usage/2-outputs.md)).
+- N such outputs mean N identical encodes and N SRT pulls.
+- Custom video encodings are also per output.
+
+**Under consideration:**
+- One FFmpeg per pipeline and recipe (video encoding plus audio selection)
+  publishes the result into SRS as an internal RTMP stream.
+- Outputs with that recipe then pull it in copy mode.
+- That would encode once instead of N times, make the pulls cheaper, and remove
+  today's workaround of looping an SRT pipeline into a second pipeline.
+- **Tradeoff:** a failed rendition affects every output that shares it.
+
+### Preview is a 480p FFmpeg transcode
+
+**Decision:** the dashboard preview is a 480p HLS rendition made by FFmpeg, about
+half a core while a preview is open. Previews are stopped automatically when no
+viewer remains.
+
+**Why:**
+- It works the same for RTMP and SRT inputs and for any codec.
+- It supports switching between audio tracks.
+- It costs little bandwidth to the browser.
+- SRS's native HLS was used briefly but depended on `srt_to_rtmp` for SRT inputs.
+
+**Revisit for:** native HTTP-FLV from SRS for RTMP inputs. It costs no CPU, but
+sends the full source bitrate to each viewer through the app.

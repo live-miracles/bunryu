@@ -24,3 +24,4 @@
 
 - [REST API](4-reference/1-api.md)
 - [Development](4-reference/2-development.md)
+- [Design decisions](4-reference/3-design-decisions.md): why Bunryu uses SRS, FFmpeg per output and the bonding relay the way it does, and what was tried and rejected
