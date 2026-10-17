@@ -11,7 +11,8 @@ SRS accepts RTMP and plain SRT publishes and authorizes them through its HTTP
 hooks. Bonded SRT goes through `goryu`, which merges the legs and
 forwards one SRT stream to SRS. Every output is its own FFmpeg process that
 pulls its input from SRS over loopback, in the input's own protocol, and pushes
-to one destination. The diagram is in the
+to one destination (outputs that need the same encode pull one shared encode
+instead). The diagram is in the
 [Introduction](../1-getting-started/1-introduction.md#how-it-works).
 
 ## Media server
@@ -187,7 +188,10 @@ else.
 - FFmpeg also does every transcode, audio-track selection and translation mix.
 
 **Cost:** roughly 12–16 MB of RAM per copy-mode output, and a full core per
-custom video encoding. That's acceptable within the supported envelope
+custom video encoding (once per distinct encode on a pipeline, since outputs with
+the same encode share one: see
+[Outputs with the same encode share one FFmpeg](#outputs-with-the-same-encode-share-one-ffmpeg-shared-encodes)).
+That's acceptable within the supported envelope
 ([Introduction](../1-getting-started/1-introduction.md#capacity-and-limits)).
 
 **Not planned: a MediaMTX forwarding hub for copy outputs.** It used about 10x
@@ -196,23 +200,59 @@ would mean a second media server in the output path, while FFmpeg would still be
 needed for every transcode, SRT destination and translation mix. Outputs stay on
 FFmpeg.
 
-### Each output re-encodes its own audio (shared renditions under consideration)
+### Outputs with the same encode share one FFmpeg (shared encodes)
 
-**Current behavior:**
-- An output that selects an audio track re-encodes that track to AAC on its own,
-  with timestamp smoothing for SRT inputs.
-- This is the recommended setting for SRT inputs forwarded to RTMP (see
-  [Outputs](../2-usage/2-outputs.md)).
-- N such outputs mean N identical encodes and N SRT pulls.
-- Custom video encodings are also per output.
+**Decision:** outputs on the same pipeline that need the same encode, meaning the
+same video preset and the same single audio track, share one upstream FFmpeg, the
+*rendition* (the dashboard calls it a "shared encode"). It encodes once and
+publishes into SRS as an internal RTMP stream on loopback
+(`rtmp://127.0.0.1:<port>/internal/r<pipelineId>_<video>_a<audio>`); the sharing
+outputs pull that stream in copy mode.
 
-**Under consideration:**
-- One FFmpeg per pipeline and recipe (video encoding plus audio selection)
-  publishes the result into SRS as an internal RTMP stream.
-- Outputs with that recipe then pull it in copy mode.
-- That would encode once instead of N times, make the pulls cheaper, and remove
-  today's workaround of looping an SRT pipeline into a second pipeline.
-- **Tradeoff:** a failed rendition affects every output that shares it.
+**Why:**
+- Before, every output with a track selection or a video preset ran its own
+  encode: ten RTMP outputs on track 1 of an SRT input meant ten SRT pulls and ten
+  identical AAC encodes, and ten 720p outputs meant ten x264 encodes (about a
+  core each). Operators worked around it by looping the SRT pipeline into a second
+  pipeline.
+- RTMP readers are cheap for SRS: 50 RTMP readers measured 5% CPU against 17% for
+  50 SRT readers (SRS 6.0-r2).
+
+**How it's built:**
+- **A rendition is an output row** of the same pipeline, recognised by its URL
+  (`rtmp://127.0.0.1:<port>/internal/r<id>_<video>_a<audio>`). It reuses the output
+  service's supervision, watchdogs, retry back-off, Error History, stats and
+  health unchanged. A reconciler (one tick per second) creates, removes, starts and
+  idle-stops the rows.
+- **No schema change and no config option,** so the production database is not
+  wiped. A hidden pipeline or a new table would have needed new supervision,
+  health and history paths for the same behaviour.
+- **Which outputs share:** not plain copy, not multi-track (`0,1`, since RTMP/FLV
+  carries one audio track) and not translation (owned by the mixer). One output with
+  a recipe still goes through a rendition: one code path, at the cost of one extra
+  copy FFmpeg (about 12–16 MB, a few percent CPU).
+- **The internal app is reserved:** users cannot create, edit, start, stop or
+  delete renditions or point an output at the app; SRS's publish hook accepts it
+  only over RTMP from loopback for a running rendition row. Renditions do not count
+  toward the 500-output cap.
+- **Readiness is local** (process running and data written), not the 5 s health
+  poll. When a rendition exits on its own its readers are restarted and wait for it;
+  each gets an Error History record naming the cause. After 15 s with no running
+  reader it stops, so a quick stop/start does not restart the shared encode.
+
+**Tradeoffs:**
+- A failed rendition affects every output that shares it. The blast radius is one
+  recipe on one pipeline.
+- Starting a shared output takes a few seconds longer (the encode must be writing
+  first).
+- Output ids have gaps, since a rendition takes a number in the pipeline's sequence.
+
+**Not done:** sharing across pipelines; shared multi-track encodes (they would need
+an SRT/MPEG-TS internal stream); GOP or bitrate tuning (a rendition uses the same
+encoder settings as before and joiners start at SRS's cached GOP).
+
+**Revisit when:** a shared encode's blast radius becomes a problem in practice
+(then split by destination group), or multi-track outputs need sharing.
 
 ### Preview copies the video; only audio is encoded
 

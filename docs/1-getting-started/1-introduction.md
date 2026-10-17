@@ -22,12 +22,13 @@ OBS / ffmpeg  ──RTMP────────►  SRS (21935)  ──FFmpeg�
 | SRS | Ingest broker — accepts RTMP and SRT streams |
 | goryu | Standalone bonded SRT relay (GitHub release in prod, sibling repo in dev) |
 | Node.js app | REST API + dashboard on port 8080 |
-| FFmpeg | One process per output, spawned and managed by the app |
+| FFmpeg | One process per output, plus one per [shared encode](../2-usage/2-outputs.md#shared-encodes), spawned and managed by the app |
 | SQLite | Persistent state for pipelines, outputs, stream keys, settings |
 
 Each output is its own FFmpeg process that pulls the input from SRS over
 loopback and pushes it to one destination, so outputs fail and recover
-independently. See [Reliability](../3-operations/4-reliability.md) for the
+independently. Outputs of a pipeline that need the same encode instead copy from
+one shared encode. See [Reliability](../3-operations/4-reliability.md) for the
 watchdogs that supervise them.
 
 ## Capacity and limits
@@ -39,20 +40,23 @@ not a target to exceed :)
 | Limit | Supported ceiling |
 |-------|-------------------|
 | Inputs (pipelines) | up to **50** |
-| Outputs (forwards) | up to **500** total — enforced: creating a 501st returns `409` |
-| Outputs using custom (transcoding) encoding | only **a few** at a time — see below |
+| Outputs (forwards) | up to **500** total — enforced: creating a 501st returns `409` (shared encodes are not counted) |
+| Distinct custom (transcoding) encodes | only **a few** at a time — see below |
 | Parallel dashboard clients | up to **~10** |
 
 Past these figures, expect host CPU/RAM/network and the number of concurrent
-FFmpeg processes (one per output) to become the limiting factors well before the
+FFmpeg processes (one per output, plus one per shared encode) to become the limiting factors well before the
 dashboard or API does.
 
 **Keep almost all outputs in `copy` mode.** A `copy` output is a passthrough — it
 remuxes the input and forwards it with negligible CPU cost, so hundreds can run on
 modest hardware. A custom encoding (`720p`, `1080p`, `vertical_rotate`, …) makes
 FFmpeg transcode the video, which is CPU-intensive: each such output consumes
-roughly a full core's worth of work. **Only a handful of outputs should use custom
-encoding at any one time**; everything else should be `copy`. Putting many outputs
+roughly a full core's worth of work. Outputs on the same pipeline with the same
+encode (the same video encoding and the same single audio track) share **one**
+[shared encode](../2-usage/2-outputs.md#shared-encodes), so CPU is counted once per
+distinct encode per pipeline, not once per output. **Only a handful of distinct
+custom encodes should run at any one time**; everything else should be `copy`. Putting many outputs
 into custom-encoding mode will saturate the CPU long before the 500-output ceiling
 and starve the `copy` outputs and the dashboard alike.
 

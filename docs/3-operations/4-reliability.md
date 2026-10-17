@@ -15,6 +15,7 @@ The app runs these recovery loops:
 | Output progress watchdog | Every running FFmpeg output process | After warmup, if the input is ready but FFmpeg `total_size` / `out_time_ms` stop advancing for the configured stall window | Protocol-agnostic backstop; covers SRT outputs and local RTMP relays |
 | Remote RTMP socket watchdog | Running outputs with a remote RTMP/RTMPS destination | After socket warmup and grace, if the destination socket is missing or remains in a closing state such as `CLOSE-WAIT` | Uses one `ss -H -tanp` snapshot per watchdog interval; a local RTMP/RTMPS destination is ignored because local input/output sockets are ambiguous |
 | Output memory watchdog | Every running FFmpeg output process, including translation mixers (checked every 5 s; a mixer over its limit is restarted with a `translation-mixer-restart` event, reason `memory limit exceeded`) | After warmup, if process RSS crosses `memory_limit_mb` (or its per-encoding override) | Reads `/proc/<pid>/status`; unconditional — a leaking process can still show advancing `total_size`/healthy sockets, so this doesn't wait on the other two. Once RSS crosses 70% of the limit the output surfaces a yellow "High memory usage" warning in the dashboard, before the watchdog actually restarts it at 100%. The limit is doubled for outputs on a 4K (≥3840px on either dimension) input — the 2x multiplier is a placeholder, not a measured baseline; see [#11](https://github.com/live-miracles/bunryu/issues/11) |
+| Shared encode reconciler | One row per distinct shared recipe (video encoding + single audio selection) in each pipeline | Every second: creates missing rows, removes rows no output uses, starts a shared encode with its first running output, stops it 15 s after the last one | See [Shared encodes](#shared-encodes) below. Start is only requested on the stopped-to-running edge, so it never resets the output's retry back-off; a failing start is retried at most every 30 s |
 | Translator audio meter watchdog | Running translation-mixer outputs | After the same startup warmup grace as the output progress watchdog, if the translator audio meter has gone quiet for `translator_meter_stale_ms` (including a translator that never delivered a single sample) | Watches independently of the SRS live-state poll, so a translator that connects but sends a dead/silent track is still caught. Valid translator silence is not treated as a disconnect — FFmpeg continues emitting silent meter samples in that case — so this only fires when the meter itself stops updating. Restarts the mixer so it attaches to the current translator session. |
 
 All output watchdogs above use the same restart path: they write a detailed
@@ -30,6 +31,56 @@ succeeds:
 | Input check | Scope | Cadence | Notes |
 |-------------|-------|---------|-------|
 | Media validation | Connected RTMP/SRT inputs without a successful probe yet for this publisher | Immediate probe (staggered across pipelines), then retried every `FFPROBE_FAILED_REFRESH_MS` (30s) while it keeps failing | Stops re-probing once a probe succeeds for the current publisher; a new probe cycle starts on the next publisher change. Every failed probe is written to diagnostics as `media-probe-failed` (reason `timeout`/`exit`/`parse`/`unusable`, elapsed time, exit status, ffprobe stderr tail) and the first failure and the later recovery per publisher are added to the pipeline log (`probe_failed` / `probe_recovered`). Input liveness and output recovery do not wait for a valid ffprobe result — ffprobe fills in media/track details when available. |
+
+## Shared encodes
+
+Outputs on one pipeline that need the same encode share one FFmpeg, a *shared
+encode* (see [Outputs](../2-usage/2-outputs.md#shared-encodes)). It is an ordinary
+output row, so it is supervised exactly like one: the same retry back-off
+(1, 2, 4, 8, then 16 s, without limit), output progress, memory and socket
+watchdogs (with the memory limit of its video encoding), Error History and
+diagnostics. The outputs that read it are ordinary outputs that copy from it.
+
+- **Blast radius: one recipe on one pipeline.** A failing shared encode restarts the
+  outputs that read it, and nothing else: not other recipes, other pipelines,
+  outputs reading the input directly, or the input.
+- **Readiness is local.** A shared encode is ready when its FFmpeg is running and
+  has written data (`total_size` above 0), which also means SRS accepted its
+  publish. Outputs that read it wait for that, re-checking every second without
+  counting a failure or spawning anything, and also wait while the input is down,
+  like direct outputs. The first outputs therefore start a few seconds after the
+  encode does.
+- **When it exits on its own** (crash, a watchdog restart, a refused publish), each
+  output that reads it that is running is stopped and rescheduled through the normal
+  retry path and waits for the encode; each such output, running or already
+  waiting, gets one Error History record "Shared encode … failed: …" with the exit
+  status or the watchdog reason and the stderr tail, and no second crash record for
+  its own stop. The diagnostics event `rendition-dependents-restarted` lists them.
+  A deliberate stop does not do this: an idle stop happens only when no reader is
+  running, and a restart by the user restarts the readers on purpose (below).
+- **While the input is down** the encode and its outputs are left running, as for
+  direct outputs, and their watchdogs do not act: an output's watchdog also pauses
+  while its shared encode is not ready, because a missing feed is then not that
+  output's fault.
+- **Idle stop with a 15 s grace.** The encode runs while at least one output that
+  uses it is desired running and stops 15 s after the last one stops. The timer is
+  in memory: after an app restart an encode with no running output stops 15 s later.
+- **Restart from the dashboard** (or `POST …/outputs/:outId/restart`) stops the
+  outputs that read the encode first, then the encode, all recorded as deliberate
+  stops ("Shared encode restarted by user" / "Restarted by user", not failures), and
+  starts them again in the same order. The same action refuses a second restart of
+  one output within 5 s.
+- **Observability.** Diagnostics events: `rendition-created`, `rendition-deleted`,
+  `rendition-idle-stop`, `rendition-start-error`, `rendition-reconcile-error`
+  (repeats throttled to one per 30 s per message) and
+  `rendition-dependents-restarted`. `ffmpeg-started`, `ffmpeg-exited` and
+  `ffmpeg-restart` carry `role` (`rendition` or `output`) and, for an output that
+  reads one, `renditionId`; the once-a-minute `health-snapshot` has `role`,
+  `renditionId` and `ready` per output.
+- **Recovery after a restart.** The rows live in the database, so a shared encode and
+  its Error History survive an app restart for as long as its recipe is in use. An
+  encode left behind by a crashed app is killed at startup with the other orphaned
+  FFmpeg processes.
 
 ## Input timestamp fault detection
 

@@ -78,7 +78,9 @@ into the scratchpad - never into the repo (it holds keys and IPs).
 `ffmpeg-started`, `ffmpeg-exited` (includes the stderr tail), `ffmpeg-restart`
 (watchdog action), `ffmpeg-retry-scheduled`, `ffmpeg-timestamp-warning` /
 `-summary` / `-recovered` (one burst per output), `ffmpeg-warning-started` /
-`-ended` (memory, socket, media-clock episodes), `input-transition`,
+`-ended` (memory, socket, media-clock episodes), `rendition-*` (shared encodes:
+created, deleted, idle-stop, start-error, reconcile-error, dependents-restarted;
+`ffmpeg-*` events carry `role` and `renditionId`), `input-transition`,
 `input-publisher-transition`, `srs-transition`, `relay-transition`,
 `relay-input-transition`, `bonded-leg-transition`, `media-probe-failed` /
 `-recovered`, `host-memory-low` / `-recovered`, `translation-mixer-*`, and a

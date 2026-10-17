@@ -30,12 +30,14 @@ not targets to exceed:
 | Resource | Intended maximum |
 |---|---:|
 | Input pipelines | 50 |
-| Output forwards | 500 total (enforced in the database layer) |
-| Concurrent custom/transcoding outputs | A few at a time |
+| Output forwards | 500 total (enforced in the database layer; shared encodes are not counted) |
+| Distinct concurrent custom/transcoding encodes | A few at a time |
 | Concurrent dashboard clients | Approximately 10 |
 
 Most outputs should use `copy` mode. Copy-mode outputs are comparatively cheap,
-while custom video encoding can consume roughly a full CPU core per output.
+while custom video encoding can consume roughly a full CPU core per encode
+(outputs of one pipeline with the same video encoding and single audio track
+share one encode).
 Host CPU, memory, network capacity, and the number of FFmpeg processes are
 expected to become limiting factors before the API or dashboard at the upper
 end of the supported envelope.
@@ -157,8 +159,14 @@ only for a new module.
   service wiring, graceful shutdown.
 - `src/services/outputs.ts` - one FFmpeg process per output: start/stop/retry,
   stall/socket/memory watchdogs, timestamp-warning bursts and warning episodes,
-  output Error History writes. `outputSockets.ts` parses `ss` for destination
-  socket health.
+  output Error History writes; shared-encode readiness, dependents' restart on a
+  rendition failure and `restart()`. `outputSockets.ts` parses `ss` for
+  destination socket health.
+- `src/services/renditions.ts` - the shared-encode reconciler (1 s tick): creates
+  and removes the rendition output rows, starts them with their first running
+  output and idle-stops them after 15 s. `src/utils/renditions.ts` has the recipe
+  rules (`sharedRecipe`), naming and URL recognition; the dashboard twins are in
+  `public/ts/core/renditions.ts`.
 - `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay
   state, input live/media state (schedules ffprobe via `mediaProbe.ts`),
   alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
@@ -174,6 +182,8 @@ only for a new module.
 - `src/db/` - SQLite schema and access (output Error History lives in
   `outputs.last_error` as JSON).
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
+  `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
+  `renditions`; `features/shared-encodes.ts` renders the Shared encodes card.
 - `test/*.test.js` unit tests and `test/integration/` API tests (`npm test`).
 - `Dockerfile`, `compose.yaml`, `docker/entrypoint.sh` - single-container image
   for evaluation; the entrypoint supervises the app, SRS and the relay with the

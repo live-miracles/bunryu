@@ -40,6 +40,11 @@ Hardening that is on by default:
   startup and stopped, with the reason shown in the dashboard. Host probes never
   probe loopback. DNS that changes between the check and FFmpeg's own lookup
   cannot be ruled out.
+- **The `internal` RTMP app is reserved for shared encodes.** Outputs cannot
+  target it (any host spelling that resolves to this machine, with a path under
+  `/internal/`), and SRS's publish hook accepts that app only over RTMP from
+  loopback and only for a running shared encode. A pipeline key published there,
+  or any other name, is refused like an unknown key.
 - **HLS previews** require the session cookie, and a preview nobody is fetching or
   keeping alive for 20s is stopped (closing the tab stops it at once). A dashboard
   tab left in the background for several minutes loses its preview and shows it

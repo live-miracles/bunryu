@@ -19,7 +19,7 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](http
 
 - [Ingest](docs/2-usage/1-publishing.md) over RTMP, SRT and bonded SRT, with stream-key authorization and passphrase-protected SRT.
 - [Forward](docs/2-usage/2-outputs.md) each input to many RTMP, RTMPS or SRT destinations: up to 50 inputs and 500 outputs per server. Copy-mode (passthrough) outputs cost almost no CPU.
-- [Transcode](docs/2-usage/2-outputs.md#video-encoding) a few outputs to 720p, 1080p or a rotated vertical feed for Shorts/Reels, and [select audio tracks](docs/2-usage/2-outputs.md#audio) per output, including multi-track SRT outputs.
+- [Transcode](docs/2-usage/2-outputs.md#video-encoding) a few outputs to 720p, 1080p or a rotated vertical feed for Shorts/Reels, and [select audio tracks](docs/2-usage/2-outputs.md#audio) per output, including multi-track SRT outputs. Outputs that need the same encode [share one FFmpeg](docs/2-usage/2-outputs.md#shared-encodes), so ten 720p outputs cost one encode, not ten.
 - [Mix translation audio](docs/2-usage/3-translation.md) from an interpreter's pipeline over the source, with speech detection, ducking, delay and restore timing. If the translator drops, the output continues with source audio.
 - [Recover automatically](docs/3-operations/4-reliability.md): stall, socket and memory watchdogs with bounded restarts. One failing destination never affects the others.
 - Keep [post-incident evidence](docs/3-operations/4-reliability.md#input-timestamp-fault-detection): per-output Error History with FFmpeg stderr tails, grouped timestamp warnings, and [rotated structured diagnostics](docs/3-operations/3-configuration.md).
