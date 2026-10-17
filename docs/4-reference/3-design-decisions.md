@@ -144,6 +144,9 @@ Bunryu pins a release binary like it pins SRS and FFmpeg.
   and TypeScript.
 - It's useful on its own as a bonding relay.
 - It changes much less often than Bunryu.
+- Each release bundles its own libsrt (v3.0.6 has 1.5.6, which fixes
+  CVE-2026-55868/55869), so a libsrt security fix needs a relay release and a
+  pin bump here.
 
 The coupling is the relay's config file and its `/status` JSON. Treat `/status`
 as a contract: add fields, and bump the relay's major version for anything
