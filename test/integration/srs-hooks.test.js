@@ -73,9 +73,9 @@ function dispatch(app, method, route, body) {
     });
 }
 
-function createHarness(assignedKeys, unassignedKeys = []) {
+function createHarness(assignedKeys, unassignedKeys = [], outputs = []) {
     const app = express();
-    const calls = { listStreamKeys: 0, listPipelines: 0 };
+    const calls = { listStreamKeys: 0, listPipelines: 0, listOutputs: 0 };
     let configRev = 1;
     const db = {
         getConfigRev: () => configRev,
@@ -86,6 +86,10 @@ function createHarness(assignedKeys, unassignedKeys = []) {
                 slot: index + 1,
                 key,
             }));
+        },
+        listOutputs: () => {
+            calls.listOutputs++;
+            return outputs;
         },
         listPipelines: () => {
             calls.listPipelines++;
@@ -448,6 +452,118 @@ describe('SRS publish hook integration', () => {
         await new Promise((resolve) => setImmediate(resolve));
 
         assert.equal(fetchCalls, 2);
+    });
+});
+
+describe('SRS publish hook: internal app (shared encodes)', () => {
+    const rendition = (overrides = {}) => ({
+        id: '1-2',
+        pipelineId: 1,
+        desiredState: 'running',
+        url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
+        videoEncoding: '720p',
+        audioEncoding: '0',
+        ...overrides,
+    });
+    const publish = (harness, overrides = {}) =>
+        harness.publish({
+            app: 'internal',
+            stream: 'r1_720p_a0',
+            ip: '127.0.0.1',
+            tcUrl: 'rtmp://127.0.0.1:21935/internal',
+            ...overrides,
+        });
+
+    test('accepts a loopback publish for a running rendition', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        const res = await publish(harness);
+
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body, { code: 0 });
+    });
+
+    test('accepts IPv6 and mapped-IPv4 loopback', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        for (const ip of ['::1', '::ffff:127.0.0.1', '127.0.0.5']) {
+            const res = await publish(harness, { ip });
+            assert.equal(res.status, 200, ip);
+        }
+    });
+
+    test('rejects a publish from a non-loopback address without touching the DB', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        const res = await publish(harness, { ip: '203.0.113.9' });
+
+        assert.equal(res.status, 403);
+        assert.equal(harness.calls.listOutputs, 0);
+    });
+
+    test('rejects an unknown stream name', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        const res = await publish(harness, { stream: 'r1_1080p_a0' });
+
+        assert.equal(res.status, 403);
+        assert.deepEqual(res.body, { code: 403 });
+    });
+
+    test('rejects a rendition whose desired state is stopped', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition({ desiredState: 'stopped' })]);
+
+        const res = await publish(harness);
+
+        assert.equal(res.status, 403);
+    });
+
+    test('rejects a stream that is not a rendition row (a user output with the same URL tail)', async () => {
+        const harness = createHarness(
+            ['key01_good'],
+            [],
+            [rendition({ url: 'rtmp://example.com/internal/r1_720p_a0' })],
+        );
+
+        const res = await publish(harness);
+
+        assert.equal(res.status, 403);
+    });
+
+    test('rejects a pipeline key published under the internal app', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        const res = await publish(harness, { stream: 'key01_good' });
+
+        assert.equal(res.status, 403);
+    });
+
+    test('rejects an SRT publish into the internal app even from loopback', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        const res = await publish(harness, { tcUrl: 'srt://127.0.0.1:10080' });
+
+        assert.equal(res.status, 403);
+    });
+
+    test('a rejected internal publish is recorded and listed', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        await publish(harness, { stream: 'bogus', ip: '203.0.113.9' });
+        const list = await harness.rejected();
+
+        assert.equal(list.body.rejected.length + list.body.omitted > 0, true);
+    });
+
+    test('the live app behaves as before when renditions exist', async () => {
+        const harness = createHarness(['key01_good'], [], [rendition()]);
+
+        const ok = await harness.publish({ app: 'live', stream: 'key01_good' });
+        const bad = await harness.publish({ app: 'live', stream: 'r1_720p_a0' });
+
+        assert.equal(ok.status, 200);
+        assert.equal(bad.status, 403);
+        assert.equal(harness.calls.listOutputs, 0);
     });
 });
 

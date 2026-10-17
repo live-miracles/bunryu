@@ -144,4 +144,53 @@ describe('enforceDestinationPolicy', () => {
             ['output-destination-blocked', 'output-destination-blocked'],
         );
     });
+
+    test('keeps shared-encode (rendition) outputs: own RTMP port on loopback passes at boot', async () => {
+        const outputs = [
+            { id: 'r', name: 'Shared encode', url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0' },
+        ];
+        const stopped = [];
+        const db = {
+            listOutputs: () => outputs,
+            setOutputDesiredState: () => assert.fail('must not touch a rendition'),
+            setOutputLastError: () => assert.fail('must not touch a rendition'),
+        };
+
+        const count = await enforceDestinationPolicy(db, { stop: (id) => stopped.push(id) });
+
+        assert.equal(count, 0);
+        assert.deepEqual(stopped, []);
+    });
+});
+
+describe('isInternalAppDestination', () => {
+    const is = (url) => destination.isInternalAppDestination(url);
+
+    test('true for loopback hosts in any spelling with a path under /internal/', async () => {
+        for (const url of [
+            'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
+            'rtmp://localhost:21935/internal/x',
+            'rtmp://127.1:21935/internal/x',
+            'rtmp://2130706433:21935/internal/x',
+            'rtmp://[::1]:21935/internal/x',
+            'rtmp://u:p@127.0.0.1/internal/x',
+            'rtmps://127.0.0.1/internal/x',
+        ]) {
+            assert.equal(await is(url), true, url);
+        }
+    });
+
+    test('false for other apps, other hosts, and non-RTMP URLs', async () => {
+        for (const url of [
+            'rtmp://127.0.0.1:21935/live/k',
+            'rtmp://127.0.0.1:21935/internalx/k',
+            'rtmp://127.0.0.1:21935/internal',
+            'rtmp://127.0.0.1:21935/?x=/internal/y',
+            'rtmp://192.168.1.10:1935/internal/x',
+            'rtmp://8.8.8.8/internal/x',
+            'srt://127.0.0.1:10080?streamid=#!::r=internal/x,m=publish',
+        ]) {
+            assert.equal(await is(url), false, url);
+        }
+    });
 });

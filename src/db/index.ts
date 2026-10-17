@@ -2,6 +2,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import crypto from 'crypto';
 import { setupDatabaseSchema } from './schema.js';
 import { readAppConfig } from '../utils/appConfig.js';
+import { isRenditionUrl } from '../utils/renditions.js';
 import type {
     Pipeline,
     PipelineGroup,
@@ -327,9 +328,20 @@ export function createDb(dbPath?: string): Db {
         return id;
     }
 
-    function assertOutputCapacity(adding: number): void {
-        const { n } = sqlite.prepare('SELECT COUNT(*) AS n FROM outputs').get() as { n: number };
-        if (n + adding > MAX_OUTPUTS) throw new OutputLimitError();
+    // The cap is user-facing, so shared-encode (rendition) rows are left out of the
+    // count and never refused: they are bounded by the number of distinct recipes
+    // per pipeline, and the system creates them on the user's behalf. They are
+    // recognised by their loopback internal-app URL (see isRenditionUrl); user
+    // outputs cannot be created with such a URL (api/outputs.ts).
+    function assertOutputCapacity(adding: { url: string }[]): void {
+        const addingUser = adding.filter((o) => !isRenditionUrl(o.url)).length;
+        if (addingUser === 0) return;
+        const { n } = sqlite
+            .prepare(
+                "SELECT COUNT(*) AS n FROM outputs WHERE url NOT LIKE 'rtmp://127.0.0.1:%/internal/r%'",
+            )
+            .get() as { n: number };
+        if (n + addingUser > MAX_OUTPUTS) throw new OutputLimitError();
     }
 
     // Insert one output row without bumping the config revision — callers bump
@@ -536,7 +548,7 @@ export function createDb(dbPath?: string): Db {
         },
 
         createOutput(params): Output {
-            assertOutputCapacity(1);
+            assertOutputCapacity([params]);
             const id = insertOutput(params);
             bumpConfigRev();
             return getOutputById(id)!;
@@ -548,7 +560,7 @@ export function createDb(dbPath?: string): Db {
         createOutputs(paramsList): Output[] {
             const ids: string[] = [];
             sqlite.transaction(() => {
-                assertOutputCapacity(paramsList.length);
+                assertOutputCapacity(paramsList);
                 for (const params of paramsList) {
                     ids.push(insertOutput(params));
                 }

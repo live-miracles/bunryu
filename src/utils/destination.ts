@@ -1,6 +1,7 @@
 import dns from 'dns';
 import net from 'net';
 import { readSrsConfigValues } from './srsConfig.js';
+import { RENDITION_APP } from './renditions.js';
 
 // The server connects to whatever host an operator types into an output URL or a
 // host probe, so a stolen session (or a typo) could aim it at things only the
@@ -87,6 +88,19 @@ export async function checkOutputDestination(url: string): Promise<string | null
         }
     }
     return null;
+}
+
+// True when an RTMP(S) destination points at this host's loopback and into the
+// reserved "internal" app, where shared encodes (renditions) live. Judged by what
+// the host resolves to, like checkOutputDestination, so "localhost", "127.1" or a
+// numeric spelling cannot be used to publish into (or take over) a shared encode's
+// stream. Deliberately separate from checkOutputDestination: that one also runs
+// over existing rows at boot and must keep passing the renditions themselves.
+export async function isInternalAppDestination(url: string): Promise<boolean> {
+    const m = /^rtmps?:\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::\d+)?(\/[^?#]*)?/i.exec(url);
+    if (!m || !(m[2] ?? '').startsWith(`/${RENDITION_APP}/`)) return false;
+    const addresses = await resolveAddresses(m[1]);
+    return addresses.some((address) => classifyAddress(address) === 'loopback');
 }
 
 // For TCP reachability probes: nothing local, nothing link-local.

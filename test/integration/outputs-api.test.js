@@ -407,6 +407,55 @@ describe('Outputs API integration', () => {
             assert.equal(res.status, 400);
         });
 
+        test('rendition rows are not counted, and are accepted even at 500 user outputs', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            fill(harness.db, p.id, 500);
+
+            harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'Shared encode 720p · track 0',
+                url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
+                videoEncoding: '720p',
+                audioEncoding: '0',
+            });
+            harness.db.createOutputs([
+                {
+                    pipelineId: p.id,
+                    name: 'Shared encode 1080p · track 0',
+                    url: 'rtmp://127.0.0.1:21935/internal/r1_1080p_a0',
+                    videoEncoding: '1080p',
+                    audioEncoding: '0',
+                },
+            ]);
+            assert.equal(harness.db.listOutputs().length, 502);
+
+            // The 501st *user* output is still refused, renditions or not.
+            const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                name: 'one too many',
+                url: 'rtmp://a.rtmp.youtube.com/live2/key',
+            });
+            assert.equal(res.status, 409);
+        });
+
+        test('a user output whose URL merely looks like an internal path still counts', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            fill(harness.db, p.id, 499);
+            harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'remote',
+                url: 'rtmp://example.com/internal/r1_720p_a0',
+            });
+
+            const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                name: 'one too many',
+                url: 'rtmp://a.rtmp.youtube.com/live2/key',
+            });
+
+            assert.equal(res.status, 409);
+        });
+
         test('exactly 500 outputs is allowed, and deleting one frees a slot', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
@@ -420,6 +469,149 @@ describe('Outputs API integration', () => {
             });
 
             assert.equal(res.status, 201);
+        });
+    });
+
+    describe('shared encodes (renditions)', () => {
+        const RENDITION_URL = 'rtmp://127.0.0.1:21935/internal/r1_720p_a0';
+        const makeRendition = (harness, p, url = RENDITION_URL) =>
+            harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'Shared encode 720p · track 0',
+                url,
+                videoEncoding: '720p',
+                audioEncoding: '0',
+            });
+
+        test('user outputs cannot target the internal app, whatever the host spelling', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            for (const url of [
+                'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
+                'rtmp://localhost:21935/internal/r1_720p_a0',
+                'rtmp://127.1:21935/internal/anything',
+                'rtmp://2130706433:21935/internal/anything',
+                'rtmp://[::1]:21935/internal/anything',
+                'rtmp://user:pw@127.0.0.1:21935/internal/anything',
+            ]) {
+                const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                    name: 'X',
+                    url,
+                });
+                assert.equal(res.status, 400, url);
+                assert.match(res.body.error, /internal app is reserved for shared encodes/, url);
+            }
+            assert.equal(harness.db.listOutputs().length, 0);
+        });
+
+        test('other apps on the same loopback port and other hosts named internal stay allowed', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            for (const url of [
+                'rtmp://localhost:21935/live/key02_abc',
+                'rtmp://localhost:21935/internalx/y',
+                'rtmp://192.168.1.10:1935/internal/r1_720p_a0',
+            ]) {
+                const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                    name: 'X',
+                    url,
+                });
+                assert.equal(res.status, 201, url);
+            }
+        });
+
+        test('bulk create and update refuse the internal app too', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const bulk = await harness.request('POST', `/api/pipelines/${p.id}/outputs/bulk`, {
+                outputs: [
+                    { name: 'fine', url: 'rtmp://192.168.1.10/live/k' },
+                    { name: 'bad', url: 'rtmp://localhost:21935/internal/r1_720p_a0' },
+                ],
+            });
+            assert.equal(bulk.status, 400);
+            assert.equal(harness.db.listOutputs().length, 0);
+
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'O', url: 'rtmp://h/x' });
+            const upd = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
+                name: 'O',
+                url: RENDITION_URL,
+            });
+            assert.equal(upd.status, 400);
+            assert.equal(harness.db.getOutput(o.id).url, 'rtmp://h/x');
+        });
+
+        test('update, delete, start and stop of a rendition are refused with 409', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const r = makeRendition(harness, p);
+            const base = `/api/pipelines/${p.id}/outputs/${r.id}`;
+            const expected = { error: 'Shared encodes are managed automatically' };
+
+            const upd = await harness.request('POST', base, { name: 'x', url: 'rtmp://h/x' });
+            const del = await harness.request('DELETE', base);
+            const start = await harness.request('POST', `${base}/start`);
+            const stop = await harness.request('POST', `${base}/stop`);
+
+            for (const res of [upd, del, start, stop]) {
+                assert.equal(res.status, 409);
+                assert.deepEqual(res.body, expected);
+            }
+            assert.ok(harness.db.getOutput(r.id), 'row survives');
+            assert.equal(harness.db.getOutput(r.id).desiredState, 'stopped');
+            assert.equal(harness.outputService.getStats(r.id).status, 'stopped');
+        });
+
+        test('error history of a rendition can be read and cleared', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const r = makeRendition(harness, p);
+            harness.db.setOutputLastError(r.id, 'boom', 'crash');
+            const base = `/api/pipelines/${p.id}/outputs/${r.id}/errors`;
+
+            const got = await harness.request('GET', base);
+            assert.equal(got.status, 200);
+            assert.equal(got.body[0].message, 'boom');
+            const cleared = await harness.request('DELETE', base);
+            assert.equal(cleared.status, 200);
+            assert.deepEqual(harness.db.getOutputErrorHistory(r.id), []);
+        });
+
+        test('clear-all needs only the user outputs stopped, and removes renditions too', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const user = harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'U',
+                url: 'rtmp://h/x',
+            });
+            const r = makeRendition(harness, p);
+            harness.db.setOutputDesiredState(r.id, 'running');
+            await harness.outputService.start(r.id);
+
+            const res = await harness.request('DELETE', `/api/pipelines/${p.id}/outputs`);
+
+            assert.equal(res.status, 200);
+            assert.equal(harness.db.listOutputsForPipeline(p.id).length, 0);
+            assert.equal(harness.outputService.getStats(r.id).status, 'stopped');
+            assert.ok(user);
+        });
+
+        test('clear-all still refuses while a user output runs', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const user = harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'U',
+                url: 'rtmp://h/x',
+            });
+            harness.db.setOutputDesiredState(user.id, 'running');
+            makeRendition(harness, p);
+
+            const res = await harness.request('DELETE', `/api/pipelines/${p.id}/outputs`);
+
+            assert.equal(res.status, 409);
+            assert.equal(harness.db.listOutputsForPipeline(p.id).length, 2);
         });
     });
 

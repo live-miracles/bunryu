@@ -929,3 +929,43 @@ describe('Config revision', () => {
         assert.equal(db.getConfigRev(), rev);
     });
 });
+
+describe('Output capacity and renditions', () => {
+    const RENDITION = (n) => `rtmp://127.0.0.1:1935/internal/r1_720p_a${n}`;
+
+    test('rendition rows do not count toward the 500-output cap', () => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        db.createOutputs(
+            Array.from({ length: 500 }, (_, i) => ({
+                pipelineId: p.id,
+                name: `o${i}`,
+                url: `rtmp://h/live/k${i}`,
+            })),
+        );
+
+        db.createOutput({ pipelineId: p.id, name: 'r', url: RENDITION(0) });
+
+        assert.equal(db.listOutputs().length, 501);
+        assert.throws(
+            () => db.createOutput({ pipelineId: p.id, name: 'x', url: 'rtmp://h/x' }),
+            /Output limit reached/,
+        );
+    });
+
+    test('existing rendition rows free their share of the cap', () => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        for (let i = 0; i < 5; i++) {
+            db.createOutput({ pipelineId: p.id, name: 'r', url: RENDITION(i) });
+        }
+        db.createOutputs(
+            Array.from({ length: 500 }, (_, i) => ({
+                pipelineId: p.id,
+                name: `o${i}`,
+                url: `rtmp://h/live/k${i}`,
+            })),
+        );
+        assert.equal(db.listOutputs().length, 505);
+    });
+});

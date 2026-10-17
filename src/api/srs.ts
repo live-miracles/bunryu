@@ -3,6 +3,7 @@ import net from 'net';
 import type { Express } from 'express';
 import type { Db } from '../types.js';
 import { kickSrsClientsByStream } from '../utils/srs.js';
+import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { SrsEvent } from '../services/health.js';
 import type { InputState } from '../services/inputState.js';
 import {
@@ -67,6 +68,10 @@ function safeIp(raw: unknown): string {
     return typeof raw === 'string' && net.isIP(raw) !== 0 ? raw : 'unknown';
 }
 const MAX_LISTED_REJECTIONS = 25;
+
+function isLoopbackIp(ip: string): boolean {
+    return ip === '::1' || ip.startsWith('127.') || ip.startsWith('::ffff:127.');
+}
 
 export function registerSrsHooks(
     app: Express,
@@ -134,6 +139,34 @@ export function registerSrsHooks(
             return res.status(400).json({ code: 400 });
         }
 
+        // The reserved internal app carries shared encodes (renditions): the app's
+        // own ffmpeg publishes them over loopback, so nothing else is accepted
+        // there. It never carries a pipeline key, so this branch comes first.
+        if (hookApp === RENDITION_APP) {
+            const allowed =
+                protocol === 'rtmp' &&
+                isLoopbackIp(ip) &&
+                db
+                    .listOutputs()
+                    .some(
+                        (o) =>
+                            isRenditionOutput(o) &&
+                            o.desiredState === 'running' &&
+                            o.url.endsWith(`/${RENDITION_APP}/${stream}`),
+                    );
+            if (allowed) {
+                console.log(`[srs-hook] allowed shared-encode publish from ${ip}: ${stream}`);
+                return res.json({ code: 0 });
+            }
+            noteRejection(stream, 'unknown', 'not a running shared encode');
+            const kickKey = `${hookApp}/${stream}`;
+            if (!recentlyKicked.has(kickKey)) {
+                recentlyKicked.set(kickKey, Date.now());
+                void kickSrsClientsByStream(hookApp, stream).catch(() => {});
+            }
+            return res.status(403).json({ code: 403 });
+        }
+
         const pipeline = db.listPipelines().find((p) => p.streamKey === stream);
         if (!pipeline) {
             const keyIsValid = keyStateOf(stream) !== 'unknown';
@@ -180,8 +213,7 @@ export function registerSrsHooks(
     app.post('/api/srs/on_play', (req, res) => {
         const ip = safeIp(req.body?.ip) === 'unknown' ? '' : (req.body.ip as string);
         const stream = (req.body?.stream as string | undefined) ?? '';
-        const loopback = ip === '::1' || ip.startsWith('127.') || ip.startsWith('::ffff:127.');
-        if (!loopback) {
+        if (!isLoopbackIp(ip)) {
             // An SRT stream id without "m=publish" is a play request to SRS, so an
             // encoder with an incomplete id is rejected here, not in on_publish.
             // Record it like a refused publish so it is visible in the dashboard.

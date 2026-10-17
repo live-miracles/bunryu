@@ -5,7 +5,8 @@ import type { OutputService } from '../services/outputs.js';
 import type { HealthService } from '../services/health.js';
 import { cyan } from '../utils/ansiColor.js';
 import { MAX_OUTPUTS, OutputLimitError } from '../db/index.js';
-import { checkOutputDestination } from '../utils/destination.js';
+import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
+import { isRenditionOutput } from '../utils/renditions.js';
 import { parseName } from '../utils/inputLimits.js';
 
 // Validate an output's destination from the request body. It needs a valid URL
@@ -30,6 +31,9 @@ function parseDestination(
     }
     return { url, audioEncoding };
 }
+
+const MANAGED_ERROR = { error: 'Shared encodes are managed automatically' };
+const RESERVED_APP_ERROR = 'the internal app is reserved for shared encodes';
 
 function parseTranslation(body: unknown): TranslationInput | null | undefined | { error: string } {
     const raw = (body as Record<string, unknown> | null | undefined)?.translation;
@@ -99,6 +103,9 @@ export function registerOutputApi(
         if (!ENCODINGS[videoEncoding])
             return res.status(400).json({ error: `unknown videoEncoding: ${videoEncoding}` });
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+        if (await isInternalAppDestination(parsed.url)) {
+            return res.status(400).json({ error: RESERVED_APP_ERROR });
+        }
         const blockedReason = await checkOutputDestination(parsed.url);
         if (blockedReason) return res.status(400).json({ error: blockedReason });
         const translation = parseTranslation(req.body);
@@ -179,6 +186,9 @@ export function registerOutputApi(
             if (!ENCODINGS[videoEncoding])
                 return res.status(400).json({ error: `unknown videoEncoding: ${videoEncoding}` });
             if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+            if (await isInternalAppDestination(parsed.url)) {
+                return res.status(400).json({ error: `${name}: ${RESERVED_APP_ERROR}` });
+            }
             const blockedReason = await checkOutputDestination(parsed.url);
             if (blockedReason) return res.status(400).json({ error: `${name}: ${blockedReason}` });
 
@@ -249,6 +259,7 @@ export function registerOutputApi(
         if (!output || output.pipelineId !== parseInt(pipelineId)) {
             return res.status(404).json({ error: 'Output not found' });
         }
+        if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         // The UI disables Save for running outputs, but a client holding stale
         // config could still submit — the running ffmpeg would keep the old
@@ -271,6 +282,9 @@ export function registerOutputApi(
         if (!ENCODINGS[videoEncoding])
             return res.status(400).json({ error: `unknown videoEncoding: ${videoEncoding}` });
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+        if (await isInternalAppDestination(parsed.url)) {
+            return res.status(400).json({ error: RESERVED_APP_ERROR });
+        }
         const blockedReason = await checkOutputDestination(parsed.url);
         if (blockedReason) return res.status(400).json({ error: blockedReason });
         const parsedTranslation = parseTranslation(req.body);
@@ -321,14 +335,19 @@ export function registerOutputApi(
         return res.json(updated);
     });
 
-    app.delete('/api/pipelines/:pipelineId/outputs', (req, res) => {
+    app.delete('/api/pipelines/:pipelineId/outputs', async (req, res) => {
         const pipelineId = parseInt(req.params.pipelineId);
         if (isNaN(pipelineId)) return res.status(400).json({ error: 'invalid pipelineId' });
         if (!db.getPipeline(pipelineId))
             return res.status(404).json({ error: 'Pipeline not found' });
 
         const outputs = db.listOutputsForPipeline(pipelineId);
+        // Shared encodes do not block this: they follow their outputs and idle-stop
+        // only after a grace period, so one may still be winding down right after
+        // the user stopped everything. They are stopped and removed with the rest.
+        const renditions = outputs.filter(isRenditionOutput);
         for (const o of outputs) {
+            if (isRenditionOutput(o)) continue;
             if (o.desiredState !== 'stopped' || outputService.getStats(o.id).status === 'running') {
                 return res.status(409).json({
                     error: `Output "${o.name}" is still running. Stop all outputs before clearing.`,
@@ -336,6 +355,10 @@ export function registerOutputApi(
             }
         }
 
+        for (const r of renditions) {
+            await outputService.stopAndWait(r.id);
+            outputService.clearRetryState(r.id);
+        }
         db.deleteOutputsForPipeline(pipelineId);
         return res.json({ ok: true });
     });
@@ -346,6 +369,7 @@ export function registerOutputApi(
         if (!output || output.pipelineId !== parseInt(pipelineId)) {
             return res.status(404).json({ error: 'Output not found' });
         }
+        if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         console.log(cyan(`[outputs] user delete requested: ${outId} (${output.name})`));
         await outputService.stopAndWait(outId);
@@ -382,6 +406,7 @@ export function registerOutputApi(
         if (!output || output.pipelineId !== parseInt(pipelineId)) {
             return res.status(404).json({ error: 'Output not found' });
         }
+        if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         console.log(cyan(`[outputs] user start requested: ${outId} (${output.name})`));
         try {
@@ -405,6 +430,7 @@ export function registerOutputApi(
         if (!output || output.pipelineId !== parseInt(pipelineId)) {
             return res.status(404).json({ error: 'Output not found' });
         }
+        if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         console.log(cyan(`[outputs] user stop requested: ${outId} (${output.name})`));
         db.setOutputDesiredState(outId, 'stopped');
