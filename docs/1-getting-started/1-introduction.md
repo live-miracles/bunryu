@@ -49,10 +49,14 @@ FFmpeg processes (one per output, plus one per shared encode) to become the limi
 dashboard or API does.
 
 **Keep almost all outputs in `copy` mode.** A `copy` output is a passthrough — it
-remuxes the input and forwards it with negligible CPU cost, so hundreds can run on
-modest hardware. A custom encoding (`720p`, `1080p`, `vertical_rotate`, …) makes
-FFmpeg transcode the video, which is CPU-intensive: each such output consumes
-roughly a full core's worth of work. Outputs on the same pipeline with the same
+remuxes the input and forwards it for a small fraction of a core (about 0.5% of a
+vCPU on an RTMP input, 2–3% on an SRT input), so hundreds can run on modest
+hardware. Selecting an audio track re-encodes the audio, a few percent more per
+output. A custom encoding (`720p`, `1080p`, `vertical_rotate`, …) makes FFmpeg
+transcode the video, which is CPU-intensive: 0.6–2.5 vCPUs per encode on a GCP `n2`,
+depending on the profile and the content. On a 4-vCPU machine one `1080p` encode
+alone takes about two thirds of the host. See [Sizing a server](4-sizing.md) for
+the measured costs and example VM sizes. Outputs on the same pipeline with the same
 encode (the same video encoding and the same single audio track) share **one**
 [shared encode](../2-usage/2-outputs.md#shared-encodes), so CPU is counted once per
 distinct encode per pipeline, not once per output. **Only a handful of distinct

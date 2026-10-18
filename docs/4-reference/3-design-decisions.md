@@ -187,9 +187,9 @@ else.
   [Reliability](../3-operations/4-reliability.md)).
 - FFmpeg also does every transcode, audio-track selection and translation mix.
 
-**Cost:** roughly 12–16 MB of RAM per copy-mode output, and a full core per
-custom video encoding (once per distinct encode on a pipeline, since outputs with
-the same encode share one: see
+**Cost:** about 30 MB (RTMP input) to 45 MB (SRT input) of RAM and 0.5–3% of a vCPU
+per copy-mode output, and 0.6–2.5 vCPUs per custom video encoding (once per
+distinct encode on a pipeline, since outputs with the same encode share one: see
 [Outputs with the same encode share one FFmpeg](#outputs-with-the-same-encode-share-one-ffmpeg-shared-encodes)).
 That's acceptable within the supported envelope
 ([Introduction](../1-getting-started/1-introduction.md#capacity-and-limits)).
@@ -309,3 +309,55 @@ when no viewer remains.
   with a long keyframe interval starts slower and runs further behind live.
 - **HEVC** inputs preview only where Chrome can decode HEVC; there is no
   transcode fallback.
+
+## Sizing
+
+### Sizing guidance is a measured table, not a calculator
+
+**Decision:** [Sizing a server](../1-getting-started/4-sizing.md) gives per-item CPU
+and RAM costs, a formula and example GCP machine sizes. There is no calculator in
+the dashboard, and no cost model for individual machine families.
+
+**Why:**
+- **The inputs are few.** CPU is dominated by the number of distinct video encodes.
+  Copy outputs and audio re-encodes are small, so a table answers "which VM?" as
+  well as a form would.
+- **A single number would imply precision the data does not have.** An encode's CPU
+  varies by about 1.5x with the content (1080p: 1.5 vCPUs on a clean test pattern,
+  2.5 on noisy motion), and only one machine family was measured. The table shows
+  ranges and a headroom rule instead.
+- **Less to maintain.** A dashboard widget is code to test, ships in every install
+  and reaches only people who have already installed it; the audience is the person
+  choosing a VM.
+- **Docs are plain Markdown,** rendered by GitHub and the org site, so an
+  interactive widget has nowhere to live in them.
+
+**Evidence:** run on the production VM (GCP `n2`, 4 vCPU, 4 GB, FFmpeg 7.1.4) on
+2026-10-18 in an idle window. A private SRS pair on loopback ports with copies of
+the production binaries was fed a generated 1080p30 ~6 Mbps stream. FFmpeg ran with
+the application's own arguments, each case 15 s warm-up and 45 s measured, CPU from
+`/proc/<pid>/stat`, `nice 19`, aborting if production FFmpeg or a live stream
+appeared. The script was not kept in the repository.
+- Copy output: 0.005 vCPU on an RTMP input, 0.02 on SRT (plus 0.01 in SRS); 30
+  outputs: 0.16 and 0.93 vCPU.
+- Audio re-encode: +0.03 (RTMP) and +0.04 (SRT).
+- Encodes (clean / noisy): `720p` 1.1 / 1.7, `1080p` 1.5 / 2.5, `vertical_rotate`
+  0.6 / 0.8 vCPUs.
+- Saturation: four `720p` encodes ran at 0.52x real time, three `1080p` at 0.48x.
+- Production snapshots over 7 days showed 5–8% of a vCPU per output with a track
+  selected, before shared encodes were deployed there; this matches the audio
+  re-encode figure plus delivery overhead.
+
+This replaces the earlier "about one core per encode" and "negligible" copy cost
+statements, which did not match these measurements.
+
+**Costs:** the numbers are for one machine family, synthetic input, loopback
+delivery and 1080p30 input. They exclude previews, translation mixers and network
+bandwidth.
+
+**Revisit when:**
+- FFmpeg, x264 or an encoding profile changes, since every cost above depends on
+  them.
+- Other machine families (`c3`, `n4`) are measured.
+- People keep asking for an interactive tool: a spreadsheet linked from the page is
+  the cheapest next step before a dashboard feature.

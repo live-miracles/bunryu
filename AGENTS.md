@@ -35,9 +35,10 @@ not targets to exceed:
 | Concurrent dashboard clients | Approximately 10 |
 
 Most outputs should use `copy` mode. Copy-mode outputs are comparatively cheap,
-while custom video encoding can consume roughly a full CPU core per encode
-(outputs of one pipeline with the same video encoding and single audio track
-share one encode).
+while custom video encoding takes 0.6–2.5 vCPUs per encode on a GCP `n2`, so one
+`1080p` encode takes about two thirds of a 4-vCPU host (see
+`docs/1-getting-started/4-sizing.md`). Outputs of one pipeline with the same
+video encoding and single audio track share one encode.
 Host CPU, memory, network capacity, and the number of FFmpeg processes are
 expected to become limiting factors before the API or dashboard at the upper
 end of the supported envelope.
@@ -142,7 +143,8 @@ find every doc page that describes it and update it in the same change. Search
   approach, a component or an upstream feature. Record the decision, the reasons,
   the evidence (measurements, test results), and when to revisit it.
 - **`docs/1-getting-started/`**:
-  - the introduction for capacity, costs or the architecture diagram;
+  - the introduction for capacity limits or the architecture diagram, and
+    `4-sizing.md` for measured CPU/RAM costs and example machine sizes;
   - install and Docker for install steps or pinned components.
 - **`README.md`** only when the pitch, feature list or install steps change.
 - **This guide's code map** when you add a module or a code map entry goes stale.

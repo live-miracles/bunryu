@@ -5,6 +5,7 @@
 - [Introduction](1-getting-started/1-introduction.md): what it is, how it works, capacity and limits
 - [Docker](1-getting-started/2-docker.md): try it in a container
 - [Native install](1-getting-started/3-install.md): production install with systemd, firewall ports, SRT passphrase
+- [Sizing a server](1-getting-started/4-sizing.md): measured CPU and RAM costs and example GCP machine sizes
 
 ## Usage
 
