@@ -44,6 +44,10 @@ When an SRT input is forwarded to an RTMP destination, select a track instead of
 `copy`: re-encoding absorbs the timestamp jitter that SRT inputs can carry, and
 the dashboard warns on outputs that don't.
 
+For an RTMP input forwarded to an RTMP destination, keep `copy`: selecting Track 1
+only adds the AAC re-encode (extra CPU) with no timing benefit, and the dashboard
+warns on outputs that do it.
+
 ## Shared encodes
 
 Outputs on the **same pipeline** that need the **same encode** share it: one

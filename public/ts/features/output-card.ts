@@ -60,6 +60,11 @@ function outputEncodingWarnings(output: OutputView, input: InputHealth): string[
             'RTMP input only has one audio track — use copy or Track 1, not a different track selection.',
         );
     }
+    if (!input.isSrt && !outIsSrt && output.audioEncoding === '0') {
+        warnings.push(
+            'Track 1 re-encodes the audio, which costs extra CPU — use copy unless the audio must be re-encoded.',
+        );
+    }
     if (input.isSrt && !outIsSrt && output.audioEncoding === 'copy') {
         warnings.push(
             'SRT-to-RTMP output should not use copy audio — it can cause audio jitter; select a track instead.',
