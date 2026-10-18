@@ -451,7 +451,7 @@ describe('Shared encodes card', () => {
         );
     });
 
-    test('first line is dot, Restart, encoding badges and History at the end; stats go below', () => {
+    test('first line is dot, Restart, encoding badges, the counts and History at the end; the rest goes below', () => {
         const html = renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true }), deps());
         const at = (needle) => html.indexOf(needle);
         const order = [
@@ -459,9 +459,10 @@ describe('Shared encodes card', () => {
             at('data-action="restart-shared"'),
             at('>720p<'),
             at('>T2<'),
+            at('2 outs · 2 reads'),
             at('data-action="error-info"'),
             at('1m 5s'),
-            at('2 outs · 2 reads'),
+            at('3.0 mbps'),
         ];
 
         assert.ok(
@@ -471,7 +472,7 @@ describe('Shared encodes card', () => {
         assert.deepEqual(
             order,
             [...order].sort((a, b) => a - b),
-            'dot, Restart, encoding badges, History, then stats',
+            'dot, Restart, badges, counts, History, then uptime and metrics',
         );
         // History sits in the right-aligned group of the first line, as on an output card.
         assert.match(html, /ml-auto[^"]*">\s*<button[^>]*data-action="error-info"/);
