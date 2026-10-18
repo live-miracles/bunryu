@@ -1,9 +1,10 @@
 # Publishing to a pipeline
 
 A **pipeline** is one live input. Creating a pipeline assigns it a stream key;
-the pipeline panel in the dashboard shows ready-to-copy publish URLs for every
-protocol, with buttons to copy the server URL, key, stream ID or passphrase
-separately for encoders that ask for them in separate fields.
+the pipeline panel in the dashboard has a copy button for the full publish URL
+of every protocol, plus buttons to copy the server URL, key, stream ID or
+passphrase separately for encoders that ask for them in separate fields. The
+panel does not display the URLs themselves.
 
 | Protocol | Port | URL shape |
 |----------|------|-----------|

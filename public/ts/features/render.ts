@@ -6,8 +6,6 @@ import {
     formatBytesCompact,
     formatCpuPercent,
     getUrlParam,
-    maskStreamKey,
-    maskSecret,
     fmtMs,
     fmtMbpsValue,
     formatClockTime,
@@ -1879,12 +1877,10 @@ function renderPipelineInfo(selectedId: string | null): void {
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
     if (statsEl) statsEl.innerHTML = inputHtml;
     renderSharedEncodes(pipeline, { outStatus, formatUptime });
-    const masked = maskStreamKey(pipeline.streamKey);
     const rtmpEl = document.getElementById('rtmp-publish-url');
     const srtEl = document.getElementById('srt-publish-url');
     if (rtmpEl) {
         rtmpEl.dataset.copy = pipeline.rtmpPublishUrl;
-        rtmpEl.textContent = pipeline.rtmpPublishUrl.replace(pipeline.streamKey, masked);
         const lastSlash = pipeline.rtmpPublishUrl.lastIndexOf('/');
         rtmpEl.dataset.serverUrl =
             lastSlash > -1
@@ -1894,14 +1890,6 @@ function renderPipelineInfo(selectedId: string | null): void {
     }
     if (srtEl) {
         srtEl.dataset.copy = pipeline.srtPublishUrl;
-        let srtDisplayUrl = pipeline.srtPublishUrl.replace(pipeline.streamKey, masked);
-        if (state.config.srtPassphrase) {
-            srtDisplayUrl = srtDisplayUrl.replace(
-                encodeURIComponent(state.config.srtPassphrase),
-                maskSecret(state.config.srtPassphrase),
-            );
-        }
-        srtEl.textContent = srtDisplayUrl;
         const hostStart = 6;
         const colonAfterHost = pipeline.srtPublishUrl.indexOf(':', hostStart);
         srtEl.dataset.ip = pipeline.srtPublishUrl.slice(hostStart, colonAfterHost);
@@ -1960,14 +1948,6 @@ function renderPipelineInfo(selectedId: string | null): void {
         }
     }
     if (bondingUrl) {
-        let bondingDisplayUrl = bondingUrlValue.replace(pipeline.streamKey, masked);
-        if (state.config.srtPassphrase) {
-            bondingDisplayUrl = bondingDisplayUrl.replace(
-                encodeURIComponent(state.config.srtPassphrase),
-                maskSecret(state.config.srtPassphrase),
-            );
-        }
-        bondingUrl.textContent = bondingDisplayUrl;
         bondingUrl.dataset.copy = bondingUrlValue;
         bondingUrl.dataset.port = String(bondingPortValue);
     }

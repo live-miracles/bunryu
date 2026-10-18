@@ -591,7 +591,11 @@
               <span class="text-xs font-semibold opacity-60">SRT Bonding</span>
             </div>
             <div class="flex gap-1">
-              <button class="btn btn-xs btn-ghost btn-outline" onclick="copyText(document.getElementById('srt-bonding-url').dataset.port)">
+              <button
+                class="btn btn-xs btn-ghost btn-outline"
+                onclick="copyText(document.getElementById('srt-bonding-url').dataset.port)"
+                title="Copy the SRT bonding port"
+                aria-label="Copy the SRT bonding port">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="12"
@@ -607,7 +611,11 @@
                 </svg>
                 Port
               </button>
-              <button class="btn btn-xs btn-accent btn-outline" onclick="copyText(document.getElementById('srt-bonding-url').dataset.copy)">
+              <button
+                class="btn btn-xs btn-accent btn-outline"
+                onclick="copyText(document.getElementById('srt-bonding-url').dataset.copy)"
+                title="Copy the full SRT bonding publish URL"
+                aria-label="Copy the full SRT bonding publish URL">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="12"
@@ -624,7 +632,7 @@
               </button>
             </div>
           </div>
-          <code class="font-mono text-xs break-all opacity-80" id="srt-bonding-url"></code>
+          <code class="hidden" id="srt-bonding-url"></code>
           <div class="mt-1" id="srt-bonding-stats"></div>
           <div class="mt-2" id="srt-bonding-legs"></div>
           <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
@@ -664,7 +672,11 @@
             <div class="mb-1 flex items-center justify-between gap-2">
               <span class="text-xs font-semibold opacity-60">SRT Publish URL</span>
               <div class="flex gap-1">
-                <button class="btn btn-xs btn-ghost btn-outline" onclick="copyText(document.getElementById('srt-publish-url').dataset.ip)">
+                <button
+                  class="btn btn-xs btn-ghost btn-outline"
+                  onclick="copyText(document.getElementById('srt-publish-url').dataset.ip)"
+                  title="Copy the SRT server IP / host"
+                  aria-label="Copy the SRT server IP / host">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -680,7 +692,11 @@
                   </svg>
                   IP
                 </button>
-                <button class="btn btn-xs btn-ghost btn-outline" onclick="copyText(document.getElementById('srt-publish-url').dataset.port)">
+                <button
+                  class="btn btn-xs btn-ghost btn-outline"
+                  onclick="copyText(document.getElementById('srt-publish-url').dataset.port)"
+                  title="Copy the SRT port"
+                  aria-label="Copy the SRT port">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -696,7 +712,11 @@
                   </svg>
                   Port
                 </button>
-                <button class="btn btn-xs btn-ghost btn-outline" onclick="copyText(document.getElementById('srt-publish-url').dataset.streamId)">
+                <button
+                  class="btn btn-xs btn-ghost btn-outline"
+                  onclick="copyText(document.getElementById('srt-publish-url').dataset.streamId)"
+                  title="Copy the SRT stream ID"
+                  aria-label="Copy the SRT stream ID">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -712,7 +732,11 @@
                   </svg>
                   Stream ID
                 </button>
-                <button class="btn btn-xs btn-ghost btn-outline" onclick="copyText(document.getElementById('srt-publish-url').dataset.passphrase)">
+                <button
+                  class="btn btn-xs btn-ghost btn-outline"
+                  onclick="copyText(document.getElementById('srt-publish-url').dataset.passphrase)"
+                  title="Copy the SRT passphrase"
+                  aria-label="Copy the SRT passphrase">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -728,7 +752,11 @@
                   </svg>
                   Passphrase
                 </button>
-                <button class="btn btn-xs btn-accent btn-outline" onclick="copyText(document.getElementById('srt-publish-url').dataset.copy)">
+                <button
+                  class="btn btn-xs btn-accent btn-outline"
+                  onclick="copyText(document.getElementById('srt-publish-url').dataset.copy)"
+                  title="Copy the full SRT publish URL"
+                  aria-label="Copy the full SRT publish URL">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -745,13 +773,17 @@
                 </button>
               </div>
             </div>
-            <code class="font-mono text-xs break-all opacity-80" id="srt-publish-url"></code>
+            <code class="hidden" id="srt-publish-url"></code>
           </div>
           <div class="border-base-content/10 bg-base-100/50 order-1 rounded-xl border p-3">
             <div class="mb-1 flex items-center justify-between gap-2">
               <span class="text-xs font-semibold opacity-60">RTMP Publish URL</span>
               <div class="flex gap-1">
-                <button class="btn btn-xs btn-ghost btn-outline" onclick="copyText(document.getElementById('rtmp-publish-url').dataset.serverUrl)">
+                <button
+                  class="btn btn-xs btn-ghost btn-outline"
+                  onclick="copyText(document.getElementById('rtmp-publish-url').dataset.serverUrl)"
+                  title="Copy the RTMP server URL (without the stream key)"
+                  aria-label="Copy the RTMP server URL (without the stream key)">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -767,7 +799,11 @@
                   </svg>
                   Server URL
                 </button>
-                <button class="btn btn-xs btn-ghost btn-outline" onclick="copyText(document.getElementById('rtmp-publish-url').dataset.streamKey)">
+                <button
+                  class="btn btn-xs btn-ghost btn-outline"
+                  onclick="copyText(document.getElementById('rtmp-publish-url').dataset.streamKey)"
+                  title="Copy the RTMP stream key"
+                  aria-label="Copy the RTMP stream key">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -783,7 +819,11 @@
                   </svg>
                   Key
                 </button>
-                <button class="btn btn-xs btn-accent btn-outline" onclick="copyText(document.getElementById('rtmp-publish-url').dataset.copy)">
+                <button
+                  class="btn btn-xs btn-accent btn-outline"
+                  onclick="copyText(document.getElementById('rtmp-publish-url').dataset.copy)"
+                  title="Copy the full RTMP publish URL"
+                  aria-label="Copy the full RTMP publish URL">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
@@ -800,7 +840,7 @@
                 </button>
               </div>
             </div>
-            <code class="font-mono text-xs break-all opacity-80" id="rtmp-publish-url"></code>
+            <code class="hidden" id="rtmp-publish-url"></code>
           </div>
         </div>
       </div>

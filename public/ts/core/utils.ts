@@ -109,12 +109,6 @@ export function maskStreamKey(key: string | null | undefined): string {
     return `${name}_${secret.slice(0, 2)}...${secret.slice(-2)}`;
 }
 
-export function maskSecret(secret: string | null | undefined): string {
-    const s = String(secret ?? '');
-    if (s.length <= 4) return s;
-    return `${s.slice(0, 2)}...${s.slice(-2)}`;
-}
-
 // Disables a button and shows a spinner while an async action runs, so the
 // user gets immediate feedback even when the server takes a moment to respond.
 export async function withBusy(
