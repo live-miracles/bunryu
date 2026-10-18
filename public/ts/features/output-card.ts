@@ -8,7 +8,13 @@ import {
 } from '../core/utils.js';
 import { state } from '../core/state.js';
 import type { InputHealth, OutputView } from '../types.js';
-import { ICON_HISTORY, ICON_ITERATION_CW, outputMetricsBadge } from './output-badges.js';
+import {
+    ICON_HISTORY,
+    ICON_ITERATION_CW,
+    ICON_PLAY,
+    ICON_STOP,
+    outputMetricsBadge,
+} from './output-badges.js';
 
 export type OutputCardStatus = 'good' | 'warn' | 'error' | 'off';
 export type DupRef = { pipelineName: string; outputName?: string };
@@ -183,7 +189,7 @@ export function renderOutputCard(
            </div>`
             : '';
     const historyBtn = output.hasErrorHistory
-        ? `<button class="btn btn-xs btn-ghost text-error" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
+        ? `<button class="btn btn-xs btn-square btn-ghost text-error" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
     const warningHtml = output.warningReason
         ? `<div class="flex items-center gap-2 pl-2 mt-0.5 min-w-0">
@@ -209,9 +215,10 @@ export function renderOutputCard(
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 shrink-0 font-semibold">
                 <div aria-label="status" class="status status-lg mx-1" style="background-color: ${statusHex}"></div>
-                <button class="btn btn-xs ${isStopped ? 'btn-accent' : 'btn-accent btn-outline'}"
-                    data-action="${isStopped ? 'start' : 'stop'}" data-out-id="${output.id}"${isPending ? ' disabled' : ''}>
-                    ${isStopped ? 'Start' : 'Stop'}
+                <button class="btn btn-xs btn-square ${isStopped ? 'btn-primary' : 'btn-error btn-outline'}"
+                    data-action="${isStopped ? 'start' : 'stop'}" data-out-id="${output.id}"
+                    title="${isStopped ? 'Start' : 'Stop'}" aria-label="${isStopped ? 'Start' : 'Stop'}"${isPending ? ' disabled' : ''}>
+                    ${isStopped ? ICON_PLAY : ICON_STOP}
                 </button>
                 <span class="js-output-drag-handle cursor-grab" draggable="true" title="${escapeHtml(output.name)}">${escapeHtml(formatOutputName(output.name))}</span>
             </div>
@@ -219,8 +226,8 @@ export function renderOutputCard(
             ${inlineSink}
             <div class="flex items-center gap-1 ml-auto shrink-0">
                 ${historyBtn}
-                <button class="btn btn-xs btn-ghost" data-action="edit" data-out-id="${output.id}">${ICON_PENCIL}</button>
-                <button class="btn btn-xs btn-ghost text-error ${isStopped ? '' : 'btn-disabled opacity-40'}" data-action="delete" data-out-id="${output.id}">${ICON_TRASH}</button>
+                <button class="btn btn-xs btn-square btn-ghost" data-action="edit" data-out-id="${output.id}">${ICON_PENCIL}</button>
+                <button class="btn btn-xs btn-square btn-ghost text-error ${isStopped ? '' : 'btn-disabled opacity-40'}" data-action="delete" data-out-id="${output.id}">${ICON_TRASH}</button>
             </div>
         </div>
         ${warningHtml}

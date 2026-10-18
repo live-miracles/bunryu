@@ -437,7 +437,7 @@ describe('Shared encodes card', () => {
         );
         assert.match(
             html,
-            /<button class="btn btn-xs btn-accent btn-outline"[^>]*data-action="restart-shared"/,
+            /<button class="btn btn-xs btn-square btn-warning btn-outline"[^>]*data-action="restart-shared"/,
         );
         assert.ok(
             !/btn-ghost[^>]*data-action="restart-shared"/.test(html),

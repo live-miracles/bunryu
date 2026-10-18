@@ -6,7 +6,12 @@ import {
     escapeHtml,
     formatLocalTime,
 } from '../core/utils.js';
-import { ICON_HISTORY, ICON_ITERATION_CW, outputMetricsBadge } from './output-badges.js';
+import {
+    ICON_HISTORY,
+    ICON_ITERATION_CW,
+    ICON_RESTART,
+    outputMetricsBadge,
+} from './output-badges.js';
 import type { InputHealth, OutputView, PipelineView } from '../types.js';
 
 // Shared encodes (renditions): outputs of one pipeline that need the same encode
@@ -107,11 +112,11 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
            </div>`
             : '';
     const historyBtn = rendition.hasErrorHistory
-        ? `<button class="btn btn-xs btn-ghost text-error" data-action="error-info" data-out-id="${escapeHtml(rendition.id)}" title="Error history">${ICON_HISTORY}</button>`
+        ? `<button class="btn btn-xs btn-square btn-ghost text-error" data-action="error-info" data-out-id="${escapeHtml(rendition.id)}" title="Error history">${ICON_HISTORY}</button>`
         : '';
     const canRestart = rendition.status === 'running' && !deps.restartLocked(rendition.id);
-    // Same look as the Start/Stop button of an output card.
-    const restartBtn = `<button class="btn btn-xs btn-accent btn-outline" data-action="restart-shared" data-out-id="${escapeHtml(rendition.id)}" title="Restart this shared encode; its outputs reconnect"${canRestart ? '' : ' disabled'}>Restart</button>`;
+    // Square icon button like the Start/Stop button of an output card.
+    const restartBtn = `<button class="btn btn-xs btn-square btn-warning btn-outline" data-action="restart-shared" data-out-id="${escapeHtml(rendition.id)}" title="Restart this shared encode; its outputs reconnect" aria-label="Restart"${canRestart ? '' : ' disabled'}>${ICON_RESTART}</button>`;
     const dependentLines = rendition.dependents.length
         ? rendition.dependents
               .map((d) => `<div class="text-xs leading-snug">${escapeHtml(d.name)}</div>`)

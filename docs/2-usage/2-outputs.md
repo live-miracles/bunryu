@@ -85,8 +85,8 @@ and you cannot point an output at the server's internal `internal` RTMP app. The
 do not count toward the 500-output limit.
 
 **In the dashboard.** The pipeline's side column shows a **Shared encodes** card
-with one row per encode, laid out like an output card: the status, **Restart**
-(it restarts the encode after a confirmation and its outputs reconnect), the
+with one row per encode, laid out like an output card: the status, the restart
+button (it restarts the encode after a confirmation and its outputs reconnect), the
 encoding as badges (the video encoding unless it is `copy`, and the audio track as
 `T1`, `T2`, …, where `T1` is track 0), how many outputs use it and how many are
 reading it right now ("2 outs · 1 read"), uptime, bitrate | CPU | memory and the
