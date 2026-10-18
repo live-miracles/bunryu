@@ -1,3 +1,5 @@
+<img src="public/logo.png" alt="Bunryu logo" width="96" align="right" />
+
 # Bunryu
 
 _Bunryu (分流, "branching flow"): one live stream, many destinations._
