@@ -8,7 +8,11 @@ import { context as zmqContext, Request } from 'zeromq';
 // never came up or already died) — even after that socket has been closed.
 // This gives every new socket a zero linger instead, so shutdown can't hang.
 zmqContext.blocky = false;
-import { buildTranslationMixerArgs, volumePercentToAmplitude } from '../utils/ffmpeg.js';
+import {
+    buildTranslationMixerArgs,
+    isTranslationAudio,
+    volumePercentToAmplitude,
+} from '../utils/ffmpeg.js';
 import { readAppConfig, outputMemoryLimitBytes } from '../utils/appConfig.js';
 import { readProcRssBytes, createProcCpuTracker } from '../utils/procStats.js';
 import type { Db, Output, TranslationConfig } from '../types.js';
@@ -733,7 +737,7 @@ export function createTranslationMixerService(
                 .filter(
                     (output) =>
                         output.desiredState === 'running' &&
-                        output.audioEncoding === 'translation' &&
+                        isTranslationAudio(output.audioEncoding) &&
                         output.translation !== null,
                 );
             const configuredIds = new Set(configured.map((output) => output.id));

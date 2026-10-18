@@ -10,6 +10,7 @@ import {
     type AudioTrackInfo,
 } from '../utils/srs.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
+import { isTranslationAudio } from '../utils/ffmpeg.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
@@ -802,7 +803,7 @@ export function createHealthService(
             for (const outId of outputsByPipeline.get(pipeline.id) ?? []) {
                 const stats = outputService.getStats(outId);
                 const outputRow = outputById.get(outId);
-                const isTranslation = outputRow?.audioEncoding === 'translation';
+                const isTranslation = !!outputRow && isTranslationAudio(outputRow.audioEncoding);
                 // Internal streams never feed pipeline liveness (that looks up
                 // live/<key> only); they are read here, for a rendition's readers.
                 const isRendition = !!outputRow && isRenditionOutput(outputRow);

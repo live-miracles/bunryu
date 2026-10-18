@@ -280,13 +280,22 @@ export function validateOutputUrl(url: string): boolean {
     );
 }
 
+const TRANSLATION_AUDIO = 'translation';
+
+// A translation output is published by the translation mixer (its own ffmpeg),
+// never by the output service, so every output-service entry point that would
+// spawn or restart a process must skip it. Check through this, not the string.
+export function isTranslationAudio(audioEncoding: string): boolean {
+    return audioEncoding === TRANSLATION_AUDIO;
+}
+
 export function validateAudioEncoding(value: unknown): string | null {
     // Only an absent/empty encoding defaults to 'copy' — checking truthiness
     // instead would also catch other-typed falsy JSON values (0, false) sent
     // by a raw API call and silently reinterpret them as 'copy' rather than
     // rejecting them.
     if (value === undefined || value === null || value === '' || value === 'copy') return 'copy';
-    if (value === 'translation') return 'translation';
+    if (value === TRANSLATION_AUDIO) return TRANSLATION_AUDIO;
     if (typeof value !== 'string') return null;
     const parts = value.split(',').map((s) => s.trim());
     if (parts.length > MAX_AUDIO_TRACKS) return null;

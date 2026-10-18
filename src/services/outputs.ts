@@ -1,6 +1,11 @@
 import { execFile, spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
-import { INPUT_TIMEOUT_US, buildFfmpegArgs, validateOutputUrl } from '../utils/ffmpeg.js';
+import {
+    INPUT_TIMEOUT_US,
+    buildFfmpegArgs,
+    isTranslationAudio,
+    validateOutputUrl,
+} from '../utils/ffmpeg.js';
 import { readAppConfig, outputMemoryLimitBytes } from '../utils/appConfig.js';
 import {
     readProcRssBytes,
@@ -551,7 +556,7 @@ export function createOutputService(
             // service — see the same check in start(). Without it, a retry/reconnect
             // (e.g. restartPipelineOutputs() after the source comes back online) would
             // spawn a second ffmpeg pushing to the same destination as the mixer.
-            if (output.audioEncoding === 'translation') return;
+            if (isTranslationAudio(output.audioEncoding)) return;
             if (statuses.get(outputId)?.status === 'running') return;
             // Don't spawn a doomed ffmpeg against a dead input; re-check until ready.
             const gate = sourceGate(output);
@@ -1185,7 +1190,7 @@ export function createOutputService(
             : buildFfmpegArgs(
                   inputUrl,
                   output.url,
-                  output.audioEncoding === 'translation' ? 'copy' : output.audioEncoding,
+                  isTranslationAudio(output.audioEncoding) ? 'copy' : output.audioEncoding,
                   output.videoEncoding,
               );
 
@@ -1397,7 +1402,7 @@ export function createOutputService(
             if (!validateOutputUrl(output.url)) throw new Error('Invalid output URL');
             // Translation outputs are published by the translation mixer
             // directly to this output URL; they do not need a second pull.
-            if (output.audioEncoding === 'translation') return;
+            if (isTranslationAudio(output.audioEncoding)) return;
             clearRetry(outputId);
             getRetry(outputId).failures = 0;
             // Input not live yet — keep the output "running" (desiredState) but
@@ -1498,7 +1503,7 @@ export function createOutputService(
                 if (output.desiredState !== 'running') continue;
                 // Translation outputs are restarted by the translation mixer's own
                 // reconcile loop, not by this service.
-                if (output.audioEncoding === 'translation') continue;
+                if (isTranslationAudio(output.audioEncoding)) continue;
                 if (statuses.get(output.id)?.status === 'running') {
                     continue;
                 }

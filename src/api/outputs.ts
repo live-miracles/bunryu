@@ -1,5 +1,10 @@
 import type { Express } from 'express';
-import { validateOutputUrl, validateAudioEncoding, ENCODINGS } from '../utils/ffmpeg.js';
+import {
+    validateOutputUrl,
+    validateAudioEncoding,
+    isTranslationAudio,
+    ENCODINGS,
+} from '../utils/ffmpeg.js';
 import type { Db, TranslationInput } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import type { HealthService } from '../services/health.js';
@@ -119,12 +124,12 @@ export function registerOutputApi(
                 .status(400)
                 .json({ error: 'translation translator must be another pipeline' });
         }
-        if (parsed.audioEncoding === 'translation' && !translation) {
+        if (isTranslationAudio(parsed.audioEncoding) && !translation) {
             return res
                 .status(400)
                 .json({ error: 'translation audio requires translation settings' });
         }
-        if (parsed.audioEncoding !== 'translation' && translation) {
+        if (!isTranslationAudio(parsed.audioEncoding) && translation) {
             return res
                 .status(400)
                 .json({ error: 'translation settings require translation audio' });
@@ -294,7 +299,7 @@ export function registerOutputApi(
         // Preserve an existing translation when an older client omits the
         // optional field, but always clear it when switching to normal audio.
         const translation =
-            parsedTranslation === undefined && parsed.audioEncoding === 'translation'
+            parsedTranslation === undefined && isTranslationAudio(parsed.audioEncoding)
                 ? output.translation
                 : parsedTranslation;
         const ownPipeline = db.getPipeline(output.pipelineId);
@@ -306,12 +311,12 @@ export function registerOutputApi(
                 .status(400)
                 .json({ error: 'translation translator must be another pipeline' });
         }
-        if (parsed.audioEncoding === 'translation' && !translation) {
+        if (isTranslationAudio(parsed.audioEncoding) && !translation) {
             return res
                 .status(400)
                 .json({ error: 'translation audio requires translation settings' });
         }
-        if (parsed.audioEncoding !== 'translation' && translation) {
+        if (!isTranslationAudio(parsed.audioEncoding) && translation) {
             return res
                 .status(400)
                 .json({ error: 'translation settings require translation audio' });
@@ -440,7 +445,7 @@ export function registerOutputApi(
         }
         // Translation outputs are published by the translation mixer, which has its
         // own restart logic; this service has no process to restart for them.
-        if (output.audioEncoding === 'translation') {
+        if (isTranslationAudio(output.audioEncoding)) {
             return res
                 .status(409)
                 .json({ error: 'Translation outputs are restarted by the translation mixer' });
