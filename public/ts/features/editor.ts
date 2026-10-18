@@ -34,9 +34,9 @@ const MAX_HOST_PROBE_TARGETS = 10;
 const MAX_AUDIO_TRACKS = 50;
 function hostProbeRowHtml(slot: number, target?: HostProbeTarget): string {
     return `<tr data-host-probe-row="${slot}">
-        <td><input type="text" id="host-probe-${slot}-label" name="hostProbeLabel${slot}" class="input input-sm w-full" data-host-probe-slot="${slot}" data-host-probe-field="label" placeholder="YouTube" value="${escapeHtml(target?.label ?? '')}" /></td>
-        <td><input type="text" id="host-probe-${slot}-host" name="hostProbeHost${slot}" class="input input-sm w-full font-mono text-sm" data-host-probe-slot="${slot}" data-host-probe-field="host" placeholder="a.rtmp.youtube.com" value="${escapeHtml(target?.host ?? '')}" /></td>
-        <td><input type="number" min="1" max="65535" id="host-probe-${slot}-port" name="hostProbePort${slot}" class="input input-sm w-full font-mono text-sm" data-host-probe-slot="${slot}" data-host-probe-field="port" placeholder="1935" value="${target?.port ?? ''}" /></td>
+        <td><input type="text" id="host-probe-${slot}-label" name="hostProbeLabel${slot}" class="input input-sm w-full" data-host-probe-slot="${slot}" data-host-probe-field="label" oninput="this.classList.remove('input-error')" placeholder="YouTube" value="${escapeHtml(target?.label ?? '')}" /></td>
+        <td><input type="text" id="host-probe-${slot}-host" name="hostProbeHost${slot}" class="input input-sm w-full font-mono text-sm" data-host-probe-slot="${slot}" data-host-probe-field="host" oninput="this.classList.remove('input-error')" placeholder="a.rtmp.youtube.com" value="${escapeHtml(target?.host ?? '')}" /></td>
+        <td><input type="number" min="1" max="65535" id="host-probe-${slot}-port" name="hostProbePort${slot}" class="input input-sm w-full font-mono text-sm" data-host-probe-slot="${slot}" data-host-probe-field="port" oninput="this.classList.remove('input-error')" placeholder="1935" value="${target?.port ?? ''}" /></td>
         <td class="text-right">
             <button type="button" class="btn btn-xs btn-error btn-outline" onclick="removeHostProbeRowBtn(${slot})" aria-label="Remove host probe" title="Remove host probe">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -139,11 +139,20 @@ function readHostProbeRows(): HostProbeTarget[] | null {
         const port = Number(portRaw || '1935');
         const valid = !!label && !!host && Number.isInteger(port) && port >= 1 && port <= 65535;
         if (!valid) {
-            if (!label) labelEl.classList.add('input-error');
-            if (!host) hostEl.classList.add('input-error');
+            const needs: string[] = [];
+            if (!label) {
+                labelEl.classList.add('input-error');
+                needs.push('a name');
+            }
+            if (!host) {
+                hostEl.classList.add('input-error');
+                needs.push('a host');
+            }
             if (!Number.isInteger(port) || port < 1 || port > 65535) {
                 portEl.classList.add('input-error');
+                needs.push('a port from 1 to 65535');
             }
+            api.showError(`Host probe needs ${needs.join(', ')}.`);
             return null;
         }
 
@@ -248,12 +257,23 @@ function readPipelineGroupRows(): { id?: number; name: string }[] | null {
         if (!nameEl) continue;
         const name = nameEl.value.trim();
         nameEl.classList.remove('input-error');
-        if (!name) continue; // blank rows are skipped, not saved
-        if (name.length > MAX_PIPELINE_GROUP_NAME_LENGTH) {
+        const isNew = rowKey.startsWith('new-');
+        if (!name && isNew) continue; // a blank new row is skipped, not saved
+        if (!name) {
+            // Saving would drop the group (an id missing from the list means
+            // delete), so make the operator remove the row on purpose.
             nameEl.classList.add('input-error');
+            api.showError('Group name is required. Remove the row to delete the group.');
             return null;
         }
-        const id = rowKey.startsWith('new-') ? undefined : Number(rowKey);
+        if (name.length > MAX_PIPELINE_GROUP_NAME_LENGTH) {
+            nameEl.classList.add('input-error');
+            api.showError(
+                `Group name must be at most ${MAX_PIPELINE_GROUP_NAME_LENGTH} characters.`,
+            );
+            return null;
+        }
+        const id = isNew ? undefined : Number(rowKey);
         groups.push(id !== undefined ? { id, name } : { name });
     }
     return groups;
@@ -313,7 +333,12 @@ export async function submitGeneralSettingsForm(btn?: HTMLButtonElement): Promis
     const publicHost = (
         document.getElementById('settings-public-host-input') as HTMLInputElement
     ).value.trim();
-    if (!name) return;
+    const nameEl = document.getElementById('settings-server-name-input') as HTMLInputElement;
+    nameEl.classList.toggle('input-error', !name);
+    if (!name) {
+        api.showError('Server name is required.');
+        return;
+    }
 
     await withBusy(btn, async () => {
         const result = await api.updateGeneralSettings(name, publicHost);
@@ -345,8 +370,19 @@ export async function submitPasswordForm(btn?: HTMLButtonElement): Promise<void>
     const confirmPw = (document.getElementById('confirm-password-input') as HTMLInputElement).value;
     const confirmEl = document.getElementById('confirm-password-input') as HTMLInputElement;
 
-    if (!currentPw || !newPw || !confirmPw || newPw !== confirmPw) {
-        confirmEl.classList.add('input-error');
+    const currentEl = document.getElementById('current-password-input') as HTMLInputElement;
+    const newEl = document.getElementById('new-password-input') as HTMLInputElement;
+    for (const el of [currentEl, newEl, confirmEl]) el.classList.remove('input-error');
+    const problem = !currentPw
+        ? { el: currentEl, message: 'Enter your current password.' }
+        : !newPw
+          ? { el: newEl, message: 'Enter a new password.' }
+          : newPw !== confirmPw
+            ? { el: confirmEl, message: 'The new passwords do not match.' }
+            : null;
+    if (problem) {
+        problem.el.classList.add('input-error');
+        api.showError(problem.message);
         return;
     }
 

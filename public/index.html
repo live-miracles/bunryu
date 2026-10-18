@@ -928,7 +928,12 @@
             <div class="flex gap-3">
               <fieldset class="fieldset min-w-0 flex-1">
                 <legend class="fieldset-legend">Server Name</legend>
-                <input type="text" id="settings-server-name-input" class="input w-full" placeholder="Bunryu" />
+                <input
+                  type="text"
+                  id="settings-server-name-input"
+                  class="input w-full"
+                  placeholder="Bunryu"
+                  oninput="this.classList.remove('input-error')" />
               </fieldset>
               <fieldset class="fieldset min-w-0 flex-1">
                 <legend class="fieldset-legend">Public Host</legend>
@@ -965,7 +970,8 @@
                     id="current-password-input"
                     class="input w-full pr-10"
                     placeholder="Current"
-                    autocomplete="current-password" />
+                    autocomplete="current-password"
+                    oninput="this.classList.remove('input-error')" />
                   <button
                     type="button"
                     class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
@@ -1013,7 +1019,10 @@
                     class="input w-full pr-10"
                     placeholder="New"
                     autocomplete="new-password"
-                    oninput="document.getElementById('confirm-password-input').classList.remove('input-error')" />
+                    oninput="
+                      this.classList.remove('input-error');
+                      document.getElementById('confirm-password-input').classList.remove('input-error');
+                    " />
                   <button
                     type="button"
                     class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
