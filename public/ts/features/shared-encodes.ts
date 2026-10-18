@@ -16,8 +16,6 @@ import type { InputHealth, OutputView, PipelineView } from '../types.js';
 
 export const SHARED_ENCODE_RESTART_LOCKOUT_MS = 5000;
 
-const ICON_RESTART = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>`;
-
 type EncodeState = 'idle' | 'failed' | 'running' | 'starting';
 
 function lastErrorLine(output: OutputView): string {
@@ -119,7 +117,8 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
         ? `<button class="btn btn-xs btn-ghost text-error" data-action="error-info" data-out-id="${escapeHtml(rendition.id)}" title="Error history">${ICON_HISTORY}</button>`
         : '';
     const canRestart = rendition.status === 'running' && !deps.restartLocked(rendition.id);
-    const restartBtn = `<button class="btn btn-xs btn-ghost" data-action="restart-shared" data-out-id="${escapeHtml(rendition.id)}" title="Restart this shared encode; its outputs reconnect"${canRestart ? '' : ' disabled'}>${ICON_RESTART}Restart</button>`;
+    // Same look as the Start/Stop button of an output card.
+    const restartBtn = `<button class="btn btn-xs btn-accent btn-outline" data-action="restart-shared" data-out-id="${escapeHtml(rendition.id)}" title="Restart this shared encode; its outputs reconnect"${canRestart ? '' : ' disabled'}>Restart</button>`;
     const dependentLines = rendition.dependents.length
         ? rendition.dependents
               .map((d) => `<div class="text-xs leading-snug">${escapeHtml(d.name)}</div>`)
@@ -131,6 +130,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 shrink-0 font-semibold">
                 <div aria-label="status" class="status status-lg mx-1" style="background-color: ${statusHex}"></div>
+                ${restartBtn}
                 <span class="js-tooltip inline-flex" tabindex="0">
                     <span class="text-sm">${escapeHtml(rendition.name)}</span>
                     <div class="js-tooltip-content hidden"><div class="text-xs leading-snug font-semibold mb-0.5">Used by:</div>${dependentLines}</div>
@@ -139,7 +139,6 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
             ${badges.join('')}
             <div class="flex items-center gap-1 ml-auto shrink-0">
                 ${historyBtn}
-                ${restartBtn}
             </div>
         </div>
         ${errorHtml}

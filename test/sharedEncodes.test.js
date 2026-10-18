@@ -393,6 +393,31 @@ describe('Shared encodes card', () => {
         assert.equal(SHARED_ENCODE_RESTART_LOCKOUT_MS, 5000);
     });
 
+    test('Restart is styled like Start/Stop and sits between the status dot and the name', () => {
+        const html = renderSharedEncodeRows(pipelineWith(), deps());
+        const dot = html.indexOf('aria-label="status"');
+        const restart = html.indexOf('data-action="restart-shared"');
+        const name = html.indexOf('Shared encode 720p · track 2');
+        const history = html.indexOf('data-action="error-info"');
+
+        assert.ok(dot >= 0 && dot < restart && restart < name, 'dot, then Restart, then name');
+        assert.match(
+            html,
+            /<button class="btn btn-xs btn-accent btn-outline"[^>]*data-action="restart-shared"/,
+        );
+        assert.ok(
+            !/btn-ghost[^>]*data-action="restart-shared"/.test(html),
+            'not the ghost icon button',
+        );
+        assert.equal(history, -1, 'no history yet in this fixture');
+        const withHistory = renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true }), deps());
+        assert.ok(
+            withHistory.indexOf('data-action="error-info"') >
+                withHistory.indexOf('Shared encode 720p'),
+            'History stays on the right',
+        );
+    });
+
     test('lists the dependent output names in the tooltip', () => {
         const html = renderSharedEncodeRows(pipelineWith(), deps());
         assert.match(html, /js-tooltip/);
