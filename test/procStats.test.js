@@ -152,6 +152,23 @@ describe('createProcCpuTracker', () => {
         assert.equal(tracker.sample('out1', 1), 150);
     });
 
+    test('rounds %CPU to one decimal', (t) => {
+        let now = 1_000_000;
+        t.mock.method(Date, 'now', () => now);
+        t.mock.method(fs, 'readFileSync', () => fakeStatLine(1, 'ffmpeg', 100, 50));
+        const tracker = createProcCpuTracker();
+        tracker.sample('out1', 1);
+
+        now += 10_000; // +10s
+        t.mock.method(fs, 'readFileSync', () => fakeStatLine(1, 'ffmpeg', 104, 50)); // +4 ticks
+        // 4 ticks / 100 CLK_TCK / 10s * 100 = 0.4% CPU
+        assert.equal(tracker.sample('out1', 1), 0.4);
+
+        now += 10_000;
+        t.mock.method(fs, 'readFileSync', () => fakeStatLine(1, 'ffmpeg', 119, 50)); // +15 ticks
+        assert.equal(tracker.sample('out1', 1), 1.5);
+    });
+
     test('returns null and rebaselines when ticks go backward (counter reset)', (t) => {
         let now = 1_000_000;
         t.mock.method(Date, 'now', () => now);

@@ -4,6 +4,7 @@ import {
     escapeHtml,
     formatBitrate,
     formatBytesCompact,
+    formatCpuPercent,
     getUrlParam,
     maskStreamKey,
     maskSecret,
@@ -1482,7 +1483,7 @@ function renderOverview(): void {
                     <td>${renderOverviewIssues(outputIssues(o, p.input))}</td>
                     <td class="font-mono text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
                     ${td(formatBitrate(o.bitrateKbps))}
-                    <td class="font-mono text-xs">${o.cpuPercent != null ? `${o.cpuPercent}%` : '—'}</td>
+                    <td class="font-mono text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
                     <td class="font-mono text-xs ${memorySeverityClass(outputMemoryPercent(o))}">${formatOutputMemory(o) ?? '—'}</td>
                     <td>${typeBadge(protocolLabel)}</td>
                     <td class="font-mono text-xs">${spec}</td>

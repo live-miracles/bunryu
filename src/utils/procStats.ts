@@ -119,7 +119,7 @@ export function findPidsByExecutable(
 
 export interface ProcCpuTracker {
     // %CPU relative to a single core (ps/top convention), not normalized by core
-    // count. Returns null on the first sample for a key, and again on the first
+    // count, rounded to one decimal. Returns null on the first sample for a key, and again on the first
     // sample after its pid changes (process restart reusing the same key), since
     // there's no prior tick count yet to diff against.
     sample(key: string | number, pid: number): number | null;
@@ -141,7 +141,7 @@ export function createProcCpuTracker(): ProcCpuTracker {
             if (!last || last.pid !== pid || ticks < last.ticks) return null;
             const dtSeconds = (now - last.ts) / 1000;
             return dtSeconds > 0
-                ? Math.round(((ticks - last.ticks) / CLK_TCK / dtSeconds) * 100)
+                ? Math.round(((ticks - last.ticks) / CLK_TCK / dtSeconds) * 1000) / 10
                 : null;
         },
         delete(key) {

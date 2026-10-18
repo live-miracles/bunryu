@@ -1,4 +1,4 @@
-import { formatBitrate, formatBytesCompact } from '../core/utils.js';
+import { formatBitrate, formatBytesCompact, formatCpuPercent } from '../core/utils.js';
 import type { OutputView } from '../types.js';
 
 // Pieces shared by the output card and the Shared encodes card, kept in a leaf
@@ -43,7 +43,7 @@ export function outputMetricsBadge(output: OutputView): string {
               : '';
     const parts = [
         output.bitrateKbps !== null ? formatBitrate(output.bitrateKbps) : null,
-        output.cpuPercent !== null ? `${output.cpuPercent}%` : null,
+        output.cpuPercent !== null ? formatCpuPercent(output.cpuPercent) : null,
         output.memoryUsageBytes !== null ? formatOutputMemory(output) : null,
     ].filter((value): value is string => value !== null);
     return `<span class="badge badge-sm whitespace-nowrap ${memCls}" title="Bitrate / ffmpeg CPU (% of one core) / ffmpeg RSS">${parts.join(' | ')}</span>`;

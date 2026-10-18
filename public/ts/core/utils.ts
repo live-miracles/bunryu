@@ -44,6 +44,12 @@ export const STATUS_COLOR_WARN = '#facc15';
 export const STATUS_COLOR_ERROR = '#ef4444';
 export const STATUS_COLOR_OFF = '#6b7280';
 
+// ffmpeg CPU as % of one core: one decimal under 10% (copy outputs sit at 0.5-3%),
+// whole numbers above.
+export function formatCpuPercent(percent: number): string {
+    return `${percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+}
+
 export function formatBitrate(kbps: number | null): string {
     if (kbps === null) return '—';
     if (kbps >= 1_000_000) return `${(kbps / 1_000_000).toFixed(1)} gbps`;
