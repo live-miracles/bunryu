@@ -212,6 +212,8 @@ tool folder.
   diagnostics, deployed version).
 - `write-fail-report` - incident write-ups in `fail-reports/` and the redaction
   checklist for this public repository.
+- `benchmark-sizing` - re-measure output CPU/RAM costs on a private loopback SRS
+  pair to refresh `docs/1-getting-started/4-sizing.md`.
 
 ## Data model and compatibility
 

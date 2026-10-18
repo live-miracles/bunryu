@@ -337,7 +337,9 @@ the dashboard, and no cost model for individual machine families.
 the production binaries was fed a generated 1080p30 ~6 Mbps stream. FFmpeg ran with
 the application's own arguments, each case 15 s warm-up and 45 s measured, CPU from
 `/proc/<pid>/stat`, `nice 19`, aborting if production FFmpeg or a live stream
-appeared. The script was not kept in the repository.
+appeared. It ran as two per-origin scripts, now merged into
+`skills/benchmark-sizing/sizing-benchmark.py` (the `benchmark-sizing` skill), which
+is how to repeat it.
 - Copy output: 0.005 vCPU on an RTMP input, 0.02 on SRT (plus 0.01 in SRS); 30
   outputs: 0.16 and 0.93 vCPU.
 - Audio re-encode: +0.03 (RTMP) and +0.04 (SRT).
