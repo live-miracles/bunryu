@@ -10,7 +10,7 @@
 
 - [Publishing to a pipeline](2-usage/1-publishing.md): publish URLs and encoder settings
 - [Outputs](2-usage/2-outputs.md): destinations, video encodings, audio tracks and shared encodes
-- [Translation outputs](2-usage/3-translation.md): mixing interpreter audio over the source
+- [Translation outputs](2-usage/3-translation.md) (beta): mixing interpreter audio over the source
 
 ## Operations
 

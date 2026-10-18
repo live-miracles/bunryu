@@ -38,7 +38,7 @@ transcoding profile. Ten outputs on `720p` with the same audio track are one
 | `copy` | Forwards the input's default audio track unchanged |
 | Track number (`0`, `1`, ...) | Forwards that track, re-encoded to AAC 128 kbps stereo 48 kHz. Outputs on the same track (and video encoding) share the encode |
 | Several tracks (`0,1`) | Forwards each listed track; SRT destinations only, since RTMP carries a single audio track. Never shared: each output encodes on its own |
-| `translation` | Mixes a translator pipeline's audio over the source; see [Translation outputs](3-translation.md). Never shared |
+| `translation` | Beta. Mixes a translator pipeline's audio over the source; see [Translation outputs](3-translation.md). Never shared |
 
 When an SRT input is forwarded to an RTMP destination, select a track instead of
 `copy`: re-encoding absorbs the timestamp jitter that SRT inputs can carry, and

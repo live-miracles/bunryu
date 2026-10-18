@@ -1,5 +1,9 @@
 # Translation outputs
 
+> **Beta.** Translation outputs are new and have had limited use in live events so
+> far. Settings and behavior may still change, so test your setup with the real
+> source and translator feeds before relying on it for a live program.
+
 A translation output mixes a live interpreter's audio into an output. It is
 configured directly on an output: the output's own pipeline is the **source** (it
 supplies the video and source audio), and a second, user-selected pipeline
