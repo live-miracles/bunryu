@@ -16,8 +16,6 @@ import type { InputHealth, OutputView, PipelineView } from '../types.js';
 
 export const SHARED_ENCODE_RESTART_LOCKOUT_MS = 5000;
 
-type EncodeState = 'idle' | 'failed' | 'running' | 'starting';
-
 function lastErrorLine(output: OutputView): string {
     return (
         (output.lastError ?? '')
@@ -34,13 +32,6 @@ function hasCurrentError(o: OutputView): boolean {
     if (o.lastError === null || o.lastErrorAt === null) return false;
     if (o.startedAtMs === null) return o.failures > 0;
     return o.lastErrorAt >= o.startedAtMs;
-}
-
-function encodeState(rendition: OutputView): EncodeState {
-    if (rendition.desiredState === 'stopped') return 'idle';
-    if (rendition.status === 'failed') return 'failed';
-    if (rendition.status === 'running' && rendition.ready) return 'running';
-    return 'starting';
 }
 
 // What an output that pulls a shared encode should say while it is not running
@@ -62,14 +53,6 @@ export function sharedEncodeIssue(
         };
     }
     return { severity: 'warning', message: `Waiting for shared encode ${rendition.name}` };
-}
-
-// Badge for an output card that pulls a shared encode, with the encode and its
-// state in a tooltip. Empty for outputs that pull the input directly.
-export function sharedEncodeBadge(output: OutputView): string {
-    const rendition = output.sharedEncode;
-    if (!rendition) return '';
-    return `<span class="js-tooltip inline-flex shrink-0" tabindex="0"><span class="badge badge-xs badge-info badge-soft whitespace-nowrap">shared</span><div class="js-tooltip-content hidden"><div class="text-xs leading-snug">Pulls <span class="font-semibold">${escapeHtml(rendition.name)}</span> (${encodeState(rendition)}) instead of encoding on its own.</div></div></span>`;
 }
 
 function plural(n: number, word: string): string {

@@ -9,7 +9,6 @@ import {
 import { state } from '../core/state.js';
 import type { InputHealth, OutputView } from '../types.js';
 import { ICON_HISTORY, ICON_ITERATION_CW, outputMetricsBadge } from './output-badges.js';
-import { sharedEncodeBadge } from './shared-encodes.js';
 
 export type OutputCardStatus = 'good' | 'warn' | 'error' | 'off';
 export type DupRef = { pipelineName: string; outputName?: string };
@@ -113,8 +112,6 @@ export function renderOutputCard(
             `<span class="badge badge-sm badge-accent badge-soft whitespace-nowrap">${output.videoEncoding}</span>`,
         );
     }
-    const sharedBadge = sharedEncodeBadge(output);
-    if (sharedBadge) badges.push(sharedBadge);
     if (output.audioEncoding !== 'copy') {
         const label =
             output.audioEncoding === 'translation'

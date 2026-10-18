@@ -6,10 +6,8 @@ const { parsePipelines } = require('../public/ts/core/pipeline');
 const {
     renderSharedEncodeRows,
     sharedEncodeIssue,
-    sharedEncodeBadge,
     SHARED_ENCODE_RESTART_LOCKOUT_MS,
 } = require('../public/ts/features/shared-encodes');
-const { renderOutputCard } = require('../public/ts/features/output-card');
 
 const ENCODINGS = ['copy', '720p', '1080p', 'vertical_rotate'];
 const R720 = 'rtmp://127.0.0.1:21935/internal/r1_720p_a1';
@@ -188,7 +186,7 @@ describe('parsePipelines: outputs that started direct', () => {
         );
     });
 
-    test('a running direct output shows no shared badge and no waiting warning', () => {
+    test('a running direct output gets no waiting warning, even while the encode is down', () => {
         const p = parse({
             outputs: FLEET(),
             health: {
@@ -196,15 +194,7 @@ describe('parsePipelines: outputs that started direct', () => {
                 '1-3': outputHealth({ renditionId: null }),
             },
         });
-        const direct = p.outs.find((o) => o.id === '1-3');
-        const card = renderOutputCard(
-            direct,
-            { connected: true, isSrt: false, audioTracks: [] },
-            new Map(),
-            { outStatus: () => 'good', pendingOutputs: new Map(), formatUptime: () => '' },
-        );
-        assert.ok(!card.includes('shared'));
-        assert.equal(sharedEncodeIssue(direct), null);
+        assert.equal(sharedEncodeIssue(p.outs.find((o) => o.id === '1-3')), null);
     });
 });
 
@@ -450,54 +440,5 @@ describe('Shared encodes card', () => {
 
         assert.ok(!html.includes('<img'), html);
         assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
-    });
-});
-
-describe('output card for a shared output', () => {
-    const input = { connected: true, isSrt: false, audioTracks: [] };
-    const cardDeps = {
-        outStatus: () => 'good',
-        pendingOutputs: new Map(),
-        formatUptime: () => '',
-    };
-    const card = (o) => renderOutputCard(o, input, new Map(), cardDeps);
-    const pipeline = (renditionHealth = {}) =>
-        parse({
-            outputs: FLEET(),
-            health: { '1-2': outputHealth({ role: 'rendition', ready: true, ...renditionHealth }) },
-        });
-
-    test('shows a "shared" badge naming the encode and its state', () => {
-        const o = pipeline().outs.find((x) => x.id === '1-3');
-        const html = card(o);
-
-        assert.match(html, /shared/);
-        assert.match(html, /Shared encode 720p · track 2/);
-        assert.match(html, /running/);
-        assert.equal(sharedEncodeBadge(o), sharedEncodeBadge(o));
-    });
-
-    test('the tooltip reflects a failed or idle encode', () => {
-        const failed = pipeline({ status: 'failed', ready: false }).outs.find(
-            (x) => x.id === '1-3',
-        );
-        assert.match(sharedEncodeBadge(failed), /failed/);
-        const starting = pipeline({ ready: false }).outs.find((x) => x.id === '1-3');
-        assert.match(sharedEncodeBadge(starting), /starting/);
-    });
-
-    test('outputs that are not shared get no badge and an unchanged card', () => {
-        const p = pipeline();
-        const plain = p.outs.find((x) => x.id === '1-1');
-        assert.equal(sharedEncodeBadge(plain), '');
-        assert.ok(!card(plain).includes('shared'));
-    });
-
-    test('the badge escapes the encode name', () => {
-        const rows = FLEET().map((o) => (o.id === '1-2' ? { ...o, name: '<b>x</b>' } : o));
-        const p = parse({ outputs: rows, health: {} });
-        const html = card(p.outs.find((x) => x.id === '1-3'));
-        assert.ok(!html.includes('<b>x</b>'));
-        assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;'));
     });
 });

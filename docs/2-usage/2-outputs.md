@@ -88,9 +88,9 @@ do not count toward the 500-output limit.
 with one row per encode: status, name, uptime, bitrate | CPU | memory, how many
 outputs use it and how many are reading it right now, the failure count and the
 last error. **History** opens its Error History and **Restart** restarts it after a
-confirmation; its outputs reconnect. Outputs that use one show a **shared** badge,
-and while their encode is not up they show a warning ("Waiting for shared
-encode …", or "Shared encode … failed: …") rather than an error. The pipeline's
+confirmation; its outputs reconnect. While an output's encode is not up, the output
+shows a warning ("Waiting for shared encode …", or "Shared encode … failed: …")
+rather than an error. The pipeline's
 "N readers" counts only what reads the input itself, so it no longer includes
 outputs that read a shared encode.
 
@@ -130,8 +130,7 @@ starts them staggered at 200 ms intervals. An output's desired state is saved,
 so outputs that were running are started again automatically when the input
 comes back or the server restarts.
 
-The output card shows status, uptime, bitrate, CPU and memory (and a **shared**
-badge when it pulls a [shared encode](#shared-encodes)). Problems appear on
+The output card shows status, uptime, bitrate, CPU and memory. Problems appear on
 the card as warnings, and every crash, watchdog restart and finished warning
 episode is kept in the output's **Error History** with the FFmpeg stderr tail.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
