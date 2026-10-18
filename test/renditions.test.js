@@ -175,16 +175,13 @@ describe('rendition naming', () => {
         );
     });
 
-    test('display names', () => {
-        assert.equal(renditionName(encodeRecipe(out('720p', '1'))), 'Shared encode 720p · track 1');
-        assert.equal(
-            renditionName(encodeRecipe(out('copy', '0'))),
-            'Shared encode copy video · track 0',
-        );
-        assert.equal(
-            renditionName(encodeRecipe(out('1080p', 'copy'))),
-            'Shared encode 1080p · source audio',
-        );
+    test('display names list only what is encoded, with tracks numbered like the dashboard (T1 = track 0)', () => {
+        const name = (v, a) => renditionName(encodeRecipe(out(v, a)));
+        assert.equal(name('720p', '1'), 'Shared encode 720p · T2');
+        assert.equal(name('copy', '0'), 'Shared encode T1');
+        assert.equal(name('1080p', 'copy'), 'Shared encode 1080p');
+        assert.equal(name('vertical_rotate', '2'), 'Shared encode vertical_rotate · T3');
+        assert.equal(name('copy', '11'), 'Shared encode T12');
     });
 });
 

@@ -81,10 +81,12 @@ export function renditionUrl(pipelineId: number, recipe: Recipe): string {
     return `rtmp://${rtmpHost}:${rtmpPort}/${RENDITION_APP}/${renditionStreamName(pipelineId, recipe)}`;
 }
 
+// Short, like the dashboard's output cards: only what is encoded. Video is left out
+// when it is copied, audio is T<n> (T1 = track 0, as on the cards) and left out when
+// it is the source audio. A recipe always has at least one of the two.
 export function renditionName(recipe: Recipe): string {
-    const video =
-        recipe.videoEncoding === 'copy' ? 'copy video' : recipe.videoEncoding.replaceAll('_', ' ');
-    const audio =
-        recipe.audioEncoding === 'copy' ? 'source audio' : `track ${recipe.audioEncoding}`;
-    return `Shared encode ${video} · ${audio}`;
+    const parts: string[] = [];
+    if (recipe.videoEncoding !== 'copy') parts.push(recipe.videoEncoding);
+    if (recipe.audioEncoding !== 'copy') parts.push(`T${Number(recipe.audioEncoding) + 1}`);
+    return `Shared encode ${parts.join(' · ')}`;
 }

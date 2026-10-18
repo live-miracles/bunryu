@@ -53,7 +53,7 @@ AAC encode, not ten. Operators used to loop an SRT pipeline into a second pipeli
 to get this; that workaround is no longer needed.
 
 ```
-pipeline input ──► shared encode "720p · track 1" (encodes once)
+pipeline input ──► shared encode "720p · T2" (encodes once)
                       ├──► output A (copy) ──► destination A
                       └──► output B (copy) ──► destination B
                ──► output C (copy video, source audio): pulls the input directly
@@ -85,12 +85,15 @@ and you cannot point an output at the server's internal `internal` RTMP app. The
 do not count toward the 500-output limit.
 
 **In the dashboard.** The pipeline's side column shows a **Shared encodes** card
-with one row per encode: status, name, uptime, bitrate | CPU | memory, how many
-outputs use it and how many are reading it right now, the failure count and the
-last error. **History** opens its Error History and **Restart** restarts it after a
-confirmation; its outputs reconnect. While an output's encode is not up, the output
-shows a warning ("Waiting for shared encode …", or "Shared encode … failed: …")
-rather than an error. The pipeline's
+with one row per encode. The first line has the status, **Restart** (it restarts
+the encode after a confirmation and its outputs reconnect), the encoding as badges
+like an output card (the video encoding unless it is `copy`, and the audio track as
+`T1`, `T2`, …, where `T1` is track 0), and **History** at the end,
+which opens its Error History. The second line shows uptime, bitrate | CPU |
+memory, how many outputs use it and how many are reading it right now
+("2 outs · 1 read"), and the failure count; the last error follows. While an
+output's encode is not up, the output shows a warning ("Waiting for Shared
+encode …", or "Shared encode failed: …") rather than an error. The pipeline's
 "N readers" counts only what reads the input itself, so it no longer includes
 outputs that read a shared encode.
 

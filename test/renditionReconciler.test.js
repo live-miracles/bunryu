@@ -98,7 +98,7 @@ describe('rendition reconciler: rows', () => {
 
         const rows = h.renditions(p.id);
         assert.equal(rows.length, 1);
-        assert.equal(rows[0].name, 'Shared encode 720p · track 0');
+        assert.equal(rows[0].name, 'Shared encode 720p · T1');
         assert.equal(rows[0].videoEncoding, '720p');
         assert.equal(rows[0].audioEncoding, '0');
         assert.equal(

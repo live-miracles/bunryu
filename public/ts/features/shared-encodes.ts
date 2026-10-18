@@ -52,11 +52,11 @@ export function sharedEncodeIssue(
             message: line ? `Shared encode failed: ${line}` : 'Shared encode failed.',
         };
     }
-    return { severity: 'warning', message: `Waiting for shared encode ${rendition.name}` };
+    return { severity: 'warning', message: `Waiting for ${rendition.name}` };
 }
 
-function plural(n: number, word: string): string {
-    return `${n} ${word}${n === 1 ? '' : 's'}`;
+function plural(n: number, one: string, many: string): string {
+    return `${n} ${n === 1 ? one : many}`;
 }
 
 function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncodeCardDeps): string {
@@ -71,6 +71,18 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
                 ? STATUS_COLOR_ERROR
                 : STATUS_COLOR_OFF;
     const uptimeMs = rendition.startedAtMs !== null ? Date.now() - rendition.startedAtMs : null;
+    // The encoding as badges, like an output card: video unless copy, audio as T<n>.
+    const encoding: string[] = [];
+    if (rendition.videoEncoding !== 'copy') {
+        encoding.push(
+            `<span class="badge badge-sm badge-accent badge-soft whitespace-nowrap">${escapeHtml(rendition.videoEncoding)}</span>`,
+        );
+    }
+    if (rendition.audioEncoding !== 'copy') {
+        encoding.push(
+            `<span class="badge badge-xs badge-accent badge-soft whitespace-nowrap">T${parseInt(rendition.audioEncoding) + 1}</span>`,
+        );
+    }
     const badges: string[] = [];
     if (uptimeMs !== null) {
         badges.push(
@@ -80,7 +92,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     badges.push(outputMetricsBadge(rendition));
     const readers = rendition.readers ?? 0;
     badges.push(
-        `<span class="badge badge-sm badge-soft whitespace-nowrap" title="Outputs that pull this encode, and clients currently reading it from SRS">${plural(rendition.dependents.length, 'output')} · ${plural(readers, 'reader')}</span>`,
+        `<span class="badge badge-sm badge-soft whitespace-nowrap" title="Outputs that pull this encode, and clients currently reading it from SRS">${plural(rendition.dependents.length, 'out', 'outs')} · ${plural(readers, 'read', 'reads')}</span>`,
     );
     if (rendition.failures > 0) {
         badges.push(
@@ -108,22 +120,25 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
               .join('')
         : '<div class="text-xs leading-snug opacity-70">No outputs use it.</div>';
 
+    // First line: dot, Restart, the encoding, History at the end (as on an output
+    // card). The card's own title already says "Shared encodes". The stats go on a
+    // second line so the first never wraps.
     return `
     <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-shared-encode="${escapeHtml(rendition.id)}">
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <div class="flex items-center gap-2 shrink-0 font-semibold">
+        <div class="flex items-center gap-x-2">
+            <div class="flex items-center gap-2 min-w-0 font-semibold">
                 <div aria-label="status" class="status status-lg mx-1" style="background-color: ${statusHex}"></div>
                 ${restartBtn}
-                <span class="js-tooltip inline-flex" tabindex="0">
-                    <span class="text-sm">${escapeHtml(rendition.name)}</span>
+                <span class="js-tooltip inline-flex items-center gap-2" tabindex="0">
+                    ${encoding.join('')}
                     <div class="js-tooltip-content hidden"><div class="text-xs leading-snug font-semibold mb-0.5">Used by:</div>${dependentLines}</div>
                 </span>
             </div>
-            ${badges.join('')}
             <div class="flex items-center gap-1 ml-auto shrink-0">
                 ${historyBtn}
             </div>
         </div>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2">${badges.join('')}</div>
         ${errorHtml}
     </div>`;
 }

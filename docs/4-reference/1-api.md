@@ -54,7 +54,7 @@ ordinary output row owned by the server, so the API exposes it as one:
 - **It appears in `outputs`** of `/api/config` and in `/api/health` like any other
   output. It is recognised by its `url`,
   `rtmp://127.0.0.1:<rtmpPort>/internal/r<pipelineId>_<videoEncoding>_a<audioEncoding>`,
-  and its `name` reads `Shared encode <video> · <audio>`. Its `videoEncoding` and
+  and its `name` lists what is encoded: `Shared encode <video> · T<n>`, leaving out a copied video or source audio (`Shared encode 720p · T1`, `Shared encode T2`; T1 is audio track 0). Its `videoEncoding` and
   `audioEncoding` are the recipe.
 - **The server creates and deletes it** while a pipeline has at least two outputs
   with the same recipe (a single output encodes on its own and gets no row), and

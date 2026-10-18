@@ -213,7 +213,7 @@ describe('sharedEncodeIssue', () => {
     test('waiting for a rendition that is not ready yet', () => {
         const issue = sharedEncodeIssue(view({ status: 'running', ready: false }));
         assert.equal(issue.severity, 'warning');
-        assert.equal(issue.message, 'Waiting for shared encode Shared encode 720p · track 2');
+        assert.equal(issue.message, 'Waiting for Shared encode 720p · track 2');
     });
 
     test('a failed rendition is named with its last error line', () => {
@@ -246,7 +246,7 @@ describe('sharedEncodeIssue', () => {
         const issue = sharedEncodeIssue(
             view({ status: 'running', ready: false }, { status: 'failed' }),
         );
-        assert.match(issue.message, /^Waiting for shared encode /);
+        assert.match(issue.message, /^Waiting for Shared encode /);
     });
 
     test('nothing to say when the rendition is ready, the output runs, or it is stopped', () => {
@@ -273,7 +273,7 @@ describe('sharedEncodeIssue', () => {
             health: { '1-3': outputHealth({ status: 'stopped', startedAtMs: null }) },
         });
         const issue = sharedEncodeIssue(p.outs.find((o) => o.id === '1-3'));
-        assert.match(issue.message, /^Waiting for shared encode /);
+        assert.match(issue.message, /^Waiting for Shared encode /);
     });
 });
 
@@ -305,10 +305,51 @@ describe('Shared encodes card', () => {
         const html = renderSharedEncodeRows(pipelineWith(), deps());
 
         assert.equal((html.match(/data-shared-encode=/g) ?? []).length, 1);
-        assert.match(html, /Shared encode 720p · track 2/);
-        assert.match(html, /2 outputs · 2 readers/);
+        assert.ok(
+            !html.includes('Shared encode'),
+            'the card title already says it; the row shows only the encoding',
+        );
+        assert.match(html, />720p</);
+        assert.match(html, />T2</);
+        assert.match(html, /2 outs · 2 reads/);
         assert.match(html, /1m 5s/);
         assert.match(html, /3\.0 mbps \| 41% \|/);
+    });
+
+    test('shows the encoding as badges like an output card: video if not copy, audio as T<n>', () => {
+        const only = (video, audio) =>
+            renderSharedEncodeRows(
+                parse({
+                    outputs: [
+                        renditionRow(
+                            '1-2',
+                            `rtmp://127.0.0.1:21935/internal/r1_${video}_a${audio}`,
+                            video,
+                            audio,
+                        ),
+                    ],
+                    health: { '1-2': outputHealth({ role: 'rendition', ready: true, readers: 0 }) },
+                }),
+                deps(),
+            );
+        const both = only('720p', '1');
+        assert.match(
+            both,
+            /<span class="badge badge-sm badge-accent badge-soft whitespace-nowrap">720p<\/span>/,
+        );
+        assert.match(
+            both,
+            /<span class="badge badge-xs badge-accent badge-soft whitespace-nowrap">T2<\/span>/,
+        );
+
+        const audioOnly = only('copy', '0');
+        assert.match(audioOnly, />T1</);
+        assert.ok(!audioOnly.includes('>copy<'), 'copy video is not a badge');
+        assert.ok(!audioOnly.includes('badge-sm badge-accent'));
+
+        const videoOnly = only('1080p', 'copy');
+        assert.match(videoOnly, />1080p</);
+        assert.ok(!videoOnly.includes('badge-xs badge-accent'), 'source audio is not a badge');
     });
 
     test('uses singular forms and zero readers', () => {
@@ -316,9 +357,9 @@ describe('Shared encodes card', () => {
             { readers: 0 },
             FLEET().filter((o) => o.id !== '1-4'),
         );
-        assert.match(renderSharedEncodeRows(p, deps()), /1 output · 0 readers/);
+        assert.match(renderSharedEncodeRows(p, deps()), /1 out · 0 reads/);
         const p1 = pipelineWith({ readers: 1 });
-        assert.match(renderSharedEncodeRows(p1, deps()), /2 outputs · 1 reader\b/);
+        assert.match(renderSharedEncodeRows(p1, deps()), /2 outs · 1 read\b/);
     });
 
     test('renders nothing for a pipeline without renditions', () => {
@@ -383,14 +424,17 @@ describe('Shared encodes card', () => {
         assert.equal(SHARED_ENCODE_RESTART_LOCKOUT_MS, 5000);
     });
 
-    test('Restart is styled like Start/Stop and sits between the status dot and the name', () => {
+    test('Restart is styled like Start/Stop and sits between the status dot and the encoding', () => {
         const html = renderSharedEncodeRows(pipelineWith(), deps());
         const dot = html.indexOf('aria-label="status"');
         const restart = html.indexOf('data-action="restart-shared"');
-        const name = html.indexOf('Shared encode 720p · track 2');
+        const name = html.indexOf('>720p<');
         const history = html.indexOf('data-action="error-info"');
 
-        assert.ok(dot >= 0 && dot < restart && restart < name, 'dot, then Restart, then name');
+        assert.ok(
+            dot >= 0 && dot < restart && restart < name,
+            'dot, then Restart, then the encoding',
+        );
         assert.match(
             html,
             /<button class="btn btn-xs btn-accent btn-outline"[^>]*data-action="restart-shared"/,
@@ -402,10 +446,35 @@ describe('Shared encodes card', () => {
         assert.equal(history, -1, 'no history yet in this fixture');
         const withHistory = renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true }), deps());
         assert.ok(
-            withHistory.indexOf('data-action="error-info"') >
-                withHistory.indexOf('Shared encode 720p'),
+            withHistory.indexOf('data-action="error-info"') > withHistory.indexOf('>720p<'),
             'History stays on the right',
         );
+    });
+
+    test('first line is dot, Restart, encoding badges and History at the end; stats go below', () => {
+        const html = renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true }), deps());
+        const at = (needle) => html.indexOf(needle);
+        const order = [
+            at('aria-label="status"'),
+            at('data-action="restart-shared"'),
+            at('>720p<'),
+            at('>T2<'),
+            at('data-action="error-info"'),
+            at('1m 5s'),
+            at('2 outs · 2 reads'),
+        ];
+
+        assert.ok(
+            order.every((i) => i >= 0),
+            JSON.stringify(order),
+        );
+        assert.deepEqual(
+            order,
+            [...order].sort((a, b) => a - b),
+            'dot, Restart, encoding badges, History, then stats',
+        );
+        // History sits in the right-aligned group of the first line, as on an output card.
+        assert.match(html, /ml-auto[^"]*">\s*<button[^>]*data-action="error-info"/);
     });
 
     test('lists the dependent output names in the tooltip', () => {
