@@ -188,8 +188,10 @@ export function renderOutputCard(
                 <span class="text-xs text-error truncate">${escapeHtml(lastErrorLine)}</span>
            </div>`
             : '';
+    // Red only while the latest record is a crash; after a stop (or only warnings)
+    // the history is still there to open but nothing is currently wrong.
     const historyBtn = output.hasErrorHistory
-        ? `<button class="btn btn-xs btn-square btn-ghost text-error" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
+        ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
     const warningHtml = output.warningReason
         ? `<div class="flex items-center gap-2 pl-2 mt-0.5 min-w-0">

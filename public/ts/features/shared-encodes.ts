@@ -111,8 +111,9 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
                 <span class="text-xs text-error truncate" title="${escapeHtml(errorLine)}">${escapeHtml(errorLine)}</span>
            </div>`
             : '';
+    // Red only while the latest record is a crash (see the output card).
     const historyBtn = rendition.hasErrorHistory
-        ? `<button class="btn btn-xs btn-square btn-ghost text-error" data-action="error-info" data-out-id="${escapeHtml(rendition.id)}" title="Error history">${ICON_HISTORY}</button>`
+        ? `<button class="btn btn-xs btn-square btn-ghost ${rendition.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${escapeHtml(rendition.id)}" title="Error history">${ICON_HISTORY}</button>`
         : '';
     const canRestart = rendition.status === 'running' && !deps.restartLocked(rendition.id);
     // Square icon button like the Start/Stop button of an output card.

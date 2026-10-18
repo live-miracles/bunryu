@@ -424,6 +424,16 @@ describe('Shared encodes card', () => {
         assert.equal(SHARED_ENCODE_RESTART_LOCKOUT_MS, 5000);
     });
 
+    test('History is red only while the latest record is a crash', () => {
+        const button = (over) =>
+            renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true, ...over }), deps()).match(
+                /<button[^>]*data-action="error-info"[^>]*>/,
+            )[0];
+
+        assert.match(button({ lastError: `${Date.now()}\nexit=1` }), /text-error/);
+        assert.ok(!/text-error/.test(button({ lastError: null })));
+    });
+
     test('Restart is styled like Start/Stop and sits between the status dot and the encoding', () => {
         const html = renderSharedEncodeRows(pipelineWith(), deps());
         const dot = html.indexOf('aria-label="status"');

@@ -137,5 +137,7 @@ comes back or the server restarts.
 The output card shows status, uptime, bitrate, CPU and memory. Problems appear on
 the card as warnings, and every crash, watchdog restart and finished warning
 episode is kept in the output's **Error History** with the FFmpeg stderr tail.
+The History button is red while the latest record is a crash or watchdog restart;
+after a stop, or with only warnings, it keeps the normal color.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.
