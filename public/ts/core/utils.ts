@@ -62,6 +62,15 @@ export function formatBitrate(kbps: number | null): string {
     return `${fmtUnder10(kbps)} kbps`;
 }
 
+// Y-axis tick label for a bitrate chart. The unit comes from the chart's peak
+// so every tick shares it ("50k" … "200k", or "0.25M" … "1M"), and ticks stay
+// distinct however small the traffic is.
+export function formatBitrateAxis(kbps: number, peakKbps: number): string {
+    if (kbps === 0) return '0';
+    const mega = peakKbps >= 1000;
+    return `${Number((mega ? kbps / 1000 : kbps).toFixed(2))}${mega ? 'M' : 'k'}`;
+}
+
 export function formatBytes(bytes: number): string {
     if (bytes >= 1024 ** 3) return `${fmtUnder10(bytes / 1024 ** 3)} GB`;
     if (bytes >= 1024 ** 2) return `${fmtUnder10(bytes / 1024 ** 2)} MB`;

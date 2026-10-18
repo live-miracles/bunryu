@@ -24,7 +24,7 @@ export function drawChart(
     extract: (s: MetricSample) => number,
     maxHint: number,
     color: string,
-    fmtY: (v: number) => string,
+    fmtY: (v: number, peak: number) => string,
 ): void {
     const canvas = document.getElementById(id) as HTMLCanvasElement | null;
     if (!canvas) return;
@@ -82,7 +82,7 @@ export function drawChart(
         ctx.fillStyle = labelColor;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillText(fmtY(v), mL - 5, y);
+        ctx.fillText(fmtY(v, peak), mL - 5, y);
     }
 
     if (values.length < 2) return;

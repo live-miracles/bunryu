@@ -5,6 +5,7 @@ import {
     formatBitrate,
     formatBytesCompact,
     formatCpuPercent,
+    formatBitrateAxis,
     getUrlParam,
     fmtMs,
     fmtMbpsValue,
@@ -1748,7 +1749,6 @@ function renderOverview(): void {
         </div>`;
 
     const fmtPct = (v: number) => `${Math.round(v)}%`;
-    const fmtMb = (v: number) => `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}`;
     drawChart('chart-cpu', chartSamples, (s) => s.cpu, 100, '#3b82f6', fmtPct);
     drawChart(
         'chart-ram',
@@ -1758,8 +1758,23 @@ function renderOverview(): void {
         '#a855f7',
         fmtPct,
     );
-    drawChart('chart-rx', chartSamples, (s) => (s.rxBps * 8) / 1_000_000, 0, '#22c55e', fmtMb);
-    drawChart('chart-tx', chartSamples, (s) => (s.txBps * 8) / 1_000_000, 0, '#f97316', fmtMb);
+    // kbps with a 10 kbps floor, so an idle host still gets distinct tick labels.
+    drawChart(
+        'chart-rx',
+        chartSamples,
+        (s) => (s.rxBps * 8) / 1000,
+        10,
+        '#22c55e',
+        formatBitrateAxis,
+    );
+    drawChart(
+        'chart-tx',
+        chartSamples,
+        (s) => (s.txBps * 8) / 1000,
+        10,
+        '#f97316',
+        formatBitrateAxis,
+    );
 
     document.getElementById('chart-back')?.addEventListener('click', () => {
         state.chartOffsetMs = Math.min(state.chartOffsetMs + CHART_SCROLL_STEP_MS, maxOffset);
