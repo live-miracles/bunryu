@@ -451,8 +451,11 @@ describe('Shared encodes card', () => {
         );
     });
 
-    test('first line is dot, Restart, encoding badges, the counts and History at the end; the rest goes below', () => {
-        const html = renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true }), deps());
+    test('one wrapping row like an output card: dot, Restart, every badge, History pushed to the end', () => {
+        const html = renderSharedEncodeRows(
+            pipelineWith({ hasErrorHistory: true, failures: 2 }),
+            deps(),
+        );
         const at = (needle) => html.indexOf(needle);
         const order = [
             at('aria-label="status"'),
@@ -460,9 +463,10 @@ describe('Shared encodes card', () => {
             at('>720p<'),
             at('>T2<'),
             at('2 outs · 2 reads'),
-            at('data-action="error-info"'),
             at('1m 5s'),
             at('3.0 mbps'),
+            at('badge-error'),
+            at('data-action="error-info"'),
         ];
 
         assert.ok(
@@ -472,9 +476,11 @@ describe('Shared encodes card', () => {
         assert.deepEqual(
             order,
             [...order].sort((a, b) => a - b),
-            'dot, Restart, badges, counts, History, then uptime and metrics',
+            'dot, Restart, encoding, counts, uptime, metrics, failures, then History',
         );
-        // History sits in the right-aligned group of the first line, as on an output card.
+        // All of them are siblings in one wrapping flex row, so they only wrap when
+        // the card is too narrow; History is the right-aligned item at the end.
+        assert.equal((html.match(/flex-wrap/g) ?? []).length, 1, 'a single wrapping row');
         assert.match(html, /ml-auto[^"]*">\s*<button[^>]*data-action="error-info"/);
     });
 

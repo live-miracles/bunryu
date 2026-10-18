@@ -118,26 +118,27 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
               .join('')
         : '<div class="text-xs leading-snug opacity-70">No outputs use it.</div>';
 
-    // First line: dot, Restart, the encoding, the counts, History at the end (as on
-    // an output card). The card's own title already says "Shared encodes". Uptime,
-    // metrics and failures go on a second line so the first never wraps.
+    // One wrapping row, like an output card: the status dot and Restart, then every
+    // badge, then History pushed to the end. Items only drop to a second line when
+    // the card is too narrow for them. The card's own title already says "Shared
+    // encodes", so the row shows just the encoding.
     return `
     <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-shared-encode="${escapeHtml(rendition.id)}">
-        <div class="flex items-center gap-x-2">
-            <div class="flex items-center gap-2 min-w-0 font-semibold">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <div class="flex items-center gap-2 shrink-0 font-semibold">
                 <div aria-label="status" class="status status-lg mx-1" style="background-color: ${statusHex}"></div>
                 ${restartBtn}
-                <span class="js-tooltip inline-flex items-center gap-2" tabindex="0">
-                    ${encoding.join('')}
-                    <div class="js-tooltip-content hidden"><div class="text-xs leading-snug font-semibold mb-0.5">Used by:</div>${dependentLines}</div>
-                </span>
-                ${counts}
             </div>
+            <span class="js-tooltip inline-flex items-center gap-2" tabindex="0">
+                ${encoding.join('')}
+                <div class="js-tooltip-content hidden"><div class="text-xs leading-snug font-semibold mb-0.5">Used by:</div>${dependentLines}</div>
+            </span>
+            ${counts}
+            ${badges.join('')}
             <div class="flex items-center gap-1 ml-auto shrink-0">
                 ${historyBtn}
             </div>
         </div>
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2">${badges.join('')}</div>
         ${errorHtml}
     </div>`;
 }

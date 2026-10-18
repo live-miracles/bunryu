@@ -85,13 +85,14 @@ and you cannot point an output at the server's internal `internal` RTMP app. The
 do not count toward the 500-output limit.
 
 **In the dashboard.** The pipeline's side column shows a **Shared encodes** card
-with one row per encode. The first line has the status, **Restart** (it restarts
-the encode after a confirmation and its outputs reconnect), the encoding as badges
-like an output card (the video encoding unless it is `copy`, and the audio track as
+with one row per encode, laid out like an output card: the status, **Restart**
+(it restarts the encode after a confirmation and its outputs reconnect), the
+encoding as badges (the video encoding unless it is `copy`, and the audio track as
 `T1`, `T2`, …, where `T1` is track 0), how many outputs use it and how many are
-reading it right now ("2 outs · 1 read"), and **History** at the end, which opens
-its Error History. The second line shows uptime, bitrate | CPU | memory and the
-failure count; the last error follows. While an
+reading it right now ("2 outs · 1 read"), uptime, bitrate | CPU | memory and the
+failure count, with **History** (its Error History) at the end. Everything sits on
+one line and wraps to a second only when the column is too narrow; the last error
+follows. While an
 output's encode is not up, the output shows a warning ("Waiting for Shared
 encode …", or "Shared encode failed: …") rather than an error. The pipeline's
 "N readers" counts only what reads the input itself, so it no longer includes
