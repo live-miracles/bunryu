@@ -70,6 +70,13 @@ responses are gzip-compressed, and config changes from another session are
 picked up automatically via the health poll's config revision. Around 10
 simultaneous dashboard clients is fine; higher counts are not tuned or tested.
 
+**Dashboard on a phone.** The dashboard is designed for a desktop browser. Below
+1024 px wide the three columns stack into one (pipeline list, then the input
+panel, then Outputs), the page scrolls normally, charts show one per row, and wide
+tables scroll sideways inside their card. This is enough to check state or start
+and stop an output from a phone; it is not tuned for editing, and drag-to-reorder
+does not work on touch screens.
+
 ## Is it a good fit?
 
 Good fit:

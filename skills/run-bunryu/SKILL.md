@@ -43,13 +43,15 @@ $H flood on       # fake ffmpeg starts emitting ~80 discontinuity lines/s/output
 $H flood off
 $H shot $WORK/shot.png "history.replaceState({},'','/?p=1')" 1500
 MOVE=46,194 $H shot $WORK/hover.png "history.replaceState({},'','/?p=1')" 1500
+VIEWPORT=390x844 $H shot $WORK/phone.png "window.selectPipeline('1')" 2500   # phone-sized screen
 $H stop           # kills app, SRS, Chrome, publisher; prints "all test ports closed"
 ```
 
 `shot <png> [js] [waitMs]` logs in (fresh DB password is `admin`), loads the
 dashboard, optionally evals `js`, and writes the PNG; `MOVE=x,y` hovers first
 (46,194 is the pipeline status icon in the sidebar, whose tooltip lists every
-issue). **Look at the PNG.** Open `/?p=1` for the pipeline detail view with the
+issue). `VIEWPORT=WxH` resizes the screen (default 1500x1000; widths under 1024
+emulate a phone, where the columns stack). **Look at the PNG.** Open `/?p=1` for the pipeline detail view with the
 output cards.
 
 Typical timestamp-fault check: `start`, `flood on`, wait ~12 s, `status` shows

@@ -1523,7 +1523,7 @@ function renderOverview(): void {
         ${rangeLabel}
         <button id="chart-fwd" class="btn btn-xs btn-ghost" ${atLive ? 'disabled' : ''}>10 min &#8594;</button>
     </div>
-    <div class="mb-6 grid grid-cols-2 gap-4">
+    <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         ${chartCard('chart-cpu', 'CPU', last ? `${last.cpu}%` : '—')}
         ${chartCard('chart-ram', 'RAM', last ? `${Math.round((last.ramUsed / last.ramTotal) * 100)}%` : '—')}
         ${chartCard('chart-rx', 'Downlink', last ? fmtBps(last.rxBps) : '—')}

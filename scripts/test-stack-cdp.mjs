@@ -1,5 +1,5 @@
 // Tiny Chrome DevTools driver (no playwright/chromium-cli needed; Node 22 global WebSocket).
-// node scripts/test-stack-cdp.mjs <out.png> [js-to-eval-before-shot] [waitMs]   env: MOVE=x,y to hover before the shot
+// node scripts/test-stack-cdp.mjs <out.png> [js-to-eval-before-shot] [waitMs]   env: MOVE=x,y to hover before the shot, VIEWPORT=WxH to resize
 import fs from 'node:fs';
 const [out, pre = '', waitMs = '3000'] = process.argv.slice(2);
 const APP = `http://127.0.0.1:${process.env.APP_PORT ?? 18080}`;
@@ -24,11 +24,13 @@ const evalJs = async (expression) =>
         ?.result?.value;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 await send('Page.enable');
+// VIEWPORT=WxH (e.g. 390x844) emulates a phone-sized screen.
+const [vw, vh] = (process.env.VIEWPORT ?? '1500x1000').split('x').map(Number);
 await send('Emulation.setDeviceMetricsOverride', {
-    width: 1500,
-    height: 1000,
+    width: vw,
+    height: vh,
     deviceScaleFactor: 1,
-    mobile: false,
+    mobile: vw < 1024,
 });
 const href = await evalJs('location.href');
 if (!href.startsWith(APP) || href.includes('login')) {

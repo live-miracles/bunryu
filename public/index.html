@@ -2,6 +2,7 @@
 <html lang="en" data-theme="dim">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Bunryu</title>
     <link rel="icon" type="image/png" href="logo.png" />
     <link rel="stylesheet" type="text/css" href="output.css" />
@@ -11,9 +12,9 @@
     <script src="vendor/hls.min.js"></script>
     <script type="module" src="js/features/dashboard-entry.js"></script>
   </head>
-  <body class="bg-base-100 text-base-content flex h-screen flex-col">
+  <body class="bg-base-100 text-base-content flex min-h-screen flex-col lg:h-screen">
     <!-- Navbar -->
-    <div class="navbar bg-base-100 border-base-content/10 shrink-0 border-b">
+    <div class="navbar bg-base-100 border-base-content/10 shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30">
       <div class="flex flex-1 items-center gap-3">
         <button class="btn btn-ghost px-2 text-xl font-bold" id="server-name-display" onclick="selectPipeline(null)">Bunryu</button>
         <button
@@ -104,7 +105,7 @@
           Saving
         </div>
       </div>
-      <div class="flex-none">
+      <div class="flex-none max-lg:hidden">
         <div class="divide-base-content/15 flex items-center divide-x">
           <span class="px-3 font-mono text-sm tabular-nums" id="navbar-uptime">Up —</span>
           <span class="px-3 font-mono text-sm tabular-nums" id="navbar-cpu-value">CPU —</span>
@@ -325,11 +326,9 @@
     </dialog>
 
     <!-- Main grid -->
-    <div
-      class="grid h-screen min-h-0 flex-1 gap-4 p-4 pt-0"
-      style="grid-template-columns: minmax(17rem, 23rem) minmax(500px, 3fr) minmax(24rem, 4fr)">
+    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 pt-0 lg:h-screen lg:grid-cols-[minmax(17rem,23rem)_minmax(500px,3fr)_minmax(24rem,4fr)]">
       <!-- Left: Pipeline list -->
-      <div class="bg-base-300 rounded-box mt-4 overflow-y-auto">
+      <div class="bg-base-300 rounded-box mt-4 overflow-y-auto max-lg:max-h-[40vh]">
         <div class="bg-base-300 sticky top-0 z-10 flex items-start justify-between gap-2 p-4">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="grid grid-cols-[5rem_auto] items-center gap-x-3 text-sm">
@@ -374,7 +373,7 @@
       </div>
 
       <!-- Middle: Pipeline info -->
-      <div class="bg-base-200 mt-4 flex hidden flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow" id="pipe-info-col">
+      <div class="bg-base-200 mt-4 flex hidden scroll-mt-16 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow" id="pipe-info-col">
         <div class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-xl px-4 pt-4 pb-3 text-xl font-bold">
           <div class="flex min-w-0 items-center gap-2">
             <span class="truncate" id="pipe-name"></span>
@@ -580,7 +579,7 @@
         </div>
 
         <div id="srt-bonding-card" class="border-base-content/10 bg-base-100/50 order-last rounded-xl border p-3">
-          <div class="mb-1 flex items-center justify-between gap-2">
+          <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <div class="js-tooltip shrink-0" id="srt-bonding-status-tooltip">
                 <div id="srt-bonding-status-dot" aria-label="status" class="border-base-content/15 h-5 w-5 overflow-hidden rounded-full border">
@@ -590,7 +589,7 @@
               </div>
               <span class="text-xs font-semibold opacity-60">SRT Bonding</span>
             </div>
-            <div class="flex gap-1">
+            <div class="flex flex-wrap gap-1">
               <button
                 class="btn btn-xs btn-ghost btn-outline"
                 onclick="copyText(document.getElementById('srt-bonding-url').dataset.port)"
@@ -669,9 +668,9 @@
         <!-- Publish URLs -->
         <div class="flex flex-col gap-2">
           <div class="border-base-content/10 bg-base-100/50 order-2 rounded-xl border p-3">
-            <div class="mb-1 flex items-center justify-between gap-2">
+            <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
               <span class="text-xs font-semibold opacity-60">SRT Publish URL</span>
-              <div class="flex gap-1">
+              <div class="flex flex-wrap gap-1">
                 <button
                   class="btn btn-xs btn-ghost btn-outline"
                   onclick="copyText(document.getElementById('srt-publish-url').dataset.ip)"
@@ -776,9 +775,9 @@
             <code class="hidden" id="srt-publish-url"></code>
           </div>
           <div class="border-base-content/10 bg-base-100/50 order-1 rounded-xl border p-3">
-            <div class="mb-1 flex items-center justify-between gap-2">
+            <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
               <span class="text-xs font-semibold opacity-60">RTMP Publish URL</span>
-              <div class="flex gap-1">
+              <div class="flex flex-wrap gap-1">
                 <button
                   class="btn btn-xs btn-ghost btn-outline"
                   onclick="copyText(document.getElementById('rtmp-publish-url').dataset.serverUrl)"
@@ -926,11 +925,11 @@
       </div>
 
       <!-- Overview: all pipelines table (spans middle + right columns) -->
-      <div class="bg-base-200 col-span-2 mt-4 hidden overflow-y-auto rounded-xl p-4 shadow" id="overview-col"></div>
-      <div class="bg-base-200 col-span-2 mt-4 hidden overflow-y-auto rounded-xl p-4 shadow" id="hosts-col"></div>
+      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="overview-col"></div>
+      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="hosts-col"></div>
 
       <!-- Server Logs (spans middle + right columns) -->
-      <div class="bg-base-200 col-span-2 mt-4 hidden overflow-y-auto rounded-xl p-4 shadow" id="srs-logs-col">
+      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="srs-logs-col">
         <div class="flex items-center justify-between gap-3">
           <h2 class="text-xl font-bold">Server Logs</h2>
           <button
@@ -949,7 +948,7 @@
       </div>
 
       <!-- Settings (spans middle + right columns) -->
-      <div class="bg-base-200 col-span-2 mt-4 hidden overflow-y-auto rounded-xl p-4 shadow" id="settings-col">
+      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="settings-col">
         <div class="mx-auto max-w-4xl space-y-3">
           <h2 class="text-xl font-bold">Settings</h2>
 

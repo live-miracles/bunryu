@@ -85,12 +85,24 @@ window.showProblemsOverviewBtn = () => {
     window.selectPipeline(null);
 };
 
+// Below lg the columns stack under the pipeline list, so after picking a
+// pipeline or a view, scroll its panel into view.
+const stackedLayout = window.matchMedia('(max-width: 1023px)');
+function showContentPanel(): void {
+    if (!stackedLayout.matches) return;
+    const panel = ['pipe-info-col', 'overview-col', 'hosts-col', 'srs-logs-col', 'settings-col']
+        .map((id) => document.getElementById(id))
+        .find((el) => el && !el.classList.contains('hidden'));
+    panel?.scrollIntoView({ block: 'start' });
+}
+
 window.openSrsLogsBtn = async () => {
     void import('./preview.js').then(({ stopCurrentPreview }) => stopCurrentPreview());
     setUrlParam('p', null);
     setUrlParam('view', 'logs');
     await refreshDashboard();
     await showSrsLogs();
+    showContentPanel();
 };
 window.refreshSrsLogsBtn = async () => {
     await showSrsLogs();
@@ -100,6 +112,7 @@ window.openHostConnectionsBtn = async () => {
     setUrlParam('p', null);
     setUrlParam('view', 'hosts');
     await refreshDashboard();
+    showContentPanel();
 };
 window.refreshHostConnectionsBtn = async () => {
     await refreshHostProbes();
@@ -110,6 +123,7 @@ window.openSettingsBtn = async () => {
     setUrlParam('view', 'settings');
     await refreshDashboard();
     openSettings();
+    showContentPanel();
 };
 window.addHostProbeRowBtn = () => addHostProbeRow();
 window.removeHostProbeRowBtn = (slot) => removeHostProbeRow(slot);
@@ -126,7 +140,7 @@ window.selectPipeline = (id) => {
     void import('./preview.js').then(({ stopCurrentPreview }) => stopCurrentPreview());
     setUrlParam('p', id);
     setUrlParam('view', null);
-    void refreshDashboard();
+    void refreshDashboard().then(showContentPanel);
 };
 
 window.addPipeBtn = (btn) => createPipeline(btn);
