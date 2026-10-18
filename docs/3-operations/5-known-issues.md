@@ -35,7 +35,8 @@ encode fails with `Broken pipe` when the input comes back, restarts, and takes i
 outputs with it, so every output that reads one records "Shared encode … failed: …
 Broken pipe" and reconnects (measured: about 4 s after the input returned).
 Everything recovers on its own and other pipelines are unaffected. Outputs that
-read the input directly (plain copy, several tracks) are not interrupted. See
+read the input directly (plain copy, several tracks, or a recipe used by only one
+output) are not interrupted. See
 [Reliability](4-reliability.md#shared-encodes). Workaround: none needed; the
 history records are expected after an input outage.
 

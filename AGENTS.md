@@ -165,7 +165,8 @@ only for a new module.
 - `src/services/renditions.ts` - the shared-encode reconciler (1 s tick): creates
   and removes the rendition output rows, starts them with their first running
   output and idle-stops them after 15 s. `src/utils/renditions.ts` has the recipe
-  rules (`sharedRecipe`), naming and URL recognition; the dashboard twins are in
+  rules (`encodeRecipe`, and `sharedRecipe`, which also needs two outputs with the
+  recipe), naming and URL recognition; the dashboard twins are in
   `public/ts/core/renditions.ts`.
 - `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay
   state, input live/media state (schedules ffprobe via `mediaProbe.ts`),

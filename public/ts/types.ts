@@ -455,6 +455,8 @@ export interface OutputView extends Output {
     cpuPercent: number | null;
     // Named distinctly from the inherited `translation` config field (Output.translation).
     translationHealth: TranslationOutputHealth | null;
+    // The shared encode this output is reading right now (health), else null.
+    renditionId: string | null;
     // Renditions: whether the encode is writing data, and the outputs reading it.
     ready: boolean | null;
     readers: number | null;

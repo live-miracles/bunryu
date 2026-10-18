@@ -11,7 +11,12 @@ import { red, yellow, green } from '../utils/ansiColor.js';
 import type { Db, Output } from '../types.js';
 import type { InputState } from './inputState.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
-import { isRenditionOutput, renditionUrl, sharedRecipe } from '../utils/renditions.js';
+import {
+    encodeRecipe,
+    isRenditionOutput,
+    renditionUrl,
+    sharedRecipe,
+} from '../utils/renditions.js';
 import {
     destinationSocketWarning,
     parseTcpSocketSnapshot,
@@ -157,6 +162,8 @@ export interface OutputService {
     // Error History as a deliberate stop (not a failure). Restarting a rendition
     // also restarts the outputs pulling from it. False when it is not running.
     restart(outputId: string): boolean;
+    // How many running outputs are reading this shared encode right now.
+    readersOf(renditionId: string): number;
     restartPipelineOutputs(pipelineId: number, staggerBase?: number): number;
     clearRetryState(outputId: string): void;
     // Lets a service that publishes an output outside this service's own
@@ -293,28 +300,39 @@ export function createOutputService(
         return processes.has(renditionId) && (progress.get(renditionId)?.lastTotalSize ?? 0) > 0;
     }
 
-    // The rendition row a shared output pulls from, or null when the output is not
-    // shared or the reconciler has not created the row yet.
-    function renditionFor(output: Output): Output | null {
-        const recipe = sharedRecipe(output);
+    // Whether this output goes through a shared encode, and which rendition row
+    // that is. Decided from the saved configuration each time an output starts: it
+    // shares when at least two outputs of its pipeline are configured with its
+    // recipe (see sharedRecipe). A running output never switches mid-run; it joins
+    // or leaves an encode the next time it starts. `rendition` is null while the
+    // reconciler has not created the row yet.
+    function resolveShared(output: Output): { rendition: Output | null } | null {
+        // Plain outputs (the vast majority) skip the database read.
+        if (!encodeRecipe(output)) return null;
+        const outputs = db.listOutputsForPipeline(output.pipelineId);
+        const recipe = sharedRecipe(output, outputs);
         if (!recipe) return null;
         const url = renditionUrl(output.pipelineId, recipe);
-        return db.listOutputsForPipeline(output.pipelineId).find((o) => o.url === url) ?? null;
+        return { rendition: outputs.find((o) => o.url === url) ?? null };
     }
 
-    // Whether the output's source can be pulled now: the input for a direct output,
-    // the rendition (and the input behind it) for a shared one. Shared outputs
-    // also need the input: while it is down the rendition process may still be up
-    // but has nothing to give.
-    function sourceReady(output: Output): boolean {
-        if (!inputState.isReady(output.pipelineId)) return false;
-        if (!sharedRecipe(output)) return true;
-        const rendition = renditionFor(output);
-        return rendition !== null && isRenditionReady(rendition.id);
+    // Whether the output's source can be pulled now, and how long to wait before
+    // asking again if not: the input for a direct output, the rendition (and the
+    // input behind it) for a shared one. Shared outputs also need the input: while
+    // it is down the rendition process may still be up but has nothing to give.
+    function sourceGate(output: Output): { ready: boolean; recheckMs: number } {
+        const shared = resolveShared(output);
+        const recheckMs = shared ? RENDITION_RECHECK_DELAY_MS : RECHECK_DELAY_MS;
+        if (!inputState.isReady(output.pipelineId)) return { ready: false, recheckMs };
+        if (!shared) return { ready: true, recheckMs };
+        const ready = shared.rendition !== null && isRenditionReady(shared.rendition.id);
+        return { ready, recheckMs };
     }
 
-    function recheckDelayMs(output: Output): number {
-        return sharedRecipe(output) ? RENDITION_RECHECK_DELAY_MS : RECHECK_DELAY_MS;
+    function readersOf(renditionId: string): number {
+        let n = 0;
+        for (const id of renditionOf.values()) if (id === renditionId) n++;
+        return n;
     }
 
     function roleFields(output: Output): { role: string; renditionId?: string } {
@@ -428,8 +446,8 @@ export function createOutputService(
 
     // Schedule a tryStart without counting a failure — used when the input/SRS is
     // not yet ready, so we keep checking cheaply until it is.
-    function scheduleRecheck(output: Output): void {
-        scheduleTryStart(output.id, recheckDelayMs(output));
+    function scheduleRecheck(output: Output, delayMs: number): void {
+        scheduleTryStart(output.id, delayMs);
     }
 
     function scheduleTryStart(outputId: string, delayMs: number): void {
@@ -455,8 +473,9 @@ export function createOutputService(
             if (output.audioEncoding === 'translation') return;
             if (statuses.get(outputId)?.status === 'running') return;
             // Don't spawn a doomed ffmpeg against a dead input; re-check until ready.
-            if (!sourceReady(output)) {
-                scheduleRecheck(output);
+            const gate = sourceGate(output);
+            if (!gate.ready) {
+                scheduleRecheck(output, gate.recheckMs);
                 return;
             }
             await startJob(output);
@@ -1009,12 +1028,17 @@ export function createOutputService(
         });
     }
 
-    // The user outputs that pull this rendition (same pipeline, same recipe) and
-    // are meant to be running.
+    // The outputs meant to be running that depend on this rendition: those reading
+    // it right now (even if the configuration has changed since they started), and
+    // those waiting to start that will read it. An output running direct is neither,
+    // whatever its recipe: the rendition's failure does not concern it.
     function dependentsOf(rendition: Output): Output[] {
-        return db.listOutputsForPipeline(rendition.pipelineId).filter((o) => {
+        const outputs = db.listOutputsForPipeline(rendition.pipelineId);
+        return outputs.filter((o) => {
             if (isRenditionOutput(o) || o.desiredState !== 'running') return false;
-            const recipe = sharedRecipe(o);
+            if (renditionOf.get(o.id) === rendition.id) return true;
+            if (processes.has(o.id)) return false;
+            const recipe = sharedRecipe(o, outputs);
             return recipe !== null && renditionUrl(o.pipelineId, recipe) === rendition.url;
         });
     }
@@ -1069,8 +1093,8 @@ export function createOutputService(
         // A shared output (see utils/renditions.ts) copies its rendition's internal
         // stream; every other output, including the rendition itself, pulls the
         // input back the same way it was published (default RTMP until known).
-        const shared = sharedRecipe(output) !== null;
-        const rendition = shared ? renditionFor(output) : null;
+        const shared = resolveShared(output);
+        const rendition = shared?.rendition ?? null;
         if (shared && !rendition) throw new Error('Shared encode not found');
         const inputUrl = rendition
             ? rendition.url
@@ -1286,8 +1310,9 @@ export function createOutputService(
             // Input not live yet — keep the output "running" (desiredState) but
             // don't spawn a doomed ffmpeg. The recheck loop starts it once the
             // input comes online.
-            if (!sourceReady(output)) {
-                scheduleRecheck(output);
+            const gate = sourceGate(output);
+            if (!gate.ready) {
+                scheduleRecheck(output, gate.recheckMs);
                 return;
             }
             await startJob(output);
@@ -1313,6 +1338,8 @@ export function createOutputService(
                 }
             }
         },
+
+        readersOf,
 
         restart(outputId: string): boolean {
             const proc = processes.get(outputId);

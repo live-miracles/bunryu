@@ -1841,6 +1841,13 @@ describe('shared renditions', () => {
                     audioEncoding: '1',
                 },
                 { id: '1-2', name: 'srt', url: srtDest, videoEncoding: '720p', audioEncoding: '1' },
+                {
+                    id: '1-3',
+                    name: 'other',
+                    url: YOUTUBE,
+                    videoEncoding: '720p',
+                    audioEncoding: '1',
+                },
             ]);
             const service = fleet.createOutputService(db, makeReadyInputState());
             await service.start('1-1');
@@ -1996,6 +2003,13 @@ describe('shared renditions', () => {
                     audioEncoding: '0',
                 },
                 {
+                    id: '1-7',
+                    name: 'Other recipe too',
+                    url: 'rtmp://other2.example/live/k',
+                    videoEncoding: 'copy',
+                    audioEncoding: '0',
+                },
+                {
                     id: '1-6',
                     name: 'Other rendition',
                     url: 'rtmp://127.0.0.1:1935/internal/r1_copy_a0',
@@ -2010,7 +2024,7 @@ describe('shared renditions', () => {
             markReady(fleet.procFor(RENDITION_URL));
             markReady(fleet.procFor('rtmp://127.0.0.1:1935/internal/r1_copy_a0'));
             await flush();
-            for (const id of ['1-2', '1-3', '1-4', '1-5']) await service.start(id);
+            for (const id of ['1-2', '1-3', '1-4', '1-5', '1-7']) await service.start(id);
             assert.equal(service.getStats('1-2').status, 'running');
             assert.equal(service.getStats('1-5').status, 'running');
             return { fleet, db, diagnostics, service };
@@ -2385,6 +2399,179 @@ describe('shared renditions', () => {
             );
             assert.equal(exited.role, 'output');
             assert.equal(exited.renditionId, '1-1');
+            service.shutdown();
+        });
+    });
+    describe('when to share', () => {
+        const SOLO = [
+            { id: '1-2', name: 'YouTube', url: YOUTUBE, videoEncoding: '720p', audioEncoding: '1' },
+        ];
+
+        test('a single output with a recipe pulls the input directly, with byte-identical arguments', async (t) => {
+            const fleet = makeFleet(t);
+            const service = fleet.createOutputService(makeFleetDb(SOLO), makeReadyInputState());
+
+            await service.start('1-2');
+
+            assert.deepEqual(
+                fleet.spawnsTo(YOUTUBE)[0].args,
+                buildFfmpegArgs('rtmp://127.0.0.1:1935/live/stream-key', YOUTUBE, '1', '720p'),
+            );
+            assert.equal(service.getStats('1-2').renditionId, null);
+            service.shutdown();
+        });
+
+        test('a single output does not wait for a rendition and uses the 5 s input re-check', async (t) => {
+            const fleet = makeFleet(t);
+            let ready = false;
+            const service = fleet.createOutputService(makeFleetDb(SOLO), {
+                ...makeReadyInputState(),
+                isReady: () => ready,
+            });
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            await service.start('1-2');
+            ready = true;
+            t.mock.timers.tick(1000);
+            await flush();
+            assert.equal(fleet.spawned.length, 0);
+            t.mock.timers.tick(4000);
+            await flush();
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 1);
+            service.shutdown();
+        });
+
+        test('an output that started direct keeps running direct when a second one is configured; the new one shares', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb(SOLO);
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-2');
+            const direct = fleet.procFor(YOUTUBE);
+
+            // Second output with the same recipe, and the encode the reconciler adds.
+            db.outputs.set('1-3', {
+                ...db.outputs.get('1-2'),
+                id: '1-3',
+                name: 'Twitch',
+                url: TWITCH,
+                desiredState: 'stopped',
+            });
+            db.outputs.set('1-4', {
+                ...db.outputs.get('1-2'),
+                id: '1-4',
+                name: 'Shared encode 720p · track 1',
+                url: RENDITION_URL,
+            });
+            await service.start('1-4');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            db.outputs.get('1-3').desiredState = 'running';
+            await service.start('1-3');
+
+            assert.deepEqual(direct.killSignals, [], 'the first output was not touched');
+            assert.equal(service.getStats('1-2').status, 'running');
+            assert.equal(service.getStats('1-2').renditionId, null);
+            assert.equal(service.getStats('1-3').renditionId, '1-4');
+            assert.deepEqual(
+                fleet.spawnsTo(TWITCH)[0].args,
+                buildFfmpegArgs(RENDITION_URL, TWITCH, 'copy', 'copy'),
+            );
+            assert.equal(service.readersOf('1-4'), 1, 'only the output that reads it counts');
+            service.shutdown();
+        });
+
+        test('an output waiting for the encode goes direct if it stops being shared', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+            await service.start('1-2'); // waits: the encode is not running
+            assert.equal(fleet.spawned.length, 0);
+
+            db.outputs.delete('1-3'); // its only partner goes away
+            t.mock.timers.tick(1000);
+            await flush();
+
+            assert.equal(fleet.spawnsTo(YOUTUBE).length, 1);
+            assert.deepEqual(
+                fleet.spawnsTo(YOUTUBE)[0].args,
+                buildFfmpegArgs('rtmp://127.0.0.1:1935/live/stream-key', YOUTUBE, '1', '720p'),
+            );
+            service.shutdown();
+        });
+
+        test('readersOf counts the running outputs reading a rendition and drops when they stop', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            assert.equal(service.readersOf('1-1'), 0);
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+            await service.start('1-3');
+            assert.equal(service.readersOf('1-1'), 2);
+
+            await service.stopAndWait('1-2');
+            assert.equal(service.readersOf('1-1'), 1);
+            await service.stopAndWait('1-3');
+            assert.equal(service.readersOf('1-1'), 0);
+            assert.equal(service.readersOf('nope'), 0);
+            service.shutdown();
+        });
+
+        test('a rendition failure restarts the output reading it, never one that runs direct', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb(); // 1-1 encode, 1-2 and 1-3 share it
+            const twitch = db.outputs.get('1-3');
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            // 1-2 starts while it is the only output with the recipe, so it runs direct.
+            db.outputs.delete('1-3');
+            await service.start('1-2');
+            db.outputs.set('1-3', twitch);
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-3'); // now shared: reads the encode
+            assert.equal(service.getStats('1-2').renditionId, null);
+            assert.equal(service.getStats('1-3').renditionId, '1-1');
+
+            const rendition = fleet.procFor(RENDITION_URL);
+            rendition.emit('exit', 1, null);
+            rendition.emit('close', 1, null);
+            await flush();
+            await flush();
+
+            assert.deepEqual(fleet.procFor(TWITCH).killSignals, ['SIGTERM'], 'the reader restarts');
+            assert.equal(crashRecords(db, '1-3').length, 1);
+            assert.deepEqual(
+                fleet.procFor(YOUTUBE).killSignals,
+                [],
+                'the direct output is left alone',
+            );
+            assert.equal(crashRecords(db, '1-2').length, 0);
+            assert.equal(service.getStats('1-2').status, 'running');
+            service.shutdown();
+        });
+
+        test('a reader that stopped being shared mid-run is still restarted with its rendition', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2'); // reads the encode
+            db.outputs.delete('1-3'); // now alone: no longer "shared" by the rule
+
+            assert.equal(service.restart('1-1'), true);
+            await flush();
+            await flush();
+
+            assert.deepEqual(fleet.procFor(YOUTUBE).killSignals, ['SIGTERM']);
+            const stopped = db.recordsFor('1-2', 'stopped');
+            assert.match(stopped[0].message, /^Shared encode restarted by user/);
             service.shutdown();
         });
     });

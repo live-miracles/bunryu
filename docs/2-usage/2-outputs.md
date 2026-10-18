@@ -59,25 +59,28 @@ pipeline input ──► shared encode "720p · track 1" (encodes once)
                ──► output C (copy video, source audio): pulls the input directly
 ```
 
-**What is shared.** Two outputs share when their *recipe* is identical: the same
-video encoding and the same single audio selection.
+**What is shared.** Outputs share when their *recipe* is identical (the same
+video encoding and the same single audio selection) **and at least two outputs of
+the pipeline are configured with it**, whether they are running or not.
 
 | Output | Shared? |
 |--------|---------|
 | Video `copy` and audio `copy` (plain passthrough) | No: pulls the input directly, as before |
-| Any video encoding (`720p`, `1080p`, `vertical_rotate`) with audio `copy` or one track | Yes, with outputs of the same recipe on this pipeline |
-| Video `copy` with one audio track | Yes |
+| Any video encoding (`720p`, `1080p`, `vertical_rotate`) with audio `copy` or one track | Yes, once a second output of the pipeline has the same recipe |
+| Video `copy` with one audio track | Yes, once a second output of the pipeline has the same recipe |
 | Several audio tracks (`0,1`) | No: RTMP/FLV carries one audio track, so these keep their own encode |
 | `translation` | No: owned by the translation mixer |
 
-A recipe used by a single output is still shared: it costs one extra copy FFmpeg
-(about 12–16 MB and a few percent CPU) in exchange for one code path.
+A recipe used by a single output is **not** shared: that output encodes on its
+own, as it always did, because an encode with one reader would only add a process
+(about 28 MB), a few seconds to its start, and an extra hop. Usually all outputs are
+configured before the event, so the rule is decided by the saved configuration.
 
-**You don't manage them.** The server creates a shared encode when the first
-output with that recipe is added, removes it when none is left, starts it with the
-first running output, and stops it 15 seconds after the last one stops (so
-stopping and restarting an output, or editing one, does not restart the encode
-that its other outputs use). You cannot create, edit, delete, start or stop one,
+**You don't manage them.** The server creates a shared encode when a second
+output with the same recipe is configured, removes it when fewer than two are
+left, starts it with the first running output, and stops it 15 seconds after the
+last one stops (so stopping and restarting an output, or editing one, does not
+restart the encode that its other outputs use). You cannot create, edit, delete, start or stop one,
 and you cannot point an output at the server's internal `internal` RTMP app. They
 do not count toward the 500-output limit.
 
@@ -96,6 +99,18 @@ for the encode to come back; each of them gets one Error History record "Shared
 encode … failed: …" naming the cause, so its card explains the reconnect. Other
 recipes, other pipelines and outputs that read the input directly are not
 affected. See [Reliability](../3-operations/4-reliability.md#shared-encodes).
+
+**Changing the configuration while outputs are running.** An output decides how it
+runs when it *starts* and never switches while running.
+- If an output was already running alone and you add a second output with the same
+  recipe, the shared encode starts at once, but the first output keeps encoding on
+  its own until it is next started or restarted; the new output reads the shared
+  encode. Until then you run two encodes (the shared card shows "0 readers" if the
+  second output is not started yet).
+- If you delete or change an output so that only one with the recipe is left, a
+  shared encode that outputs are still reading is kept until they stop or restart,
+  so the output that is still running is not interrupted. When it next starts it
+  runs on its own.
 
 **Trade-offs.**
 - Starting a shared output takes longer than a direct one when its encode is not

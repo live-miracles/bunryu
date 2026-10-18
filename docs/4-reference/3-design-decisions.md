@@ -228,9 +228,20 @@ outputs pull that stream in copy mode.
   wiped. A hidden pipeline or a new table would have needed new supervision,
   health and history paths for the same behaviour.
 - **Which outputs share:** not plain copy, not multi-track (`0,1`, since RTMP/FLV
-  carries one audio track) and not translation (owned by the mixer). One output with
-  a recipe still goes through a rendition: one code path, at the cost of one extra
-  copy FFmpeg (about 12–16 MB, a few percent CPU).
+  carries one audio track) and not translation (owned by the mixer). And only when
+  at least two outputs of the pipeline are configured with the same recipe (desired
+  state does not matter, so the rule is a pure function of the saved configuration).
+  A first version shared even a lone output, for one code path; a lone output then
+  paid an extra process (about 28 MB, 0.4% CPU), about 5 s of extra start-up (0.02 s
+  direct, measured), an extra SRS hop, and the input-outage restart cycle (see
+  Known issues) for nothing. The rule is evaluated when an output starts and by the
+  reconciler; a running output never switches mid-run, so a changed configuration
+  settles the next time an output starts. Two consequences are accepted because
+  outputs are normally all configured before an event: adding a second output while
+  the first runs direct starts the shared encode at once (two encodes, and an idle
+  one if the second is never started); and removing the second leaves the encode in
+  place while any output still reads it, so a live output is never interrupted by an
+  edit to another.
 - **The internal app is reserved:** users cannot create, edit, start, stop or
   delete renditions or point an output at the app; SRS's publish hook accepts it
   only over RTMP from loopback for a running rendition row. Renditions do not count

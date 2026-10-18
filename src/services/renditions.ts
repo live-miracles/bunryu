@@ -3,6 +3,7 @@ import type { OutputService } from './outputs.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import { cyan, red, yellow } from '../utils/ansiColor.js';
 import {
+    encodeRecipe,
     isRenditionOutput,
     renditionName,
     renditionUrl,
@@ -35,7 +36,10 @@ export interface RenditionReconciler {
 
 export function createRenditionReconciler(
     db: Db,
-    outputService: Pick<OutputService, 'start' | 'stop' | 'stopAndWait' | 'clearRetryState'>,
+    outputService: Pick<
+        OutputService,
+        'start' | 'stop' | 'stopAndWait' | 'clearRetryState' | 'readersOf'
+    >,
     diagnostics?: DiagnosticsLogger,
 ): RenditionReconciler {
     // Grace and back-off timestamps live in memory: after an app restart a
@@ -43,6 +47,8 @@ export function createRenditionReconciler(
     const idleSince = new Map<string, number>();
     const startBlockedUntil = new Map<string, number>();
     const errorLog = new Map<string, { atMs: number; suppressed: number }>();
+    // Rows whose removal is on hold because outputs still read them (logged once).
+    const removalDeferred = new Set<string>();
     let timer: NodeJS.Timeout | null = null;
     let reconciling = false;
     let stopped = false;
@@ -65,19 +71,55 @@ export function createRenditionReconciler(
         });
     }
 
+    // Every output with the recipe, whatever its desired state. One that started
+    // direct (it was alone when it started) counts too: it is not reading the
+    // encode, but it joins it the next time it starts.
     function dependentsOf(userOutputs: Output[], recipe: Recipe): Output[] {
-        return userOutputs.filter((o) => sharedRecipe(o)?.key === recipe.key);
+        return userOutputs.filter((o) => encodeRecipe(o)?.key === recipe.key);
+    }
+
+    // The recipes of a pipeline that are shared, by rendition URL: those with at
+    // least two configured outputs (see sharedRecipe).
+    function neededRecipes(pipelineId: number, userOutputs: Output[]): Map<string, Recipe> {
+        const needed = new Map<string, Recipe>();
+        for (const o of userOutputs) {
+            const recipe = sharedRecipe(o, userOutputs);
+            if (recipe) needed.set(renditionUrl(pipelineId, recipe), recipe);
+        }
+        return needed;
     }
 
     function stillNeeded(pipelineId: number, url: string): boolean {
-        return db.listOutputsForPipeline(pipelineId).some((o) => {
-            if (isRenditionOutput(o)) return false;
-            const recipe = sharedRecipe(o);
-            return recipe !== null && renditionUrl(pipelineId, recipe) === url;
-        });
+        const userOutputs = db
+            .listOutputsForPipeline(pipelineId)
+            .filter((o) => !isRenditionOutput(o));
+        return neededRecipes(pipelineId, userOutputs).has(url);
     }
 
     async function removeRendition(pipelineId: number, row: Output): Promise<void> {
+        // Outputs still reading it (they started while two outputs shared the recipe)
+        // would lose their feed, so deleting or editing another output could
+        // interrupt a live one. Keep it until they have stopped or restarted, which
+        // puts them back on a direct pull.
+        const readers = outputService.readersOf(row.id);
+        if (readers > 0) {
+            if (!removalDeferred.has(row.id)) {
+                removalDeferred.add(row.id);
+                console.log(
+                    yellow(
+                        `[renditions] ${row.id} (${row.name}) no longer shared, kept while ${readers} output(s) read it`,
+                    ),
+                );
+                diagnostics?.event('rendition-removal-deferred', {
+                    pipelineId,
+                    outputId: row.id,
+                    outputName: row.name,
+                    readers,
+                });
+            }
+            return;
+        }
+        removalDeferred.delete(row.id);
         // Desired-stopped first: the output service restarts a process it was
         // asked to stop while the row still says "running" (its close handler
         // cannot tell a stop from a start that raced the kill).
@@ -175,11 +217,7 @@ export function createRenditionReconciler(
         const rows = outputs.filter(isRenditionOutput);
         const rowByUrl = new Map(rows.map((r) => [r.url, r]));
 
-        const needed = new Map<string, Recipe>();
-        for (const o of userOutputs) {
-            const recipe = sharedRecipe(o);
-            if (recipe) needed.set(renditionUrl(pipelineId, recipe), recipe);
-        }
+        const needed = neededRecipes(pipelineId, userOutputs);
 
         for (const [url, recipe] of needed) {
             if (rowByUrl.has(url)) continue;
@@ -208,6 +246,7 @@ export function createRenditionReconciler(
         for (const [url, recipe] of needed) {
             const row = rowByUrl.get(url)!;
             liveRows.add(row.id);
+            removalDeferred.delete(row.id); // shared again: a later drop is a new event
             await applyDesiredState(
                 pipelineId,
                 row,
@@ -223,11 +262,14 @@ export function createRenditionReconciler(
         reconciling = true;
         try {
             const byPipeline = new Map<number, Output[]>();
+            const existingRows = new Set<string>();
             for (const o of db.listOutputs()) {
                 const list = byPipeline.get(o.pipelineId);
                 if (list) list.push(o);
                 else byPipeline.set(o.pipelineId, [o]);
+                if (isRenditionOutput(o)) existingRows.add(o.id);
             }
+            for (const id of removalDeferred) if (!existingRows.has(id)) removalDeferred.delete(id);
             const liveRows = new Set<string>();
             for (const pipeline of db.listPipelines()) {
                 try {

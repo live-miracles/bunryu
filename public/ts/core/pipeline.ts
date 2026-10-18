@@ -153,6 +153,7 @@ export function parsePipelines(
                 memoryLimitBytes: oh?.memoryLimitBytes ?? null,
                 cpuPercent: oh?.cpuPercent ?? null,
                 translationHealth: oh?.translation ?? null,
+                renditionId: oh?.renditionId ?? null,
                 ready: oh?.ready ?? null,
                 readers: oh?.readers ?? null,
                 dependents: [],
@@ -171,6 +172,9 @@ export function parsePipelines(
             const key = sharedRecipeKey(o, encodings);
             const rendition = key ? renditionByKey.get(key) : undefined;
             if (!rendition) continue;
+            // An output that started while it was alone with its recipe runs direct
+            // until it next starts; it only reads the encode once health says so.
+            if (o.status === 'running' && o.renditionId !== rendition.id) continue;
             o.sharedEncode = rendition;
             rendition.dependents.push({ id: o.id, name: o.name });
         }

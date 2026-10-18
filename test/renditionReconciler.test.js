@@ -7,17 +7,21 @@ const { createDb } = require('../src/db/index');
 const { createRenditionReconciler } = require('../src/services/renditions');
 const {
     isRenditionOutput,
+    encodeRecipe,
     recipeOfRendition,
     renditionUrl,
-    sharedRecipe,
 } = require('../src/utils/renditions');
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function fakeOutputService() {
     const calls = [];
+    // Outputs currently reading a rendition, by rendition id (tests set it).
+    const readers = new Map();
     return {
         calls,
+        readers,
+        readersOf: (id) => readers.get(id) ?? 0,
         async start(id) {
             calls.push(['start', id]);
         },
@@ -54,15 +58,30 @@ function harness(t) {
             await flush();
         },
         renditions: (pipelineId) => db.listOutputsForPipeline(pipelineId).filter(isRenditionOutput),
-        addUser(pipelineId, { video = 'copy', audio = 'copy', desired = 'stopped', url } = {}) {
-            const o = db.createOutput({
-                pipelineId,
-                name: `${video}/${audio}`,
-                url: url ?? `rtmp://dest.example/live/${Math.random().toString(36).slice(2)}`,
+        // Adds an output. A recipe is only shared when two outputs are configured with
+        // it, so an output that needs an encode gets a stopped twin unless `solo`.
+        addUser(
+            pipelineId,
+            { video = 'copy', audio = 'copy', desired = 'stopped', url, solo = false } = {},
+        ) {
+            const make = (dest, state) => {
+                const o = db.createOutput({
+                    pipelineId,
+                    name: `${video}/${audio}`,
+                    url: dest ?? `rtmp://dest.example/live/${Math.random().toString(36).slice(2)}`,
+                    videoEncoding: video,
+                    audioEncoding: audio,
+                });
+                if (state === 'running') db.setOutputDesiredState(o.id, 'running');
+                return o;
+            };
+            const o = make(url, desired);
+            const needsEncode = encodeRecipe({
+                url: 'rtmp://x/y',
                 videoEncoding: video,
                 audioEncoding: audio,
             });
-            if (desired === 'running') db.setOutputDesiredState(o.id, 'running');
+            if (needsEncode && !solo) make(undefined, 'stopped');
             return o;
         },
     };
@@ -72,8 +91,8 @@ describe('rendition reconciler: rows', () => {
     test('two outputs with the same recipe share one rendition row', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
-        h.addUser(p.id, { video: '720p', audio: '0' });
-        h.addUser(p.id, { video: '720p', audio: '0' });
+        h.addUser(p.id, { video: '720p', audio: '0', solo: true });
+        h.addUser(p.id, { video: '720p', audio: '0', solo: true });
 
         await h.tick();
 
@@ -125,6 +144,20 @@ describe('rendition reconciler: rows', () => {
         assert.notEqual(h.renditions(p1.id)[0].url, h.renditions(p2.id)[0].url);
     });
 
+    test('the same recipe once in each of two pipelines shares nothing: the count is per pipeline', async (t) => {
+        const h = harness(t);
+        const p1 = h.db.createPipeline();
+        const p2 = h.db.createPipeline();
+        h.addUser(p1.id, { video: '720p', solo: true });
+        h.addUser(p2.id, { video: '720p', solo: true });
+
+        await h.tick();
+
+        assert.equal(h.renditions(p1.id).length, 0);
+        assert.equal(h.renditions(p2.id).length, 0);
+        assert.deepEqual(h.eventNames(), []);
+    });
+
     test('plain copy, multi-track and translation outputs get no rendition', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
@@ -148,7 +181,7 @@ describe('rendition reconciler: rows', () => {
         assert.equal(h.renditions(p.id).length, 1);
     });
 
-    test('editing the last 720p output to copy deletes the row after stopAndWait', async (t) => {
+    test('editing one of two 720p outputs to copy leaves a single output, so the row is deleted after stopAndWait', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
         const o = h.addUser(p.id, { video: '720p' });
@@ -174,7 +207,7 @@ describe('rendition reconciler: rows', () => {
         assert.deepEqual(h.eventNames(), ['rendition-created', 'rendition-deleted']);
     });
 
-    test('deleting the last dependent output deletes the row; another recipe keeps its own', async (t) => {
+    test('deleting one of two outputs with a recipe deletes its row; another recipe keeps its own', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
         const a = h.addUser(p.id, { video: '720p' });
@@ -379,8 +412,8 @@ describe('rendition reconciler: desired state', () => {
     test('with two dependents the rendition stays up until both are stopped', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
-        const a = h.addUser(p.id, { video: '720p', desired: 'running' });
-        const b = h.addUser(p.id, { video: '720p', desired: 'running' });
+        const a = h.addUser(p.id, { video: '720p', desired: 'running', solo: true });
+        const b = h.addUser(p.id, { video: '720p', desired: 'running', solo: true });
         await h.tick();
         const row = h.renditions(p.id)[0];
 
@@ -398,17 +431,19 @@ describe('rendition reconciler: desired state', () => {
         t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 1_000_000 });
         const db = createDb(':memory:');
         const p = db.createPipeline();
-        const recipe = sharedRecipe({
+        const recipe = encodeRecipe({
             url: 'rtmp://x/y',
             videoEncoding: '720p',
             audioEncoding: 'copy',
         });
-        db.createOutput({
-            pipelineId: p.id,
-            name: 'u',
-            url: 'rtmp://dest.example/live/a',
-            videoEncoding: '720p',
-        });
+        for (const dest of ['a', 'b']) {
+            db.createOutput({
+                pipelineId: p.id,
+                name: 'u',
+                url: `rtmp://dest.example/live/${dest}`,
+                videoEncoding: '720p',
+            });
+        }
         const row = db.createOutput({
             pipelineId: p.id,
             name: 'r',
@@ -547,5 +582,128 @@ describe('rendition reconciler: robustness', () => {
         // The harness reconciler is still alive and created the new row exactly once.
         assert.equal(h.renditions(p.id).length, 2);
         assert.equal(h.events.length, rec2events + 1);
+    });
+});
+
+describe('rendition reconciler: when to share', () => {
+    test('a single output with a recipe gets no rendition and nothing is started', async (t) => {
+        const h = harness(t);
+        const p = h.db.createPipeline();
+        h.addUser(p.id, { video: '720p', audio: '1', desired: 'running', solo: true });
+
+        await h.tick();
+        await h.tick(30_000);
+
+        assert.equal(h.renditions(p.id).length, 0);
+        assert.deepEqual(h.outputService.calls, []);
+        assert.deepEqual(h.eventNames(), []);
+    });
+
+    test('adding the second output starts the encode at once, even though the first runs direct', async (t) => {
+        const h = harness(t);
+        const p = h.db.createPipeline();
+        h.addUser(p.id, { video: '720p', desired: 'running', solo: true });
+        await h.tick();
+        assert.equal(h.renditions(p.id).length, 0);
+
+        h.addUser(p.id, { video: '720p', desired: 'stopped', solo: true });
+        await h.tick();
+
+        const [row] = h.renditions(p.id);
+        assert.ok(row, 'the row appears');
+        assert.equal(row.desiredState, 'running', 'the running first output counts as "on"');
+        assert.deepEqual(
+            h.outputService.calls.filter((c) => c[0] === 'start'),
+            [['start', row.id]],
+        );
+    });
+
+    test('with both outputs stopped the row exists but nothing runs', async (t) => {
+        const h = harness(t);
+        const p = h.db.createPipeline();
+        h.addUser(p.id, { video: '720p', solo: true });
+        h.addUser(p.id, { video: '720p', solo: true });
+
+        await h.tick();
+        await h.tick(30_000);
+
+        assert.equal(h.renditions(p.id).length, 1);
+        assert.equal(h.renditions(p.id)[0].desiredState, 'stopped');
+        assert.equal(h.outputService.calls.filter((c) => c[0] === 'start').length, 0);
+    });
+
+    test('a rendition that outputs are still reading is not removed when the count drops to one', async (t) => {
+        const h = harness(t);
+        const p = h.db.createPipeline();
+        const a = h.addUser(p.id, { video: '720p', desired: 'running', solo: true });
+        const b = h.addUser(p.id, { video: '720p', desired: 'running', solo: true });
+        await h.tick();
+        const row = h.renditions(p.id)[0];
+        h.outputService.readers.set(row.id, 2);
+
+        h.db.deleteOutput(b.id); // a is left alone on the shared encode
+        await h.tick();
+        await h.tick();
+        await h.tick();
+
+        assert.equal(h.renditions(p.id).length, 1, 'kept while a reader runs');
+        assert.equal(h.outputService.calls.filter((c) => c[0] === 'stopAndWait').length, 0);
+        assert.equal(h.db.getOutput(row.id).desiredState, 'running');
+        assert.deepEqual(
+            h.eventNames().filter((n) => n === 'rendition-removal-deferred'),
+            ['rendition-removal-deferred'],
+            'logged once, not every tick',
+        );
+        const deferred = h.events.find((e) => e[0] === 'rendition-removal-deferred');
+        assert.equal(deferred[1].outputId, row.id);
+        assert.equal(deferred[1].readers, 2);
+
+        h.outputService.readers.set(row.id, 0); // a stops or restarts (and goes direct)
+        h.db.setOutputDesiredState(a.id, 'stopped');
+        await h.tick();
+
+        assert.equal(h.renditions(p.id).length, 0, 'removed once nothing reads it');
+        assert.deepEqual(
+            h.outputService.calls.filter((c) => c[1] === row.id && c[0] !== 'start'),
+            [
+                ['stopAndWait', row.id],
+                ['clearRetryState', row.id],
+            ],
+        );
+    });
+
+    test('a deferred removal is forgotten if the count recovers, so a later drop is logged again', async (t) => {
+        const h = harness(t);
+        const p = h.db.createPipeline();
+        h.addUser(p.id, { video: '720p', desired: 'running', solo: true });
+        const b = h.addUser(p.id, { video: '720p', desired: 'running', solo: true });
+        await h.tick();
+        const row = h.renditions(p.id)[0];
+        h.outputService.readers.set(row.id, 1);
+
+        h.db.updateOutput(b.id, {
+            name: 'x',
+            videoEncoding: 'copy',
+            url: b.url,
+            audioEncoding: 'copy',
+        });
+        await h.tick();
+        h.db.updateOutput(b.id, {
+            name: 'x',
+            videoEncoding: '720p',
+            url: b.url,
+            audioEncoding: 'copy',
+        });
+        await h.tick();
+        h.db.updateOutput(b.id, {
+            name: 'x',
+            videoEncoding: 'copy',
+            url: b.url,
+            audioEncoding: 'copy',
+        });
+        await h.tick();
+
+        assert.equal(h.eventNames().filter((n) => n === 'rendition-removal-deferred').length, 2);
+        assert.equal(h.renditions(p.id).length, 1);
     });
 });

@@ -15,7 +15,7 @@ The app runs these recovery loops:
 | Output progress watchdog | Every running FFmpeg output process | After warmup, if the input is ready but FFmpeg `total_size` / `out_time_ms` stop advancing for the configured stall window | Protocol-agnostic backstop; covers SRT outputs and local RTMP relays |
 | Remote RTMP socket watchdog | Running outputs with a remote RTMP/RTMPS destination | After socket warmup and grace, if the destination socket is missing or remains in a closing state such as `CLOSE-WAIT` | Uses one `ss -H -tanp` snapshot per watchdog interval; a local RTMP/RTMPS destination is ignored because local input/output sockets are ambiguous |
 | Output memory watchdog | Every running FFmpeg output process, including translation mixers (checked every 5 s; a mixer over its limit is restarted with a `translation-mixer-restart` event, reason `memory limit exceeded`) | After warmup, if process RSS crosses `memory_limit_mb` (or its per-encoding override) | Reads `/proc/<pid>/status`; unconditional — a leaking process can still show advancing `total_size`/healthy sockets, so this doesn't wait on the other two. Once RSS crosses 70% of the limit the output surfaces a yellow "High memory usage" warning in the dashboard, before the watchdog actually restarts it at 100%. The limit is doubled for outputs on a 4K (≥3840px on either dimension) input — the 2x multiplier is a placeholder, not a measured baseline; see [#11](https://github.com/live-miracles/bunryu/issues/11) |
-| Shared encode reconciler | One row per distinct shared recipe (video encoding + single audio selection) in each pipeline | Every second: creates missing rows, removes rows no output uses, starts a shared encode with its first running output, stops it 15 s after the last one | See [Shared encodes](#shared-encodes) below. Start is only requested on the stopped-to-running edge, so it never resets the output's retry back-off; a failing start is retried at most every 30 s |
+| Shared encode reconciler | One row per recipe (video encoding + single audio selection) that at least two outputs of a pipeline are configured with | Every second: creates missing rows, removes rows no output uses, starts a shared encode with its first running output, stops it 15 s after the last one | See [Shared encodes](#shared-encodes) below. Start is only requested on the stopped-to-running edge, so it never resets the output's retry back-off; a failing start is retried at most every 30 s |
 | Translator audio meter watchdog | Running translation-mixer outputs | After the same startup warmup grace as the output progress watchdog, if the translator audio meter has gone quiet for `translator_meter_stale_ms` (including a translator that never delivered a single sample) | Watches independently of the SRS live-state poll, so a translator that connects but sends a dead/silent track is still caught. Valid translator silence is not treated as a disconnect — FFmpeg continues emitting silent meter samples in that case — so this only fires when the meter itself stops updating. Restarts the mixer so it attaches to the current translator session. |
 
 All output watchdogs above use the same restart path: they write a detailed
@@ -41,6 +41,16 @@ output row, so it is supervised exactly like one: the same retry back-off
 watchdogs (with the memory limit of its video encoding), Error History and
 diagnostics. The outputs that read it are ordinary outputs that copy from it.
 
+- **When an encode exists.** Only when at least two outputs of a pipeline are
+  configured with the same recipe (running or not). An output decides at start
+  whether it reads the encode and never switches while running, so configuration
+  changes settle the next time an output starts: a running output that was alone
+  keeps its own encode (the new encode starts at once and may run with no reader
+  until the second output is started), and an encode that outputs are still reading
+  is kept when the count drops below two (diagnostics event
+  `rendition-removal-deferred`, once) and removed when they stop, so editing or
+  deleting one output never interrupts another. A lone output pulls the input
+  directly and is not affected by anything below.
 - **Blast radius: one recipe on one pipeline.** A failing shared encode restarts the
   outputs that read it, and nothing else: not other recipes, other pipelines,
   outputs reading the input directly, or the input.
@@ -78,14 +88,15 @@ diagnostics. The outputs that read it are ordinary outputs that copy from it.
   starts them again in the same order. The same action refuses a second restart of
   one output within 5 s.
 - **Observability.** Diagnostics events: `rendition-created`, `rendition-deleted`,
-  `rendition-idle-stop`, `rendition-start-error`, `rendition-reconcile-error`
+  `rendition-idle-stop`, `rendition-removal-deferred`, `rendition-start-error`,
+  `rendition-reconcile-error`
   (repeats throttled to one per 30 s per message) and
   `rendition-dependents-restarted`. `ffmpeg-started`, `ffmpeg-exited` and
   `ffmpeg-restart` carry `role` (`rendition` or `output`) and, for an output that
   reads one, `renditionId`; the once-a-minute `health-snapshot` has `role`,
   `renditionId` and `ready` per output.
 - **Recovery after a restart.** The rows live in the database, so a shared encode and
-  its Error History survive an app restart for as long as its recipe is in use. An
+  its Error History survive an app restart for as long as two outputs use its recipe. An
   encode left behind by a crashed app is killed at startup with the other orphaned
   FFmpeg processes.
 

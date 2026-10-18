@@ -154,6 +154,60 @@ describe('parsePipelines: shared encodes', () => {
     });
 });
 
+describe('parsePipelines: outputs that started direct', () => {
+    test('a running output that is not reading the encode is not linked to it, and is not its dependent', () => {
+        const p = parse({
+            outputs: FLEET(),
+            health: {
+                '1-2': outputHealth({ role: 'rendition', ready: true, readers: 1 }),
+                // started while it was alone with its recipe: running, reading the input
+                '1-3': outputHealth({ renditionId: null }),
+                // started later: reads the encode
+                '1-4': outputHealth({ renditionId: '1-2' }),
+            },
+        });
+        const byId = Object.fromEntries(p.outs.map((o) => [o.id, o]));
+
+        assert.equal(byId['1-3'].sharedEncode, null);
+        assert.equal(byId['1-4'].sharedEncode.id, '1-2');
+        assert.deepEqual(
+            p.renditions[0].dependents.map((d) => d.id),
+            ['1-4'],
+        );
+    });
+
+    test('outputs that are not running yet are linked: they will read the encode when they start', () => {
+        const p = parse({
+            outputs: FLEET(),
+            health: { '1-3': outputHealth({ status: 'stopped', startedAtMs: null }) },
+        });
+        assert.equal(p.outs.find((o) => o.id === '1-3').sharedEncode.id, '1-2');
+        assert.deepEqual(
+            p.renditions[0].dependents.map((d) => d.id),
+            ['1-3', '1-4'],
+        );
+    });
+
+    test('a running direct output shows no shared badge and no waiting warning', () => {
+        const p = parse({
+            outputs: FLEET(),
+            health: {
+                '1-2': outputHealth({ role: 'rendition', ready: false, status: 'failed' }),
+                '1-3': outputHealth({ renditionId: null }),
+            },
+        });
+        const direct = p.outs.find((o) => o.id === '1-3');
+        const card = renderOutputCard(
+            direct,
+            { connected: true, isSrt: false, audioTracks: [] },
+            new Map(),
+            { outStatus: () => 'good', pendingOutputs: new Map(), formatUptime: () => '' },
+        );
+        assert.ok(!card.includes('shared'));
+        assert.equal(sharedEncodeIssue(direct), null);
+    });
+});
+
 describe('sharedEncodeIssue', () => {
     const view = (rendition = {}, output = {}) => {
         const p = parse({

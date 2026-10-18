@@ -89,8 +89,9 @@ Run the repo's own tests separately with `npm test` (not part of this harness).
   replaced by `/dev/null`). `touch $WORK/real-outputs` makes **every** output do
   that (for CPU comparisons); `start` and `stop` remove the file. Kill a shared
   encode by pid (find it with `ps -eo pid,args`, not `pkill -f`).
-- Shared encodes need an output with a video encoding other than `copy` or an
-  audio track number, e.g. `{"videoEncoding":"720p","audioEncoding":"0"}`; the
+- Shared encodes need **two** outputs with the same recipe, each with a video
+  encoding other than `copy` or an audio track number, e.g.
+  `{"videoEncoding":"720p","audioEncoding":"0"}`; a lone one runs direct, and the
   default four outputs are plain copy and stay direct.
 - `public/js` is gitignored build output; `start` runs `npx tsc -p tsconfig.json`
   so the served frontend matches `public/ts`.

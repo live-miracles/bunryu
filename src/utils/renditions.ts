@@ -34,11 +34,11 @@ function makeRecipe(videoEncoding: string, audioEncoding: string): Recipe {
     return { videoEncoding, audioEncoding, key: `${videoEncoding}_a${audioEncoding}` };
 }
 
-// The recipe a user output shares with its siblings, or null when it stays a
-// direct pull of the input: plain copy, translation (owned by the mixer),
-// multi-track selections (RTMP/FLV carries one audio track, so they cannot go
-// through an internal RTMP stream), and the rendition rows themselves.
-export function sharedRecipe(output: RecipeFields & Pick<Output, 'url'>): Recipe | null {
+// The recipe an output needs an encode for, or null when it never goes through
+// one: plain copy, translation (owned by the mixer), multi-track selections
+// (RTMP/FLV carries one audio track, so they cannot go through an internal RTMP
+// stream), and the rendition rows themselves.
+export function encodeRecipe(output: RecipeFields & Pick<Output, 'url'>): Recipe | null {
     if (isRenditionOutput(output)) return null;
     const { videoEncoding, audioEncoding } = output;
     // An unknown preset is built as copy by buildFfmpegArgs, so it is not an encode.
@@ -46,6 +46,23 @@ export function sharedRecipe(output: RecipeFields & Pick<Output, 'url'>): Recipe
     if (audioEncoding !== 'copy' && !/^\d+$/.test(audioEncoding)) return null;
     if (videoEncoding === 'copy' && audioEncoding === 'copy') return null;
     return makeRecipe(videoEncoding, audioEncoding);
+}
+
+// The recipe an output shares with the others of its pipeline, or null when it
+// stays a direct pull of the input. Sharing only pays off when at least two
+// outputs are configured with the same recipe (desired state does not matter, so
+// the answer depends only on the saved configuration): a single output would just
+// get one more process, a few seconds of start-up and an extra hop. `pipelineOutputs`
+// is every output of the output's own pipeline, the output itself included.
+export function sharedRecipe(
+    output: RecipeFields & Pick<Output, 'url'>,
+    pipelineOutputs: readonly (RecipeFields & Pick<Output, 'url'>)[],
+): Recipe | null {
+    const recipe = encodeRecipe(output);
+    if (!recipe) return null;
+    let configured = 0;
+    for (const o of pipelineOutputs) if (encodeRecipe(o)?.key === recipe.key) configured++;
+    return configured >= 2 ? recipe : null;
 }
 
 export function recipeOfRendition(output: RecipeFields): Recipe {

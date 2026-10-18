@@ -56,10 +56,11 @@ ordinary output row owned by the server, so the API exposes it as one:
   `rtmp://127.0.0.1:<rtmpPort>/internal/r<pipelineId>_<videoEncoding>_a<audioEncoding>`,
   and its `name` reads `Shared encode <video> · <audio>`. Its `videoEncoding` and
   `audioEncoding` are the recipe.
-- **The server creates and deletes it** while a pipeline has a matching output,
-  and starts and stops it with the outputs that use it (it stops 15 s after the
-  last one). The rows are created within about a second of the output being
-  added, so a freshly created output has no shared encode for a moment.
+- **The server creates and deletes it** while a pipeline has at least two outputs
+  with the same recipe (a single output encodes on its own and gets no row), and
+  starts and stops it with the outputs that use it (it stops 15 s after the last
+  one). The row is created within about a second of the second output being added,
+  and removed once fewer than two are left and no output is still reading it.
 - **You cannot change it.** Update, delete, start and stop of a shared encode
   return `409 { "error": "Shared encodes are managed automatically" }`. Its Error
   History can be read and cleared, and it can be restarted (`/restart`).
