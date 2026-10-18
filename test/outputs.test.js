@@ -699,6 +699,60 @@ describe('output stop/start race', () => {
         service.shutdown();
     });
 
+    test('stopping a live attempt after repeated failed attempts records the count and the last failure', async (t) => {
+        const procs = [];
+        const db = makeDb();
+        const output = db.getOutput('out1');
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 60_000 },
+        );
+        // Only timeouts are mocked, so the retry back-off (1, 2, 4, 8 s) can be
+        // stepped through instantly; setImmediate still lets the retry's awaits settle.
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const settle = () => new Promise((resolve) => setImmediate(resolve));
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        for (const delayMs of [1000, 2000, 4000, 8000]) {
+            procs.at(-1).stderr.write('Connection refused\n');
+            await settle();
+            procs.at(-1).emit('close', 1, null);
+            t.mock.timers.tick(delayMs);
+            await settle();
+        }
+        // The fifth attempt fails too and the sixth is running when Stop is pressed.
+        procs.at(-1).stderr.write('Connection refused\n');
+        await settle();
+        procs.at(-1).emit('close', 1, null);
+        t.mock.timers.tick(16_000);
+        await settle();
+        assert.equal(procs.length, 6);
+        assert.equal(service.getStats('out1').status, 'running');
+        assert.equal(service.getStats('out1').failures, 5);
+
+        output.desiredState = 'stopped';
+        service.stop('out1');
+        await settle();
+
+        assert.deepEqual(procs.at(-1).killSignals, ['SIGTERM']);
+        const stop = db.errorRecords.at(-1);
+        assert.equal(stop.kind, 'stopped');
+        assert.equal(stop.failedAttempts, 5);
+        assert.equal(
+            stop.message,
+            'Stopped after 5 failed attempts. Last error: Connection refused',
+        );
+        assert.equal(service.getStats('out1').status, 'stopped');
+
+        service.shutdown();
+    });
+
     test('stopping an output that recovered and has stayed up for a minute is a plain stop', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
