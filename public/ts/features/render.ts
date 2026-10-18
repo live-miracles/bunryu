@@ -1366,9 +1366,7 @@ function renderOverview(): void {
     };
 
     let relayRows = '';
-    if (activeRelayPipelines.length === 0) {
-        relayRows = `<tr><td colspan="12" class="py-4 text-center opacity-50">No active SRT relay sessions.</td></tr>`;
-    } else {
+    if (activeRelayPipelines.length > 0) {
         for (const p of activeRelayPipelines) {
             const inputSt = relayInputStatus(p, relayProcessRunning);
             const outputSt = relayOutputStatus(p, relayProcessRunning);
@@ -1534,17 +1532,8 @@ function renderOverview(): void {
     </div>`;
 
     const m = state.metrics;
-    const fmtProcCpu = (percent: number | null | undefined): string => {
-        if (percent == null) return '—';
-        const r = Math.round(percent);
-        // Above 99% (i.e. more than one core's worth), add a space before
-        // the last two digits so wide numbers don't crowd the % sign.
-        if (r > 99) {
-            const s = String(r);
-            return `${s.slice(0, -2)} ${s.slice(-2)}%`;
-        }
-        return formatCpuPercent(percent);
-    };
+    const fmtProcCpu = (percent: number | null | undefined): string =>
+        percent == null ? '—' : formatCpuPercent(percent);
     const fmtProcRam = (bytes: number | null | undefined): string =>
         bytes != null ? formatBytesCompact(bytes) : '—';
     const isLoopbackHost = (host: string | null | undefined): boolean =>
@@ -1641,12 +1630,16 @@ function renderOverview(): void {
     const sysRamUsedBytes = m.ram?.usedBytes ?? null;
     const sysDownlinkKbps = m.net ? (m.net.rxBytesPerSec * 8) / 1000 : null;
     const sysUplinkKbps = m.net ? (m.net.txBytesPerSec * 8) / 1000 : null;
-    const appTotalTitle =
-        'App = node + SRS + relay + every running ffmpeg output.\nSystem = whole-system usage.';
-    const downlinkTotalTitle =
-        'App = SRS direct inputs + SRT relay links (bonded legs or plain inputs).\nSystem = whole-system downlink.';
-    const uplinkTotalTitle = 'App = every running ffmpeg output.\nSystem = whole-system uplink.';
-    const flowTotalTitle = `${downlinkTotalTitle}\n\n${uplinkTotalTitle}`;
+    const appColTitle =
+        'App = node + SRS + relay + every running ffmpeg output (downlink: SRS direct inputs + SRT relay links; uplink: every running ffmpeg output).';
+    const systemColTitle = 'System = whole-machine usage, including processes outside Bunryu.';
+    const cpuRowTitle = 'CPU is relative to one core: 100% = one full core, so it can exceed 100%.';
+    const downlinkRowTitle =
+        'Per process: SRS = publishers sending directly to SRS; Relay = SRT links pulled in by the relay.';
+    const uplinkRowTitle =
+        'Per process: Outs = every running ffmpeg output pushing to a destination.';
+    const cell = (value: string, title = ''): string =>
+        `<td class="font-mono text-xs"${title ? ` title="${title}"` : ''}>${value}</td>`;
 
     const systemUsageHtml = `
     <div class="overflow-x-auto mb-6">
@@ -1658,33 +1651,46 @@ function renderOverview(): void {
                     <th>SRS</th>
                     <th>Relay</th>
                     <th>Outs</th>
-                    <th>App / System</th>
+                    <th title="${appColTitle}">App total</th>
+                    <th title="${systemColTitle}">System</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td class="text-xs opacity-60">CPU</td>
-                    <td class="font-mono text-xs">${fmtProcCpu(m.node?.cpuPercent)}</td>
-                    <td class="font-mono text-xs">${fmtProcCpu(m.srs?.cpuPercent)}</td>
-                    <td class="font-mono text-xs">${fmtProcCpu(m.relay?.cpuPercent)}</td>
-                    <td class="font-mono text-xs">${outsCpuKnown ? fmtProcCpu(outsCpuPercent) : '—'}</td>
-                    <td class="font-mono text-xs" title="${appTotalTitle}">${totalCpuKnown ? fmtProcCpu(totalCpuPercent) : '—'} / ${fmtProcCpu(sysCpuPercent)}</td>
+                    <td class="text-xs opacity-60" title="${cpuRowTitle}">CPU</td>
+                    ${cell(fmtProcCpu(m.node?.cpuPercent))}
+                    ${cell(fmtProcCpu(m.srs?.cpuPercent))}
+                    ${cell(fmtProcCpu(m.relay?.cpuPercent))}
+                    ${cell(outsCpuKnown ? fmtProcCpu(outsCpuPercent) : '—')}
+                    ${cell(totalCpuKnown ? fmtProcCpu(totalCpuPercent) : '—', appColTitle)}
+                    ${cell(fmtProcCpu(sysCpuPercent), systemColTitle)}
                 </tr>
                 <tr>
                     <td class="text-xs opacity-60">RAM</td>
-                    <td class="font-mono text-xs">${fmtProcRam(m.node?.ramBytes)}</td>
-                    <td class="font-mono text-xs">${fmtProcRam(m.srs?.ramBytes)}</td>
-                    <td class="font-mono text-xs">${fmtProcRam(m.relay?.ramBytes)}</td>
-                    <td class="font-mono text-xs">${outsRamKnown ? fmtProcRam(outsRamBytes) : '—'}</td>
-                    <td class="font-mono text-xs" title="${appTotalTitle}">${totalRamKnown ? formatBytesCompact(totalRamBytes) : '—'} / ${fmtProcRam(sysRamUsedBytes)}</td>
+                    ${cell(fmtProcRam(m.node?.ramBytes))}
+                    ${cell(fmtProcRam(m.srs?.ramBytes))}
+                    ${cell(fmtProcRam(m.relay?.ramBytes))}
+                    ${cell(outsRamKnown ? fmtProcRam(outsRamBytes) : '—')}
+                    ${cell(totalRamKnown ? formatBytesCompact(totalRamBytes) : '—', appColTitle)}
+                    ${cell(fmtProcRam(sysRamUsedBytes), systemColTitle)}
                 </tr>
                 <tr>
-                    <td class="text-xs opacity-60">Downlink &amp; Uplink</td>
-                    <td class="font-mono text-xs">-</td>
-                    <td class="font-mono text-xs">↓ ${srsDownlinkKnown ? formatBitrate(srsDownlinkKbps) : '—'}</td>
-                    <td class="font-mono text-xs">↓ ${relayDownlinkKnown ? formatBitrate(relayDownlinkKbps) : '—'}</td>
-                    <td class="font-mono text-xs">↑ ${outsUplinkKnown ? formatBitrate(outsUplinkKbps) : '—'}</td>
-                    <td class="font-mono text-xs" title="${flowTotalTitle}">↓ ${totalDownlinkKnown ? formatBitrate(totalDownlinkKbps) : '—'} / ${formatBitrate(sysDownlinkKbps)} &amp; ↑ ${totalUplinkKnown ? formatBitrate(totalUplinkKbps) : '—'} / ${formatBitrate(sysUplinkKbps)}</td>
+                    <td class="text-xs opacity-60" title="${downlinkRowTitle}">Downlink ↓</td>
+                    ${cell('—')}
+                    ${cell(srsDownlinkKnown ? formatBitrate(srsDownlinkKbps) : '—')}
+                    ${cell(relayDownlinkKnown ? formatBitrate(relayDownlinkKbps) : '—')}
+                    ${cell('—')}
+                    ${cell(totalDownlinkKnown ? formatBitrate(totalDownlinkKbps) : '—', appColTitle)}
+                    ${cell(formatBitrate(sysDownlinkKbps), systemColTitle)}
+                </tr>
+                <tr>
+                    <td class="text-xs opacity-60" title="${uplinkRowTitle}">Uplink ↑</td>
+                    ${cell('—')}
+                    ${cell('—')}
+                    ${cell('—')}
+                    ${cell(outsUplinkKnown ? formatBitrate(outsUplinkKbps) : '—')}
+                    ${cell(totalUplinkKnown ? formatBitrate(totalUplinkKbps) : '—', appColTitle)}
+                    ${cell(formatBitrate(sysUplinkKbps), systemColTitle)}
                 </tr>
             </tbody>
         </table>
@@ -1709,17 +1715,25 @@ function renderOverview(): void {
         </a>
     </div>`;
 
-    overviewEl.innerHTML = `
-        ${chartsHtml}
-        ${systemUsageHtml}
-        ${filterChips}
+    // No relay pipelines at all: omit the section instead of an empty table. A
+    // filter that merely hides every row keeps it, so its message still shows.
+    const relaySectionHtml =
+        activeRelayPipelines.length === 0
+            ? ''
+            : `
         <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm table-relay">
                 ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Bonded group inputs show deduplicated Drop; non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D</span>', 'State', 'Source IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop">L / R / D</span>'])}
                 <tbody>${relayRows}</tbody>
             </table>
-        </div>
+        </div>`;
+
+    overviewEl.innerHTML = `
+        ${chartsHtml}
+        ${systemUsageHtml}
+        ${filterChips}
+        ${relaySectionHtml}
         <h2 class="mb-2 text-lg font-bold">Inputs <span class="badge badge-neutral badge-sm ml-1">${state.pipelines.length}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm">
