@@ -100,6 +100,10 @@ export interface OutputErrorRecord {
     ts: number;
     message: string;
     kind: OutputErrorKind;
+    // On a 'stopped' record: the output was stopped while it kept failing to
+    // stay up (this many failed attempts in a row), so the stop stays visible as
+    // an error until the output is started again.
+    failedAttempts?: number;
 }
 
 export interface Output {
@@ -196,7 +200,12 @@ export interface Db {
     setDesiredStateForPipeline(pipelineId: number, state: 'running' | 'stopped'): void;
     clearLastErrorsForPipeline(pipelineId: number): void;
 
-    setOutputLastError(id: string, message: string, kind: OutputErrorKind): void;
+    setOutputLastError(
+        id: string,
+        message: string,
+        kind: OutputErrorKind,
+        failedAttempts?: number,
+    ): void;
     clearOutputLastError(id: string): void;
     getOutputErrorHistory(id: string): OutputErrorRecord[];
 

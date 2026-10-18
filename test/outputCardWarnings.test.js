@@ -55,3 +55,32 @@ describe('RTMP input with Track 1 audio on an RTMP output', () => {
         assert.ok(!/re-encodes the audio/.test(html));
     });
 });
+
+describe('output stopped after repeated failed attempts', () => {
+    const stoppedAfterFailures = (over) =>
+        render({
+            desiredState: 'stopped',
+            status: 'stopped',
+            hasErrorHistory: true,
+            lastError: `${Date.now()}\nStopped after 5 failed attempts. Last error: Connection refused`,
+            lastErrorAt: Date.now(),
+            ...over,
+        });
+
+    test('keeps the error line, in red, while the output stays stopped', () => {
+        const html = stoppedAfterFailures();
+
+        assert.match(
+            html,
+            /<span class="text-xs text-error truncate">Stopped after 5 failed attempts\. Last error: Connection refused<\/span>/,
+        );
+        assert.match(html, /text-error[^>]*data-action="error-info"/);
+    });
+
+    test('a plainly stopped output shows no error line', () => {
+        const html = stoppedAfterFailures({ lastError: null, lastErrorAt: null });
+
+        assert.ok(!/Stopped after/.test(html));
+        assert.ok(!/text-xs text-error truncate/.test(html));
+    });
+});

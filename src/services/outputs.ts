@@ -24,6 +24,11 @@ import {
 } from './outputSockets.js';
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
+// An output stopped after this many failed attempts in a row keeps showing that
+// as an error until it is started again, so the operator can see it was tried
+// and stopped for a reason. A run that lasts STABLE_RUN_MS breaks the streak.
+const STOPPED_AFTER_FAILURES = 5;
+const STABLE_RUN_MS = 60_000;
 // Outputs retry indefinitely — an input can be down for hours during a major
 // incident and must come back on its own when it returns. While the input/SRS is
 // not ready we only re-check (no ffmpeg spawned), so an idle retry is cheap.
@@ -34,6 +39,24 @@ const RENDITION_RECHECK_DELAY_MS = 1000;
 const SIGKILL_DELAY_MS = 5000;
 const STDERR_TAIL_BYTES = 3000;
 const RESTART_STAGGER_MS = 200;
+// One line saying how an attempt failed, for the "stopped after N failed attempts"
+// record: the last line ffmpeg printed, else the watchdog reason or exit status.
+function failureSummary(
+    wasWatchdog: boolean,
+    watchdogReason: string | null,
+    stderrTail: string,
+    exit: number | string | null,
+): string {
+    const last = stderrTail
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .pop();
+    const text = wasWatchdog
+        ? `watchdog: ${watchdogReason ?? 'restarted'}`
+        : (last ?? `exit=${exit}`);
+    return text.length > 160 ? `${text.slice(0, 157)}...` : text;
+}
 const appConfig = readAppConfig();
 const FFMPEG_CMD = appConfig.ffmpegPath;
 const OUTPUT_WATCHDOG_WARMUP_MS = appConfig.outputWatchdog.warmupMs;
@@ -259,7 +282,19 @@ export function createOutputService(
     const restartNotes = new Map<string, string>();
     const startLocks = new Set<string>();
     let shuttingDown = false;
-    const retryState = new Map<string, { failures: number; timer: NodeJS.Timeout | null }>();
+    const retryState = new Map<
+        string,
+        {
+            failures: number;
+            // Failed attempts in a row that never stayed up for STABLE_RUN_MS, and
+            // how the latest one failed.
+            quickFailures: number;
+            lastFailure: string | null;
+            timer: NodeJS.Timeout | null;
+        }
+    >();
+    // For the 'stopped' record of a stop that followed repeated failures.
+    const stopFailures = new Map<string, { attempts: number; lastFailure: string | null }>();
     const watchdogTimer = setInterval(checkOutputWatchdog, OUTPUT_WATCHDOG_INTERVAL_MS);
     watchdogTimer.unref?.();
     refreshTcpSocketSnapshot();
@@ -414,7 +449,14 @@ export function createOutputService(
     }
 
     function getRetry(outputId: string) {
-        if (!retryState.has(outputId)) retryState.set(outputId, { failures: 0, timer: null });
+        if (!retryState.has(outputId)) {
+            retryState.set(outputId, {
+                failures: 0,
+                quickFailures: 0,
+                lastFailure: null,
+                timer: null,
+            });
+        }
         return retryState.get(outputId)!;
     }
 
@@ -425,6 +467,45 @@ export function createOutputService(
             r.timer = null;
         }
         retryState.delete(outputId);
+    }
+
+    // stop() calls this first: it forgets the retry state, but a stop that follows
+    // a streak of failed attempts must leave a record saying so. An attempt that
+    // has already stayed up for STABLE_RUN_MS ended the streak, even though only
+    // its exit would reset the counter.
+    function noteStopStreak(outputId: string): void {
+        const r = retryState.get(outputId);
+        const startedAtMs = startTimes.get(outputId);
+        const recovered = startedAtMs !== undefined && Date.now() - startedAtMs >= STABLE_RUN_MS;
+        if (r && !recovered && r.quickFailures >= STOPPED_AFTER_FAILURES) {
+            stopFailures.set(outputId, { attempts: r.quickFailures, lastFailure: r.lastFailure });
+        }
+    }
+
+    // Writes the 'stopped' record of a stop. After a streak of failed attempts it
+    // carries the count and the last failure, which keeps the stop visible as an
+    // error until the output is started again.
+    function recordStop(
+        output: { id: string; name: string },
+        streak: { attempts: number; lastFailure: string | null } | null,
+        detail: string,
+    ): void {
+        if (!streak) {
+            db.setOutputLastError(output.id, detail, 'stopped');
+            return;
+        }
+        const message = `Stopped after ${streak.attempts} failed attempts${
+            streak.lastFailure ? `. Last error: ${streak.lastFailure}` : ''
+        }`;
+        console.warn(red(`[outputs] ${output.id} (${output.name}) ${message}`));
+        diagnostics?.event('output-stopped-after-failures', {
+            outputId: output.id,
+            outputName: output.name,
+            failedAttempts: streak.attempts,
+            threshold: STOPPED_AFTER_FAILURES,
+            lastFailure: streak.lastFailure,
+        });
+        db.setOutputLastError(output.id, message, 'stopped', streak.attempts);
     }
 
     function scheduleRetry(output: Output): void {
@@ -1181,6 +1262,10 @@ export function createOutputService(
             watchdogReasons.delete(output.id);
             const restartNote = restartNotes.get(output.id) ?? null;
             restartNotes.delete(output.id);
+            const stopStreak = stopFailures.get(output.id) ?? null;
+            stopFailures.delete(output.id);
+            const startedAtMs = startTimes.get(output.id);
+            const ranMs = startedAtMs === undefined ? 0 : Date.now() - startedAtMs;
             // setStatus() below forgets which rendition this output was pulling.
             const roles = roleFields(output);
             const status = wasStop ? 'stopped' : 'failed';
@@ -1245,10 +1330,10 @@ export function createOutputService(
                 // routine stop markers on every restart/deploy.
                 try {
                     const detail = stderrTail.trim();
-                    db.setOutputLastError(
-                        output.id,
+                    recordStop(
+                        output,
+                        stopStreak,
                         restartNote ? (detail ? `${restartNote}\n${detail}` : restartNote) : detail,
-                        'stopped',
                     );
                 } catch {
                     /* non-critical */
@@ -1269,7 +1354,15 @@ export function createOutputService(
             if (shuttingDown) return;
             const desiredRunning = db.getOutput(output.id)?.desiredState === 'running';
             if (!wasStop && desiredRunning) {
-                getRetry(output.id).failures++;
+                const r = getRetry(output.id);
+                r.failures++;
+                r.quickFailures = ranMs >= STABLE_RUN_MS ? 0 : r.quickFailures + 1;
+                r.lastFailure = failureSummary(
+                    wasWatchdog,
+                    watchdogReason,
+                    stderrTail,
+                    code ?? signal,
+                );
                 scheduleRetry(output);
             } else if (wasStop && desiredRunning) {
                 // A start arrived while this stop's kill was still in flight:
@@ -1319,6 +1412,7 @@ export function createOutputService(
         },
 
         stop(outputId: string): void {
+            noteStopStreak(outputId);
             clearRetry(outputId);
             const proc = processes.get(outputId);
             if (proc) {
@@ -1332,7 +1426,10 @@ export function createOutputService(
                 // instead — otherwise an earlier crash stays the newest
                 // history entry forever and keeps showing as current.
                 try {
-                    db.setOutputLastError(outputId, '', 'stopped');
+                    const streak = stopFailures.get(outputId) ?? null;
+                    stopFailures.delete(outputId);
+                    const row = db.getOutput(outputId);
+                    recordStop({ id: outputId, name: row?.name ?? outputId }, streak, '');
                 } catch {
                     /* non-critical */
                 }

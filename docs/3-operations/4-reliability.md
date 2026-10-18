@@ -24,6 +24,14 @@ fresh process while the output's desired state remains `running`. The socket
 watchdog is advisory: if `ss` fails or times out, it does not restart anything,
 and a socket warning does not prevent the other watchdogs from acting.
 
+**Outputs that never stay up.** An output retries indefinitely (back-off 1, 2, 4, 8
+then 16 s). If it is stopped after 5 failed attempts in a row, none of which stayed
+up for 60 s, the stop is recorded with the count and the last failure ("Stopped
+after 5 failed attempts. Last error: Connection refused"), the output's card keeps
+showing that line in red, and its History button stays red, until the output is
+started again. A plain stop, or a run that lasted at least 60 s, leaves no such
+mark. The stop also writes an `output-stopped-after-failures` diagnostics event.
+
 Input media validation is separate from the output watchdogs. The health service
 stays on the regular 5s poll, but ffprobe backs off once a publisher's probe
 succeeds:

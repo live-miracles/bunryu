@@ -501,6 +501,34 @@ describe('Output CRUD', () => {
         assert.equal(got?.hasErrorHistory, true);
     });
 
+    test('a stop after repeated failed attempts stays the current error until the output starts again', () => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        const o = db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+
+        db.setOutputLastError(o.id, 'Connection refused', 'crash');
+        db.setOutputDesiredState(o.id, 'stopped');
+        db.setOutputLastError(o.id, 'Stopped after 5 failed attempts', 'stopped', 5);
+
+        const stopped = db.getOutput(o.id);
+        assert.match(stopped?.lastError ?? '', /Stopped after 5 failed attempts$/);
+        assert.match(
+            db.listOutputIds().find((out) => out.id === o.id)?.lastError ?? '',
+            /Stopped after 5 failed attempts$/,
+        );
+        assert.equal(db.getOutputErrorHistory(o.id).at(-1)?.failedAttempts, 5);
+
+        // Starting it again hides the stop without writing anything.
+        db.setOutputDesiredState(o.id, 'running');
+        assert.equal(db.getOutput(o.id)?.lastError, null);
+        assert.equal(db.getOutput(o.id)?.hasErrorHistory, true);
+
+        // A later plain stop supersedes it.
+        db.setOutputDesiredState(o.id, 'stopped');
+        db.setOutputLastError(o.id, '', 'stopped');
+        assert.equal(db.getOutput(o.id)?.lastError, null);
+    });
+
     test('stopped-only diagnostics surface as history without a current error', () => {
         const db = makeDb();
         const p = db.createPipeline();

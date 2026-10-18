@@ -48,15 +48,26 @@ const OUTPUT_WARNING_HISTORY_LIMIT = 5;
 // Every deliberate stop appends a 'stopped' marker (see outputs.ts), even
 // with an empty message, specifically so it immediately supersedes any
 // earlier crash here — "is this error still current" then falls out of
-// history order alone, with no separate timestamp/marker to keep in sync.
+// history order alone, with no separate timestamp/marker to keep in sync. The
+// one exception is a stop that followed repeated failures (failedAttempts), which
+// stays current while the output remains stopped.
 function toLastErrorString(error: OutputErrorRecord | null): string | null {
     return error ? `${error.ts}\n${error.message}` : null;
 }
 
 // Warnings are informational and do not affect whether a crash is current.
-function currentCrashRecord(history: OutputErrorRecord[]): OutputErrorRecord | null {
+// A stop that followed repeated failed attempts also counts as current, but only
+// while the output stays stopped: starting it again hides it without a new record.
+function currentCrashRecord(
+    history: OutputErrorRecord[],
+    desiredState: string,
+): OutputErrorRecord | null {
     const latest = history.filter((e) => e.kind !== 'warning').at(-1);
-    return latest && latest.kind === 'crash' ? latest : null;
+    if (!latest) return null;
+    if (latest.kind === 'crash') return latest;
+    return latest.kind === 'stopped' && latest.failedAttempts && desiredState === 'stopped'
+        ? latest
+        : null;
 }
 
 function trimOutputErrorHistory(history: OutputErrorRecord[]): OutputErrorRecord[] {
@@ -73,12 +84,15 @@ function trimOutputErrorHistory(history: OutputErrorRecord[]): OutputErrorRecord
         .slice(-OUTPUT_ERROR_HISTORY_LIMIT);
 }
 
-function deriveOutputErrorFields(history: OutputErrorRecord[]): {
+function deriveOutputErrorFields(
+    history: OutputErrorRecord[],
+    desiredState: string,
+): {
     lastError: string | null;
     hasErrorHistory: boolean;
 } {
     return {
-        lastError: toLastErrorString(currentCrashRecord(history)),
+        lastError: toLastErrorString(currentCrashRecord(history, desiredState)),
         hasErrorHistory: history.length > 0,
     };
 }
@@ -91,7 +105,12 @@ function parseOutputErrorHistory(raw: string | null): OutputErrorRecord[] {
     // Records written before 'kind' existed have none — they all predate this
     // feature and were all crash/watchdog errors, so default them as such.
     return trimOutputErrorHistory(
-        parsed.map((e) => ({ ts: e.ts, message: e.message, kind: e.kind ?? 'crash' })),
+        parsed.map((e) => ({
+            ts: e.ts,
+            message: e.message,
+            kind: e.kind ?? 'crash',
+            ...(e.failedAttempts ? { failedAttempts: e.failedAttempts } : {}),
+        })),
     );
 }
 
@@ -169,7 +188,7 @@ export function createDb(dbPath?: string): Db {
     // Lightweight id/pipeline map for the 5s health poll — avoids loading every
     // output row just to group output ids by pipeline.
     const stmtLoadOutputIds = sqlite.prepare(
-        'SELECT id, pipeline_id, last_error FROM outputs ORDER BY pipeline_id, seq',
+        'SELECT id, pipeline_id, desired_state, last_error FROM outputs ORDER BY pipeline_id, seq',
     );
     // Targeted single-row lookups for the hot retry / process-exit paths.
     const stmtGetPipeline = sqlite.prepare(`${PIPELINE_SELECT} WHERE p.id = ?`);
@@ -284,7 +303,7 @@ export function createDb(dbPath?: string): Db {
             url: row.url as string,
             audioEncoding: (row.audio_encoding as string) || 'copy',
             translation,
-            ...deriveOutputErrorFields(errorHistory),
+            ...deriveOutputErrorFields(errorHistory, row.desired_state as string),
         };
     }
 
@@ -588,7 +607,7 @@ export function createDb(dbPath?: string): Db {
                 return {
                     id: r.id as string,
                     pipelineId: r.pipeline_id as number,
-                    ...deriveOutputErrorFields(errorHistory),
+                    ...deriveOutputErrorFields(errorHistory, r.desired_state as string),
                 };
             });
         },
@@ -655,9 +674,17 @@ export function createDb(dbPath?: string): Db {
             stmtClearLastErrorsForPipeline.run(pipelineId);
         },
 
-        setOutputLastError(id: string, message: string, kind: OutputErrorKind): void {
+        setOutputLastError(
+            id: string,
+            message: string,
+            kind: OutputErrorKind,
+            failedAttempts?: number,
+        ): void {
             const existing = loadOutputErrorHistory(id);
-            const next = trimOutputErrorHistory([...existing, { ts: Date.now(), message, kind }]);
+            const next = trimOutputErrorHistory([
+                ...existing,
+                { ts: Date.now(), message, kind, ...(failedAttempts ? { failedAttempts } : {}) },
+            ]);
             stmtSetLastError.run(encodeOutputErrorHistory(next), id);
         },
 

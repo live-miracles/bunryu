@@ -94,8 +94,8 @@ function makeDb() {
             return [output];
         },
         errorRecords: [],
-        setOutputLastError(_id, message, kind) {
-            this.errorRecords.push({ message, kind });
+        setOutputLastError(_id, message, kind, failedAttempts) {
+            this.errorRecords.push({ message, kind, failedAttempts });
             if (kind === 'warning') return;
             this.lastError = `${Date.now()}\n${message}`;
             this.lastErrorKind = kind;
@@ -613,6 +613,113 @@ describe('output stop/start race', () => {
         assert.equal(service.getStats('out1').status, 'stopped');
         assert.equal(db.lastErrorKind, 'stopped');
         assert.match(db.lastError, /\n$/);
+
+        service.shutdown();
+    });
+
+    test('stopping after repeated failed attempts records the count and the last failure', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const output = db.getOutput('out1');
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        for (let i = 0; i < 5; i++) {
+            proc.stderr.write(
+                'Connection to tcp://youtube.example:1935 failed: Connection refused\n',
+            );
+            await sleep(5);
+            proc.emit('close', 1, null);
+        }
+        assert.equal(service.getStats('out1').failures, 5);
+
+        output.desiredState = 'stopped';
+        service.stop('out1');
+
+        const stop = db.errorRecords.at(-1);
+        assert.equal(stop.kind, 'stopped');
+        assert.equal(stop.failedAttempts, 5);
+        assert.equal(
+            stop.message,
+            'Stopped after 5 failed attempts. Last error: Connection to tcp://youtube.example:1935 failed: Connection refused',
+        );
+
+        service.shutdown();
+    });
+
+    test('stopping after fewer failed attempts is a plain stop', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const output = db.getOutput('out1');
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        for (let i = 0; i < 4; i++) {
+            proc.emit('close', 1, null);
+        }
+
+        output.desiredState = 'stopped';
+        service.stop('out1');
+
+        const stop = db.errorRecords.at(-1);
+        assert.equal(stop.kind, 'stopped');
+        assert.equal(stop.failedAttempts, undefined);
+        assert.equal(stop.message, '');
+
+        service.shutdown();
+    });
+
+    test('a run that stays up for a minute breaks the streak of failed attempts', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const output = db.getOutput('out1');
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        for (let i = 0; i < 4; i++) proc.emit('close', 1, null);
+
+        // The next attempt runs for over a minute before it dies, then one more
+        // quick failure: the streak restarts, so 4 + 1 does not reach 5.
+        const realNow = Date.now;
+        let now = realNow();
+        t.mock.method(Date, 'now', () => now);
+        service.reportExternalStatus('out1', 'running', 4321);
+        now += 61_000;
+        proc.emit('close', 1, null);
+        proc.emit('close', 1, null);
+
+        output.desiredState = 'stopped';
+        service.stop('out1');
+
+        assert.equal(db.errorRecords.at(-1).failedAttempts, undefined);
+
+        service.shutdown();
+    });
+
+    test('stopping an output that recovered and has stayed up for a minute is a plain stop', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const output = db.getOutput('out1');
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        for (let i = 0; i < 5; i++) proc.emit('close', 1, null);
+
+        // It then connects and runs healthily; the failed attempts are behind it.
+        let now = Date.now();
+        t.mock.method(Date, 'now', () => now);
+        service.reportExternalStatus('out1', 'running', 4321);
+        now += 61_000;
+
+        output.desiredState = 'stopped';
+        service.stop('out1');
+
+        assert.equal(db.errorRecords.at(-1).kind, 'stopped');
+        assert.equal(db.errorRecords.at(-1).failedAttempts, undefined);
 
         service.shutdown();
     });
