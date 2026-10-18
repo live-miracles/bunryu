@@ -102,10 +102,10 @@ async function runMixer(sourcePath, translatorPath, outName) {
         translationDelayMs: 0,
         voiceThresholdDb: -20,
         controlPort,
-        duckVolumePercent: 6,
+        duckVolumeDb: -24,
         duckDurationMs: 900,
         restoreSilenceMs: 2000,
-        restoreVolumePercent: 50,
+        restoreVolumeDb: -6,
         restoreDurationMs: 5000,
     });
     const meterSamples = [];

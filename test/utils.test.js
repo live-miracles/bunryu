@@ -34,7 +34,7 @@ fs.writeFileSync(
 const {
     buildFfmpegArgs,
     buildTranslationMixerArgs,
-    volumePercentToAmplitude,
+    dbToAmplitude,
     validateOutputUrl,
     validateAudioEncoding,
 } = require('../src/utils/ffmpeg');
@@ -214,11 +214,24 @@ describe('buildFfmpegArgs', () => {
 });
 
 describe('buildTranslationMixerArgs', () => {
-    test('maps app percentage values directly to amplitude', () => {
-        assert.equal(volumePercentToAmplitude(6), 0.06);
-        assert.equal(volumePercentToAmplitude(32), 0.32);
-        assert.equal(volumePercentToAmplitude(52), 0.52);
-        assert.equal(volumePercentToAmplitude(100), 1);
+    test('maps dB source-volume settings to linear amplitude', () => {
+        assert.equal(dbToAmplitude(0), 1);
+        assert.ok(Math.abs(dbToAmplitude(-6) - 0.5012) < 0.0001);
+        assert.ok(Math.abs(dbToAmplitude(-20) - 0.1) < 0.0001);
+        assert.ok(Math.abs(dbToAmplitude(-24) - 0.0631) < 0.0001);
+    });
+
+    test('never boosts the source and mutes at or below the -60 dB floor', () => {
+        assert.equal(dbToAmplitude(6), 1);
+        assert.equal(dbToAmplitude(-60), 0);
+        assert.equal(dbToAmplitude(-80), 0);
+        assert.ok(dbToAmplitude(-59) > 0);
+    });
+
+    test('leaves the source untouched for a missing or NaN dB value instead of sending NaN gain', () => {
+        assert.equal(dbToAmplitude(undefined), 1);
+        assert.equal(dbToAmplitude(NaN), 1);
+        assert.equal(dbToAmplitude(-Infinity), 0);
     });
 
     test('publishes source-only audio/video when translator is unavailable', () => {
@@ -227,10 +240,10 @@ describe('buildTranslationMixerArgs', () => {
             translationDelayMs: 800,
             voiceThresholdDb: -20,
             controlPort: 31001,
-            duckVolumePercent: 6,
+            duckVolumeDb: -24,
             duckDurationMs: 900,
             restoreSilenceMs: 2000,
-            restoreVolumePercent: 32,
+            restoreVolumeDb: -10,
             restoreDurationMs: 1000,
         });
         assert.deepEqual(
@@ -249,10 +262,10 @@ describe('buildTranslationMixerArgs', () => {
             translationDelayMs: 800,
             voiceThresholdDb: -20,
             controlPort: 31001,
-            duckVolumePercent: 6,
+            duckVolumeDb: -24,
             duckDurationMs: 900,
             restoreSilenceMs: 2000,
-            restoreVolumePercent: 32,
+            restoreVolumeDb: -10,
             restoreDurationMs: 1000,
         });
         assert.equal(args.filter((value) => value === '-i').length, 2);
@@ -279,10 +292,10 @@ describe('buildTranslationMixerArgs', () => {
             translationDelayMs: 800,
             voiceThresholdDb: -20,
             controlPort: 31001,
-            duckVolumePercent: 6,
+            duckVolumeDb: -24,
             duckDurationMs: 900,
             restoreSilenceMs: 2000,
-            restoreVolumePercent: 32,
+            restoreVolumeDb: -10,
             restoreDurationMs: 1000,
         });
         const inputs = args.filter((value, index) => args[index - 1] === '-i');
@@ -305,10 +318,10 @@ describe('buildTranslationMixerArgs', () => {
             translationDelayMs: 800,
             voiceThresholdDb: -20,
             controlPort: 31001,
-            duckVolumePercent: 6,
+            duckVolumeDb: -24,
             duckDurationMs: 900,
             restoreSilenceMs: 2000,
-            restoreVolumePercent: 32,
+            restoreVolumeDb: -10,
             restoreDurationMs: 1000,
         });
         const filter = args[args.indexOf('-filter_complex') + 1];
@@ -324,10 +337,10 @@ describe('buildTranslationMixerArgs', () => {
             translationDelayMs: 800,
             voiceThresholdDb: -20,
             controlPort: 31001,
-            duckVolumePercent: 6,
+            duckVolumeDb: -24,
             duckDurationMs: 900,
             restoreSilenceMs: 2000,
-            restoreVolumePercent: 32,
+            restoreVolumeDb: -10,
             restoreDurationMs: 1000,
         });
         const filter = args[args.indexOf('-filter_complex') + 1];
@@ -342,10 +355,10 @@ describe('buildTranslationMixerArgs', () => {
             translationDelayMs: 800,
             voiceThresholdDb: -20,
             controlPort: 31001,
-            duckVolumePercent: 6,
+            duckVolumeDb: -24,
             duckDurationMs: 900,
             restoreSilenceMs: 2000,
-            restoreVolumePercent: 32,
+            restoreVolumeDb: -10,
             restoreDurationMs: 1000,
         });
         assert.deepEqual(

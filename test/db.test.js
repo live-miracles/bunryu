@@ -224,6 +224,48 @@ describe('Translation output settings', () => {
     });
 });
 
+describe('stored translation settings', () => {
+    test('a config saved with the old percent volumes loads with dB defaults, never undefined', () => {
+        const fs = require('node:fs');
+        const os = require('node:os');
+        const path = require('node:path');
+        const Database = require('better-sqlite3');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-db-'));
+        try {
+            const file = path.join(dir, 'test.db');
+            const db = createDb(file);
+            const source = db.createPipeline();
+            const translator = db.createPipeline();
+            const output = db.createOutput({
+                pipelineId: source.id,
+                name: 'T',
+                url: 'rtmp://t',
+                audioEncoding: 'translation',
+                translation: { translatorStreamKey: translator.streamKey },
+            });
+            const raw = new Database(file);
+            raw.prepare('UPDATE outputs SET translation_config = ? WHERE id = ?').run(
+                JSON.stringify({
+                    translatorStreamKey: translator.streamKey,
+                    translationDelayMs: 700,
+                    duckVolumePercent: 20,
+                    restoreVolumePercent: 80,
+                }),
+                output.id,
+            );
+            raw.close();
+
+            const loaded = db.getOutput(output.id).translation;
+            assert.equal(loaded.translationDelayMs, 700);
+            assert.equal(loaded.duckVolumeDb, -24);
+            assert.equal(loaded.restoreVolumeDb, -6);
+            assert.equal(loaded.duckVolumePercent, undefined);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
+
 describe('getPipelineByStreamKey', () => {
     test('resolves the pipeline currently holding a stream key', () => {
         const db = makeDb();

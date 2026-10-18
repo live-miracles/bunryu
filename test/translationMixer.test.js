@@ -89,10 +89,10 @@ function makeTranslationOutput() {
             translatorTrackIndex: 0,
             translationDelayMs: 0,
             voiceThresholdDb: -30,
-            duckVolumePercent: 20,
+            duckVolumeDb: -14,
             duckDurationMs: 200,
             restoreSilenceMs: 500,
-            restoreVolumePercent: 80,
+            restoreVolumeDb: -2,
             restoreDurationMs: 200,
         },
         lastError: null,
@@ -250,10 +250,10 @@ describe('nextDebouncedMode', () => {
 describe('nextDuckDecision', () => {
     const mix = {
         voiceThresholdDb: -20,
-        duckVolumePercent: 6,
+        duckVolumeDb: -24,
         duckDurationMs: 900,
         restoreSilenceMs: 2000,
-        restoreVolumePercent: 50,
+        restoreVolumeDb: -6,
         restoreDurationMs: 5000,
     };
 
@@ -267,7 +267,7 @@ describe('nextDuckDecision', () => {
     test('ducks as soon as speech crosses the threshold', () => {
         const { tracker, ramp } = nextDuckDecision(undefined, -10, 0, mix);
         assert.equal(tracker.state, 'ducked');
-        assert.deepEqual(ramp, { targetPercent: 6, durationMs: 900 });
+        assert.deepEqual(ramp, { targetDb: -24, durationMs: 900 });
     });
 
     test('does not re-issue a ramp for continued speech while already ducked', () => {
@@ -287,7 +287,7 @@ describe('nextDuckDecision', () => {
     test('restores once silence has held for the full window', () => {
         let state = nextDuckDecision(undefined, -10, 0, mix);
         state = nextDuckDecision(state.tracker, -Infinity, mix.restoreSilenceMs, mix);
-        assert.deepEqual(state.ramp, { targetPercent: 50, durationMs: 5000 });
+        assert.deepEqual(state.ramp, { targetDb: -6, durationMs: 5000 });
         assert.equal(state.tracker.state, 'resting');
     });
 
@@ -304,7 +304,7 @@ describe('nextDuckDecision', () => {
         state = nextDuckDecision(state.tracker, -10, mix.restoreSilenceMs + 500, mix);
         assert.deepEqual(
             state.ramp,
-            { targetPercent: 6, durationMs: 900 },
+            { targetDb: -24, durationMs: 900 },
             'must duck again rather than let the restore ramp finish',
         );
         assert.equal(state.tracker.state, 'ducked');
@@ -321,7 +321,7 @@ describe('nextDuckDecision', () => {
         assert.equal(state.tracker.state, 'ducked');
         // Now silence for the full window measured from the latest speech sample.
         state = nextDuckDecision(state.tracker, -Infinity, 800 + mix.restoreSilenceMs, mix);
-        assert.deepEqual(state.ramp, { targetPercent: 50, durationMs: 5000 });
+        assert.deepEqual(state.ramp, { targetDb: -6, durationMs: 5000 });
     });
 });
 

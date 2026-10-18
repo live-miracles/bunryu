@@ -65,12 +65,15 @@ from the current source level instead of finishing the climb back up first.
 | Source Track / Translation Input Track | Which audio track to use from each pipeline |
 | Translation Delay (ms) | Delay applied to the audible translator audio |
 | Voice Threshold (dB) | Speech detection threshold; a non-positive value such as `-20` |
-| Source While Speaking (%) | Source volume while the translator is speaking |
+| Source While Speaking (dB) | Source volume while the translator is speaking (default `-24`) |
 | Duck Fade (ms) | Time used to lower the source volume when speech starts |
-| Restore After / Volume / Fade | Silence required before restoring, the restored source volume, and the fade time |
+| Restore After / Volume (dB) / Fade | Silence required before restoring, the restored source volume (default `-6`), and the fade time |
 
-Volumes are percentages from 0 to 100 and map directly to FFmpeg gain: for
-example, 6 means a gain of 0.06, or 6% of the source amplitude.
+Source volumes are in dB relative to the source, from `-60` to `0`: `0` leaves
+the source unchanged, `-6` is about half the amplitude, `-20` is a tenth, and
+`-60` mutes it. The mix never boosts the source above its original level. The
+fade between the two levels is linear in amplitude. The `vol` badge on a running
+output card still shows the live source volume as a percentage of full amplitude.
 
 ## Known limitations
 

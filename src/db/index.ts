@@ -143,10 +143,10 @@ function normalizeTranslationConfig(input: TranslationInput): TranslationConfig 
         translatorTrackIndex: input.translatorTrackIndex ?? 0,
         translationDelayMs: input.translationDelayMs ?? 800,
         voiceThresholdDb: input.voiceThresholdDb ?? -20,
-        duckVolumePercent: input.duckVolumePercent ?? 6,
+        duckVolumeDb: input.duckVolumeDb ?? -24,
         duckDurationMs: input.duckDurationMs ?? 900,
         restoreSilenceMs: input.restoreSilenceMs ?? 2000,
-        restoreVolumePercent: input.restoreVolumePercent ?? 50,
+        restoreVolumeDb: input.restoreVolumeDb ?? -6,
         restoreDurationMs: input.restoreDurationMs ?? 5000,
     };
 }
@@ -288,7 +288,11 @@ export function createDb(dbPath?: string): Db {
         let translation: TranslationConfig | null = null;
         if (typeof row.translation_config === 'string' && row.translation_config) {
             try {
-                translation = JSON.parse(row.translation_config) as TranslationConfig;
+                // Through the normalizer so a stored config missing a setting (e.g. the
+                // pre-dB volume fields) gets that setting's default, never NaN gain.
+                translation = normalizeTranslationConfig(
+                    JSON.parse(row.translation_config) as TranslationInput,
+                );
             } catch {
                 translation = null;
             }

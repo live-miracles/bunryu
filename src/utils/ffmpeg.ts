@@ -150,16 +150,23 @@ export interface TranslationMixerConfig {
     translationDelayMs: number;
     voiceThresholdDb: number;
     controlPort: number;
-    duckVolumePercent: number;
+    duckVolumeDb: number;
     duckDurationMs: number;
     restoreSilenceMs: number;
-    restoreVolumePercent: number;
+    restoreVolumeDb: number;
     restoreDurationMs: number;
 }
 
-export function volumePercentToAmplitude(volumePercent: number): number {
-    const volume = Math.min(100, Math.max(0, volumePercent));
-    return volume / 100;
+// Source-volume settings are in dB relative to the source (0 dB = unchanged,
+// never a boost). At or below MIN_VOLUME_DB the source is muted outright
+// instead of left at a barely audible 0.001. A missing or NaN value leaves the
+// source untouched: a silent program is worse than one that is not ducked.
+export const MIN_VOLUME_DB = -60;
+
+export function dbToAmplitude(volumeDb: number): number {
+    if (typeof volumeDb !== 'number' || Number.isNaN(volumeDb)) return 1;
+    if (volumeDb <= MIN_VOLUME_DB) return 0;
+    return 10 ** (Math.min(0, volumeDb) / 20);
 }
 
 // Build one upstream program stream for a translation mix. The source input

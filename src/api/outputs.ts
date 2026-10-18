@@ -4,6 +4,7 @@ import {
     validateAudioEncoding,
     isTranslationAudio,
     ENCODINGS,
+    MIN_VOLUME_DB,
 } from '../utils/ffmpeg.js';
 import type { Db, TranslationInput } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
@@ -51,8 +52,9 @@ function parseTranslation(body: unknown): TranslationInput | null | undefined | 
     if (!translatorStreamKey) {
         return { error: 'translation translatorStreamKey is required' };
     }
-    const numeric = (key: string, min: number, max: number): number | string => {
-        if (value[key] === undefined) return '';
+    // undefined = field omitted (the db fills its default); a string = error text.
+    const numeric = (key: string, min: number, max: number): number | string | undefined => {
+        if (value[key] === undefined) return undefined;
         const n = Number(value[key]);
         return Number.isFinite(n) && n >= min && n <= max ? n : `${key} is invalid`;
     };
@@ -60,19 +62,19 @@ function parseTranslation(body: unknown): TranslationInput | null | undefined | 
     const translatorTrackIndex = numeric('translatorTrackIndex', 0, 49);
     const delay = numeric('translationDelayMs', 0, 5000);
     const thresholdDb = numeric('voiceThresholdDb', -100, 0);
-    const duckVolumePercent = numeric('duckVolumePercent', 0, 100);
+    const duckVolumeDb = numeric('duckVolumeDb', MIN_VOLUME_DB, 0);
     const duckDurationMs = numeric('duckDurationMs', 0, 30000);
     const restoreSilenceMs = numeric('restoreSilenceMs', 0, 30000);
-    const restoreVolumePercent = numeric('restoreVolumePercent', 0, 100);
+    const restoreVolumeDb = numeric('restoreVolumeDb', MIN_VOLUME_DB, 0);
     const restoreDurationMs = numeric('restoreDurationMs', 0, 30000);
     if (typeof sourceTrackIndex === 'string') return { error: sourceTrackIndex };
     if (typeof translatorTrackIndex === 'string') return { error: translatorTrackIndex };
     if (typeof delay === 'string') return { error: delay };
     if (typeof thresholdDb === 'string') return { error: thresholdDb };
-    if (typeof duckVolumePercent === 'string') return { error: duckVolumePercent };
+    if (typeof duckVolumeDb === 'string') return { error: duckVolumeDb };
     if (typeof duckDurationMs === 'string') return { error: duckDurationMs };
     if (typeof restoreSilenceMs === 'string') return { error: restoreSilenceMs };
-    if (typeof restoreVolumePercent === 'string') return { error: restoreVolumePercent };
+    if (typeof restoreVolumeDb === 'string') return { error: restoreVolumeDb };
     if (typeof restoreDurationMs === 'string') return { error: restoreDurationMs };
     return {
         translatorStreamKey,
@@ -80,10 +82,10 @@ function parseTranslation(body: unknown): TranslationInput | null | undefined | 
         ...(value.translatorTrackIndex === undefined ? {} : { translatorTrackIndex }),
         ...(value.translationDelayMs === undefined ? {} : { translationDelayMs: delay }),
         ...(value.voiceThresholdDb === undefined ? {} : { voiceThresholdDb: thresholdDb }),
-        ...(value.duckVolumePercent === undefined ? {} : { duckVolumePercent }),
+        ...(value.duckVolumeDb === undefined ? {} : { duckVolumeDb }),
         ...(value.duckDurationMs === undefined ? {} : { duckDurationMs }),
         ...(value.restoreSilenceMs === undefined ? {} : { restoreSilenceMs }),
-        ...(value.restoreVolumePercent === undefined ? {} : { restoreVolumePercent }),
+        ...(value.restoreVolumeDb === undefined ? {} : { restoreVolumeDb }),
         ...(value.restoreDurationMs === undefined ? {} : { restoreDurationMs }),
     };
 }

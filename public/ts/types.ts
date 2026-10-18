@@ -70,10 +70,10 @@ export interface Output {
         translatorTrackIndex: number;
         translationDelayMs: number;
         voiceThresholdDb: number;
-        duckVolumePercent: number;
+        duckVolumeDb: number;
         duckDurationMs: number;
         restoreSilenceMs: number;
-        restoreVolumePercent: number;
+        restoreVolumeDb: number;
         restoreDurationMs: number;
     } | null;
     lastError: string | null;
@@ -100,10 +100,10 @@ export interface OutputPayload {
         translatorTrackIndex?: number;
         translationDelayMs?: number;
         voiceThresholdDb?: number;
-        duckVolumePercent?: number;
+        duckVolumeDb?: number;
         duckDurationMs?: number;
         restoreSilenceMs?: number;
-        restoreVolumePercent?: number;
+        restoreVolumeDb?: number;
         restoreDurationMs?: number;
     } | null;
 }

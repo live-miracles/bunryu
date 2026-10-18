@@ -32,10 +32,10 @@ export interface TranslationConfig {
     translatorTrackIndex: number;
     translationDelayMs: number;
     voiceThresholdDb: number;
-    duckVolumePercent: number;
+    duckVolumeDb: number;
     duckDurationMs: number;
     restoreSilenceMs: number;
-    restoreVolumePercent: number;
+    restoreVolumeDb: number;
     restoreDurationMs: number;
 }
 
@@ -45,10 +45,10 @@ export interface TranslationInput {
     translatorTrackIndex?: number;
     translationDelayMs?: number;
     voiceThresholdDb?: number;
-    duckVolumePercent?: number;
+    duckVolumeDb?: number;
     duckDurationMs?: number;
     restoreSilenceMs?: number;
-    restoreVolumePercent?: number;
+    restoreVolumeDb?: number;
     restoreDurationMs?: number;
 }
 

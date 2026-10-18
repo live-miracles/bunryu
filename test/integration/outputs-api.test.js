@@ -165,6 +165,58 @@ describe('Outputs API integration', () => {
             assert.equal(harness.db.listOutputsForPipeline(p.id).length, 1);
         });
 
+        test('stores translation source volumes in dB and defaults them when omitted', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const translator = harness.db.createPipeline();
+            const body = (translation) => ({
+                name: 'T',
+                url: 'rtmp://a.rtmp.youtube.com/live2/key',
+                audioEncoding: 'translation',
+                translation: { translatorStreamKey: translator.streamKey, ...translation },
+            });
+
+            const explicit = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs`,
+                body({ duckVolumeDb: -30, restoreVolumeDb: -3 }),
+            );
+            assert.equal(explicit.status, 201);
+            assert.equal(explicit.body.translation.duckVolumeDb, -30);
+            assert.equal(explicit.body.translation.restoreVolumeDb, -3);
+
+            const defaults = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs`,
+                body({}),
+            );
+            assert.equal(defaults.status, 201);
+            assert.equal(defaults.body.translation.duckVolumeDb, -24);
+            assert.equal(defaults.body.translation.restoreVolumeDb, -6);
+        });
+
+        test('rejects translation source volumes outside -60..0 dB', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const translator = harness.db.createPipeline();
+            for (const [field, value] of [
+                ['duckVolumeDb', 6],
+                ['duckVolumeDb', -61],
+                ['restoreVolumeDb', 50],
+                ['restoreVolumeDb', -100],
+            ]) {
+                const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                    name: 'T',
+                    url: 'rtmp://a.rtmp.youtube.com/live2/key',
+                    audioEncoding: 'translation',
+                    translation: { translatorStreamKey: translator.streamKey, [field]: value },
+                });
+                assert.equal(res.status, 400, `${field}=${value}`);
+                assert.match(res.body.error, new RegExp(field));
+            }
+            assert.equal(harness.db.listOutputsForPipeline(p.id).length, 0);
+        });
+
         test('404s for a nonexistent pipeline', async () => {
             const harness = createHarness();
             const res = await harness.request('POST', '/api/pipelines/9999/outputs', {

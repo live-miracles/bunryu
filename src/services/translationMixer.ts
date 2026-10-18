@@ -8,11 +8,7 @@ import { context as zmqContext, Request } from 'zeromq';
 // never came up or already died) — even after that socket has been closed.
 // This gives every new socket a zero linger instead, so shutdown can't hang.
 zmqContext.blocky = false;
-import {
-    buildTranslationMixerArgs,
-    isTranslationAudio,
-    volumePercentToAmplitude,
-} from '../utils/ffmpeg.js';
+import { buildTranslationMixerArgs, isTranslationAudio, dbToAmplitude } from '../utils/ffmpeg.js';
 import { readAppConfig, outputMemoryLimitBytes } from '../utils/appConfig.js';
 import { readProcRssBytes, createProcCpuTracker } from '../utils/procStats.js';
 import type { Db, Output, TranslationConfig } from '../types.js';
@@ -126,10 +122,10 @@ export interface DuckTracker {
 
 export interface DuckMixConfig {
     voiceThresholdDb: number;
-    duckVolumePercent: number;
+    duckVolumeDb: number;
     duckDurationMs: number;
     restoreSilenceMs: number;
-    restoreVolumePercent: number;
+    restoreVolumeDb: number;
     restoreDurationMs: number;
 }
 
@@ -139,7 +135,7 @@ export interface DuckDecision {
     // samples in the same state (e.g. continued speech, or silence still
     // inside the hold window) return null so the caller doesn't restart an
     // already-running ramp/timer for no reason.
-    ramp: { targetPercent: number; durationMs: number } | null;
+    ramp: { targetDb: number; durationMs: number } | null;
 }
 
 // One meter sample in, one decision out — no timers, no I/O. Speech detected
@@ -164,7 +160,7 @@ export function nextDuckDecision(
             next.state = 'ducked';
             return {
                 tracker: next,
-                ramp: { targetPercent: mix.duckVolumePercent, durationMs: mix.duckDurationMs },
+                ramp: { targetDb: mix.duckVolumeDb, durationMs: mix.duckDurationMs },
             };
         }
         return { tracker: next, ramp: null };
@@ -175,7 +171,7 @@ export function nextDuckDecision(
         next.state = 'resting';
         return {
             tracker: next,
-            ramp: { targetPercent: mix.restoreVolumePercent, durationMs: mix.restoreDurationMs },
+            ramp: { targetDb: mix.restoreVolumeDb, durationMs: mix.restoreDurationMs },
         };
     }
     return { tracker: next, ramp: null };
@@ -187,7 +183,7 @@ function createMixerStateController(
     outputId: string,
     diagnostics?: DiagnosticsLogger,
 ): MixerStateController {
-    let currentGain = volumePercentToAmplitude(mix.restoreVolumePercent);
+    let currentGain = dbToAmplitude(mix.restoreVolumeDb);
     let tracker: DuckTracker = { state: 'resting', hasDetectedVoice: false, lastVoiceAt: 0 };
     let rampTimer: NodeJS.Timeout | null = null;
     let commandChain = Promise.resolve();
@@ -239,10 +235,10 @@ function createMixerStateController(
                 outputId,
                 state: decision.tracker.state,
                 meterDb: db,
-                targetPercent: decision.ramp.targetPercent,
+                targetDb: decision.ramp.targetDb,
                 rampMs: decision.ramp.durationMs,
             });
-            rampTo(volumePercentToAmplitude(decision.ramp.targetPercent), decision.ramp.durationMs);
+            rampTo(dbToAmplitude(decision.ramp.targetDb), decision.ramp.durationMs);
         }
     }
 
@@ -256,7 +252,7 @@ function createMixerStateController(
                 reason: 'translator unavailable',
             });
             tracker = { state: 'resting', hasDetectedVoice: false, lastVoiceAt: 0 };
-            rampTo(volumePercentToAmplitude(mix.restoreVolumePercent), mix.restoreDurationMs);
+            rampTo(dbToAmplitude(mix.restoreVolumeDb), mix.restoreDurationMs);
         },
         getSnapshot: () => ({
             state: tracker.state,
@@ -442,10 +438,10 @@ export function createTranslationMixerService(
             sourceProtocol: inputState.getProtocol(output.pipelineId),
             delay: mix.translationDelayMs,
             thresholdDb: mix.voiceThresholdDb,
-            duckVolume: mix.duckVolumePercent,
+            duckVolume: mix.duckVolumeDb,
             duckDuration: mix.duckDurationMs,
             restoreSilence: mix.restoreSilenceMs,
-            restoreVolume: mix.restoreVolumePercent,
+            restoreVolume: mix.restoreVolumeDb,
             restoreDuration: mix.restoreDurationMs,
             outputUrl: output.url,
             videoEncoding: output.videoEncoding,

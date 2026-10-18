@@ -989,8 +989,8 @@ function renderOutputTranslationControls(
             <input id="out-translation-threshold-input" class="input input-sm w-full" type="number" min="-100" max="0" step="1" value="${mix?.voiceThresholdDb ?? -20}" />
           </fieldset>
           <fieldset class="fieldset min-w-40 flex-1">
-            <legend class="fieldset-legend">Source While Speaking (%)</legend>
-            <input id="out-translation-duck-volume-input" class="input input-sm w-full" type="number" min="0" max="100" step="1" value="${mix?.duckVolumePercent ?? 6}" />
+            <legend class="fieldset-legend">Source While Speaking (dB)</legend>
+            <input id="out-translation-duck-volume-input" class="input input-sm w-full" type="number" min="-60" max="0" step="1" value="${mix?.duckVolumeDb ?? -24}" />
           </fieldset>
           <fieldset class="fieldset min-w-40 flex-1">
             <legend class="fieldset-legend">Duck Fade (ms)</legend>
@@ -1001,8 +1001,8 @@ function renderOutputTranslationControls(
             <input id="out-translation-restore-silence-input" class="input input-sm w-full" type="number" min="0" max="30000" value="${mix?.restoreSilenceMs ?? 2000}" />
           </fieldset>
           <fieldset class="fieldset min-w-40 flex-1">
-            <legend class="fieldset-legend">Restore Volume (%)</legend>
-            <input id="out-translation-restore-volume-input" class="input input-sm w-full" type="number" min="0" max="100" step="1" value="${mix?.restoreVolumePercent ?? 50}" />
+            <legend class="fieldset-legend">Restore Volume (dB)</legend>
+            <input id="out-translation-restore-volume-input" class="input input-sm w-full" type="number" min="-60" max="0" step="1" value="${mix?.restoreVolumeDb ?? -6}" />
           </fieldset>
           <fieldset class="fieldset min-w-40 flex-1">
             <legend class="fieldset-legend">Restore Fade (ms)</legend>
@@ -1199,7 +1199,7 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
                           ) as HTMLInputElement
                       ).value,
                   ),
-                  duckVolumePercent: Number(
+                  duckVolumeDb: Number(
                       (
                           document.getElementById(
                               'out-translation-duck-volume-input',
@@ -1220,7 +1220,7 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
                           ) as HTMLInputElement
                       ).value,
                   ),
-                  restoreVolumePercent: Number(
+                  restoreVolumeDb: Number(
                       (
                           document.getElementById(
                               'out-translation-restore-volume-input',
