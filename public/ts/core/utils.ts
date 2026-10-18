@@ -44,36 +44,40 @@ export const STATUS_COLOR_WARN = '#facc15';
 export const STATUS_COLOR_ERROR = '#ef4444';
 export const STATUS_COLOR_OFF = '#6b7280';
 
-// ffmpeg CPU as % of one core: one decimal under 10% (copy outputs sit at 0.5-3%),
-// whole numbers above.
+// The dashboard's number rule: one decimal under 10, whole numbers from 10 up
+// (a value that rounds up to 10.0 counts as 10).
+export function fmtUnder10(value: number): string {
+    return Math.round(value * 10) / 10 < 10 ? value.toFixed(1) : String(Math.round(value));
+}
+
+// ffmpeg CPU as % of one core; copy outputs sit at 0.5-3%.
 export function formatCpuPercent(percent: number): string {
-    return `${percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+    return `${fmtUnder10(percent)}%`;
 }
 
 export function formatBitrate(kbps: number | null): string {
     if (kbps === null) return '—';
-    if (kbps >= 1_000_000) return `${(kbps / 1_000_000).toFixed(1)} gbps`;
-    if (kbps >= 1000) return `${(kbps / 1000).toFixed(1)} mbps`;
-    return `${Math.round(kbps * 10) / 10} kbps`;
+    if (kbps >= 1_000_000) return `${fmtUnder10(kbps / 1_000_000)} gbps`;
+    if (kbps >= 999.5) return `${fmtUnder10(kbps / 1000)} mbps`;
+    return `${fmtUnder10(kbps)} kbps`;
 }
 
 export function formatBytes(bytes: number): string {
-    if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-    if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
-    return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes >= 1024 ** 3) return `${fmtUnder10(bytes / 1024 ** 3)} GB`;
+    if (bytes >= 1024 ** 2) return `${fmtUnder10(bytes / 1024 ** 2)} MB`;
+    return `${fmtUnder10(bytes / 1024)} KB`;
 }
 
 export function formatBytesCompact(bytes: number): string {
-    if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} gb`;
-    if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} mb`;
-    return `${(bytes / 1024).toFixed(0)} kb`;
+    if (bytes >= 1024 ** 3) return `${fmtUnder10(bytes / 1024 ** 3)} gb`;
+    if (bytes >= 1024 ** 2) return `${fmtUnder10(bytes / 1024 ** 2)} mb`;
+    return `${fmtUnder10(bytes / 1024)} kb`;
 }
 
 // Shared formatter for millisecond durations (RTT, negotiated latency,
-// receive/send buffer occupancy) — same rounding rule everywhere: sub-10ms
-// values keep one decimal, anything else rounds to a whole ms.
+// receive/send buffer occupancy, host probe latency): the dashboard's number rule.
 export function fmtMs(ms: number | null | undefined): string {
-    return ms != null ? `${ms.toFixed(ms >= 10 ? 0 : 1)} ms` : '—';
+    return ms != null ? `${fmtUnder10(ms)} ms` : '—';
 }
 
 // For a value already expressed in Mb/s (relay bandwidth/rate fields), as

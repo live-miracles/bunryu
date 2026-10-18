@@ -1,5 +1,5 @@
 import { state } from '../core/state.js';
-import { escapeHtml, formatClockTime, formatLocalTime } from '../core/utils.js';
+import { escapeHtml, fmtMs, formatClockTime, formatLocalTime } from '../core/utils.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, drawProbeChart } from './dashboard-charts.js';
 
 export function renderHostConnectionsOverview(): void {
@@ -53,9 +53,9 @@ export function renderHostConnectionsOverview(): void {
                 <td class="font-semibold">${escapeHtml(entry.target.label)}</td>
                 <td class="font-mono text-xs">${escapeHtml(entry.target.host)}:${entry.target.port}</td>
                 <td>${latestStatus}</td>
-                <td class="font-mono text-xs">${latest?.latencyMs != null ? `${Math.round(latest.latencyMs)} ms` : '—'}</td>
-                <td class="font-mono text-xs">${highestLatency != null ? `${Math.round(highestLatency)} ms` : '—'}</td>
-                <td class="font-mono text-xs">${entry.averageLatencyMs != null ? `${Math.round(entry.averageLatencyMs)} ms` : '—'}</td>
+                <td class="font-mono text-xs">${fmtMs(latest?.latencyMs)}</td>
+                <td class="font-mono text-xs">${fmtMs(highestLatency)}</td>
+                <td class="font-mono text-xs">${fmtMs(entry.averageLatencyMs)}</td>
                 <td class="font-mono text-xs">${entry.historyFailureCount}</td>
                 <td class="font-mono text-xs">${lastSeen}</td>
                 <td class="font-mono text-xs">${escapeHtml(latest?.resolvedAddress ?? '—')}</td>
@@ -82,7 +82,7 @@ export function renderHostConnectionsOverview(): void {
                         <p class="font-mono text-xs opacity-60">${escapeHtml(entry.target.host)}:${entry.target.port}</p>
                     </div>
                     <div class="text-right">
-                        <div class="font-mono text-sm">${latest?.latencyMs != null ? `${Math.round(latest.latencyMs)} ms` : '—'}</div>
+                        <div class="font-mono text-sm">${fmtMs(latest?.latencyMs)}</div>
                         <div class="text-xs ${errorTone}">${escapeHtml(errorText)}</div>
                     </div>
                 </div>

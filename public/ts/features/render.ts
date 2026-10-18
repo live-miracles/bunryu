@@ -1543,7 +1543,7 @@ function renderOverview(): void {
             const s = String(r);
             return `${s.slice(0, -2)} ${s.slice(-2)}%`;
         }
-        return `${r}%`;
+        return formatCpuPercent(percent);
     };
     const fmtProcRam = (bytes: number | null | undefined): string =>
         bytes != null ? formatBytesCompact(bytes) : '—';
