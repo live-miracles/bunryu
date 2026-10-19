@@ -17,9 +17,16 @@ The system is built around:
 
 The application also supports simple output encoding profiles, including
 passthrough/copy mode, video transcoding profiles such as 720p and 1080p,
-vertical rotation, and configurable audio processing. Translation outputs can
-mix audio from a separate translator pipeline with the source audio, including
-speech detection, source ducking, delay, and configurable restore timing.
+vertical rotation, and configurable audio processing. The video transcoding
+profiles (`720p`, `1080p`, `vertical_rotate`) are low priority: they are kept just
+in case and are rarely used, so don't spend effort extending or optimizing them or
+use them in examples; copy mode and audio track selection are the common cases.
+When they are used, `720p` down-converts a 1080p input, `1080p` down-converts a 4K
+input and `vertical_rotate` is applied to a 1080p input, so measure and document
+them with those inputs.
+Translation outputs can mix audio from a separate translator pipeline with the
+source audio, including speech detection, source ducking, delay, and configurable
+restore timing.
 
 ## Intended capacity
 
@@ -35,8 +42,9 @@ not targets to exceed:
 | Concurrent dashboard clients | Approximately 10 |
 
 Most outputs should use `copy` mode. Copy-mode outputs are comparatively cheap,
-while custom video encoding takes 0.6–2.5 vCPUs per encode on a GCP `n2`, so one
-`1080p` encode takes about two thirds of a 4-vCPU host (see
+while custom video encoding is expensive on a GCP `n2` with the 50 fps production
+feeds: about 2 vCPUs for `720p` and 1.2 for `vertical_rotate` from a 1080p input,
+and `1080p` from a 4K input does not keep up on 4 vCPUs (see
 `docs/1-getting-started/4-sizing.md`). Outputs of one pipeline with the same
 video encoding and single audio track share one encode.
 Host CPU, memory, network capacity, and the number of FFmpeg processes are

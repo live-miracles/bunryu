@@ -41,7 +41,13 @@ python3 -I sizing-benchmark.py --origin rtmp --no-guard        # all cases, ~17 
 python3 -I sizing-benchmark.py --origin srt --no-guard --cases p720_x1@hard1080
 ```
 
-Run both origins: an SRT input makes copy outputs about four times costlier. Each
+Run both origins: an SRT input makes copy outputs about four times costlier. Add
+`--fps 50` to match the production feeds: anything that decodes the video costs about
+`fps / 30` times the 30 fps default, and the encodes are meant for 1080p and 4K input
+(`720p` from 1080p, `1080p` from 4K, `vertical_rotate` from 1080p), so measure those
+combinations. Check that `min_speed` stays near 1.0 and that the run does not end
+early with `alive` below the output count; a 4K to 1080p encode can fail to keep up
+and then breaks the SRT pull. Each
 case runs `--warm` seconds (default 15) then measures `--run` seconds (default 45),
 and prints a `RESULT {json}` line:
 
@@ -66,6 +72,22 @@ ends with `DONE`, or `ABORTED <reason>` if the guard fired.
 - Watch for `DONE` in the log. `pgrep -f sizing-benchmark` over SSH matches its own
   command line, so it always looks running.
 - Remove the workdir afterwards (about 260 MB of generated sources).
+
+## Production observations
+
+The benchmark has no real network, so it misses the cost of sending (about 0.004
+vCPU per Mbps sent, measured on production). `observe-prod.py` recomputes that from
+the server's own per-minute `health-snapshot` events and the outputs table:
+
+```bash
+gcloud compute ssh <vm> --tunnel-through-iap --command 'sudo python3 -I - 2026-10-18' < observe-prod.py
+```
+
+It is read-only (the database is opened with `mode=ro`) and prints aggregates only:
+vCPU, RAM and bitrate per output class, and the totals for busy snapshots. Pass the
+diagnostics file dates (the host's local date) for an event or a quiet day. Compare
+the vCPU-per-output rows with the per-item costs in the sizing page to check the
+sending term, and use the busy-snapshot rows to sanity-check an estimate.
 
 ## After measuring
 

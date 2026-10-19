@@ -2,12 +2,12 @@
 """Measure the CPU and RAM cost of Bunryu outputs on this machine.
 
 Runs a private, loopback-only pair of SRS servers under --workdir (a hub that
-outputs pull from and a sink they push to), feeds the hub a generated 1080p30
-stream and runs FFmpeg commands built like src/utils/ffmpeg.ts buildFfmpegArgs().
+outputs pull from and a sink they push to), feeds the hub a generated stream
+(30 fps unless --fps) and runs FFmpeg commands built like src/utils/ffmpeg.ts buildFfmpegArgs().
 Prints one `RESULT {json}` line per case and `DONE` at the end. Linux only.
 
   python3 -I sizing-benchmark.py --origin rtmp|srt [--cases a,b] [--list]
-                                 [--warm 15] [--run 45] [--workdir /tmp/bench]
+                                 [--warm 15] [--run 45] [--fps 30] [--workdir /tmp/bench]
                                  [--ffmpeg PATH] [--srs PATH] [--no-guard]
 
 Safety guard (default on): aborts and kills everything if a production `ffmpeg`
@@ -41,11 +41,18 @@ CASES = [
     ('vertical_x1', 'easy1080', 1, 'vertical', 'copy'),
     ('p720_x1', 'hard720', 1, '720p', 'copy'),
     ('copy_x1', 'hard720', 1, 'copy', 'copy'),
+    # 4K input: memory matters here (the app doubles the RSS limit for 4K inputs)
+    ('copy_x1', 'hard2160', 1, 'copy', 'copy'),
+    ('aac_x1', 'hard2160', 1, 'copy', 'aac'),
+    ('p720_x1', 'hard2160', 1, '720p', 'copy'),
+    ('p1080_x1', 'hard2160', 1, '1080p', 'copy'),
+    ('vertical_x1', 'hard2160', 1, 'vertical', 'copy'),
 ]
-SOURCES = {  # name: (size, bitrate kbps, add noise)
-    'hard1080': ('1920x1080', 6000, True),
-    'easy1080': ('1920x1080', 4000, False),
-    'hard720': ('1280x720', 3500, True),
+SOURCES = {  # name: (size, bitrate kbps, add noise, x264 preset used to generate it)
+    'hard1080': ('1920x1080', 6000, True, 'medium'),
+    'easy1080': ('1920x1080', 4000, False, 'medium'),
+    'hard720': ('1280x720', 3500, True, 'medium'),
+    'hard2160': ('3840x2160', 20000, True, 'veryfast'),  # veryfast: a 4K medium encode takes too long
 }
 
 # Keep in sync with ENCODINGS in src/utils/ffmpeg.ts.
@@ -131,19 +138,25 @@ def host_busy():
     return sum(v), v[3] + v[4]
 
 
+def src_path(name):
+    # sources are cached per frame rate; the 30 fps ones keep their original names
+    suffix = '' if cfg['fps'] == 30 else '_%dfps' % cfg['fps']
+    return '%s/%s%s.mp4' % (cfg['dir'], name, suffix)
+
+
 def gen_source(name):
-    size, rate_k, noise = SOURCES[name]
-    path = '%s/%s.mp4' % (cfg['dir'], name)
+    size, rate_k, noise, preset = SOURCES[name]
+    path = src_path(name)
     if os.path.exists(path):
         return
-    vf = 'testsrc2=size=%s:rate=30' % size
+    vf = 'testsrc2=size=%s:rate=%d' % (size, cfg['fps'])
     if noise:
         vf += ',noise=alls=30:allf=t+u'
     log('generating source', name)
     subprocess.run(
         ['nice', '-n', '19', cfg['ffmpeg_src'], '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', vf,
          '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', '60',
-         '-c:v', 'libx264', '-preset', 'medium', '-b:v', '%dk' % rate_k, '-maxrate', '%dk' % rate_k,
+         '-c:v', 'libx264', '-preset', preset, '-b:v', '%dk' % rate_k, '-maxrate', '%dk' % rate_k,
          '-bufsize', '%dk' % (rate_k * 2), '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
          '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '48000', path],
         check=True)
@@ -186,7 +199,7 @@ def ensure_publisher(src):
     sink = ['-f', 'flv', 'rtmp://127.0.0.1:%d/live/in' % HUB] if cfg['origin'] == 'rtmp' \
         else ['-f', 'mpegts', srt_url('publish')]
     pub['p'] = spawn([cfg['ffmpeg'], '-loglevel', 'error', '-re', '-stream_loop', '-1',
-                      '-i', '%s/%s.mp4' % (cfg['dir'], src), '-c', 'copy'] + sink)
+                      '-i', src_path(src), '-c', 'copy'] + sink)
     pub['src'] = src
     time.sleep(8)
 
@@ -274,6 +287,8 @@ def main():
     ap.add_argument('--list', action='store_true', help='list the case ids and exit')
     ap.add_argument('--warm', type=int, default=15, help='seconds before measuring (default 15)')
     ap.add_argument('--run', type=int, default=45, help='seconds measured per case (default 45)')
+    ap.add_argument('--fps', type=int, default=30,
+                    help='frame rate of the generated sources (default 30; the production feeds are 50)')
     ap.add_argument('--workdir', default='/tmp/bench')
     ap.add_argument('--ffmpeg', default=shutil.which('ffmpeg'))
     ap.add_argument('--srs', default=shutil.which('srs'))
@@ -288,7 +303,7 @@ def main():
     if not a.ffmpeg or not a.srs:
         ap.error('ffmpeg and srs must be on PATH or given with --ffmpeg and --srs')
     cases = select_cases(a.cases)
-    cfg.update(origin=a.origin, dir=a.workdir, warm=a.warm, run=a.run, guard=not a.no_guard,
+    cfg.update(origin=a.origin, dir=a.workdir, fps=a.fps, warm=a.warm, run=a.run, guard=not a.no_guard,
                ffmpeg_src=a.ffmpeg, ffmpeg=a.workdir + '/ffmpeg-bench')
     cfg['pass'] = secrets.token_hex(8)  # throwaway SRT passphrase for the private hub
     os.makedirs(a.workdir + '/objs', exist_ok=True)

@@ -187,8 +187,9 @@ else.
   [Reliability](../3-operations/4-reliability.md)).
 - FFmpeg also does every transcode, audio-track selection and translation mix.
 
-**Cost:** about 30 MB (RTMP input) to 45 MB (SRT input) of RAM and 0.5–3% of a vCPU
-per copy-mode output, and 0.6–2.5 vCPUs per custom video encoding (once per
+**Cost:** about 35 MB of RAM and, on production, about 4% of a vCPU per 8 Mbps
+copy-mode output (0.4% per Mbps sent), and about 1.2–2 vCPUs per custom video encoding of a
+1080p50 input, far more for 4K (once per
 distinct encode on a pipeline, since outputs with the same encode share one: see
 [Outputs with the same encode share one FFmpeg](#outputs-with-the-same-encode-share-one-ffmpeg-shared-encodes)).
 That's acceptable within the supported envelope
@@ -332,8 +333,8 @@ the dashboard, and no cost model for individual machine families.
 - **Docs are plain Markdown,** rendered by GitHub and the org site, so an
   interactive widget has nowhere to live in them.
 
-**Evidence:** run on the production VM (GCP `n2`, 4 vCPU, 4 GB, FFmpeg 7.1.4) on
-2026-10-18 in an idle window. A private SRS pair on loopback ports with copies of
+**Evidence:** two sources, both on the production VM (GCP `n2`, 4 vCPU, 4 GB,
+FFmpeg 7.1.4). The benchmark ran on 2026-10-18 in an idle window. A private SRS pair on loopback ports with copies of
 the production binaries was fed a generated 1080p30 ~6 Mbps stream. FFmpeg ran with
 the application's own arguments, each case 15 s warm-up and 45 s measured, CPU from
 `/proc/<pid>/stat`, `nice 19`, aborting if production FFmpeg or a live stream
@@ -343,19 +344,48 @@ is how to repeat it.
 - Copy output: 0.005 vCPU on an RTMP input, 0.02 on SRT (plus 0.01 in SRS); 30
   outputs: 0.16 and 0.93 vCPU.
 - Audio re-encode: +0.03 (RTMP) and +0.04 (SRT).
-- Encodes (clean / noisy): `720p` 1.1 / 1.7, `1080p` 1.5 / 2.5, `vertical_rotate`
-  0.6 / 0.8 vCPUs.
+- Encodes at 30 fps (clean / noisy): `720p` 1.1 / 1.7, `1080p` 1.5 / 2.5,
+  `vertical_rotate` 0.6 / 0.8 vCPUs. The production feeds are 50 fps, so these
+  understate the real use (below).
 - Saturation: four `720p` encodes ran at 0.52x real time, three `1080p` at 0.48x.
-- Production snapshots over 7 days showed 5–8% of a vCPU per output with a track
-  selected, before shared encodes were deployed there; this matches the audio
-  re-encode figure plus delivery overhead.
 
-This replaces the earlier "about one core per encode" and "negligible" copy cost
-statements, which did not match these measurements.
+Observed on production from the per-minute health snapshots (10 to 19 October 2026,
+read-only, before shared encodes were deployed there):
+- Copy output at 7–10 Mbps on an RTMP input: 0.039 vCPU to an RTMP destination and
+  0.036 to RTMPS, 34 MB, against 0.005 in the benchmark. The extra is sending, not
+  TLS: about 0.004 vCPU per Mbps sent, which with the benchmark figures reproduces
+  the observations to within about 0.04 vCPU.
+- Audio re-encode on an SRT input: 0.077 at under 4 Mbps, 0.072 at 7–10 Mbps and
+  0.167 on a 4K feed (about 20 Mbps); 47–61 MB. These come from
+  `skills/benchmark-sizing/observe-prod.py`.
+- Ingest: a 4K (19.9 Mbps) and a 1080p (9.1 Mbps) SRT feed cost SRS 0.10 and the
+  relay 0.20 vCPU, about 0.01 vCPU per Mbps; Node 1% and 217 MB.
+- A dry run on 2026-10-19 sent the 4K feed to YouTube primary and backup (copy video,
+  audio track re-encoded): 0.181 and 0.185 vCPU, 56 MB (129 MB at start), 19.95 Mbps
+  at 1.0x for 4 minutes; SRS rose 0.058 vCPU for the two readers and the relay did
+  not change. The 4K encodes were run for memory on a development machine (FFmpeg 8,
+  synthetic 20 Mbps input): `vertical_rotate` 472 MB, `720p` 608 MB, `1080p` 814 MB.
+  With the production figure for copy they confirmed the 4K memory limit of twice the
+  HD limit (3x above copy, 1.9–2.3x above the encodes), so it was left unchanged.
+- The encodes in their real use, on the live 1080p50 and 4K50 feeds with the
+  application's arguments: `720p` from 1080p 2.05 vCPU and 270–280 MB (60 s, 1.0x),
+  `vertical_rotate` from 1080p 1.19 vCPU and 175 MB (90 s, 1.0x). `1080p` from 4K
+  ran at 0.53–0.58x on the 4-vCPU `n2` and the SRT pull then broke after about 20 s,
+  while decoding alone kept up at 1.83 vCPU (1.1x), so a 4-vCPU host cannot do it; the
+  estimate of about 5 vCPU was not measured on a larger machine.
+- The 2026-10-18 event (21 outputs on average, 17 Mbps in): all processes together
+  averaged 1.07 vCPU, peaked at 2.40, and the host used 1.15 GB of RAM on average,
+  1.28 GB at the peak.
 
-**Costs:** the numbers are for one machine family, synthetic input, loopback
-delivery and 1080p30 input. They exclude previews, translation mixers and network
-bandwidth.
+This replaces the earlier "about one core per encode", "negligible" copy cost and
+"hundreds of outputs on modest hardware" statements, which did not match these
+measurements.
+
+**Costs:** the numbers are for one machine family. `720p` and `vertical_rotate` were
+measured on the production feeds, `1080p` from 4K only for speed and memory (it does
+not keep up on 4 vCPUs), and the benchmark input was 1080p30. Copy outputs on an SRT
+input and audio re-encodes on an RTMP input have no clean production observation.
+They exclude previews and translation mixers.
 
 **Revisit when:**
 - FFmpeg, x264 or an encoding profile changes, since every cost above depends on
