@@ -8,7 +8,6 @@ const {
     fmtUnder10,
     formatBitrate,
     formatBytes,
-    formatBytesCompact,
     formatCpuPercent,
 } = require('../public/ts/core/utils');
 
@@ -50,10 +49,10 @@ describe('fmtUnder10 and the formatters built on it', () => {
         assert.equal(formatBitrate(null), '—');
         assert.equal(formatBitrate(5.24), '5.2 kbps');
         assert.equal(formatBitrate(523.4), '523 kbps');
-        assert.equal(formatBitrate(999.7), '1.0 mbps');
-        assert.equal(formatBitrate(4500), '4.5 mbps');
-        assert.equal(formatBitrate(12_300), '12 mbps');
-        assert.equal(formatBitrate(2_500_000), '2.5 gbps');
+        assert.equal(formatBitrate(999.7), '1.0 Mbps');
+        assert.equal(formatBitrate(4500), '4.5 Mbps');
+        assert.equal(formatBitrate(12_300), '12 Mbps');
+        assert.equal(formatBitrate(2_500_000), '2.5 Gbps');
     });
 
     test('memory applies the rule to KB, MB and GB', () => {
@@ -62,8 +61,6 @@ describe('fmtUnder10 and the formatters built on it', () => {
         assert.equal(formatBytes(48 * 1024 ** 2), '48 MB');
         assert.equal(formatBytes(1.5 * 1024 ** 3), '1.5 GB');
         assert.equal(formatBytes(12 * 1024 ** 3), '12 GB');
-        assert.equal(formatBytesCompact(4.5 * 1024 ** 2), '4.5 mb');
-        assert.equal(formatBytesCompact(48 * 1024 ** 2), '48 mb');
     });
 
     test('milliseconds', () => {

@@ -3,7 +3,7 @@ import {
     setBadgeCount,
     escapeHtml,
     formatBitrate,
-    formatBytesCompact,
+    formatBytes,
     formatCpuPercent,
     formatBitrateAxis,
     getUrlParam,
@@ -191,7 +191,7 @@ function outputMemoryPercent(o: OutputView): number | null {
 
 function formatOutputMemory(o: OutputView): string | null {
     if (o.memoryUsageBytes == null) return null;
-    return formatBytesCompact(o.memoryUsageBytes);
+    return formatBytes(o.memoryUsageBytes);
 }
 
 function memorySeverityClass(percent: number | null): string {
@@ -1444,7 +1444,7 @@ function renderOverview(): void {
     const fmtProcCpu = (percent: number | null | undefined): string =>
         percent == null ? '—' : formatCpuPercent(percent);
     const fmtProcRam = (bytes: number | null | undefined): string =>
-        bytes != null ? formatBytesCompact(bytes) : '—';
+        bytes != null ? formatBytes(bytes) : '—';
     const isLoopbackHost = (host: string | null | undefined): boolean =>
         host === 'localhost' || host === '127.0.0.1';
     const outputHost = (url: string): string | null => {
@@ -1580,7 +1580,7 @@ function renderOverview(): void {
                     ${cell(fmtProcRam(m.srs?.ramBytes))}
                     ${cell(fmtProcRam(m.relay?.ramBytes))}
                     ${cell(outsRamKnown ? fmtProcRam(outsRamBytes) : '—')}
-                    ${cell(totalRamKnown ? formatBytesCompact(totalRamBytes) : '—', appColTitle)}
+                    ${cell(totalRamKnown ? formatBytes(totalRamBytes) : '—', appColTitle)}
                     ${cell(fmtProcRam(sysRamUsedBytes), systemColTitle)}
                 </tr>
                 <tr>

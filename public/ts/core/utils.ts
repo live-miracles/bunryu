@@ -57,8 +57,8 @@ export function formatCpuPercent(percent: number): string {
 
 export function formatBitrate(kbps: number | null): string {
     if (kbps === null) return '—';
-    if (kbps >= 1_000_000) return `${fmtUnder10(kbps / 1_000_000)} gbps`;
-    if (kbps >= 999.5) return `${fmtUnder10(kbps / 1000)} mbps`;
+    if (kbps >= 1_000_000) return `${fmtUnder10(kbps / 1_000_000)} Gbps`;
+    if (kbps >= 999.5) return `${fmtUnder10(kbps / 1000)} Mbps`;
     return `${fmtUnder10(kbps)} kbps`;
 }
 
@@ -75,12 +75,6 @@ export function formatBytes(bytes: number): string {
     if (bytes >= 1024 ** 3) return `${fmtUnder10(bytes / 1024 ** 3)} GB`;
     if (bytes >= 1024 ** 2) return `${fmtUnder10(bytes / 1024 ** 2)} MB`;
     return `${fmtUnder10(bytes / 1024)} KB`;
-}
-
-export function formatBytesCompact(bytes: number): string {
-    if (bytes >= 1024 ** 3) return `${fmtUnder10(bytes / 1024 ** 3)} gb`;
-    if (bytes >= 1024 ** 2) return `${fmtUnder10(bytes / 1024 ** 2)} mb`;
-    return `${fmtUnder10(bytes / 1024)} kb`;
 }
 
 // Shared formatter for millisecond durations (RTT, negotiated latency,

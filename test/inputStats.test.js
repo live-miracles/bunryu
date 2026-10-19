@@ -87,7 +87,7 @@ describe('renderInputStats', () => {
     test('shows source, video and audio as labelled lines with the probe time', () => {
         const html = renderInputStats(input({}), deps(5200));
         assert.match(html, /Source/);
-        assert.match(html, /198\.51\.100\.7 · <span class="">5\.2 mbps<\/span>/);
+        assert.match(html, /198\.51\.100\.7 · <span class="">5\.2 Mbps<\/span>/);
         assert.match(html, /h264 1920x1080p50 High L4\.2/);
         assert.match(html, /Track 1: aac LC 2ch 48kHz/);
         assert.match(html, /probed 12:03/);

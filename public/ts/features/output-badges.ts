@@ -1,4 +1,4 @@
-import { formatBitrate, formatBytesCompact, formatCpuPercent } from '../core/utils.js';
+import { formatBitrate, formatBytes, formatCpuPercent } from '../core/utils.js';
 import type { OutputView } from '../types.js';
 
 // Pieces shared by the output card and the Shared encodes card, kept in a leaf
@@ -21,7 +21,7 @@ function outputMemoryPercent(output: OutputView): number | null {
 
 function formatOutputMemory(output: OutputView): string | null {
     if (output.memoryUsageBytes == null) return null;
-    return formatBytesCompact(output.memoryUsageBytes);
+    return formatBytes(output.memoryUsageBytes);
 }
 
 // "bitrate | CPU | RSS" badge of a running output; empty when nothing is known.

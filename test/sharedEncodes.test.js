@@ -312,7 +312,7 @@ describe('Shared encodes card', () => {
         assert.match(html, />T2</);
         assert.match(html, /2 outs · 2 reads/);
         assert.match(html, /1m 5s/);
-        assert.match(html, /3\.0 mbps \| 41% \|/);
+        assert.match(html, /3\.0 Mbps \| 41% \|/);
     });
 
     test('shows the encoding as badges like an output card: video if not copy, audio as T<n>', () => {
@@ -473,7 +473,7 @@ describe('Shared encodes card', () => {
             at('>T2<'),
             at('2 outs · 2 reads'),
             at('1m 5s'),
-            at('3.0 mbps'),
+            at('3.0 Mbps'),
             at('badge-error'),
             at('data-action="error-info"'),
         ];
