@@ -231,7 +231,8 @@ behavior over abstractions, compatibility layers, or speculative flexibility.
 Before committing any change, review the complete diff carefully and
 double-check the implementation for bugs, regressions, unsafe assumptions, and
 unintended changes. Always run the applicable formatting and format-check
-commands for every change, including documentation and UI changes.
+commands for every change, including documentation and UI changes, and
+`npm run lint` for every code change.
 
 Never run `git push` (or force-push, tag, or open/merge a PR) unless the user
 explicitly asks for it in that request; committing stays local.

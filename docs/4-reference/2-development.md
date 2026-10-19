@@ -43,6 +43,7 @@ npm run dev           # tsx watch + tsc watch + tailwind watch
 ```bash
 npm test              # unit and integration tests
 npm run typecheck
+npm run lint          # ESLint: unhandled promises, dead code
 npm run format:check
 ```
 

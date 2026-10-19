@@ -48,11 +48,13 @@ export function readSrsConfigValues(): SrsConfigValues {
     if (cachedValues) return cachedValues;
 
     const srsConfigPath = readAppConfig().srsConfigPath;
-    let conf = '';
+    let conf: string;
     try {
         conf = stripComments(fs.readFileSync(srsConfigPath, 'utf8'));
     } catch (err) {
-        throw new Error(`Failed to read SRS config ${srsConfigPath}: ${String(err)}`);
+        throw new Error(`Failed to read SRS config ${srsConfigPath}: ${String(err)}`, {
+            cause: err,
+        });
     }
 
     const topLevelConf = topLevelOnly(conf);

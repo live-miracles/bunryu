@@ -33,5 +33,5 @@ export function isCleanUrlText(url: string): boolean {
 }
 
 export function isValidPublicHost(host: string): boolean {
-    return host.length <= MAX_PUBLIC_HOST_LENGTH && /^[A-Za-z0-9._:\-\[\]]+$/.test(host);
+    return host.length <= MAX_PUBLIC_HOST_LENGTH && /^[A-Za-z0-9._:\-[\]]+$/.test(host);
 }

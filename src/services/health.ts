@@ -444,6 +444,60 @@ export function createHealthService(
         }
     }
 
+    async function runScheduledFfprobe(
+        pipelineId: number,
+        url: string,
+        protocol: InputProtocol,
+        generation: number,
+    ): Promise<void> {
+        ffprobeTimers.delete(pipelineId);
+        ffprobeInFlight.add(pipelineId);
+        const startedAt = Date.now();
+        ffprobeStartedAt.set(pipelineId, startedAt);
+        try {
+            let failure: ProbeFailure | null = null;
+            const result = await runFfprobe(
+                url,
+                (child) => {
+                    ffprobeChildren.set(pipelineId, child);
+                },
+                (info) => {
+                    failure = info;
+                },
+            );
+            if ((ffprobeGenerations.get(pipelineId) ?? 0) !== generation) return;
+            const ok = isProbeUsable(result);
+            const checkedAt = Date.now();
+            const previousFailures = ffprobeResults.get(pipelineId)?.failedAttempts ?? 0;
+            const error = ok ? null : probeError(result, checkedAt);
+            ffprobeResults.set(pipelineId, {
+                result,
+                startedAt,
+                checkedAt,
+                ok,
+                error,
+                failedAttempts: ok ? 0 : previousFailures + 1,
+            });
+            recordProbeOutcome(pipelineId, protocol, {
+                ok,
+                previousFailures,
+                error,
+                failure,
+                elapsedMs: checkedAt - startedAt,
+            });
+        } catch (err) {
+            // This runs from a timer, so a rejection would have no handler
+            // and would crash the process.
+            console.error(
+                `[probe] pipeline ${pipelineId} (${protocol}) probe handling failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        } finally {
+            ffprobeInFlight.delete(pipelineId);
+            ffprobeStartedAt.delete(pipelineId);
+            ffprobeChildren.delete(pipelineId);
+        }
+    }
+
     function scheduleFfprobe(
         pipelineId: number,
         streamKey: string,
@@ -453,48 +507,10 @@ export function createHealthService(
         if (ffprobeTimers.has(pipelineId) || ffprobeInFlight.has(pipelineId)) return;
         const url = inputPullUrl(streamKey, protocol);
         const generation = ffprobeGenerations.get(pipelineId) ?? 0;
-        const timer = setTimeout(async () => {
-            ffprobeTimers.delete(pipelineId);
-            ffprobeInFlight.add(pipelineId);
-            const startedAt = Date.now();
-            ffprobeStartedAt.set(pipelineId, startedAt);
-            try {
-                let failure: ProbeFailure | null = null;
-                const result = await runFfprobe(
-                    url,
-                    (child) => {
-                        ffprobeChildren.set(pipelineId, child);
-                    },
-                    (info) => {
-                        failure = info;
-                    },
-                );
-                if ((ffprobeGenerations.get(pipelineId) ?? 0) !== generation) return;
-                const ok = isProbeUsable(result);
-                const checkedAt = Date.now();
-                const previousFailures = ffprobeResults.get(pipelineId)?.failedAttempts ?? 0;
-                const error = ok ? null : probeError(result, checkedAt);
-                ffprobeResults.set(pipelineId, {
-                    result,
-                    startedAt,
-                    checkedAt,
-                    ok,
-                    error,
-                    failedAttempts: ok ? 0 : previousFailures + 1,
-                });
-                recordProbeOutcome(pipelineId, protocol, {
-                    ok,
-                    previousFailures,
-                    error,
-                    failure,
-                    elapsedMs: checkedAt - startedAt,
-                });
-            } finally {
-                ffprobeInFlight.delete(pipelineId);
-                ffprobeStartedAt.delete(pipelineId);
-                ffprobeChildren.delete(pipelineId);
-            }
-        }, delayMs);
+        const timer = setTimeout(
+            () => void runScheduledFfprobe(pipelineId, url, protocol, generation),
+            delayMs,
+        );
         ffprobeTimers.set(pipelineId, timer);
         timer.unref?.();
     }

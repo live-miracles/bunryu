@@ -23,6 +23,7 @@
         "test": "npm run test:unit && npm run test:integration",
         "test:unit": "node --require tsx/cjs --test --test-concurrency=1 test/*.test.js",
         "test:integration": "node --require tsx/cjs --test test/integration/*.test.js",
+        "lint": "npx eslint .",
         "format": "npx prettier --write .",
         "format:check": "npx prettier --check ."
     },
@@ -36,6 +37,7 @@
         "zeromq": "^6.5.0"
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@tailwindcss/cli": "4.1.18",
         "@types/better-sqlite3": "^7.6.13",
         "@types/compression": "^1.8.1",
@@ -43,11 +45,15 @@
         "@types/node": "^25.7.0",
         "concurrently": "^9.2.1",
         "daisyui": "5.5.14",
+        "eslint": "^10.13.0",
+        "eslint-config-prettier": "^10.1.8",
+        "globals": "^17.13.0",
         "prettier": "3.7.4",
         "prettier-plugin-sh": "^0.19.0",
         "prettier-plugin-tailwindcss": "0.7.2",
         "tailwindcss": "4.1.18",
         "tsx": "^4.21.0",
-        "typescript": "^5.9.3"
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.71.2"
     }
 }

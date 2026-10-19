@@ -21,10 +21,8 @@ import { rejectedVia, rejectedWhy } from '../core/rejected.js';
 import type {
     AudioInfo,
     AudioTrackInfo,
-    HostProbeOverviewTarget,
     InputHealth,
     LayoutOrderEntry,
-    MetricSample,
     OutputView,
     PipelineGroup,
     PipelineView,
@@ -147,12 +145,6 @@ async function persistLayoutOrderOnly(newPipelineOrder: string[]): Promise<void>
     await updateLayoutOrder(order);
 }
 
-async function persistPipelineOrder(newPipelineOrder: string[]): Promise<void> {
-    await persistLayoutOrderOnly(newPipelineOrder);
-    const { refreshAfterMutation } = await import('./dashboard.js');
-    await refreshAfterMutation();
-}
-
 // Persists a pipeline drag that may have also moved the pipeline into a
 // different group (or out to ungrouped) — the drop position's group is
 // tracked live in `currentDropGroupKey` as the user drags, since the flat
@@ -227,10 +219,6 @@ function fmtLossRexmitDrop(
     drop: number | null | undefined,
 ): string {
     return `${loss != null ? formatCompactCount(loss) : '—'} / ${rexmit != null ? formatCompactCount(rexmit) : '—'} / ${drop != null ? formatCompactCount(drop) : '—'}`;
-}
-
-function fmtCompactNullableCount(n: number | null | undefined): string {
-    return n != null ? formatCompactCount(n) : '—';
 }
 
 function inputAggregateStatsAreDropOnly(input: SrtBondingInputStatus): boolean {
@@ -2124,11 +2112,11 @@ function renderOutputsList(pipeline: PipelineView): void {
             btn.disabled = true;
         }
         void import('../features/editor.js').then((ed) => {
-            if (action === 'start') ed.startOutput(pipeline.id, outId);
-            else if (action === 'stop') ed.stopOutput(pipeline.id, outId);
+            if (action === 'start') void ed.startOutput(pipeline.id, outId);
+            else if (action === 'stop') void ed.stopOutput(pipeline.id, outId);
             else if (action === 'edit') ed.openEditOutput(pipeline.id, outId);
-            else if (action === 'delete') ed.confirmDeleteOutput(pipeline.id, outId);
-            else if (action === 'error-info') ed.showOutputError(pipeline.id, outId);
+            else if (action === 'delete') void ed.confirmDeleteOutput(pipeline.id, outId);
+            else if (action === 'error-info') void ed.showOutputError(pipeline.id, outId);
         });
     };
 

@@ -3,12 +3,6 @@ import { state } from '../core/state.js';
 import { escapeHtml, fmtMs, fmtMbpsValue } from '../core/utils.js';
 import type { LegHistoryData, LegHistorySample } from '../types.js';
 
-const MAX_HOST_PROBE_TARGETS = 10;
-
-// Upper bound on selectable audio tracks. Outputs are often configured before
-// the pipeline's input has ever connected (so nothing has been probed yet), so
-// the track list is a static range rather than derived from live probe data.
-const MAX_AUDIO_TRACKS = 50;
 const LEG_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const LEG_HISTORY_PAGE_STEP_MS = 10 * 60 * 1000;
 const legHistoryOffsets = new Map<string, number>();
@@ -345,7 +339,7 @@ async function loadLegHistory(pipelineId: string, showLoading = true): Promise<v
     }
 }
 
-function renderLegHistorySection(pipelineId: string): string {
+function renderLegHistorySection(): string {
     return `<div id="srt-leg-history-section" class="mt-1">
         <div class="mb-2 flex items-center justify-center gap-2 px-1">
             <div class="flex items-center gap-1">
@@ -541,7 +535,7 @@ function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement
     }
 
     contentEl.innerHTML =
-        renderLegHistorySection(pipelineId) +
+        renderLegHistorySection() +
         `<div data-srt-stats-body>${renderSrtStatsSections(pipelineId)}</div>`;
     document.getElementById('srt-leg-history-back')?.addEventListener('click', () => {
         legHistoryOffsets.set(
@@ -610,28 +604,3 @@ export function showSrtBondingDetails(pipelineId: string): void {
     }
     modal.showModal();
 }
-
-const LOG_TERMINALS: { label: string; elId: string; key: 'srs' | 'dashboard' | 'relay' }[] = [
-    { label: 'Dashboard', elId: 'dashboard-log-tail', key: 'dashboard' },
-    { label: 'SRS', elId: 'srs-log-tail', key: 'srs' },
-    { label: 'Relay', elId: 'relay-log-tail', key: 'relay' },
-];
-
-// Maps ANSI SGR foreground codes to the same severity colors SRS itself
-// uses (red for its ERROR lines, yellow for WARN), so the web terminal
-// mirrors a real terminal instead of hand-matching level text.
-const ANSI_FG_CLASS: Record<string, string> = {
-    '31': 'text-error',
-    '91': 'text-error',
-    '33': 'text-warning',
-    '93': 'text-warning',
-    '32': 'text-success',
-    '92': 'text-success',
-    '34': 'text-info',
-    '94': 'text-info',
-    '36': 'text-info',
-    '96': 'text-info',
-    '35': 'text-secondary',
-    '95': 'text-secondary',
-};
-const ANSI_SGR_REGEX = /\x1b\[([0-9;]*)m/g;

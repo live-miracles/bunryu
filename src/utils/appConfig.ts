@@ -165,11 +165,13 @@ export function readAppConfig(): AppConfig {
     if (cachedConfig) return cachedConfig;
 
     const configDir = process.cwd();
-    let raw: RawAppConfig = {};
+    let raw: RawAppConfig;
     try {
         raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     } catch (err) {
-        throw new Error(`Failed to read app config ${CONFIG_PATH}: ${String(err)}`);
+        throw new Error(`Failed to read app config ${CONFIG_PATH}: ${String(err)}`, {
+            cause: err,
+        });
     }
 
     // PORT/DATABASE_PATH env vars override bunryu.json when set — lets an

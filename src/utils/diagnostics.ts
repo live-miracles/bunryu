@@ -51,7 +51,7 @@ export function createDiagnosticsLogger(
 
     const cleanup = (): void => {
         const cutoff = Date.now() - retentionMs;
-        let entries: fs.Dirent[] = [];
+        let entries: fs.Dirent[];
         try {
             entries = fs.readdirSync(directory, { withFileTypes: true });
         } catch {

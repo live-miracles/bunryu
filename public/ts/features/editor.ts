@@ -2,15 +2,12 @@ import * as api from '../core/api.js';
 import { state } from '../core/state.js';
 import {
     setUrlParam,
-    getUrlParam,
     maskStreamKey,
     withBusy,
     copyText,
     escapeHtml,
     confirmDialog,
     flashSaveSuccess,
-    fmtMs,
-    fmtMbpsValue,
     formatLocalDateTime,
 } from '../core/utils.js';
 import { refreshAfterMutation } from './dashboard.js';
@@ -1549,6 +1546,7 @@ const ANSI_FG_CLASS: Record<string, string> = {
     '35': 'text-secondary',
     '95': 'text-secondary',
 };
+// eslint-disable-next-line no-control-regex -- matches the ESC that starts an ANSI sequence
 const ANSI_SGR_REGEX = /\x1b\[([0-9;]*)m/g;
 
 function ansiLineToHtml(line: string): string {

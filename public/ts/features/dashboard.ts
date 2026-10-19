@@ -25,10 +25,9 @@ export async function refreshDashboard(): Promise<void> {
         return refreshInFlight;
     }
 
-    let lastPromise: Promise<void> | null = null;
     do {
         refreshQueued = false;
-        lastPromise = fetchAndRender();
+        const lastPromise = fetchAndRender();
         refreshInFlight = lastPromise;
         try {
             await lastPromise;

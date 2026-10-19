@@ -1330,6 +1330,44 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
         service.shutdown();
     });
+
+    test('a throw while recording a probe result is logged, not an unhandled rejection', async (t) => {
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [streamFixture()] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const diagnostics = makeDiagnosticsSpy();
+        diagnostics.event = (event) => {
+            if (event === 'media-probe-failed') throw new Error('diagnostics write failed');
+        };
+        const rejections = [];
+        const onRejection = (reason) => rejections.push(reason);
+        process.on('unhandledRejection', onRejection);
+        t.after(() => process.off('unhandledRejection', onRejection));
+        const errors = [];
+        t.mock.method(console, 'error', (...args) => errors.push(args.join(' ')));
+        const service = createHealthService(
+            makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            diagnostics,
+        );
+
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(50);
+
+        assert.deepEqual(rejections, []);
+        assert.ok(
+            errors.some((e) => /pipeline 1.*diagnostics write failed/.test(e)),
+            `expected a logged probe error, got: ${JSON.stringify(errors)}`,
+        );
+
+        service.shutdown();
+    });
 });
 
 describe('shared encodes (renditions) in the health snapshot', () => {

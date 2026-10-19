@@ -984,7 +984,7 @@ describe('Outputs API integration', () => {
     describe('POST /api/pipelines/:pipelineId/outputs/:outId/restart', () => {
         const RENDITION_URL = 'rtmp://127.0.0.1:21935/internal/r1_720p_a0';
 
-        test('restarts a running output', async (t) => {
+        test('restarts a running output', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
             const o = harness.db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });

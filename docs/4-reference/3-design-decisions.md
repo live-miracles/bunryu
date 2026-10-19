@@ -363,3 +363,30 @@ bandwidth.
 - Other machine families (`c3`, `n4`) are measured.
 - People keep asking for an interactive tool: a spreadsheet linked from the page is
   the cheapest next step before a dashboard feature.
+
+## Tooling
+
+### ESLint checks promise handling; Prettier stays the formatter
+
+**Decision:** `npm run lint` runs ESLint with the `typescript-eslint` recommended
+rules plus four type-aware ones: `no-floating-promises`, `no-misused-promises`,
+`await-thenable` and `only-throw-error`. `eslint-config-prettier` turns off every
+rule that overlaps with Prettier. CI runs lint as its own job.
+
+**Why:**
+- **`tsc` misses crashes that matter here.** It accepts an `async` callback passed
+  to `setTimeout` or an event emitter. If that callback rejects, nothing handles
+  the rejection and Node exits, taking every pipeline's control plane with it.
+- **The type-aware rules are cheap at this size.** A full run takes about 10 s.
+
+**Evidence:** the first run, in October 2026, found about 30 issues in 18,000
+lines. One was a real crash path: the scheduled ffprobe in `health.ts` had
+`try`/`finally` with no `catch`, so a throw while recording the result would have
+been an unhandled rejection. It is now covered by a test. The rest were unused code
+and small cleanups.
+
+**Not adopted:** stylistic rule sets and the `strict` presets. They would mostly
+churn working code.
+
+**Revisit when:** the lint run gets slow enough that people skip it, or a bug
+reaches production that a rule would have caught.

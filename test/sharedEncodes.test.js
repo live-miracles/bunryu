@@ -11,7 +11,6 @@ const {
 
 const ENCODINGS = ['copy', '720p', '1080p', 'vertical_rotate'];
 const R720 = 'rtmp://127.0.0.1:21935/internal/r1_720p_a1';
-const R1080 = 'rtmp://127.0.0.1:21935/internal/r1_1080p_acopy';
 
 const outputRow = (id, overrides = {}) => ({
     id,
