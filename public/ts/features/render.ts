@@ -877,6 +877,7 @@ function renderPipelineList(): void {
     );
 
     setInnerText('pipe-cnt', state.pipelines.length);
+    setInnerText('pipe-cnt-label', state.pipelines.length === 1 ? 'Input' : 'Inputs');
     setBadgeCount('pipe-oks', inputsOn);
     setBadgeCount('pipe-warns', inputsWarn + inputsFailed);
     setBadgeCount(
@@ -884,6 +885,7 @@ function renderPipelineList(): void {
         state.pipelines.filter((p) => inputStatus(p.input) === 'off').length,
     );
     setInnerText('out-cnt', totalOutputs);
+    setInnerText('out-cnt-label', totalOutputs === 1 ? 'Output' : 'Outputs');
     setBadgeCount('out-oks', outputsOn - outputsWarn);
     setBadgeCount('out-warns', outputsWarn);
     setBadgeCount('out-errors', outputsFailed);
