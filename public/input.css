@@ -3,6 +3,44 @@
     themes: dim;
 }
 
+/* Page background: a faint blue glow plus a static seigaiha (wave) pattern
+   (waves.svg, drawn at low opacity) that fades out toward the bottom. It only
+   shows in the gutters and any panel margins; the panels are opaque, so tables,
+   charts and status colours are unaffected. It is static on purpose: no
+   animation cost on a dashboard open for hours. */
+body {
+    background-image:
+        radial-gradient(ellipse 80% 60% at 0% 0%, oklch(45% 0.09 245 / 0.28), transparent 70%),
+        radial-gradient(ellipse 70% 50% at 100% 100%, oklch(40% 0.08 220 / 0.2), transparent 70%),
+        linear-gradient(to bottom, transparent 0%, var(--color-base-100) 85%), url('waves.svg');
+    background-size:
+        auto,
+        auto,
+        auto,
+        60px 30px;
+    background-attachment: fixed;
+}
+
+/* The three working panels show the same waves along their bottom edge, fading
+   out upward, so empty space below the content looks like water instead of a
+   flat block. The fade uses the panel's own colour. */
+.panel-waves {
+    --panel: var(--color-base-200);
+    background-image:
+        linear-gradient(to bottom, var(--panel) 35%, transparent 100%), url('waves.svg');
+    background-size:
+        auto,
+        60px 30px;
+    background-position:
+        0 0,
+        0 100%;
+    background-repeat: no-repeat, repeat;
+}
+
+.panel-waves.bg-base-300 {
+    --panel: var(--color-base-300);
+}
+
 #overview-col .overview-name-col {
     min-width: 11rem;
 }

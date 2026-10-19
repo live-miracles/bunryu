@@ -322,7 +322,7 @@
     <!-- Main grid -->
     <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 pt-0 lg:h-screen lg:grid-cols-[minmax(17rem,23rem)_minmax(500px,3fr)_minmax(24rem,4fr)]">
       <!-- Left: Pipeline list -->
-      <div class="bg-base-300 rounded-box mt-4 overflow-y-auto max-lg:max-h-[40vh]">
+      <div class="panel-waves bg-base-300 rounded-box mt-4 overflow-y-auto max-lg:max-h-[40vh]">
         <div class="bg-base-300 sticky top-0 z-10 flex items-start justify-between gap-2 p-4">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="grid grid-cols-[5rem_auto] items-center gap-x-3 text-sm">
@@ -367,7 +367,9 @@
       </div>
 
       <!-- Middle: Pipeline info -->
-      <div class="bg-base-200 mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow" id="pipe-info-col">
+      <div
+        class="panel-waves bg-base-200 mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow"
+        id="pipe-info-col">
         <div class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-xl px-4 pt-4 pb-3 text-xl font-bold">
           <div class="flex min-w-0 items-center gap-2">
             <span class="truncate" id="pipe-name"></span>
@@ -839,7 +841,7 @@
       </div>
 
       <!-- Right: Outputs -->
-      <div class="bg-base-200 mt-4 hidden overflow-y-auto rounded-xl px-4 pb-4 shadow" id="outs-col">
+      <div class="panel-waves bg-base-200 mt-4 hidden overflow-y-auto rounded-xl px-4 pb-4 shadow" id="outs-col">
         <div class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between rounded-t-xl px-4 pt-4 pb-3">
           <div class="flex items-center gap-2">
             <h2 class="text-xl font-bold">Outputs</h2>
