@@ -85,13 +85,78 @@ describe('output stopped after repeated failed attempts', () => {
     });
 });
 
+// Every output warning (runtime, duplicate destination, encoding advice) is the
+// same kind of line: a warning icon and the message, with the full text in the
+// title, and any of them tints the card.
+const warningLines = (html) =>
+    [...html.matchAll(/<span class="text-xs text-warning truncate" title="([^"]*)">/g)].map(
+        (m) => m[1],
+    );
+const tinted = (html) => /data-output-card="[^"]*" style="background:color-mix/.test(html);
+
 describe('duplicate destination', () => {
-    test('is labelled on the card, not only in the hover tooltip', () => {
+    const url = 'rtmp://a.example/live/key';
+    const dups = new Map([
+        [
+            url,
+            [
+                { pipelineName: 'Other', outputName: 'YT' },
+                { pipelineName: 'Main', outputName: null },
+            ],
+        ],
+    ]);
+
+    test('is a warning line naming the other outputs, with the card tinted', () => {
+        const html = renderOutputCard(output({ url }), rtmpInput, dups, deps);
+        assert.deepEqual(warningLines(html), ['Same destination as Other → YT, Main']);
+        assert.ok(tinted(html));
+    });
+
+    test('leaves the output itself out of the list', () => {
+        const self = new Map([
+            [
+                url,
+                [
+                    { pipelineName: 'Main', outputName: 'o', outputId: '1-1' },
+                    { pipelineName: 'Other', outputName: 'YT', outputId: '2-1' },
+                ],
+            ],
+        ]);
+        const html = renderOutputCard(output({ url }), rtmpInput, self, deps);
+        assert.deepEqual(warningLines(html), ['Same destination as Other → YT']);
+    });
+
+    test('no longer marks the URL itself', () => {
+        const html = renderOutputCard(output({ url }), rtmpInput, dups, deps);
+        assert.ok(!/Duplicate/.test(html));
+        assert.ok(!/<code class="[^"]*text-warning/.test(html));
+    });
+});
+
+describe('all output warnings share one style', () => {
+    test('a runtime warning is a warning line and tints the card', () => {
+        const html = render({ warningReason: 'High memory usage' });
+        assert.deepEqual(warningLines(html), ['High memory usage']);
+        assert.ok(tinted(html));
+    });
+
+    test('runtime, then duplicate, then encoding warnings, each on its own line', () => {
         const url = 'rtmp://a.example/live/key';
         const dups = new Map([[url, [{ pipelineName: 'Other', outputName: 'YT' }]]]);
-        const html = renderOutputCard(output({ url }), rtmpInput, dups, deps);
-        const visible = html.replace(/<div class="js-tooltip-content[\s\S]*?<\/div><\/span>/g, '');
+        const html = renderOutputCard(
+            output({ url, warningReason: 'High memory usage', audioEncoding: '0' }),
+            rtmpInput,
+            dups,
+            deps,
+        );
+        const lines = warningLines(html);
+        assert.equal(lines.length, 3);
+        assert.equal(lines[0], 'High memory usage');
+        assert.equal(lines[1], 'Same destination as Other → YT');
+        assert.match(lines[2], /re-encodes the audio/);
+    });
 
-        assert.match(visible, /Duplicate/);
+    test('an output with no warnings is not tinted', () => {
+        assert.ok(!tinted(render({})));
     });
 });

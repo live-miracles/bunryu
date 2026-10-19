@@ -2007,7 +2007,7 @@ function renderOutputsList(pipeline: PipelineView): void {
         for (const o of p.outs) {
             if (o.url) {
                 const list = urlRefs.get(o.url) ?? [];
-                list.push({ pipelineName: p.name, outputName: o.name });
+                list.push({ pipelineName: p.name, outputName: o.name, outputId: o.id });
                 urlRefs.set(o.url, list);
             }
         }

@@ -17,7 +17,8 @@ import {
 } from './output-badges.js';
 
 export type OutputCardStatus = 'good' | 'warn' | 'error' | 'off';
-export type DupRef = { pipelineName: string; outputName?: string };
+// outputId lets an output card leave itself out of its own duplicate list.
+export type DupRef = { pipelineName: string; outputName?: string; outputId?: string };
 
 type OutputCardDeps = {
     pendingOutputs: Map<string, 'start' | 'stop'>;
@@ -161,14 +162,7 @@ export function renderOutputCard(
             (output.url.length > 27
                 ? output.url.slice(0, 25) + '...' + output.url.slice(-2)
                 : output.url);
-        const dupRefs = dupUrls.get(output.url);
-        const dupWarnBtn = dupRefs
-            ? `<span class="js-tooltip text-warning shrink-0 inline-flex items-center gap-1 text-xs" tabindex="0">${ICON_WARN}Duplicate<div class="js-tooltip-content hidden">${dupTooltip('Duplicate destination — also used by:', dupRefs)}</div></span>`
-            : '';
-        const codeClass = dupRefs
-            ? 'text-xs font-normal text-warning whitespace-nowrap'
-            : 'text-xs font-normal opacity-60 whitespace-nowrap';
-        inlineSink = `<code class="${codeClass}" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>${dupWarnBtn}`;
+        inlineSink = `<code class="text-xs font-normal opacity-60 whitespace-nowrap" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>`;
     }
 
     const lastErrorIsCurrent = output.lastError !== null && output.lastErrorAt !== null;
@@ -199,13 +193,28 @@ export function renderOutputCard(
     const historyBtn = output.hasErrorHistory
         ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
-    const warningHtml = output.warningReason
-        ? `<div class="flex items-center gap-2 pl-2 mt-0.5 min-w-0">
-                <span class="text-warning shrink-0">${ICON_WARN}</span>
-                <span class="text-xs text-warning truncate">${escapeHtml(output.warningReason)}</span>
-           </div>`
-        : '';
-    const encodingWarningsHtml = outputEncodingWarnings(output, input)
+    // Every warning, whether reported by the running output, a destination shared
+    // with another output or advice about the encoding settings, is one line of
+    // the same style, and any of them tints the card.
+    const otherDupRefs = (output.url ? (dupUrls.get(output.url) ?? []) : []).filter(
+        (ref) => ref.outputId !== output.id,
+    );
+    const warnings = [
+        ...(output.warningReason ? [output.warningReason] : []),
+        ...(otherDupRefs.length > 0
+            ? [
+                  `Same destination as ${otherDupRefs
+                      .map((ref) =>
+                          ref.outputName
+                              ? `${ref.pipelineName} → ${ref.outputName}`
+                              : ref.pipelineName,
+                      )
+                      .join(', ')}`,
+              ]
+            : []),
+        ...outputEncodingWarnings(output, input),
+    ];
+    const warningsHtml = warnings
         .map(
             (message) => `<div class="flex items-center gap-2 pl-2 mt-0.5 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
@@ -213,13 +222,13 @@ export function renderOutputCard(
            </div>`,
         )
         .join('');
-    const encodingWarnStyle = encodingWarningsHtml
+    const warningTint = warningsHtml
         ? 'style="background:color-mix(in oklch, var(--color-warning) 15%, transparent)"'
         : '';
     const isPending = deps.pendingOutputs.has(output.id);
 
     return `
-    <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-output-card="${output.id}" ${encodingWarnStyle}>
+    <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-output-card="${output.id}" ${warningTint}>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 shrink-0 font-semibold">
                 <div aria-label="status" class="status status-lg mx-1" style="background-color: ${statusHex}"></div>
@@ -238,8 +247,7 @@ export function renderOutputCard(
                 <button class="btn btn-xs btn-square btn-ghost text-error ${isStopped ? '' : 'btn-disabled opacity-40'}" data-action="delete" data-out-id="${output.id}">${ICON_TRASH}</button>
             </div>
         </div>
-        ${warningHtml}
-        ${encodingWarningsHtml}
+        ${warningsHtml}
         ${lastErrorHtml}
     </div>`;
 }
