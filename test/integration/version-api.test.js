@@ -159,6 +159,28 @@ describe('Version API integration', () => {
         assert.equal(res.body.app, pkgVersion);
     });
 
+    test('a failing command reports "unknown", not its error text', async (t) => {
+        const { get } = loadHarness(t, {
+            execImpl: (cmd, _args, _opts, cb) => {
+                if (cmd === 'git') {
+                    const err = Object.assign(new Error('exit 128'), { code: 128 });
+                    return queueMicrotask(() =>
+                        cb(
+                            err,
+                            '',
+                            'fatal: not a git repository (or any parent up to mount point /)\n',
+                        ),
+                    );
+                }
+                queueMicrotask(() => cb(null, '', ''));
+            },
+        });
+
+        const res = await get();
+        assert.equal(res.status, 200);
+        assert.equal(res.body.commit, 'unknown');
+    });
+
     test('parses a successful git/ffmpeg/SRS/relay response into the expected shape', async (t) => {
         const { get } = loadHarness(t, {
             execImpl: (cmd, args, _opts, cb) => {

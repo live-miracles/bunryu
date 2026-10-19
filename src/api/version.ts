@@ -17,8 +17,10 @@ function exec(cmd: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv
             cmd,
             args,
             { timeout: VERSION_EXEC_TIMEOUT_MS, cwd, env },
-            (_err, stdout, stderr) => {
-                resolve((stdout || stderr).trim());
+            // A failed command (e.g. git outside a checkout) reports nothing, so the
+            // caller shows "unknown" instead of the command's error text.
+            (err, stdout, stderr) => {
+                resolve(err ? '' : (stdout || stderr).trim());
             },
         );
     });
