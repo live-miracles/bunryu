@@ -84,3 +84,14 @@ describe('output stopped after repeated failed attempts', () => {
         assert.ok(!/text-xs text-error truncate/.test(html));
     });
 });
+
+describe('duplicate destination', () => {
+    test('is labelled on the card, not only in the hover tooltip', () => {
+        const url = 'rtmp://a.example/live/key';
+        const dups = new Map([[url, [{ pipelineName: 'Other', outputName: 'YT' }]]]);
+        const html = renderOutputCard(output({ url }), rtmpInput, dups, deps);
+        const visible = html.replace(/<div class="js-tooltip-content[\s\S]*?<\/div><\/span>/g, '');
+
+        assert.match(visible, /Duplicate/);
+    });
+});

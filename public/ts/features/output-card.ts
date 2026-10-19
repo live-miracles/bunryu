@@ -163,7 +163,7 @@ export function renderOutputCard(
                 : output.url);
         const dupRefs = dupUrls.get(output.url);
         const dupWarnBtn = dupRefs
-            ? `<span class="js-tooltip text-warning shrink-0 inline-flex" tabindex="0">${ICON_WARN}<div class="js-tooltip-content hidden">${dupTooltip('Duplicate destination — also used by:', dupRefs)}</div></span>`
+            ? `<span class="js-tooltip text-warning shrink-0 inline-flex items-center gap-1 text-xs" tabindex="0">${ICON_WARN}Duplicate<div class="js-tooltip-content hidden">${dupTooltip('Duplicate destination — also used by:', dupRefs)}</div></span>`
             : '';
         const codeClass = dupRefs
             ? 'text-xs font-normal text-warning whitespace-nowrap'
