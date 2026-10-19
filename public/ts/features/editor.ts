@@ -397,6 +397,12 @@ export async function submitPasswordForm(btn?: HTMLButtonElement): Promise<void>
 }
 
 export async function logoutUser(): Promise<void> {
+    const confirmed = await confirmDialog({
+        title: 'Log out?',
+        message: 'You will be signed out of this dashboard. Pipelines and outputs keep running.',
+        confirmLabel: 'Log out',
+    });
+    if (!confirmed) return;
     await api.logout();
     window.location.href = '/login';
 }

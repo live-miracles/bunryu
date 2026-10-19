@@ -115,13 +115,6 @@
           <span class="px-3 font-mono text-sm tabular-nums" id="navbar-net-tx">↑ —</span>
         </div>
       </div>
-      <button class="btn btn-square btn-sm btn-ghost text-error/80 hover:text-error ml-2" onclick="logoutBtn()" title="Logout" aria-label="Logout">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <path stroke-linecap="round" stroke-linejoin="round" d="M16 17l5-5-5-5" />
-          <path stroke-linecap="round" stroke-linejoin="round" d="M21 12H9" />
-        </svg>
-      </button>
     </div>
 
     <!-- Server connection banner -->
@@ -1255,6 +1248,15 @@
               </span>
               <button type="button" class="btn btn-sm btn-accent" onclick="settingsHostProbesFormBtn(this)">Save</button>
             </div>
+          </div>
+
+          <!-- Session -->
+          <div class="border-base-content/10 flex items-center justify-between gap-3 border-t pt-3">
+            <div>
+              <p class="text-sm font-medium">Session</p>
+              <p class="text-xs opacity-70">Sign out of this dashboard. Pipelines and outputs keep running.</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline btn-error shrink-0" onclick="logoutBtn()">Log out</button>
           </div>
         </div>
       </div>
