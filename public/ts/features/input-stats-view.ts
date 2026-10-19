@@ -1,9 +1,15 @@
-import { escapeHtml, formatBitrate, formatLocalTime } from '../core/utils.js';
+import { audioSpecLines, videoSpec } from '../core/media-spec.js';
+import {
+    LOW_BITRATE_KBPS,
+    escapeHtml,
+    formatBitrate,
+    formatClockTime,
+    formatLocalTime,
+} from '../core/utils.js';
 import type { InputHealth } from '../types.js';
 
 type InputStatsDeps = {
     displayInputBitrateKbps: (input: InputHealth) => number | null;
-    fmtFieldOrder: (fieldOrder: string | null | undefined) => string | null;
     // Overrides the publisher IP when SRS only sees the relay (loopback).
     sourceIp?: string | null;
 };
@@ -54,66 +60,33 @@ export function renderInputStats(input: InputHealth, deps: InputStatsDeps): stri
         return renderMediaProbeNotice(input);
     }
 
-    const v = input.video;
-    const a = input.audio;
-    const compactStat = (label: string, val: string | number | null | undefined) =>
-        `<span class="input-meta-item"><span class="input-meta-label">${label}</span><span class="input-meta-value">${val == null ? '—' : escapeHtml(String(val))}</span></span>`;
+    const v = videoSpec(input.video);
+    const audioLines = audioSpecLines(input.audioTracks, input.audio);
+    const bitrateKbps = deps.displayInputBitrateKbps(input);
+    const lowBitrate = bitrateKbps !== null && bitrateKbps < LOW_BITRATE_KBPS;
+    const ip = deps.sourceIp ?? input.publisherIp;
+    const source = [
+        ip ? escapeHtml(ip) : null,
+        `<span class="${lowBitrate ? 'text-warning' : ''}"${lowBitrate ? ` title="Below ${LOW_BITRATE_KBPS} kbps"` : ''}>${formatBitrate(bitrateKbps)}</span>`,
+    ]
+        .filter(Boolean)
+        .join(' · ');
+    const probed = input.mediaCheckedAt
+        ? `<span class="opacity-40 shrink-0" title="When ffprobe last read the input">probed ${formatClockTime(input.mediaCheckedAt)}</span>`
+        : '';
+    const row = (label: string, value: string) =>
+        `<span class="opacity-60">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;
 
+    // Same one-line video and audio descriptions as the Overview's Stream
+    // Specification column, labelled by row.
     return `
-        ${
-            v
-                ? `
-        <div class="input-meta-row input-meta-row-sm my-0.5">
-            ${compactStat('IP', deps.sourceIp ?? input.publisherIp)}
-            ${compactStat('In', formatBitrate(deps.displayInputBitrateKbps(input)))}
-            ${compactStat('Codec', v.codec)}
-            ${compactStat('Size', v.width && v.height ? `${v.width}×${v.height}` : null)}
-            ${compactStat('FPS', v.fps != null ? v.fps : null)}
-            ${compactStat('Scan', deps.fmtFieldOrder(v.fieldOrder))}
-            ${compactStat('Prof', v.profile || null)}
-            ${compactStat('Lvl', v.level || null)}
-        </div>`
-                : renderMediaProbeNotice(input)
-        }
-        ${
-            input.audioTracks.length > 0
-                ? `
-        <h3 class="mt-3 text-sm font-semibold opacity-60">Audio <span class="font-normal">(${input.audioTracks.length} track${input.audioTracks.length > 1 ? 's' : ''})</span></h3>
-        <table class="table table-xs mt-1">
-            <thead><tr><th>#</th>${input.audioTracks.some((t) => t.pid != null) ? '<th>PID</th>' : ''}<th>Codec</th><th>Profile</th><th>Ch</th><th>Freq</th>${input.audioTracks.some((t) => t.language || t.title) ? '<th>Label</th>' : ''}</tr></thead>
-            <tbody>
-                ${input.audioTracks
-                    .map((t) => {
-                        const label = escapeHtml([t.language, t.title].filter(Boolean).join(' — '));
-                        return `<tr>
-                        <td class="font-mono">${t.index + 1}</td>
-                        ${input.audioTracks.some((x) => x.pid != null) ? `<td class="font-mono">${t.pid ?? '—'}</td>` : ''}
-                        <td>${escapeHtml(t.codec || '—')}</td>
-                        <td>${escapeHtml(t.profile || '—')}</td>
-                        <td>${t.channels || '—'}</td>
-                        <td>${t.sampleRate ? `${(t.sampleRate / 1000).toFixed(1)} kHz` : '—'}</td>
-                        ${input.audioTracks.some((x) => x.language || x.title) ? `<td class="opacity-60">${label || ''}</td>` : ''}
-                    </tr>`;
-                    })
-                    .join('')}
-            </tbody>
-        </table>`
-                : a
-                  ? `
-        <h3 class="mt-3 text-sm font-semibold opacity-60">Audio</h3>
-        <div class="mt-1">
-            ${renderCompactMetaRow([
-                { label: 'Codec', value: a.codec },
-                { label: 'Profile', value: a.profile || null },
-                {
-                    label: 'Sample Rate',
-                    value: a.sample_rate ? `${(a.sample_rate / 1000).toFixed(1)} kHz` : null,
-                },
-                { label: 'Channels', value: a.channel },
-            ])}
-        </div>`
-                  : ''
-        }
+        <div class="my-1 grid grid-cols-[3.5rem_1fr] gap-x-3 gap-y-1 text-xs">
+            <span class="opacity-60">Source</span>
+            <div class="flex min-w-0 justify-between gap-2"><span class="font-mono">${source}</span>${probed}</div>
+            ${row('Video', v ? escapeHtml(v) : '—')}
+            ${audioLines.length > 0 ? row('Audio', audioLines.join('<br>')) : ''}
+        </div>
+        ${v ? '' : renderMediaProbeNotice(input)}
     `;
 }
 

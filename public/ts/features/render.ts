@@ -35,6 +35,7 @@ import { updateLayoutOrder, updatePipeline, updatePipelineGroups } from '../core
 import { dupTooltip, formatOutputName, renderOutputCard, type DupRef } from './output-card.js';
 import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
 import { renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
+import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderHostConnectionsOverview } from './host-connections-view.js';
 import {
@@ -99,14 +100,6 @@ const OUTPUT_VIDEO_PRESETS: Record<string, OutputVideoDisplayPreset> = {
         fieldOrder: 'copy',
     },
 };
-
-function fmtFieldOrder(fo: string | null | undefined): string | null {
-    if (!fo || fo === 'unknown') return null;
-    if (fo === 'progressive') return 'P';
-    if (fo === 'tt' || fo === 'tb') return 'i TFF';
-    if (fo === 'bb' || fo === 'bt') return 'i BFF';
-    return fo;
-}
 
 const pendingOutputs = new Map<string, 'start' | 'stop'>();
 const RELAY_FLOW_STALE_MS = 15000;
@@ -1208,93 +1201,19 @@ function renderOverview(): void {
     const overviewEl = document.getElementById('overview-col');
     if (!overviewEl) return;
 
-    const fmtHz = (hz: number | null | undefined): string => {
-        if (!hz) return '—';
-        const k = hz / 1000;
-        return `${Number.isInteger(k) ? k : k.toFixed(1)}kHz`;
-    };
-
     const td = (val: string | number | null | undefined): string =>
         `<td class="font-mono text-xs">${val ?? '—'}</td>`;
-
-    // Compact scan+fps shorthand, e.g. "p30", "i60tff" (top-field-first), "i25bff" (bottom-field-first).
-    const fmtScanFps = (
-        fieldOrder: string | null | undefined,
-        fps: number | null | undefined,
-    ): string => {
-        const fpsNum = fps != null ? Math.round(fps) : null;
-        if (fieldOrder === 'progressive') return fpsNum != null ? `p${fpsNum}` : 'p';
-        if (
-            fieldOrder === 'tt' ||
-            fieldOrder === 'tb' ||
-            fieldOrder === 'bb' ||
-            fieldOrder === 'bt'
-        ) {
-            const field = fieldOrder === 'tt' || fieldOrder === 'tb' ? 'tff' : 'bff';
-            return fpsNum != null ? `i${fpsNum}${field}` : `i${field}`;
-        }
-        return fpsNum != null ? `${fpsNum}fps` : '';
-    };
-
-    const videoSpec = (
-        video: Pick<
-            VideoInfo,
-            'codec' | 'width' | 'height' | 'fps' | 'fieldOrder' | 'profile' | 'level'
-        > | null,
-    ): string | null => {
-        if (!video?.width || !video.height) return null;
-        const scanFps = fmtScanFps(video.fieldOrder, video.fps);
-        const res = scanFps
-            ? /^\d/.test(scanFps)
-                ? `${video.width}x${video.height} ${scanFps}`
-                : `${video.width}x${video.height}${scanFps}`
-            : `${video.width}x${video.height}`;
-        return [video.codec || '—', res, video.profile || null, video.level || null]
-            .filter(Boolean)
-            .join(' ');
-    };
-
-    const audioSpec = (
-        codec: string | null | undefined,
-        profile: string | null | undefined,
-        channels: number | null | undefined,
-        sampleRate: number | null | undefined,
-        label?: string,
-    ): string => {
-        const codecLabel = [codec || '—', codec ? profile || null : null].filter(Boolean).join(' ');
-        const sr = sampleRate ? fmtHz(sampleRate) : null;
-        return `${codecLabel} ${channels ? `${channels}ch` : '—'}${sr ? ` ${sr}` : ''}${label ? ` <span class="opacity-40">${label}</span>` : ''}`;
-    };
 
     // One "Stream specification" cell replaces the separate V.Codec/Resolution/FPS/Scan/
     // A.Codec/Ch/Sample Rate columns (protocol has its own Type column). Multiple audio
     // tracks stack as extra lines within the same cell instead of extra table rows.
     const streamSpec = (
-        video: Pick<
-            VideoInfo,
-            'codec' | 'width' | 'height' | 'fps' | 'fieldOrder' | 'profile' | 'level'
-        > | null,
+        video: Parameters<typeof videoSpec>[0],
         audioTracks: AudioTrackInfo[] | null,
-        fallbackAudio: Pick<AudioInfo, 'codec' | 'channel' | 'sample_rate' | 'profile'> | null,
+        fallbackAudio: Parameters<typeof audioSpecLines>[1],
     ): string => {
         const vSpec = videoSpec(video);
-        const audioLines =
-            audioTracks && audioTracks.length > 0
-                ? audioTracks.map((t, i) => {
-                      const label = escapeHtml([t.language, t.title].filter(Boolean).join(' '));
-                      const prefix = `Track ${i + 1}: `;
-                      return `${prefix}${audioSpec(t.codec, t.profile, t.channels, t.sampleRate, label || undefined)}`;
-                  })
-                : fallbackAudio
-                  ? [
-                        `Track 1: ${audioSpec(
-                            fallbackAudio.codec,
-                            fallbackAudio.profile,
-                            fallbackAudio.channel,
-                            fallbackAudio.sample_rate,
-                        )}`,
-                    ]
-                  : [];
+        const audioLines = audioSpecLines(audioTracks, fallbackAudio);
         if (!vSpec && audioLines.length === 0) return '—';
         if (audioLines.length === 0) return vSpec || '—';
         return [vSpec, ...audioLines].filter(Boolean).join('<br>');
@@ -1878,7 +1797,6 @@ function renderPipelineInfo(selectedId: string | null): void {
     const statsEl = document.getElementById('input-stats');
     const inputHtml = renderInputStats(pipeline.input, {
         displayInputBitrateKbps,
-        fmtFieldOrder,
         sourceIp: relaySourceIp(pipeline),
     });
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);

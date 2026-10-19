@@ -195,6 +195,8 @@ only for a new module.
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
   `renditions`; `features/shared-encodes.ts` renders the Shared encodes card.
+  `core/media-spec.ts` formats the one-line video/audio descriptions the Overview
+  and the pipeline panel's input stats share.
 - `test/*.test.js` unit tests and `test/integration/` API tests (`npm test`).
 - `Dockerfile`, `compose.yaml`, `docker/entrypoint.sh` - single-container image
   for evaluation; the entrypoint supervises the app, SRS and the relay with the

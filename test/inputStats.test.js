@@ -1,0 +1,115 @@
+'use strict';
+
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const { videoSpec, audioSpecLines } = require('../public/ts/core/media-spec');
+const { renderInputStats } = require('../public/ts/features/input-stats-view');
+
+const video = {
+    codec: 'h264',
+    width: 1920,
+    height: 1080,
+    fps: 50,
+    fieldOrder: 'progressive',
+    profile: 'High',
+    level: '4.2',
+};
+const track = (over) => ({
+    index: 0,
+    codec: 'aac',
+    sampleRate: 48000,
+    channels: 2,
+    profile: 'LC',
+    language: null,
+    title: null,
+    pid: null,
+    ...over,
+});
+
+describe('videoSpec', () => {
+    test('reads as one line with scan+rate and an L-prefixed level', () => {
+        assert.equal(videoSpec(video), 'h264 1920x1080p50 High L4.2');
+    });
+
+    test('marks interlaced field order', () => {
+        assert.equal(
+            videoSpec({ ...video, fps: 25, fieldOrder: 'tt' }),
+            'h264 1920x1080i25tff High L4.2',
+        );
+    });
+
+    test('is null until the size is known', () => {
+        assert.equal(videoSpec({ ...video, width: 0 }), null);
+        assert.equal(videoSpec(null), null);
+    });
+});
+
+describe('audioSpecLines', () => {
+    test('one line per track, with the label escaped', () => {
+        const lines = audioSpecLines(
+            [track({}), track({ index: 1, language: 'hin', title: '<b>' })],
+            null,
+        );
+        assert.equal(lines[0], 'Track 1: aac LC 2ch 48kHz');
+        assert.equal(
+            lines[1],
+            'Track 2: aac LC 2ch 48kHz <span class="opacity-40">hin &lt;b&gt;</span>',
+        );
+    });
+
+    test('includes the PID when the input reports one (MPEG-TS over SRT)', () => {
+        const lines = audioSpecLines([track({ pid: 257 }), track({ index: 1, pid: null })], null);
+        assert.equal(lines[0], 'Track 1 (PID 257): aac LC 2ch 48kHz');
+        assert.equal(lines[1], 'Track 2: aac LC 2ch 48kHz');
+    });
+
+    test('falls back to the single SRS audio when there are no tracks', () => {
+        const fallback = { codec: 'aac', profile: 'LC', channel: 1, sample_rate: 44100 };
+        assert.deepEqual(audioSpecLines([], fallback), ['Track 1: aac LC 1ch 44.1kHz']);
+    });
+});
+
+describe('renderInputStats', () => {
+    const input = (over) => ({
+        connected: true,
+        live: true,
+        mediaOk: true,
+        mediaError: null,
+        mediaCheckedAt: new Date(2026, 9, 19, 12, 3).getTime(),
+        publisherIp: '198.51.100.7',
+        video,
+        audio: null,
+        audioTracks: [track({})],
+        ...over,
+    });
+    const deps = (kbps) => ({ displayInputBitrateKbps: () => kbps });
+
+    test('shows source, video and audio as labelled lines with the probe time', () => {
+        const html = renderInputStats(input({}), deps(5200));
+        assert.match(html, /Source/);
+        assert.match(html, /198\.51\.100\.7 · <span class="">5\.2 mbps<\/span>/);
+        assert.match(html, /h264 1920x1080p50 High L4\.2/);
+        assert.match(html, /Track 1: aac LC 2ch 48kHz/);
+        assert.match(html, /probed 12:03/);
+    });
+
+    test('marks a starved input bitrate as a warning', () => {
+        assert.match(renderInputStats(input({}), deps(150)), /class="text-warning"[^>]*>150 kbps/);
+        assert.ok(!/text-warning/.test(renderInputStats(input({}), deps(900))));
+    });
+
+    test('prefers the relay-reported source IP', () => {
+        const html = renderInputStats(input({ publisherIp: '127.0.0.1' }), {
+            ...deps(900),
+            sourceIp: '203.0.113.9',
+        });
+        assert.match(html, /203\.0\.113\.9/);
+        assert.ok(!/127\.0\.0\.1/.test(html));
+    });
+
+    test('still shows the probe notice instead of stats while ffprobe has not finished', () => {
+        const html = renderInputStats(input({ mediaOk: null }), deps(900));
+        assert.match(html, /Waiting for ffprobe/);
+        assert.ok(!/Source/.test(html));
+    });
+});
