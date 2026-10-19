@@ -138,8 +138,8 @@ async function fetchAndRender(): Promise<void> {
     if (srtRelayBannerText) {
         srtRelayBannerText.textContent =
             state.health.srtRelay?.lastError && state.health.srtRelay.status !== 'running'
-                ? `SRT relay is not responding: ${state.health.srtRelay.lastError}`
-                : 'SRT relay is not running — SRT input through the relay unavailable';
+                ? `SRT relay is not responding (${state.health.srtRelay.lastError}) — inputs on the bonded SRT port may be down; RTMP and direct SRT are unaffected`
+                : 'SRT relay is not running — inputs on the bonded SRT port are down; RTMP and direct SRT are unaffected';
     }
     if (rejectedResult) {
         state.rejectedPublishes = rejectedResult.rejected;
