@@ -208,7 +208,13 @@
         <div class="mx-auto mt-2 space-y-3 px-4">
           <div class="flex items-center gap-1">
             <h2 class="text-xl font-bold" id="out-modal-title">Add Output</h2>
-            <button id="out-copy-btn" type="button" class="btn btn-xs btn-ghost ml-2" onclick="outCopyBtn()" title="Copy output to clipboard">
+            <button
+              id="out-copy-btn"
+              type="button"
+              class="btn btn-xs btn-ghost ml-2"
+              onclick="outCopyBtn()"
+              title="Copy output to clipboard"
+              aria-label="Copy output to clipboard">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -223,7 +229,13 @@
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
               </svg>
             </button>
-            <button id="out-paste-btn" type="button" class="btn btn-xs btn-ghost" onclick="outPasteBtn()" title="Paste output from clipboard">
+            <button
+              id="out-paste-btn"
+              type="button"
+              class="btn btn-xs btn-ghost"
+              onclick="outPasteBtn()"
+              title="Paste output from clipboard"
+              aria-label="Paste output from clipboard">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -301,7 +313,8 @@
             id="logs-modal-refresh"
             type="button"
             class="btn btn-sm btn-ghost btn-square hidden items-center justify-center leading-none"
-            title="Refresh stats">
+            title="Refresh stats"
+            aria-label="Refresh stats">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="block h-4 w-4 shrink-0 fill-current" aria-hidden="true">
               <path
                 d="M10 3a7 7 0 0 1 6.56 4.57.75.75 0 1 1-1.4.53A5.5 5.5 0 1 0 14.5 13H12a.75.75 0 0 1 0-1.5h4.25A.75.75 0 0 1 17 12.25v4.25a.75.75 0 0 1-1.5 0v-1.77A7 7 0 1 1 10 3Z" />
@@ -376,7 +389,7 @@
             <span class="badge badge-sm badge-outline hidden shrink-0" id="pipe-readers-badge"></span>
           </div>
           <div class="flex shrink-0 items-center gap-2">
-            <button class="btn btn-xs btn-ghost" onclick="pipeHistoryBtn()" title="View pipeline history">
+            <button class="btn btn-xs btn-ghost" onclick="pipeHistoryBtn()" title="View pipeline history" aria-label="View pipeline history">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -392,7 +405,7 @@
                 <path d="M12 7v5l4 2" />
               </svg>
             </button>
-            <button id="pipe-edit-btn" class="btn btn-xs btn-ghost" onclick="editPipeBtn()" title="Edit pipeline">
+            <button id="pipe-edit-btn" class="btn btn-xs btn-ghost" onclick="editPipeBtn()" title="Edit pipeline" aria-label="Edit pipeline">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -407,7 +420,12 @@
                 <path d="m15 5 4 4" />
               </svg>
             </button>
-            <button id="pipe-delete-btn" class="btn btn-xs btn-ghost text-error" onclick="deletePipeBtn(this)" title="Delete pipeline">
+            <button
+              id="pipe-delete-btn"
+              class="btn btn-xs btn-ghost text-error"
+              onclick="deletePipeBtn(this)"
+              title="Delete pipeline"
+              aria-label="Delete pipeline">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -461,7 +479,13 @@
                   <span id="preview-btn-label">Preview</span>
                 </button>
                 <!-- Mute / unmute -->
-                <button id="preview-mute-btn" title="Unmute" onclick="previewMuteBtn()" class="btn btn-square btn-ghost btn-xs" disabled>
+                <button
+                  id="preview-mute-btn"
+                  title="Unmute"
+                  onclick="previewMuteBtn()"
+                  class="btn btn-square btn-ghost btn-xs"
+                  disabled
+                  aria-label="Unmute">
                   <svg
                     id="preview-icon-muted"
                     xmlns="http://www.w3.org/2000/svg"
@@ -495,7 +519,13 @@
                   </svg>
                 </button>
                 <!-- Reload -->
-                <button id="preview-reload-btn" title="Reload" onclick="previewReloadBtn()" class="btn btn-square btn-ghost btn-xs" disabled>
+                <button
+                  id="preview-reload-btn"
+                  title="Reload"
+                  onclick="previewReloadBtn()"
+                  class="btn btn-square btn-ghost btn-xs"
+                  disabled
+                  aria-label="Reload">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="14"
@@ -512,7 +542,13 @@
                   </svg>
                 </button>
                 <!-- Maximize / restore (page-level modal) -->
-                <button id="preview-maximize-btn" title="Maximize" onclick="previewMaximizeBtn()" class="btn btn-square btn-ghost btn-xs" disabled>
+                <button
+                  id="preview-maximize-btn"
+                  title="Maximize"
+                  onclick="previewMaximizeBtn()"
+                  class="btn btn-square btn-ghost btn-xs"
+                  disabled
+                  aria-label="Maximize">
                   <svg
                     id="preview-icon-expand"
                     xmlns="http://www.w3.org/2000/svg"
@@ -634,7 +670,11 @@
             <div class="flex min-w-0 items-center gap-2">
               <span class="text-error shrink-0 text-xs" id="srt-bonding-last-error-ts"></span>
               <div class="text-error min-w-0 truncate text-xs" id="srt-bonding-last-error"></div>
-              <button class="btn btn-xs btn-ghost text-error shrink-0 p-0 leading-none" id="srt-bonding-last-error-info" title="View full error">
+              <button
+                class="btn btn-xs btn-ghost text-error shrink-0 p-0 leading-none"
+                id="srt-bonding-last-error-info"
+                title="View full error"
+                aria-label="View full error">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="14"
@@ -852,7 +892,7 @@
             </button>
           </div>
           <div class="flex items-center gap-1">
-            <button class="btn btn-xs btn-ghost" onclick="outputsCopyBtn()" title="Copy outputs to clipboard">
+            <button class="btn btn-xs btn-ghost" onclick="outputsCopyBtn()" title="Copy outputs to clipboard" aria-label="Copy outputs to clipboard">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -867,7 +907,12 @@
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
               </svg>
             </button>
-            <button id="outputs-paste-btn" class="btn btn-xs btn-ghost" onclick="outputsPasteBtn()" title="Paste outputs from clipboard">
+            <button
+              id="outputs-paste-btn"
+              class="btn btn-xs btn-ghost"
+              onclick="outputsPasteBtn()"
+              title="Paste outputs from clipboard"
+              aria-label="Paste outputs from clipboard">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -887,7 +932,12 @@
               </svg>
             </button>
             <div class="bg-base-content mx-1 h-3 w-px opacity-20"></div>
-            <button id="outputs-start-all-btn" class="btn btn-xs btn-ghost" onclick="outputsStartAllBtn()" title="Start all outputs">
+            <button
+              id="outputs-start-all-btn"
+              class="btn btn-xs btn-ghost"
+              onclick="outputsStartAllBtn()"
+              title="Start all outputs"
+              aria-label="Start all outputs">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -901,7 +951,12 @@
                 <polygon points="6 3 20 12 6 21 6 3" />
               </svg>
             </button>
-            <button id="outputs-stop-all-btn" class="btn btn-xs btn-ghost" onclick="outputsStopAllBtn()" title="Stop all outputs">
+            <button
+              id="outputs-stop-all-btn"
+              class="btn btn-xs btn-ghost"
+              onclick="outputsStopAllBtn()"
+              title="Stop all outputs"
+              aria-label="Stop all outputs">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -933,7 +988,8 @@
             type="button"
             class="btn btn-sm btn-ghost btn-square inline-flex items-center justify-center leading-none"
             onclick="refreshSrsLogsBtn()"
-            title="Refresh server logs">
+            title="Refresh server logs"
+            aria-label="Refresh server logs">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="block h-4 w-4 shrink-0 fill-current" aria-hidden="true">
               <path
                 d="M10 3a7 7 0 0 1 6.56 4.57.75.75 0 1 1-1.4.53A5.5 5.5 0 1 0 14.5 13H12a.75.75 0 0 1 0-1.5h4.25A.75.75 0 0 1 17 12.25v4.25a.75.75 0 0 1-1.5 0v-1.77A7 7 0 1 1 10 3Z" />

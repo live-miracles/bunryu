@@ -162,7 +162,7 @@ export function renderOutputCard(
             (output.url.length > 27
                 ? output.url.slice(0, 25) + '...' + output.url.slice(-2)
                 : output.url);
-        inlineSink = `<code class="text-xs font-normal opacity-60 whitespace-nowrap" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>`;
+        inlineSink = `<code class="text-xs font-normal opacity-60 min-w-0 flex-1 basis-24 truncate" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>`;
     }
 
     const lastErrorIsCurrent = output.lastError !== null && output.lastErrorAt !== null;
@@ -243,8 +243,8 @@ export function renderOutputCard(
             ${inlineSink}
             <div class="flex items-center gap-1 ml-auto shrink-0">
                 ${historyBtn}
-                <button class="btn btn-xs btn-square btn-ghost" data-action="edit" data-out-id="${output.id}">${ICON_PENCIL}</button>
-                <button class="btn btn-xs btn-square btn-ghost text-error ${isStopped ? '' : 'btn-disabled opacity-40'}" data-action="delete" data-out-id="${output.id}">${ICON_TRASH}</button>
+                <button class="btn btn-xs btn-square btn-ghost" data-action="edit" data-out-id="${output.id}" title="Edit output" aria-label="Edit output">${ICON_PENCIL}</button>
+                <button class="btn btn-xs btn-square btn-ghost text-error ${isStopped ? '' : 'btn-disabled opacity-40'}" data-action="delete" data-out-id="${output.id}" title="Delete output" aria-label="Delete output">${ICON_TRASH}</button>
             </div>
         </div>
         ${warningsHtml}

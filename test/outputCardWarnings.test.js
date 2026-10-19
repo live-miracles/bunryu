@@ -160,3 +160,19 @@ describe('all output warnings share one style', () => {
         assert.ok(!tinted(render({})));
     });
 });
+
+describe('card layout and controls', () => {
+    test('the destination URL shrinks and truncates so the action icons stay on its row', () => {
+        const html = render({});
+        assert.match(html, /<code class="[^"]*\bmin-w-0\b[^"]*\bflex-1\b[^"]*\btruncate\b/);
+    });
+
+    test('icon-only edit and delete buttons say what they do', () => {
+        const html = render({});
+        assert.match(html, /data-action="edit"[^>]*title="Edit output" aria-label="Edit output"/);
+        assert.match(
+            html,
+            /data-action="delete"[^>]*title="Delete output" aria-label="Delete output"/,
+        );
+    });
+});

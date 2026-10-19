@@ -399,7 +399,10 @@ function syncMuteIcon(muted: boolean): void {
     document.getElementById('preview-icon-muted')?.classList.toggle('hidden', !muted);
     document.getElementById('preview-icon-unmuted')?.classList.toggle('hidden', muted);
     const btn = document.getElementById('preview-mute-btn');
-    if (btn) btn.title = muted ? 'Unmute' : 'Mute';
+    if (btn) {
+        btn.title = muted ? 'Unmute' : 'Mute';
+        btn.setAttribute('aria-label', btn.title);
+    }
 }
 
 export function togglePreviewMute(): void {
@@ -445,7 +448,10 @@ function setPreviewMaximized(on: boolean): void {
     document.getElementById('preview-icon-expand')?.classList.toggle('hidden', on);
     document.getElementById('preview-icon-compress')?.classList.toggle('hidden', !on);
     const btn = document.getElementById('preview-maximize-btn');
-    if (btn) btn.title = on ? 'Restore' : 'Maximize';
+    if (btn) {
+        btn.title = on ? 'Restore' : 'Maximize';
+        btn.setAttribute('aria-label', btn.title);
+    }
 }
 
 export function togglePreviewMaximize(): void {
