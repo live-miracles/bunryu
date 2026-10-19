@@ -269,14 +269,23 @@ export function registerOutputApi(
         }
         if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
-        // The UI disables Save for running outputs, but a client holding stale
-        // config could still submit — the running ffmpeg would keep the old
-        // destination while the DB shows the new one until the next restart.
-        if (
-            output.desiredState !== 'stopped' ||
-            outputService.getStats(outId).status === 'running'
-        ) {
-            return res.status(409).json({ error: 'Stop the output before editing it' });
+        // A running output keeps the destination and encoding its ffmpeg was started
+        // with, so only its name may change: a body with any other setting is
+        // refused, even a client holding stale config that sends the old values.
+        const isRunning =
+            output.desiredState !== 'stopped' || outputService.getStats(outId).status === 'running';
+        if (isRunning) {
+            const body = (req.body ?? {}) as Record<string, unknown>;
+            if (Object.keys(body).some((key) => key !== 'name')) {
+                return res
+                    .status(409)
+                    .json({ error: 'Stop the output before changing its settings' });
+            }
+            const renamed = parseName(body.name);
+            if ('error' in renamed) return res.status(400).json({ error: renamed.error });
+            const updated = db.updateOutput(outId, { ...output, name: renamed.name });
+            console.log(cyan(`[outputs] user rename requested: ${outId} (${renamed.name})`));
+            return res.json(updated);
         }
 
         const parsedName =

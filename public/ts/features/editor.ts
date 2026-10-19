@@ -1022,6 +1022,30 @@ function renderOutputTranslationControls(
     });
 }
 
+const LOCKED_FIELD_TITLE = 'Stop the output before changing this';
+
+// A running output keeps the destination and encoding its ffmpeg was started
+// with, so its form only lets the name change (the server enforces the same
+// rule). Everything else, including pasting a whole output, is disabled.
+function setOutputSettingsLocked(locked: boolean): void {
+    const fields = document.querySelectorAll<
+        HTMLInputElement | HTMLSelectElement | HTMLButtonElement
+    >(
+        '#out-video-encoding-input, #out-audio-encoding-input, ' +
+            '#out-translation-container :is(input, select, button), ' +
+            '#out-sinks-container :is(input, select, button)',
+    );
+    for (const el of fields) {
+        el.disabled = locked;
+        if (locked) el.title = LOCKED_FIELD_TITLE;
+        else if (el.title === LOCKED_FIELD_TITLE) el.removeAttribute('title');
+    }
+    const pasteBtn = document.getElementById('out-paste-btn') as HTMLButtonElement;
+    pasteBtn.disabled = locked;
+    pasteBtn.classList.toggle('btn-disabled', locked);
+    pasteBtn.classList.toggle('opacity-40', locked);
+}
+
 export function openAddOutput(pipelineId: string): void {
     const modal = outModal();
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
@@ -1048,8 +1072,8 @@ export function openAddOutput(pipelineId: string): void {
     }
     renderOutputTranslationControls(pipelineId, previous?.translation ?? null);
     (document.getElementById('out-modal-title') as HTMLElement).textContent = 'Add Output';
+    setOutputSettingsLocked(false);
     (document.getElementById('out-save-btn') as HTMLButtonElement).disabled = false;
-    (document.getElementById('out-running-hint') as HTMLElement).classList.add('hidden');
     const copyBtn = document.getElementById('out-copy-btn') as HTMLButtonElement;
     copyBtn.disabled = true;
     copyBtn.classList.add('btn-disabled', 'opacity-40');
@@ -1081,10 +1105,8 @@ export function openEditOutput(pipelineId: string, outId: string): void {
     (document.getElementById('out-modal-title') as HTMLElement).textContent = 'Edit Output';
 
     const isRunning = output.desiredState === 'running';
-    const saveBtn = document.getElementById('out-save-btn') as HTMLButtonElement;
-    const hint = document.getElementById('out-running-hint') as HTMLElement;
-    saveBtn.disabled = isRunning;
-    hint.classList.toggle('hidden', !isRunning);
+    setOutputSettingsLocked(isRunning);
+    (document.getElementById('out-save-btn') as HTMLButtonElement).disabled = false;
 
     const copyBtn = document.getElementById('out-copy-btn') as HTMLButtonElement;
     copyBtn.disabled = false;
@@ -1164,6 +1186,23 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
     const nameEl = document.getElementById('out-name-input') as HTMLInputElement;
     const name = nameEl.value.trim();
     nameEl.classList.toggle('input-error', !name);
+
+    // The settings of a running output are locked in the form, so only the name
+    // is sent.
+    const existing = state.config.outputs?.find(
+        (o) => o.id === outId && String(o.pipelineId) === pipelineId,
+    );
+    if (outId && existing?.desiredState === 'running') {
+        if (!name) return;
+        await withBusy(btn, async () => {
+            const result = await api.updateOutput(pipelineId, outId, { name });
+            if (result) {
+                outModal().close();
+                await refreshAfterMutation();
+            }
+        });
+        return;
+    }
 
     const videoEncoding = (document.getElementById('out-video-encoding-input') as HTMLSelectElement)
         .value;

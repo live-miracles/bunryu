@@ -808,6 +808,95 @@ describe('Outputs API integration', () => {
             assert.equal(res.status, 409);
         });
 
+        describe('while the output is running', () => {
+            const runningOutput = () => {
+                const harness = createHarness();
+                const p = harness.db.createPipeline();
+                const o = harness.db.createOutput({
+                    pipelineId: p.id,
+                    name: 'Old',
+                    url: 'rtmp://x',
+                    audioEncoding: '0',
+                });
+                harness.db.setOutputDesiredState(o.id, 'running');
+                return { harness, p, o };
+            };
+
+            test('a name-only edit renames it and leaves the settings and the process alone', async () => {
+                const { harness, p, o } = runningOutput();
+
+                const res = await harness.request(
+                    'POST',
+                    `/api/pipelines/${p.id}/outputs/${o.id}`,
+                    {
+                        name: 'Renamed',
+                    },
+                );
+
+                assert.equal(res.status, 200);
+                assert.equal(res.body.name, 'Renamed');
+                const stored = harness.db.getOutput(o.id);
+                assert.equal(stored.name, 'Renamed');
+                assert.equal(stored.url, 'rtmp://x');
+                assert.equal(stored.audioEncoding, '0');
+                assert.equal(stored.desiredState, 'running');
+                assert.deepEqual(harness.outputService.restarted, []);
+            });
+
+            test('a name-only edit still validates the name', async () => {
+                const { harness, p, o } = runningOutput();
+
+                const res = await harness.request(
+                    'POST',
+                    `/api/pipelines/${p.id}/outputs/${o.id}`,
+                    {
+                        name: '   ',
+                    },
+                );
+
+                assert.equal(res.status, 400);
+                assert.equal(harness.db.getOutput(o.id).name, 'Old');
+            });
+
+            for (const [label, extra] of [
+                ['url', { url: 'rtmp://new' }],
+                ['videoEncoding', { videoEncoding: '720p' }],
+                ['audioEncoding', { audioEncoding: 'copy' }],
+                ['translation', { translation: null }],
+            ]) {
+                test(`an edit that carries ${label} is still refused with 409, even with the same value`, async () => {
+                    const { harness, p, o } = runningOutput();
+
+                    const res = await harness.request(
+                        'POST',
+                        `/api/pipelines/${p.id}/outputs/${o.id}`,
+                        { name: 'Renamed', ...extra },
+                    );
+
+                    assert.equal(res.status, 409);
+                    assert.equal(harness.db.getOutput(o.id).name, 'Old');
+                });
+            }
+
+            test('an output running in the process layer can be renamed too', async () => {
+                const harness = createHarness();
+                const p = harness.db.createPipeline();
+                const o = harness.db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+                await harness.outputService.start(o.id);
+
+                const res = await harness.request(
+                    'POST',
+                    `/api/pipelines/${p.id}/outputs/${o.id}`,
+                    {
+                        name: 'Renamed',
+                    },
+                );
+
+                assert.equal(res.status, 200);
+                assert.equal(harness.db.getOutput(o.id).name, 'Renamed');
+            });
+        });
+
         test('404s when the output belongs to a different pipeline', async () => {
             const harness = createHarness();
             const p1 = harness.db.createPipeline();

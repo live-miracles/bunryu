@@ -155,8 +155,12 @@ export const deletePipeline = (id: string) =>
 export const createOutput = (pipelineId: string, data: OutputPayload) =>
     apiRequest(`/api/pipelines/${pipelineId}/outputs`, { method: 'POST', body: data });
 
-export const updateOutput = (pipelineId: string, outId: string, data: OutputPayload) =>
-    apiRequest(`/api/pipelines/${pipelineId}/outputs/${outId}`, { method: 'POST', body: data });
+// A running output accepts only its name; the server refuses any other field.
+export const updateOutput = (
+    pipelineId: string,
+    outId: string,
+    data: OutputPayload | { name: string },
+) => apiRequest(`/api/pipelines/${pipelineId}/outputs/${outId}`, { method: 'POST', body: data });
 
 export const deleteOutput = (pipelineId: string, outId: string) =>
     apiRequest(`/api/pipelines/${pipelineId}/outputs/${outId}`, { method: 'DELETE' });

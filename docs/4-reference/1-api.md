@@ -28,7 +28,7 @@ RTMP input → RTMP pull), so there is no pull-method setting.
 | POST | `/api/pipelines/:id/outputs` | Create output `{ name, videoEncoding, url, audioEncoding }` |
 | POST | `/api/pipelines/:id/outputs/bulk` | Bulk create outputs `{ outputs: [{ name, videoEncoding, url, audioEncoding }] }` — validates all before creating any |
 | DELETE | `/api/pipelines/:id/outputs` | Clear all outputs for the pipeline — returns 409 if any of your outputs is still running (shared encodes are stopped and removed with them) |
-| POST | `/api/pipelines/:id/outputs/:outId` | Update output (same body as create) — 409 unless stopped, and always 409 for a shared encode |
+| POST | `/api/pipelines/:id/outputs/:outId` | Update output (same body as create). A running output accepts only `{ name }` — any other field gives 409, even with an unchanged value — and a shared encode always gives 409 |
 | DELETE | `/api/pipelines/:id/outputs/:outId` | Delete output (stops it first if running) — 409 for a shared encode |
 | POST | `/api/pipelines/:id/outputs/start-all` | Start all outputs (staggered at 200 ms intervals, returns immediately) |
 | POST | `/api/pipelines/:id/outputs/stop-all` | Stop all outputs |

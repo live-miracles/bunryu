@@ -111,7 +111,9 @@ recipes, other pipelines and outputs that read the input directly are not
 affected. See [Reliability](../3-operations/4-reliability.md#shared-encodes).
 
 **Changing the configuration while outputs are running.** An output decides how it
-runs when it *starts* and never switches while running.
+runs when it *starts* and never switches while running. For that reason the
+editor of a running output disables the destination, encodings and translation
+settings and lets you change only its name; stop the output to change the rest.
 - If an output was already running alone and you add a second output with the same
   recipe, the shared encode starts at once, but the first output keeps encoding on
   its own until it is next started or restarted; the new output reads the shared
