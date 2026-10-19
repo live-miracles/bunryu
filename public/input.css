@@ -130,3 +130,11 @@ body {
 .input-meta-row-sm .input-meta-value {
     font-size: 0.8rem;
 }
+
+/* daisyUI 5 has no alert-primary; same variables as its alert-success, so
+   confirmation alerts use the theme's primary green. */
+.alert-primary {
+    color: var(--color-primary-content);
+    --alert-border-color: var(--color-primary);
+    --alert-color: var(--color-primary);
+}
