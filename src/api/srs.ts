@@ -17,7 +17,7 @@ const MAX_LOG_READ_BYTES = 100 * 1024;
 const MAX_LOG_TAIL_LINES = 200;
 
 // All three only ever log to the journal (never a file), and only exist as
-// systemd units in production — `npm run dev`/`npm run srs`/`npm run relay`
+// systemd units in production — `npm run dev`/`npm run srs`/`npm run goryu`
 // aren't systemd-managed, so these read as empty (source 'none') locally.
 const SRS_SYSTEMD_UNIT = 'srs.service';
 const APP_SYSTEMD_UNIT = 'bunryu.service';

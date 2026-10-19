@@ -2,10 +2,10 @@
 # Clone the goryu source repo next to this one if it isn't there
 # yet, then fast-forward it to the latest master (skipped if it has local
 # changes). Used by dev-server-install.sh's first-time setup and by
-# `npm run relay:update`.
+# `npm run goryu:update`.
 #
 # Usage:
-#   bash scripts/relay-repo-sync.sh
+#   bash scripts/goryu-repo-sync.sh
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"

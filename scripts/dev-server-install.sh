@@ -139,10 +139,10 @@ if [[ -z "${SRS_LOCAL_BIN:-}" ]]; then
     fi
 fi
 
-bash "$REPO_DIR/scripts/relay-repo-sync.sh"
+bash "$REPO_DIR/scripts/goryu-repo-sync.sh"
 bash "$REPO_DIR/scripts/build-goryu-local.sh"
 
 echo ""
 echo "Run SRS:  npm run srs"
 echo "Run app:  npm run dev"
-echo "Run relay: npm run relay"
+echo "Run Goryu: npm run goryu"
