@@ -44,7 +44,7 @@ not targets to exceed:
 Most outputs should use `copy` mode. Copy-mode outputs are comparatively cheap,
 while custom video encoding is expensive on a GCP `n2` with the 50 fps production
 feeds: about 2 vCPUs for `720p` and 1.2 for `vertical_rotate` from a 1080p input,
-and `1080p` from a 4K input does not keep up on 4 vCPUs (see
+and `1080p` from a 4K input needs about 6 and does not keep up on 4 (see
 `docs/1-getting-started/4-sizing.md`). Outputs of one pipeline with the same
 video encoding and single audio track share one encode.
 Host CPU, memory, network capacity, and the number of FFmpeg processes are

@@ -146,9 +146,9 @@ function resolveCommand(value: string, configDir: string): string {
 // measured against, so a 4K pipeline's outputs legitimately run higher RSS.
 // HIGH_RES_MEMORY_MULTIPLIER of 2 was checked against measured 4K baselines on
 // 2026-10-19 (see docs/1-getting-started/4-sizing.md): copy with AAC audio 56 MB
-// (129 MB at start, on production), vertical_rotate 472 MB, 720p 608 MB and 1080p
-// 814 MB (development machine). The doubled limits sit about 3x above copy and
-// 1.9-2.3x above the encodes, about the margin of the HD limits above.
+// (129 MB at start) and 1080p 940 MB (both on production), vertical_rotate 472 MB
+// and 720p 608 MB (development machine). The doubled limits sit about 3x above copy
+// and 1.9-2.1x above the encodes, about the margin of the HD limits above.
 const HIGH_RES_MEMORY_MULTIPLIER = 2;
 
 // Shared by the output service and the translation mixer so both apply the same

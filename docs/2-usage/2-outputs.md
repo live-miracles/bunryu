@@ -23,7 +23,7 @@ second pipeline from an output of the first. See
 |----------|--------------|----------|
 | `copy` | Passthrough: the video is forwarded as received | About 0.04 vCPU per 8 Mbps output |
 | `720p` | Scales to 1280×720, H.264 (`veryfast`, 3 Mbps); meant for down-converting a 1080p input | About 2 vCPUs per encode (1080p50 input) |
-| `1080p` | Scales to 1920×1080, H.264 (`veryfast`, 5 Mbps); meant for down-converting a 4K input | More than 4 vCPUs from a 4K50 input: does not keep up on a 4-vCPU host |
+| `1080p` | Scales to 1920×1080, H.264 (`veryfast`, 5 Mbps); meant for down-converting a 4K input | About 6 vCPUs from a 4K50 input (does not keep up on 4) |
 | `vertical_rotate` | Scales to 720 px wide and rotates 90° for vertical platforms (Shorts, Reels); usually applied to a 1080p input | About 1.2 vCPUs per encode (1080p50 input) |
 
 Keep almost all outputs in `copy` mode and only a few distinct encodes on a

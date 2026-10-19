@@ -363,16 +363,18 @@ read-only, before shared encodes were deployed there):
 - A dry run on 2026-10-19 sent the 4K feed to YouTube primary and backup (copy video,
   audio track re-encoded): 0.181 and 0.185 vCPU, 56 MB (129 MB at start), 19.95 Mbps
   at 1.0x for 4 minutes; SRS rose 0.058 vCPU for the two readers and the relay did
-  not change. The 4K encodes were run for memory on a development machine (FFmpeg 8,
-  synthetic 20 Mbps input): `vertical_rotate` 472 MB, `720p` 608 MB, `1080p` 814 MB.
-  With the production figure for copy they confirmed the 4K memory limit of twice the
-  HD limit (3x above copy, 1.9–2.3x above the encodes), so it was left unchanged.
+  not change. Two 4K encodes were run for memory on a development machine (FFmpeg 8,
+  synthetic 20 Mbps input): `vertical_rotate` 472 MB and `720p` 608 MB. With the
+  production figures for copy and for `1080p` (940 MB, below) they confirmed the 4K
+  memory limit of twice the HD limit (3x above copy, 1.9–2.1x above the encodes), so
+  it was left unchanged.
 - The encodes in their real use, on the live 1080p50 and 4K50 feeds with the
   application's arguments: `720p` from 1080p 2.05 vCPU and 270–280 MB (60 s, 1.0x),
   `vertical_rotate` from 1080p 1.19 vCPU and 175 MB (90 s, 1.0x). `1080p` from 4K
   ran at 0.53–0.58x on the 4-vCPU `n2` and the SRT pull then broke after about 20 s,
-  while decoding alone kept up at 1.83 vCPU (1.1x), so a 4-vCPU host cannot do it; the
-  estimate of about 5 vCPU was not measured on a larger machine.
+  while decoding alone kept up at 1.83 vCPU (1.1x), so a 4-vCPU host cannot do it. On
+  the same VM resized to 8 vCPUs (2026-10-19, 24 Mbps feed) it ran at 1.0x for 90 s at
+  5.94 vCPU and 930–940 MB, leaving the host about 90% busy.
 - The 2026-10-18 event (21 outputs on average, 17 Mbps in): all processes together
   averaged 1.07 vCPU, peaked at 2.40, and the host used 1.15 GB of RAM on average,
   1.28 GB at the peak.

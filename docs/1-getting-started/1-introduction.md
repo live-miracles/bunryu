@@ -56,7 +56,7 @@ audio track re-encodes the audio, which roughly doubles that per output unless
 outputs share the encode. A custom encoding (`720p`, `1080p`, `vertical_rotate`, …) makes FFmpeg
 transcode the video, which is CPU-intensive: on a GCP `n2` with 50 fps feeds about 2
 vCPUs for `720p` and 1.2 for `vertical_rotate` from a 1080p input, and `1080p` from a
-4K input does not keep up on 4 vCPUs. See [Sizing a server](4-sizing.md) for
+4K input needs about 6 and does not keep up on 4. See [Sizing a server](4-sizing.md) for
 the measured costs and example VM sizes. Outputs on the same pipeline with the same
 encode (the same video encoding and the same single audio track) share **one**
 [shared encode](../2-usage/2-outputs.md#shared-encodes), so CPU is counted once per
