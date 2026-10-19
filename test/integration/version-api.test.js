@@ -266,6 +266,27 @@ describe('Version API integration', () => {
         );
     });
 
+    test('reports the CPU model with padding and repeated spaces collapsed', async (t) => {
+        t.mock.method(os, 'cpus', () => [
+            { model: '  Intel(R) Xeon(R)   CPU @ 2.20GHz ' },
+            { model: 'Intel(R) Xeon(R) CPU @ 2.20GHz' },
+        ]);
+        const { get } = loadHarness(t);
+
+        const res = await get();
+        assert.equal(res.status, 200);
+        assert.equal(res.body.cpuModel, 'Intel(R) Xeon(R) CPU @ 2.20GHz');
+    });
+
+    test('a platform that reports no CPUs gets "unknown" instead of an error', async (t) => {
+        t.mock.method(os, 'cpus', () => []);
+        const { get } = loadHarness(t);
+
+        const res = await get();
+        assert.equal(res.status, 200);
+        assert.equal(res.body.cpuModel, 'unknown');
+    });
+
     test('multi-line ffmpeg/git output only uses the first line', async (t) => {
         const { get } = loadHarness(t, {
             execImpl: (cmd, _args, _opts, cb) => {

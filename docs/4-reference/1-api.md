@@ -13,7 +13,7 @@ RTMP input → RTMP pull), so there is no pull-method setting.
 | GET | `/api/config` | Pipelines, outputs, encodings, stream keys, server name |
 | GET | `/api/health` | Live input/output status snapshot (refreshed every 5s) |
 | GET | `/api/rejected-publishes` | Recent publish attempts rejected for a key with no pipeline (label only, never the secret) |
-| GET | `/api/version` | App version / build info |
+| GET | `/api/version` | App, SRS, relay, FFmpeg and Node versions, git commit, OS, kernel and CPU model (cached after the first request) |
 | GET | `/api/metrics/system` | Host CPU, RAM, disk and network stats |
 | GET | `/api/srs-logs` | Recent SRS up/down events and log tails for SRS, the dashboard, and the relay |
 | GET | `/api/ready` | Unauthenticated readiness check used by systemd before starting SRS |

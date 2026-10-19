@@ -323,6 +323,9 @@ export function openSettings(): void {
         (document.getElementById('v-node') as HTMLElement).textContent = v.node;
         (document.getElementById('v-os') as HTMLElement).textContent = v.os;
         (document.getElementById('v-kernel') as HTMLElement).textContent = v.kernel;
+        // Shown after the core count; omitted when the platform doesn't report a model.
+        (document.getElementById('v-cpu-model') as HTMLElement).textContent =
+            v.cpuModel && v.cpuModel !== 'unknown' ? ` · ${v.cpuModel}` : '';
     });
 }
 

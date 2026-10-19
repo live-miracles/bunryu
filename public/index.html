@@ -14,7 +14,7 @@
   </head>
   <body class="bg-base-100 text-base-content flex min-h-screen flex-col lg:h-screen">
     <!-- Navbar -->
-    <div class="navbar bg-base-100 border-base-content/10 shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30">
+    <div class="navbar bg-base-100 border-base-content/10 shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:flex-wrap">
       <div class="flex flex-1 items-center gap-3">
         <button class="btn btn-ghost px-2 text-xl font-bold" id="server-name-display" onclick="selectPipeline(null)">Bunryu</button>
         <button
@@ -105,9 +105,8 @@
           Saving
         </div>
       </div>
-      <div class="flex-none max-lg:hidden">
-        <div class="divide-base-content/15 flex items-center divide-x">
-          <span class="px-3 font-mono text-sm tabular-nums" id="navbar-uptime">Up —</span>
+      <div class="flex-none max-lg:order-last max-lg:w-full">
+        <div class="divide-base-content/15 flex items-center divide-x max-lg:flex-wrap max-lg:justify-center max-lg:*:px-1.5 max-lg:*:text-[11px]">
           <span class="px-3 font-mono text-sm tabular-nums" id="navbar-cpu-value">CPU —</span>
           <span class="px-3 font-mono text-sm tabular-nums" id="navbar-ram-value">RAM —</span>
           <span class="px-3 font-mono text-sm tabular-nums" id="navbar-disk-value">Disk —</span>
@@ -366,7 +365,7 @@
       </div>
 
       <!-- Middle: Pipeline info -->
-      <div class="bg-base-200 mt-4 flex hidden scroll-mt-16 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow" id="pipe-info-col">
+      <div class="bg-base-200 mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow" id="pipe-info-col">
         <div class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-xl px-4 pt-4 pb-3 text-xl font-bold">
           <div class="flex min-w-0 items-center gap-2">
             <span class="truncate" id="pipe-name"></span>
@@ -918,11 +917,11 @@
       </div>
 
       <!-- Overview: all pipelines table (spans middle + right columns) -->
-      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="overview-col"></div>
-      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="hosts-col"></div>
+      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="overview-col"></div>
+      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="hosts-col"></div>
 
       <!-- Server Logs (spans middle + right columns) -->
-      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="srs-logs-col">
+      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="srs-logs-col">
         <div class="flex items-center justify-between gap-3">
           <h2 class="text-xl font-bold">Server Logs</h2>
           <button
@@ -941,7 +940,7 @@
       </div>
 
       <!-- Settings (spans middle + right columns) -->
-      <div class="bg-base-200 mt-4 hidden scroll-mt-16 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="settings-col">
+      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="settings-col">
         <div class="mx-auto max-w-4xl space-y-3">
           <h2 class="text-xl font-bold">Settings</h2>
 
@@ -953,6 +952,8 @@
             <span class="opacity-60">SRS</span><span id="v-srs">—</span> <span class="opacity-60">Relay</span><span id="v-relay">—</span>
             <span class="opacity-60">FFmpeg</span><span id="v-ffmpeg">—</span> <span class="opacity-60">Node</span><span id="v-node">—</span>
             <span class="opacity-60">OS</span><span id="v-os">—</span> <span class="opacity-60">Kernel</span><span id="v-kernel">—</span>
+            <span class="opacity-60">CPU</span><span><span id="v-cpu">—</span><span id="v-cpu-model"></span></span> <span class="opacity-60">RAM</span
+            ><span id="v-ram">—</span> <span class="opacity-60">Disk</span><span id="v-disk">—</span>
           </div>
 
           <!-- Server Name + Public Host -->

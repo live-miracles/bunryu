@@ -216,6 +216,7 @@ export const getVersion = () =>
         node: string;
         os: string;
         kernel: string;
+        cpuModel: string;
     }>('/api/version');
 
 export const changePassword = (currentPassword: string, newPassword: string) =>

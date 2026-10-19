@@ -1,4 +1,4 @@
-import { setInnerText, formatBitrate, formatBytesCompact } from '../core/utils.js';
+import { setInnerText, formatBitrate, formatBytes } from '../core/utils.js';
 import { state } from '../core/state.js';
 import type { PipelineView } from '../types.js';
 import {
@@ -7,7 +7,6 @@ import {
     stopCurrentPreview,
     syncPreviewControls,
 } from './preview.js';
-import { formatUptime } from './input-stats-view.js';
 
 type MetricsViewDeps = {
     setMetricSeverity: (id: string, value: number | null) => void;
@@ -19,26 +18,16 @@ export function renderMetrics(deps: MetricsViewDeps): void {
     const ram = metrics.ram ?? null;
     const disk = metrics.disk ?? null;
     const net = metrics.net ?? null;
-    const uptimeSecs = metrics.uptimeSeconds ?? null;
     const cpuPercent = cpu ? cpu.percent : null;
     const ramPercent = ram ? Math.round((ram.usedBytes / ram.totalBytes) * 100) : null;
     const diskPercent = disk ? Math.round((disk.usedBytes / disk.totalBytes) * 100) : null;
 
-    setInnerText(
-        'navbar-uptime',
-        uptimeSecs !== null ? `Up ${formatUptime(uptimeSecs * 1000)}` : 'Up —',
-    );
-    setInnerText('navbar-cpu-value', cpu ? `${cpu.cores}c CPU: ${cpuPercent}%` : 'CPU —');
+    // The navbar shows only live usage; the machine's size lives in Settings.
+    setInnerText('navbar-cpu-value', cpu ? `CPU ${cpuPercent}%` : 'CPU —');
     deps.setMetricSeverity('navbar-cpu-value', cpuPercent);
-    setInnerText(
-        'navbar-ram-value',
-        ram ? `${formatBytesCompact(ram.totalBytes)} RAM: ${ramPercent}%` : 'RAM —',
-    );
+    setInnerText('navbar-ram-value', ram ? `RAM ${ramPercent}%` : 'RAM —');
     deps.setMetricSeverity('navbar-ram-value', ramPercent);
-    setInnerText(
-        'navbar-disk-value',
-        disk ? `${formatBytesCompact(disk.totalBytes)} Disk: ${diskPercent}%` : 'Disk —',
-    );
+    setInnerText('navbar-disk-value', disk ? `Disk ${diskPercent}%` : 'Disk —');
     deps.setMetricSeverity('navbar-disk-value', diskPercent);
     setInnerText(
         'navbar-net-rx',
@@ -48,6 +37,10 @@ export function renderMetrics(deps: MetricsViewDeps): void {
         'navbar-net-tx',
         net ? `↑ ${formatBitrate((net.txBytesPerSec * 8) / 1000)}` : '↑ —',
     );
+
+    setInnerText('v-cpu', cpu ? `${cpu.cores} cores` : '—');
+    setInnerText('v-ram', ram ? formatBytes(ram.totalBytes) : '—');
+    setInnerText('v-disk', disk ? formatBytes(disk.totalBytes) : '—');
 }
 
 export function renderPreview(pipeline: PipelineView): void {

@@ -1645,7 +1645,7 @@ function renderOverview(): void {
         <table class="table table-sm">
             <thead>
                 <tr>
-                    <th></th>
+                    <th class="font-mono text-xs font-normal opacity-60" title="How long the dashboard process has been running">${m.uptimeSeconds != null ? `Up ${formatUptime(m.uptimeSeconds * 1000)}` : ''}</th>
                     <th>Node</th>
                     <th>SRS</th>
                     <th>Relay</th>

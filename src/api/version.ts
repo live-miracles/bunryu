@@ -44,6 +44,14 @@ function readOsRelease(): string {
     }
 }
 
+function readCpuModel(): string {
+    try {
+        return os.cpus()[0]?.model.replace(/\s+/g, ' ').trim() || 'unknown';
+    } catch {
+        return 'unknown';
+    }
+}
+
 async function getSrsVersion(): Promise<string> {
     const srsApiUrl = readSrsConfigValues().apiUrl;
     try {
@@ -79,6 +87,7 @@ interface VersionResult {
     node: string;
     os: string;
     kernel: string;
+    cpuModel: string;
 }
 
 let cached: VersionResult | null = null;
@@ -108,6 +117,7 @@ export function registerVersionApi(app: Express): void {
             node: process.version,
             os: readOsRelease(),
             kernel: os.release(),
+            cpuModel: readCpuModel(),
         };
         return res.json(cached);
     });
