@@ -72,7 +72,7 @@ describe('output stopped after repeated failed attempts', () => {
 
         assert.match(
             html,
-            /<span class="text-xs text-error truncate">Stopped after 5 failed attempts\. Last error: Connection refused<\/span>/,
+            /<span class="text-xs text-error truncate[^"]*" title="[^"]*">Stopped after 5 failed attempts\. Last error: Connection refused<\/span>/,
         );
         assert.match(html, /text-error[^>]*data-action="error-info"/);
     });
@@ -89,7 +89,7 @@ describe('output stopped after repeated failed attempts', () => {
 // same kind of line: a warning icon and the message, with the full text in the
 // title, and any of them tints the card.
 const warningLines = (html) =>
-    [...html.matchAll(/<span class="text-xs text-warning truncate" title="([^"]*)">/g)].map(
+    [...html.matchAll(/<span class="text-xs text-warning truncate[^"]*" title="([^"]*)">/g)].map(
         (m) => m[1],
     );
 const tinted = (html) => /data-output-card="[^"]*" style="background:color-mix/.test(html);
@@ -173,6 +173,99 @@ describe('card layout and controls', () => {
         assert.match(
             html,
             /data-action="delete"[^>]*title="Delete output" aria-label="Delete output"/,
+        );
+    });
+});
+
+describe('narrow screens', () => {
+    test('a long output name truncates inside the card instead of overflowing it', () => {
+        const html = render({ name: 'Long_Name_For_A_Very_Long_Destination_Output' });
+        assert.match(html, /class="js-output-drag-handle[^"]*\bmin-w-0\b[^"]*\btruncate\b/);
+        assert.match(
+            html,
+            /<div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">/,
+        );
+    });
+
+    test('warning lines wrap on a phone, where there is no hover to read the full text', () => {
+        const html = render({ warningReason: 'High memory usage' });
+        assert.match(html, /text-warning truncate max-lg:whitespace-normal/);
+    });
+});
+
+describe('error line', () => {
+    const message =
+        'Stopped after 22 failed attempts. Last error: Error opening output files: Input/output error';
+    const errored = () =>
+        render({ desiredState: 'stopped', status: 'stopped', lastError: message, lastErrorAt: 1 });
+
+    test('carries the full text in its title, since the line is truncated', () => {
+        assert.match(
+            errored(),
+            /<span class="text-xs text-error truncate[^"]*" title="Stopped after 22 failed attempts\. Last error: Error opening output files: Input\/output error">/,
+        );
+    });
+
+    test('wraps on a phone, where there is no hover to read the title', () => {
+        assert.match(errored(), /text-error truncate max-lg:whitespace-normal/);
+    });
+
+    test('escapes markup in the title', () => {
+        const html = render({ lastError: 'bad "quote" <b>', lastErrorAt: 1 });
+        assert.match(html, /title="bad &quot;quote&quot; &lt;b&gt;"/);
+    });
+});
+
+describe('card tint follows the most severe problem', () => {
+    const tintOf = (html) =>
+        /data-output-card="[^"]*" style="background:color-mix\(in oklch, var\(--color-(error|warning)\)/.exec(
+            html,
+        )?.[1] ?? null;
+    const erroredCard = (over = {}) =>
+        render({
+            desiredState: 'stopped',
+            status: 'stopped',
+            lastError: 'Stopped after 5 failed attempts. Last error: Connection refused',
+            lastErrorAt: 1,
+            ...over,
+        });
+
+    test('a current error tints the card red', () => {
+        assert.equal(tintOf(erroredCard()), 'error');
+    });
+
+    test('a crash being retried tints it red', () => {
+        const html = render({
+            lastError: 'ffmpeg exited with code 1',
+            lastErrorAt: 1,
+            failures: 2,
+        });
+        assert.equal(tintOf(html), 'error');
+    });
+
+    test('an error status with no error text still tints it red', () => {
+        const html = renderOutputCard(output({}), rtmpInput, new Map(), {
+            ...deps,
+            outStatus: () => 'error',
+        });
+        assert.equal(tintOf(html), 'error');
+    });
+
+    test('red wins over warnings, which stay visible inside the card', () => {
+        const html = erroredCard({ audioEncoding: '0' });
+        assert.equal(tintOf(html), 'error');
+        assert.match(warningLines(html).join('\n'), /re-encodes the audio/);
+    });
+
+    test('warnings alone tint it yellow', () => {
+        assert.equal(tintOf(render({ warningReason: 'High memory usage' })), 'warning');
+    });
+
+    test('a plainly stopped or healthy output is not tinted', () => {
+        assert.equal(tintOf(render({})), null);
+        assert.equal(
+            tintOf(render({ desiredState: 'stopped', status: 'stopped', lastError: null })),
+            null,
         );
     });
 });

@@ -181,10 +181,10 @@ export function renderOutputCard(
     // A stopped output only has a lastError when it was stopped after repeated
     // failed attempts (the server clears it when the output starts again).
     const lastErrorHtml = lastErrorLine
-        ? `<div class="flex items-center gap-2 pl-2 mt-0.5 min-w-0">
+        ? `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
                 ${retryBadge}
                 <span class="text-xs text-error shrink-0">${lastErrorTs}</span>
-                <span class="text-xs text-error truncate">${escapeHtml(lastErrorLine)}</span>
+                <span class="text-xs text-error truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>
            </div>`
         : '';
     // Red only while the latest record is a crash or a stop after repeated failures;
@@ -195,7 +195,7 @@ export function renderOutputCard(
         : '';
     // Every warning, whether reported by the running output, a destination shared
     // with another output or advice about the encoding settings, is one line of
-    // the same style, and any of them tints the card.
+    // the same style.
     const otherDupRefs = (output.url ? (dupUrls.get(output.url) ?? []) : []).filter(
         (ref) => ref.outputId !== output.id,
     );
@@ -216,28 +216,35 @@ export function renderOutputCard(
     ];
     const warningsHtml = warnings
         .map(
-            (message) => `<div class="flex items-center gap-2 pl-2 mt-0.5 min-w-0">
+            (
+                message,
+            ) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
-                <span class="text-xs text-warning truncate" title="${escapeHtml(message)}">${escapeHtml(message)}</span>
+                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>
            </div>`,
         )
         .join('');
-    const warningTint = warningsHtml
-        ? 'style="background:color-mix(in oklch, var(--color-warning) 15%, transparent)"'
+    // The card takes the colour of its most severe current problem: red for an
+    // error (a crash being retried, or a stop after repeated failures), yellow
+    // for warnings alone, none otherwise.
+    const tintColor =
+        status === 'error' || lastErrorLine ? 'error' : warningsHtml ? 'warning' : null;
+    const cardTint = tintColor
+        ? `style="background:color-mix(in oklch, var(--color-${tintColor}) 15%, transparent)"`
         : '';
     const isPending = deps.pendingOutputs.has(output.id);
 
     return `
-    <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-output-card="${output.id}" ${warningTint}>
+    <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-output-card="${output.id}" ${cardTint}>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <div class="flex items-center gap-2 shrink-0 font-semibold">
-                <div aria-label="status" class="status status-lg mx-1" style="background-color: ${statusHex}"></div>
-                <button class="btn btn-xs btn-square ${isStopped ? 'btn-primary' : 'btn-error btn-outline'}"
+            <div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">
+                <div aria-label="status" class="status status-lg mx-1 shrink-0" style="background-color: ${statusHex}"></div>
+                <button class="btn btn-xs btn-square shrink-0 ${isStopped ? 'btn-primary' : 'btn-error btn-outline'}"
                     data-action="${isStopped ? 'start' : 'stop'}" data-out-id="${output.id}"
                     title="${isStopped ? 'Start' : 'Stop'}" aria-label="${isStopped ? 'Start' : 'Stop'}"${isPending ? ' disabled' : ''}>
                     ${isStopped ? ICON_PLAY : ICON_STOP}
                 </button>
-                <span class="js-output-drag-handle cursor-grab" draggable="true" title="${escapeHtml(output.name)}">${escapeHtml(formatOutputName(output.name))}</span>
+                <span class="js-output-drag-handle cursor-grab min-w-0 truncate" draggable="true" title="${escapeHtml(output.name)}">${escapeHtml(formatOutputName(output.name))}</span>
             </div>
             ${badges.join('')}
             ${inlineSink}
