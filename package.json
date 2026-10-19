@@ -43,7 +43,7 @@
         "@types/compression": "^1.8.1",
         "@types/express": "^5.0.6",
         "@types/node": "^25.7.0",
-        "concurrently": "^9.2.1",
+        "concurrently": "^10.0.6",
         "daisyui": "5.5.14",
         "eslint": "^10.13.0",
         "eslint-config-prettier": "^10.1.8",
