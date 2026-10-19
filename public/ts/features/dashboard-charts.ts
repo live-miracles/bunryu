@@ -87,7 +87,7 @@ export function drawChart(
 
     if (values.length < 2) return;
 
-    // X axis — labels at round-minute boundaries
+    // X axis — grid at round-minute boundaries, labels every 5 minutes
     const firstTs = samples[0].ts;
     const lastTs = samples[samples.length - 1].ts;
     const spanMs = lastTs - firstTs;
@@ -108,6 +108,8 @@ export function drawChart(
         ctx.lineWidth = 1;
         ctx.stroke();
         ctx.setLineDash([]);
+        // The grid stays at every step; only every 5th minute gets a label.
+        if (new Date(ts).getMinutes() % 5 !== 0) continue;
         ctx.fillStyle = labelColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
