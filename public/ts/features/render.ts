@@ -33,6 +33,7 @@ import type {
 } from '../types.js';
 import { updateLayoutOrder, updatePipeline, updatePipelineGroups } from '../core/api.js';
 import { dupTooltip, formatOutputName, renderOutputCard, type DupRef } from './output-card.js';
+import { outputStatusCounts } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
 import { renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
@@ -859,17 +860,8 @@ function renderPipelineList(): void {
     const inputsWarn = state.pipelines.filter((p) => inputStatus(p.input) === 'warn').length;
     const inputsFailed = state.pipelines.filter((p) => inputStatus(p.input) === 'error').length;
     const totalOutputs = state.pipelines.reduce((s, p) => s + p.outs.length, 0);
-    const outputsOn = state.pipelines.reduce(
-        (s, p) => s + p.outs.filter((o) => outStatus(o, p.input) === 'good').length,
-        0,
-    );
-    const outputsWarn = state.pipelines.reduce(
-        (s, p) => s + p.outs.filter((o) => outStatus(o, p.input) === 'warn').length,
-        0,
-    );
-    const outputsFailed = state.pipelines.reduce(
-        (s, p) => s + p.outs.filter((o) => outStatus(o, p.input) === 'error').length,
-        0,
+    const outputCounts = outputStatusCounts(
+        state.pipelines.flatMap((p) => p.outs.map((o) => outStatus(o, p.input))),
     );
     const outputsOff = state.pipelines.reduce(
         (s, p) => s + p.outs.filter((o) => o.desiredState === 'stopped').length,
@@ -886,9 +878,9 @@ function renderPipelineList(): void {
     );
     setInnerText('out-cnt', totalOutputs);
     setInnerText('out-cnt-label', totalOutputs === 1 ? 'Output' : 'Outputs');
-    setBadgeCount('out-oks', outputsOn - outputsWarn);
-    setBadgeCount('out-warns', outputsWarn);
-    setBadgeCount('out-errors', outputsFailed);
+    setBadgeCount('out-oks', outputCounts.running);
+    setBadgeCount('out-warns', outputCounts.warnings);
+    setBadgeCount('out-errors', outputCounts.errors);
     setBadgeCount('out-offs', outputsOff);
 
     const selectedId = getUrlParam('p');
