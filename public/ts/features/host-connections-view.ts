@@ -1,5 +1,11 @@
 import { state } from '../core/state.js';
-import { escapeHtml, fmtMs, formatClockTime, formatLocalTime } from '../core/utils.js';
+import {
+    escapeHtml,
+    fmtMs,
+    formatClockTime,
+    formatLocalTime,
+    setHtmlKeepScroll,
+} from '../core/utils.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, drawProbeChart } from './dashboard-charts.js';
 
 export function renderHostConnectionsOverview(): void {
@@ -98,7 +104,9 @@ export function renderHostConnectionsOverview(): void {
             : `<tr><td colspan="9" class="py-4 text-center opacity-50">No probe history loaded yet — click refresh.</td></tr>`;
     const cards = rendered.map((r) => r.card).join('');
 
-    hostsCol.innerHTML = `
+    setHtmlKeepScroll(
+        hostsCol,
+        `
         <div class="mb-4 flex items-center justify-between gap-3">
             <div class="min-w-0 text-sm">
                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -150,7 +158,8 @@ export function renderHostConnectionsOverview(): void {
                 <tbody>${rows}</tbody>
             </table>
         </div>
-        <div class="mt-6 grid grid-cols-1 gap-4">${cards}</div>`;
+        <div class="mt-6 grid grid-cols-1 gap-4">${cards}</div>`,
+    );
 
     for (const entry of targets) {
         const chartSamples = entry.history.filter(

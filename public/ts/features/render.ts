@@ -10,6 +10,7 @@ import {
     fmtMs,
     fmtMbpsValue,
     formatClockTime,
+    setHtmlKeepScroll,
     LOW_BITRATE_KBPS,
     STATUS_COLOR_GOOD,
     STATUS_COLOR_WARN,
@@ -1716,7 +1717,9 @@ function renderOverview(): void {
             </table>
         </div>`;
 
-    overviewEl.innerHTML = `
+    setHtmlKeepScroll(
+        overviewEl,
+        `
         ${chartsHtml}
         ${systemUsageHtml}
         ${filterChips}
@@ -1734,7 +1737,8 @@ function renderOverview(): void {
                 ${thead(['Pipeline · Output', 'Status', 'Issues', 'Uptime', 'Bitrate', 'CPU', 'RAM', 'Type', 'Stream Specification'])}
                 <tbody>${outputRows}</tbody>
             </table>
-        </div>`;
+        </div>`,
+    );
 
     const fmtPct = (v: number) => `${Math.round(v)}%`;
     drawChart('chart-cpu', chartSamples, (s) => s.cpu, 100, '#3b82f6', fmtPct);
@@ -1967,16 +1971,19 @@ function renderPipelineInfo(selectedId: string | null): void {
         });
     }
     if (bondingLegs) {
-        bondingLegs.innerHTML = renderBondedLegs(pipeline.srtBonding.input, {
-            formatCompactCount,
-            fmtMs,
-            fmtMbpsValue,
-            fmtLossRexmitDrop,
-            inputAggregateStatsAreDropOnly,
-            legHealthColor,
-            legHealthLabel,
-            renderCompactMetaRow,
-        });
+        setHtmlKeepScroll(
+            bondingLegs,
+            renderBondedLegs(pipeline.srtBonding.input, {
+                formatCompactCount,
+                fmtMs,
+                fmtMbpsValue,
+                fmtLossRexmitDrop,
+                inputAggregateStatsAreDropOnly,
+                legHealthColor,
+                legHealthLabel,
+                renderCompactMetaRow,
+            }),
+        );
     }
     if (bondingErrWrap && bondingErr && bondingErrTs) {
         const msg = pipeline.srtBonding.lastError;

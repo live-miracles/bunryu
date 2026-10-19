@@ -118,6 +118,20 @@ export function maskStreamKey(key: string | null | undefined): string {
     return `${name}_${secret.slice(0, 2)}...${secret.slice(-2)}`;
 }
 
+// Replaces el's HTML on a periodic re-render without losing the horizontal
+// scroll position of its tables (mobile). Scrollers are matched by index; if
+// their number changed (a section appeared or disappeared) nothing is restored.
+export function setHtmlKeepScroll(el: HTMLElement, html: string): void {
+    const before = Array.from(el.querySelectorAll<HTMLElement>('.overflow-x-auto'));
+    const positions = before.map((scroller) => scroller.scrollLeft);
+    el.innerHTML = html;
+    const after = Array.from(el.querySelectorAll<HTMLElement>('.overflow-x-auto'));
+    if (after.length !== positions.length) return;
+    after.forEach((scroller, i) => {
+        scroller.scrollLeft = positions[i];
+    });
+}
+
 // Disables a button and shows a spinner while an async action runs, so the
 // user gets immediate feedback even when the server takes a moment to respond.
 export async function withBusy(
