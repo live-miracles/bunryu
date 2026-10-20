@@ -1,5 +1,6 @@
-# Quick start: `docker compose up -d`, then open http://localhost:8080 and
-# log in with the password printed by `docker compose logs bunryu`.
+# Quick start: `BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' docker compose up -d`,
+# then open http://localhost:8080 and log in with that password. It is only
+# needed on the first start (an empty /data volume); after that the volume has it.
 services:
     bunryu:
         build: .
@@ -10,6 +11,9 @@ services:
             - '21935:21935/tcp' # RTMP input
             - '10080:10080/udp' # SRT input
             - '10081:10081/udp' # SRT bonding input
+        environment:
+            # Initial dashboard password (only seeds an empty database).
+            BUNRYU_DASHBOARD_PASSWORD: ${BUNRYU_DASHBOARD_PASSWORD:-}
         volumes:
             - bunryu-data:/data
         # Leaves time for the control plane to stop every FFmpeg output cleanly.

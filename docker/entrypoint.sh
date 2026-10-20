@@ -33,6 +33,19 @@ prepare_data() {
     chmod 750 "$DATA_DIR"
     cd "$DATA_DIR" || exit 1
 
+    # Dashboard password: only seeds an empty database (see the Authentication
+    # section of docs/3-operations/1-security.md), so it is required exactly when
+    # there is no database yet. It comes from BUNRYU_DASHBOARD_PASSWORD, else from
+    # the bunryu.json in the volume; it is never generated and never logged.
+    local password="${BUNRYU_DASHBOARD_PASSWORD:-}"
+    if [[ -z "$password" && -f bunryu.json ]]; then
+        password="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' bunryu.json)"
+    fi
+    if [[ -z "$password" && ! -s db.sqlite ]]; then
+        log "ERROR: no initial dashboard password; set BUNRYU_DASHBOARD_PASSWORD (e.g. in compose.yaml or docker run -e) and start again"
+        exit 1
+    fi
+
     # SRT passphrase: generated on first start, kept afterwards. The configs are
     # refreshed from the image on every start (like a reinstall) so an image
     # upgrade picks up config changes; only the passphrase carries over.
@@ -57,17 +70,6 @@ prepare_data() {
     node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
         goryu.json "$relay_pass"
 
-    # Dashboard password: only seeds an empty database (see the Authentication
-    # section of docs/3-operations/1-security.md); generated once and kept in
-    # bunryu.json.
-    local password=""
-    if [[ -f bunryu.json ]]; then
-        password="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' bunryu.json)"
-    fi
-    if [[ -z "$password" ]]; then
-        password="$(random_secret)"
-        log "generated dashboard password: $password (stored in $DATA_DIR/bunryu.json; change it in Settings after logging in)"
-    fi
     node -e '
 const fs = require("fs");
 const [p, pass] = process.argv.slice(1);
@@ -84,8 +86,8 @@ const c = {
         socket_warmup_ms: 15000,
         socket_grace_ms: 30000,
     },
-    dashboard_password: pass,
 };
+if (pass) c.dashboard_password = pass;
 fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n", { mode: 0o600 });
 ' bunryu.json "$password"
     chmod 600 bunryu.json

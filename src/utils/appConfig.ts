@@ -45,7 +45,12 @@ interface RawAppConfig {
     output_watchdog?: unknown;
 }
 
-const CONFIG_PATH = path.join(process.cwd(), 'bunryu.json');
+// BUNRYU_CONFIG moves the file out of the app root: the installer keeps it in
+// /etc/bunryu, outside the git checkout that every update resets. Unset by
+// default, so a dev checkout reads ./bunryu.json.
+const CONFIG_PATH = process.env.BUNRYU_CONFIG
+    ? path.resolve(process.env.BUNRYU_CONFIG)
+    : path.join(process.cwd(), 'bunryu.json');
 const DEFAULT_WATCHDOG_CONFIG: OutputWatchdogConfig = {
     warmupMs: 90_000,
     stallMs: 45_000,
@@ -166,7 +171,8 @@ export function outputMemoryLimitBytes(
 export function readAppConfig(): AppConfig {
     if (cachedConfig) return cachedConfig;
 
-    const configDir = process.cwd();
+    // Relative paths in the file resolve against the file's own directory.
+    const configDir = path.dirname(CONFIG_PATH);
     let raw: RawAppConfig;
     try {
         raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));

@@ -7,6 +7,12 @@
 #   sudo git clone https://github.com/live-miracles/bunryu /opt/bunryu
 #   sudo bash /opt/bunryu/scripts/server-install.sh
 #
+# A fresh install (no database yet, or one being wiped) needs the initial
+# dashboard password. Pass it as BUNRYU_DASHBOARD_PASSWORD (sudo only keeps it
+# when set on the command line) or put {"dashboard_password": "..."} in
+# /etc/bunryu/bunryu.json beforehand. The installer never generates or prints one.
+#   sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash scripts/server-install.sh
+#
 # Optional:
 #   REPO_URL=https://github.com/your-fork/bunryu sudo bash scripts/server-install.sh
 set -euo pipefail
@@ -126,6 +132,43 @@ else
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
     echo "Installed: $(node --version)"
+fi
+
+# Initial dashboard password and database decision, settled before the long
+# downloads. The password only seeds an empty database, so it is required exactly
+# when this run leaves the database empty (first install, or a wipe); a kept
+# database needs none. It comes from BUNRYU_DASHBOARD_PASSWORD, else from the
+# deployed $CONF_DIR/bunryu.json (outside the git checkout every update resets).
+# It is never generated and never printed.
+DB_FILE="$DATA_DIR/db.sqlite"
+APP_CONFIG="$CONF_DIR/bunryu.json"
+DASHBOARD_PASSWORD="${BUNRYU_DASHBOARD_PASSWORD:-}"
+if [[ -z "$DASHBOARD_PASSWORD" && -f "$APP_CONFIG" ]]; then
+    DASHBOARD_PASSWORD="$(node -e 'const fs=require("fs");try{const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' "$APP_CONFIG")"
+fi
+fresh_db=yes
+wipe_db=no
+if [[ -s "$DB_FILE" ]]; then
+    case "${WIPE_DB:-}" in
+        y | Y) wipe_db=yes ;;
+        n | N) wipe_db=no ;;
+        *)
+            if [[ "$ASSUME_YES" == yes ]]; then
+                echo "Existing database found at $DB_FILE. Preserving it (-y/--yes)."
+            elif [[ -t 0 ]]; then
+                read -rp "Existing database found at $DB_FILE. Preserve it? [Y/n] " reply
+                [[ "$reply" == "n" || "$reply" == "N" ]] && wipe_db=yes
+            fi
+            ;;
+    esac
+    [[ "$wipe_db" == "yes" ]] || fresh_db=no
+fi
+if [[ "$fresh_db" == "yes" && -z "$DASHBOARD_PASSWORD" ]]; then
+    echo "ERROR: no initial dashboard password. This install starts with an empty database." >&2
+    echo "  Nothing has been changed yet; choose a password and re-run:" >&2
+    echo "    sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash $0" >&2
+    echo "  or put {\"dashboard_password\": \"...\"} in $APP_CONFIG first." >&2
+    exit 1
 fi
 
 step "3/9 FFmpeg $FFMPEG_VERSION"
@@ -268,20 +311,11 @@ node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=fs.
     "$CONF_DIR/srs.conf" "$SRS_SRT_PASSPHRASE"
 node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
     "$CONF_DIR/goryu.json" "$RELAY_SRT_PASSPHRASE"
-# Dashboard password: bunryu.json's dashboard_password only seeds a database
-# that has no password yet; the repo's bunryu.json carries none, so generate
-# one on first install and keep the deployed value on reinstall.
-DASHBOARD_PASSWORD=""
-if [[ -f "$APP_DIR/bunryu.json" ]]; then
-    DASHBOARD_PASSWORD="$(node -e 'const fs=require("fs");try{const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' "$APP_DIR/bunryu.json")"
-fi
-if [[ -n "$DASHBOARD_PASSWORD" ]]; then
-    echo "Dashboard password (bunryu.json): keeping existing value"
-else
-    DASHBOARD_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
-    echo "Dashboard password (bunryu.json): generated new secret"
-fi
-cat > "$APP_DIR/bunryu.json" << EOF
+# App config, next to the other deployed configs and outside the git checkout.
+# dashboard_password was settled above; a kept database may have none. Written
+# via node for the same reason as the passphrases above: a hand-typed password
+# containing quotes or backslashes must not corrupt the JSON.
+cat > "$APP_CONFIG" << EOF
 {
     "port": 8080,
     "database_path": "$DATA_DIR/db.sqlite",
@@ -297,51 +331,34 @@ cat > "$APP_DIR/bunryu.json" << EOF
     }
 }
 EOF
-# Written via node for the same reason as the passphrases above: a hand-typed
-# password containing quotes or backslashes must not corrupt the JSON.
-node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.dashboard_password=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
-    "$APP_DIR/bunryu.json" "$DASHBOARD_PASSWORD"
-echo "Config: refreshed $APP_DIR/bunryu.json"
+if [[ -n "$DASHBOARD_PASSWORD" ]]; then
+    node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.dashboard_password=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
+        "$APP_CONFIG" "$DASHBOARD_PASSWORD"
+fi
+echo "Config: refreshed $APP_CONFIG"
 # Database. We don't run data migrations, so a db.sqlite left over from an older
-# version could be schema-incompatible and cause hard-to-debug issues.
-DB_FILE="$DATA_DIR/db.sqlite"
-fresh_db=yes
-if [[ -s "$DB_FILE" ]]; then
-    wipe_db=no
-    case "${WIPE_DB:-}" in
-        y | Y) wipe_db=yes ;;
-        n | N) wipe_db=no ;;
-        *)
-            if [[ "$ASSUME_YES" == yes ]]; then
-                echo "Existing database found at $DB_FILE. Preserving it (-y/--yes)."
-            elif [[ -t 0 ]]; then
-                read -rp "Existing database found at $DB_FILE. Preserve it? [Y/n] " reply
-                [[ "$reply" == "n" || "$reply" == "N" ]] && wipe_db=yes
-            fi
-            ;;
-    esac
-    if [[ "$wipe_db" == "yes" ]]; then
-        # Keep a copy (same owner-only mode: it holds the stream keys and
-        # destination URLs) so the pipelines and outputs can be re-created.
-        DB_BACKUP="$DB_FILE.$(date +%Y%m%d-%H%M%S).bak"
-        cp -p "$DB_FILE" "$DB_BACKUP"
-        rm -f "$DB_FILE"
-        echo "Database wiped (backup: $DB_BACKUP); defaults will be re-seeded on first boot."
-    else
-        fresh_db=no
-        echo "Keeping existing database."
-    fi
+# version could be schema-incompatible and cause hard-to-debug issues. Whether to
+# wipe it was decided before the downloads.
+if [[ "$wipe_db" == "yes" ]]; then
+    # Keep a copy (same owner-only mode: it holds the stream keys and
+    # destination URLs) so the pipelines and outputs can be re-created.
+    DB_BACKUP="$DB_FILE.$(date +%Y%m%d-%H%M%S).bak"
+    cp -p "$DB_FILE" "$DB_BACKUP"
+    rm -f "$DB_FILE"
+    echo "Database wiped (backup: $DB_BACKUP); defaults will be re-seeded on first boot."
+elif [[ "$fresh_db" == "no" ]]; then
+    echo "Keeping existing database."
 fi
 touch "$DB_FILE"
-chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json" "$APP_DIR/bunryu.json" "$DB_FILE"
+chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json" "$APP_CONFIG" "$DB_FILE"
 # bunryu.json now holds the dashboard password in plain text. The database holds
 # the password hash, stream keys and destination URLs (platform stream keys), and
 # the two configs hold the SRT passphrase: nothing here is for other local users.
-chmod 600 "$APP_DIR/bunryu.json" "$DB_FILE"
+chmod 600 "$APP_CONFIG" "$DB_FILE"
 chmod 640 "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json"
 chmod 750 "$DATA_DIR" "$CONF_DIR"
 echo "Config: $CONF_DIR/srs.conf"
-echo "App config: $APP_DIR/bunryu.json"
+echo "App config: $APP_CONFIG"
 echo "Data:   $DB_FILE"
 
 step "9/9 Systemd"
@@ -438,6 +455,7 @@ Group=$SERVICE_USER
 SupplementaryGroups=systemd-journal
 WorkingDirectory=$APP_DIR
 Environment=NODE_ENV=production
+Environment=BUNRYU_CONFIG=$APP_CONFIG
 ExecStart=/usr/bin/node $APP_DIR/dist/index.js
 Restart=always
 RestartSec=2
@@ -477,15 +495,14 @@ echo " Setup complete"
 echo "=============================="
 echo "Dashboard: http://<server-ip>:8080/"
 if [[ "$fresh_db" == "yes" ]]; then
-    echo "  Password: $DASHBOARD_PASSWORD"
-    echo "  (also stored as dashboard_password in $APP_DIR/bunryu.json;"
+    echo "  Password: the one you provided (stored as dashboard_password in $APP_CONFIG;"
     echo "   change it in Settings -> Change Password after logging in)"
 else
     echo "  Password: unchanged (kept existing database)"
-    echo "  Forgot it? Run scripts/server-reset-password.sh"
+    echo "  Forgot it? Set dashboard_password in $APP_CONFIG, then run scripts/server-reset-password.sh"
 fi
 echo "  Set your public host in Settings → Public Host"
-echo "App config: $APP_DIR/bunryu.json"
+echo "App config: $APP_CONFIG"
 echo "Config:    $CONF_DIR/srs.conf"
 echo "Data:      $DATA_DIR/db.sqlite"
 echo ""

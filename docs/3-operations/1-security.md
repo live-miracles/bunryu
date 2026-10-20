@@ -94,13 +94,13 @@ talks to those over loopback.
 
 ## Authentication
 
-The dashboard is protected by a password. `dashboard_password` in `bunryu.json` is only the *initial* password: it is hashed into the database on first boot, and ignored whenever the database already has a password. The installer generates a random one on first install and keeps it on reinstall; if the field is absent (e.g. a dev checkout) the initial password is `admin`. Change it in **Settings → Change Password** after logging in — that updates the database only, not `bunryu.json`.
+The dashboard is protected by a password. `dashboard_password` in `bunryu.json` is only the *initial* password: it is hashed into the database on first boot, and ignored whenever the database already has a password. The installer requires one on a fresh install (`BUNRYU_DASHBOARD_PASSWORD`, or `dashboard_password` in `/etc/bunryu/bunryu.json`) and fails before changing anything if there is none; it never generates or prints a password, so none ends up in install logs. A reinstall that keeps the database needs none. The Docker image works the same way. If the field is absent (a dev checkout) the initial password is `admin`. Change it in **Settings → Change Password** after logging in — that updates the database only, not `bunryu.json`.
 
-To reset a forgotten password:
+To reset a forgotten password, set `dashboard_password` in `/etc/bunryu/bunryu.json`, then:
 ```bash
 sudo bash /opt/bunryu/scripts/server-reset-password.sh
 ```
-This clears the stored password and restarts the service, which re-seeds it from `dashboard_password` in `bunryu.json` (`admin` if unset).
+This clears the stored password and restarts the service, which re-seeds it from `dashboard_password` in `/etc/bunryu/bunryu.json`. The script refuses to run when that field is empty, so a reset never falls back to `admin`.
 
 ## Why fail2ban is not used
 

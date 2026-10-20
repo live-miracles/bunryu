@@ -37,20 +37,19 @@ Try it with Docker:
 ```bash
 git clone https://github.com/live-miracles/bunryu
 cd bunryu
-docker compose up -d
-docker compose logs bunryu | grep "dashboard password"
+BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' docker compose up -d
 ```
 
-Open `http://localhost:8080`, log in with the printed password, create a pipeline and publish to the URL the dashboard shows.
+Open `http://localhost:8080`, log in with that password, create a pipeline and publish to the URL the dashboard shows.
 
 Install on a server (Debian/Ubuntu, x86_64, systemd), the recommended setup for production:
 
 ```bash
 sudo git clone https://github.com/live-miracles/bunryu /opt/bunryu
-sudo bash /opt/bunryu/scripts/server-install.sh
+sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash /opt/bunryu/scripts/server-install.sh
 ```
 
-The installer prints the dashboard password. See [Native install](docs/1-getting-started/3-install.md) for firewall ports, updates and the SRT passphrase, and [Remote access](docs/3-operations/2-remote-access.md) for reaching the dashboard securely.
+The installer needs the initial dashboard password on a fresh install and never prints one. See [Native install](docs/1-getting-started/3-install.md) for firewall ports, updates and the SRT passphrase, and [Remote access](docs/3-operations/2-remote-access.md) for reaching the dashboard securely.
 
 ## Documentation
 

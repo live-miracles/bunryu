@@ -22,8 +22,13 @@ their process 2 s after it exits and never give up (`StartLimitIntervalSec=0`); 
 ```bash
 sudo apt-get update -q && sudo apt-get install -y -q git  # in case git is not installed
 sudo git clone https://github.com/live-miracles/bunryu /opt/bunryu
-sudo bash /opt/bunryu/scripts/server-install.sh
+sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash /opt/bunryu/scripts/server-install.sh
 ```
+
+A fresh install needs the initial dashboard password. If the variable is missing
+(and `/etc/bunryu/bunryu.json` has no `dashboard_password`), the installer stops
+before changing anything and says so; it never generates or prints a password. A
+re-run that keeps the existing database needs none.
 
 **Set server timezone (optional, for readable log timestamps):**
 
@@ -51,7 +56,7 @@ time once to move past it.)
 sudo bash /opt/bunryu/scripts/server-down.sh
 ```
 
-Open the dashboard: `http://SERVER_IP:8080` — the installer prints the generated password on first install (it is also stored as `dashboard_password` in `bunryu.json`).
+Open the dashboard: `http://SERVER_IP:8080` — log in with the password you gave the installer (it is stored as `dashboard_password` in `/etc/bunryu/bunryu.json`; `scripts/server-reset-password.sh` re-applies it).
 
 After the first login, set **Settings → Public Host** to the address your
 encoders use, so the publish URLs shown in the dashboard are correct. To reach
@@ -80,6 +85,8 @@ that 1985 and 8082 listen only on `127.0.0.1`.
 The repository copies both runtime config files during install:
 - `/etc/bunryu/srs.conf`
 - `/etc/bunryu/goryu.json`
+
+The app's own `/etc/bunryu/bunryu.json` is rewritten on every install too (the unit sets `BUNRYU_CONFIG` to it); only its `dashboard_password` carries over.
 
 SRS only reads its config at startup, and Goryu only reads its
 JSON config file at startup.

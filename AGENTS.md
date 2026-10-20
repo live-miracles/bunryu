@@ -197,7 +197,7 @@ only for a new module.
 - `src/api/*` - REST routes. `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments; `appConfig.ts` reads
-  `bunryu.json` (watchdog defaults); `diagnostics.ts` is the rotated JSONL
+  `bunryu.json` (watchdog defaults; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `diagnostics.ts` is the rotated JSONL
   writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
   read SRS and relay config.
 - `src/db/` - SQLite schema and access (output Error History lives in

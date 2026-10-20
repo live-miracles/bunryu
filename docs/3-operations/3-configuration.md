@@ -1,6 +1,10 @@
 # Configuration
 
-The app reads runtime settings from `bunryu.json` in the app root.
+The app reads runtime settings from `bunryu.json`. A dev checkout reads the one
+in the app root; the native install keeps it at `/etc/bunryu/bunryu.json` next to
+`srs.conf` and `goryu.json` (outside the git checkout, which every update resets)
+and the unit points the app at it with `BUNRYU_CONFIG`. The Docker image keeps it
+in the `/data` volume.
 
 `bunryu.json`:
 
@@ -13,7 +17,7 @@ The app reads runtime settings from `bunryu.json` in the app root.
 | `srs_config_path` | `./srs.conf` | SRS config path |
 | `ffmpeg_path` | `ffmpeg` | FFmpeg binary for outputs and previews |
 | `ffprobe_path` | `ffprobe` | FFprobe binary for input media probing and validation |
-| `dashboard_password` | `admin` | Initial dashboard password, used only when the database has no password yet (first boot or after a reset). Stored in plain text; the installer sets the file to mode `0600` |
+| `dashboard_password` | `admin` | Initial dashboard password, used only when the database has no password yet (first boot or after a reset). Stored in plain text; the installer sets the file to mode `0600`. The installer and the Docker image require one on a fresh install and never generate or print it; the `admin` default only applies to a dev checkout |
 | `output_watchdog.warmup_ms` | `90000` | Warmup before stall checks, shared by the output progress watchdog and the translation-mixer watchdogs below |
 | `output_watchdog.stall_ms` | `45000` | Output progress stall window before restarting FFmpeg |
 | `output_watchdog.translator_meter_stale_ms` | `10000` | How long a translation output's translator audio meter can go quiet (including never producing a sample) before the mixer is restarted |
@@ -23,7 +27,7 @@ The app reads runtime settings from `bunryu.json` in the app root.
 | `output_watchdog.memory_limit_mb` | `200` | FFmpeg RSS limit (MB) before an output is killed and restarted; applies to `copy` and any `videoEncoding` not listed below |
 | `output_watchdog.memory_limit_mb_by_encoding` | `{vertical_rotate: 450, "720p": 650, "1080p": 950}` | Per-`videoEncoding` RSS limit override (MB); libx264 transcode profiles run at a much higher legitimate baseline than `copy` |
 
-Relative file paths are resolved from the app root. Command names like `ffmpeg`
+Relative file paths are resolved from the directory of `bunryu.json`. Command names like `ffmpeg`
 and `ffprobe` are left as command names.
 
 SRS values are inferred from `srs.conf`:
@@ -119,5 +123,7 @@ Installer/development overrides:
 | `SRT_RELEASE_TAG` | `server-install.sh` | Relay GitHub release tag to install |
 | `SRT_URL` | `server-install.sh` | Custom relay release archive URL |
 | `SRT_SHA256` | `server-install.sh` | Expected SHA256 for the relay archive; blank skips verification |
+| `BUNRYU_DASHBOARD_PASSWORD` | `server-install.sh`, Docker entrypoint | Initial dashboard password, required when the database is empty (first install, a wipe, or an empty `/data` volume). Overrides `dashboard_password` in `bunryu.json` |
+| `BUNRYU_CONFIG` | the app | Path of `bunryu.json`; unset reads `./bunryu.json`. Set by the installer's unit |
 | `WIPE_DB` | `server-install.sh` | Set `y`/`n` to force or skip wiping the existing SQLite DB. A wipe first copies it to `db.sqlite.<timestamp>.bak` (owner-only, it holds stream keys and destination URLs) |
 | `SRS_LOCAL_BIN` | `dev-server-install.sh` | Local executable SRS binary to copy into `./objs/srs` |

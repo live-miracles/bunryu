@@ -45,6 +45,48 @@ const FULL_VALID_CONFIG = {
     ffprobe_path: 'ffprobe',
 };
 
+describe('readAppConfig: BUNRYU_CONFIG', () => {
+    test('reads the file at that path and resolves relative paths against its directory', () => {
+        const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-appconfig-other-'));
+        const otherPath = path.join(otherDir, 'custom.json');
+        fs.writeFileSync(
+            otherPath,
+            JSON.stringify({
+                port: 9191,
+                dashboard_password: 'chosen-pass',
+                database_path: './x.sqlite',
+            }),
+        );
+        fs.rmSync(configPath, { force: true });
+        process.env.BUNRYU_CONFIG = otherPath;
+        try {
+            delete require.cache[require.resolve('../src/utils/appConfig')];
+            const config = require('../src/utils/appConfig').readAppConfig();
+            assert.equal(config.port, 9191);
+            assert.equal(config.dashboardPassword, 'chosen-pass');
+            assert.equal(config.databasePath, path.join(otherDir, 'x.sqlite'));
+        } finally {
+            delete process.env.BUNRYU_CONFIG;
+            delete require.cache[require.resolve('../src/utils/appConfig')];
+            fs.rmSync(otherDir, { recursive: true, force: true });
+        }
+    });
+
+    test('a missing file at that path throws and names it', () => {
+        process.env.BUNRYU_CONFIG = path.join(tempDir, 'nope', 'bunryu.json');
+        try {
+            delete require.cache[require.resolve('../src/utils/appConfig')];
+            assert.throws(
+                () => require('../src/utils/appConfig').readAppConfig(),
+                /Failed to read app config .*nope/,
+            );
+        } finally {
+            delete process.env.BUNRYU_CONFIG;
+            delete require.cache[require.resolve('../src/utils/appConfig')];
+        }
+    });
+});
+
 describe('readAppConfig: file-level errors', () => {
     test('throws a descriptive error when bunryu.json does not exist', () => {
         const readAppConfig = loadAppConfig(undefined);

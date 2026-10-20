@@ -17,11 +17,11 @@ production servers use the native systemd install.
 ```bash
 docker run -d --name bunryu --restart unless-stopped \
   -p 8080:8080 -p 21935:21935 -p 10080:10080/udp -p 10081:10081/udp \
+  -e BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' \
   -v bunryu-data:/data nandisha0/bunryu:latest
-docker logs bunryu | grep "dashboard password"
 ```
 
-Open `http://localhost:8080`, log in with the printed password, create a
+Open `http://localhost:8080`, log in with that password, create a
 pipeline and publish to the URL the dashboard shows.
 
 | Port | Protocol | Purpose |

@@ -566,3 +566,47 @@ restarting every output on every new publisher (the rejected approach above); a
 **Revisit when:** a format change turns out not to need a restart for some destination
 type, or probes after a reconnect prove unreliable enough to report a change that did
 not happen.
+
+## Install and secrets
+
+### The initial dashboard password is supplied, never generated or printed; the app config lives in `/etc/bunryu`
+
+**Decision (October 2026):** a fresh install must be given the initial dashboard
+password: `BUNRYU_DASHBOARD_PASSWORD`, or `dashboard_password` in
+`/etc/bunryu/bunryu.json`. Without one the installer stops before changing
+anything. The Docker entrypoint applies the same rule on an empty `/data` volume. A
+run that keeps the database needs none, because the password only seeds an empty
+one. `bunryu.json` moved from `/opt/bunryu` to `/etc/bunryu`, and the app finds it
+through `BUNRYU_CONFIG` (unset means `./bunryu.json`, so dev checkouts are
+unchanged). `server-reset-password.sh` refuses to run when the file has no
+`dashboard_password`.
+
+**Why:**
+- **Install output is copied.** The old installer printed a generated password at
+  the end, and the container logged one. Startup scripts, SSH session logs,
+  `docker logs` and pasted tickets all kept it. A password the operator chose is
+  never shown.
+- **The file was inside the git checkout.** `bunryu.json` is tracked, so the
+  installer's `git reset --hard` restored the repo copy, which has no password. A
+  reinstall therefore generated a new password into the file that no longer
+  matched the kept database, and `server-reset-password.sh` would then apply the
+  wrong one. `srs.conf` and `goryu.json` were already in `/etc/bunryu`, which is why
+  the SRT passphrase survived reinstalls. The app config now sits beside them.
+- **Failing early beats a default.** The app's own fallback is the public `admin`;
+  the installer, the entrypoint and the reset script all refuse to rely on it.
+
+**Not adopted:**
+- **Generate and print once**, the previous behavior: the leak above.
+- **Generate and write only to the file**: the operator would then have to read a
+  root-only file to log in, and the installer could not tell a deliberate empty
+  value from a missing one.
+- **An empty `dashboard_password` in the tracked `bunryu.json`**: it invites
+  editing a tracked file in a public repository.
+
+**Tradeoffs:** `compose.yaml` passes the variable through, so `docker compose up`
+without it restarts the container with the error in `docker compose logs` until it
+is set (the supervisor is for evaluation only). The variable stays in the container
+environment after the first start.
+
+**Revisit when:** a second secret needs the same handling, or the Docker image is
+used for real deployments and `docker secret` support matters.
