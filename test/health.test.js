@@ -475,6 +475,38 @@ describe('createHealthService poll orchestration', () => {
         service.shutdown();
     });
 
+    test('a poll that throws is recorded and does not reject unhandled', async (t) => {
+        t.mock.method(globalThis, 'fetch', async () => {
+            throw new Error('ECONNREFUSED');
+        });
+        const createHealthService = loadHealthService(t);
+        const db = makeFakeDb([]);
+        db.listPipelines = () => {
+            throw new Error('database is locked');
+        };
+        const unhandled = [];
+        const onUnhandled = (reason) => unhandled.push(reason);
+        process.on('unhandledRejection', onUnhandled);
+        t.after(() => process.off('unhandledRejection', onUnhandled));
+        const events = [];
+        const service = createHealthService(
+            db,
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            { event: (event, fields) => events.push({ event, ...fields }), close: async () => {} },
+        );
+
+        service.start();
+        await sleep(20);
+        service.shutdown();
+
+        assert.deepEqual(unhandled, []);
+        const failed = events.find((e) => e.event === 'health-poll-failed');
+        assert.ok(failed, 'expected a health-poll-failed diagnostics event');
+        assert.match(failed.error, /database is locked/);
+    });
+
     test('does not log a second down event on consecutive unreachable polls', async (t) => {
         t.mock.method(globalThis, 'fetch', async () => {
             throw new Error('down');
@@ -873,6 +905,101 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 'input-bitrate-collapse',
                 'relay-forwarding-stalled',
             ],
+        );
+
+        service.shutdown();
+    });
+
+    test('records one started and one ended event per alert episode', async (t) => {
+        const stream = streamFixture();
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [stream] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        let received = 1000;
+        let dropped = 0;
+        const status = () =>
+            makeBondingStatus({
+                forwardedPackets: received,
+                input: { recvUniquePacketsTotal: received, recvDropTotal: dropped },
+            });
+        const relay = makeFakeSrtRelayMutable(status());
+        const diagnostics = makeDiagnosticsSpy();
+        const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+        const service = createHealthService(
+            makeFakeDb([pipeline]),
+            makeFakeOutputService(),
+            relay,
+            makeFakeInputState(),
+            diagnostics,
+        );
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+
+        // Drops on two polls with one clean poll between: one episode.
+        for (const drops of [5, 0, 5, 0, 0, 0, 0, 0, 0, 0]) {
+            received += 900;
+            dropped += drops;
+            relay.setStatus(status());
+            await tickPoll(t);
+        }
+
+        const episodes = diagnostics.events.filter((e) => e.event.startsWith('pipeline-alert-'));
+        assert.deepEqual(
+            episodes.map((e) => [e.event, e.code]),
+            [
+                ['pipeline-alert-started', 'srt-packets-dropped'],
+                ['pipeline-alert-ended', 'srt-packets-dropped'],
+            ],
+        );
+        assert.equal(episodes[0].pipelineId, 1);
+        assert.match(episodes[0].message, /dropped 5 packets/);
+        assert.equal(episodes[1].activePolls, 2);
+
+        service.shutdown();
+    });
+
+    test('forgets a bonded leg that has sent no sample for an hour', async (t) => {
+        const stream = streamFixture();
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [stream] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const relay = makeFakeSrtRelayMutable(
+            makeBondingStatus({ input: { legs: [makeLeg({ ip: '203.0.113.10' })] } }),
+        );
+        const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+        const service = createHealthService(
+            makeFakeDb([pipeline]),
+            makeFakeOutputService(),
+            relay,
+            makeFakeInputState(),
+        );
+        const app = express();
+        service.registerRoutes(app);
+        t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+        service.start();
+        await sleep(20);
+
+        // The cellular leg comes back on a new IP; the old one never returns.
+        relay.setStatus(makeBondingStatus({ input: { legs: [makeLeg({ ip: '198.51.100.20' })] } }));
+        t.mock.timers.tick(61 * 60 * 1000 - 5000);
+        await sleep(20);
+        await tickPoll(t);
+
+        const req = new MockRequest();
+        req.url = '/api/health/pipelines/1/legs/history';
+        const history = await new Promise((resolve, reject) => {
+            app.handle(req, new MockResponse(resolve), reject);
+        });
+        assert.deepEqual(
+            history.legs.map((leg) => leg.ip),
+            ['198.51.100.20'],
         );
 
         service.shutdown();
@@ -1561,6 +1688,22 @@ describe('shared encodes (renditions) in the health snapshot', () => {
 
         assert.equal(snapshot.pipelines['1'].input.connected, false);
         assert.equal(snapshot.pipelines['1'].input.live, false);
+    });
+
+    test('the diagnostics snapshot leaves out stopped outputs', async (t) => {
+        const diagnostics = makeDiagnosticsSpy();
+        await pollOnce(t, {
+            streams: [stream()],
+            outputs: [outputRow({ id: '1-1' }), outputRow({ id: '1-2' })],
+            outputStats: {
+                '1-1': statsFor({}),
+                '1-2': statsFor({ status: 'stopped', pid: null }),
+            },
+            diagnostics,
+        });
+
+        const snapshot = diagnostics.events.find((e) => e.event === 'health-snapshot');
+        assert.deepEqual(Object.keys(snapshot.pipelines['1'].outputs), ['1-1']);
     });
 
     test('the diagnostics snapshot carries role and renditionId per output', async (t) => {

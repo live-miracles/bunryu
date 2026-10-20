@@ -99,7 +99,11 @@ export async function kickSrsClientsByStream(app: string, stream: string): Promi
         await fetch(`${srsApiUrl}/api/v1/clients/${id}`, {
             method: 'DELETE',
             signal: AbortSignal.timeout(SRS_CLIENT_FETCH_TIMEOUT_MS),
-        }).catch(() => {});
+        }).catch((err: unknown) => {
+            console.warn(
+                `[srs] kick of client ${id} on ${app}/${stream} failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        });
     }
 }
 

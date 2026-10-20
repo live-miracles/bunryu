@@ -157,3 +157,28 @@ describe('rejected publishes store', () => {
         assert.ok(store.list().length <= 200);
     });
 });
+
+describe('rejected publishes suppressed-count flush', () => {
+    test('reports the suppressed count once the window ends even if the attempts stop', () => {
+        let t = 1_000_000;
+        const lines = [];
+        const store = createRejectedPublishes(
+            () => t,
+            (line) => lines.push(line),
+        );
+        assert.equal(store.record('key01_a', 'unknown', 'srt', '127.0.0.1').shouldLog, true);
+        for (let i = 0; i < 3; i += 1) {
+            t += 1000;
+            store.record('key01_a', 'unknown', 'srt', '127.0.0.1');
+        }
+        // The attempts stop; the dashboard's next list() runs the prune.
+        t += 61_000;
+        store.list();
+        assert.equal(lines.length, 1);
+        assert.match(lines[0], /3 more rejected publish attempts for key01/);
+        // Flushed once, not again on the next prune.
+        t += 61_000;
+        store.list();
+        assert.equal(lines.length, 1);
+    });
+});

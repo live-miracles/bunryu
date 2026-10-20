@@ -3,7 +3,7 @@ import fs from 'fs';
 import { execFile } from 'child_process';
 import type { Express } from 'express';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
-import { readProcRssBytes, createProcCpuTracker } from '../utils/procStats.js';
+import { readProcRssBytes, createProcCpuTracker, readHostMemory } from '../utils/procStats.js';
 import type { SrtRelayService } from '../services/srtRelay.js';
 
 const DISK_STATS_INTERVAL_MS = 30_000;
@@ -170,13 +170,19 @@ export interface MetricSample {
 const metricsHistory: MetricSample[] = [];
 let metricsStarted = false;
 
+// Used = total - MemAvailable, like the health poll's low-memory check: page
+// cache the kernel can reclaim is not counted as used (os.freemem() would).
+function ramUsedBytes(totalMem: number): number {
+    const host = readHostMemory();
+    return host ? host.totalBytes - host.availableBytes : totalMem - os.freemem();
+}
+
 function sampleMetrics(): void {
     const totalMem = os.totalmem();
-    const freeMem = os.freemem();
     metricsHistory.push({
         ts: Date.now(),
         cpu: getCpuPercent(),
-        ramUsed: totalMem - freeMem,
+        ramUsed: ramUsedBytes(totalMem),
         ramTotal: totalMem,
         rxBps: netStats.rxBytesPerSec,
         txBps: netStats.txBytesPerSec,
@@ -209,11 +215,10 @@ export function registerMetricsApi(app: Express, srtRelayService: SrtRelayServic
     app.get('/api/metrics/system', (_req, res) => {
         const s = metricsHistory[metricsHistory.length - 1];
         const totalMem = os.totalmem();
-        const freeMem = os.freemem();
         res.json({
             cpu: { cores: os.cpus().length, percent: s?.cpu ?? 0 },
             ram: {
-                usedBytes: s?.ramUsed ?? totalMem - freeMem,
+                usedBytes: s?.ramUsed ?? ramUsedBytes(totalMem),
                 totalBytes: s?.ramTotal ?? totalMem,
             },
             disk: diskStats,

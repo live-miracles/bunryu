@@ -40,6 +40,15 @@ succeeds:
 |-------------|-------|---------|-------|
 | Media validation | Connected RTMP/SRT inputs without a successful probe yet for this publisher | Immediate probe (staggered across pipelines), then retried every `FFPROBE_FAILED_REFRESH_MS` (30s) while it keeps failing | Stops re-probing once a probe succeeds for the current publisher; a new probe cycle starts on the next publisher change. Every failed probe is written to diagnostics as `media-probe-failed` (reason `timeout`/`exit`/`parse`/`unusable`, elapsed time, exit status, ffprobe stderr tail) and the first failure and the later recovery per publisher are added to the pipeline log (`probe_failed` / `probe_recovered`). Input liveness and output recovery do not wait for a valid ffprobe result — ffprobe fills in media/track details when available. |
 
+**Control-plane errors.** The health poll, the output watchdog and the host probes
+each catch errors from their own tick and run again on the next one. They log the
+first failure (and any new error) and a recovery event with the count, not one line
+per tick. An error that escapes everything else is logged as
+`uncaught-exception` / `unhandled-rejection` and the process keeps running, because
+exiting would stop every output. A diagnostics write failure (disk full, directory
+unwritable) drops and counts events instead of crashing; see
+[Configuration](3-configuration.md).
+
 ## Shared encodes
 
 Outputs on one pipeline that need the same encode share one FFmpeg, a *shared

@@ -26,7 +26,7 @@ function exec(cmd: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv
     });
 }
 
-function readAppVersion(): string {
+export function readAppVersion(): string {
     try {
         const pkgPath = path.join(__dirname, '..', '..', 'package.json');
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };

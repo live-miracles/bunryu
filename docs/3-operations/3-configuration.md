@@ -58,6 +58,39 @@ shows, up to ~10 s old), and host total/available memory and swap. Separately,
 `host-memory-low` (available memory under 15% of total) and
 `host-memory-recovered` (back above 20%) events are logged on transition, the
 former with the five largest processes by RSS.
+
+Other things the diagnostics record so an incident can be pieced together:
+
+- **Restarts:** `server-started` (version, pid, a random `instanceId` per start)
+  and `server-shutdown` (signal, uptime, the outputs it killed — their own
+  `ffmpeg-exited` events are not written during a shutdown).
+- **One output run:** every output event carries `outputId`, `pipelineId`, the
+  FFmpeg `pid` and a `runId` (`<outputId>#<n>`, counted from the server start),
+  so grepping a `runId` gives that run's start, warnings, restart, exit and the
+  retry that followed. `ffmpeg-exited` also has `ranMs`. When an exit's stderr
+  tail is identical to the previous exit's (a retry loop against a dead
+  destination), it is replaced by `stderrTailSameAsPrevious: true`.
+- **Pipeline alerts:** `pipeline-alert-started` and `pipeline-alert-ended`
+  (duration, number of polls it was active, last message). An alert absent for
+  six polls (~30 s) ends its episode, so a flickering condition is one episode.
+- **Publish hooks:** `publish-allowed`, and `publish-rejected` for each rejection
+  that is logged. Repeats are throttled to one journal line per minute per key.
+  The number not logged goes on the next line, or, if the attempts stopped, on a
+  summary line once the minute is over (written on the next hook call or
+  dashboard refresh).
+- **Control-plane errors:** a background loop (health poll, output watchdog,
+  host probes) that throws writes `<loop>-failed` on its first failure or a new
+  error, and `<loop>-recovered` with the count; an error nothing else caught is
+  written as `uncaught-exception` or `unhandled-rejection`. The process keeps
+  running in both cases.
+- **Stopped outputs are left out** of the per-minute snapshot.
+
+Writing diagnostics is best effort and never stops the control plane: if a write
+fails (disk full, directory unwritable) events are dropped for a minute and the
+file is reopened; past 16 MB of unwritten events in memory, new events are
+dropped. In both cases the next record written is `diagnostics-events-dropped`
+with the count and the error. A shutdown waits up to 2 s for the file to flush.
+
 Files are
 rotated daily or at 100 MB, whichever comes first, with a 5 GB total diagnostics
 cap that removes the oldest rotated files first. The installer configures

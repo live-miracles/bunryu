@@ -1466,6 +1466,94 @@ describe('output diagnostics events', () => {
         service.shutdown();
     });
 
+    test('tags every event of one run with the pipeline, a run id and the pid', async (t) => {
+        const proc = new FakeFfmpeg();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc);
+        const service = createOutputService(makeDb(), makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
+        proc.stderr.write(
+            'Application provided invalid, non monotonically increasing dts to muxer in stream 0: non-monotonous DTS\n',
+        );
+        await sleep(80);
+
+        const runEvents = diagnostics.events.filter((e) => e.outputId === 'out1');
+        assert.ok(runEvents.length >= 5);
+        for (const e of runEvents) {
+            assert.equal(e.pipelineId, 1, `${e.event} lacks pipelineId`);
+            assert.equal(e.runId, 'out1#1', `${e.event} lacks runId`);
+            assert.equal(e.pid, proc.pid, `${e.event} lacks pid`);
+        }
+        const exited = runEvents.find((e) => e.event === 'ffmpeg-exited');
+        assert.equal(typeof exited.ranMs, 'number');
+
+        service.shutdown();
+    });
+
+    test('a timestamp warning split across two stderr reads is still recognized', async (t) => {
+        const proc = new FakeFfmpeg();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const service = createOutputService(makeDb(), makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        proc.stderr.write('Application provided invalid, non monoton');
+        await sleep(5);
+        proc.stderr.write('ically increasing dts to muxer in stream 0: non-monotonous DTS\n');
+        await sleep(15);
+
+        const warnings = diagnostics.events.filter((e) => e.event === 'ffmpeg-timestamp-warning');
+        assert.equal(warnings.length, 1);
+        assert.match(warnings[0].line, /^Application provided invalid.*non-monotonous DTS$/);
+
+        service.shutdown();
+    });
+
+    test('an exit with the same stderr tail as the previous exit does not repeat it', async (t) => {
+        const procs = [];
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 60_000 },
+        );
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const settle = () => new Promise((resolve) => setImmediate(resolve));
+        const service = createOutputService(makeDb(), makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        for (const [delayMs, line] of [
+            [1000, 'Connection refused'],
+            [2000, 'Connection refused'],
+            [4000, 'Broken pipe'],
+        ]) {
+            procs.at(-1).stderr.write(`${line}\n`);
+            await settle();
+            procs.at(-1).emit('close', 1, null);
+            t.mock.timers.tick(delayMs);
+            await settle();
+        }
+
+        const exits = diagnostics.events.filter((e) => e.event === 'ffmpeg-exited');
+        assert.equal(exits.length, 3);
+        assert.equal(exits[0].stderrTail, 'Connection refused');
+        assert.equal(exits[1].stderrTail, null);
+        assert.equal(exits[1].stderrTailSameAsPrevious, true);
+        assert.equal(exits[2].stderrTail, 'Broken pipe');
+        assert.deepEqual(
+            exits.map((e) => e.runId),
+            ['out1#1', 'out1#2', 'out1#3'],
+        );
+
+        service.shutdown();
+    });
+
     test('does not emit a second media-clock-recovered event when media pacing was never flagged as fast', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();

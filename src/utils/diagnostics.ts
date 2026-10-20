@@ -6,9 +6,17 @@ const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
+// Bytes queued in memory before events are dropped (and counted) rather than
+// buffered without bound while the disk is slow.
+const MAX_BUFFERED_BYTES = 16 * 1024 * 1024;
+// After a write error the logger drops (and counts) events for this long, then
+// reopens the file.
+const REOPEN_DELAY_MS = 60 * 1000;
+
 export interface DiagnosticsLogger {
     event(event: string, fields?: Record<string, unknown>): void;
-    close(): void;
+    // Resolves once everything written so far is flushed to disk.
+    close(): Promise<void>;
 }
 
 // Overridable only so tests can exercise rotation/retention without writing
@@ -18,6 +26,7 @@ export interface DiagnosticsLoggerOptions {
     maxTotalBytes?: number;
     retentionMs?: number;
     cleanupIntervalMs?: number;
+    reopenDelayMs?: number;
 }
 
 interface FileState {
@@ -45,9 +54,25 @@ export function createDiagnosticsLogger(
     const maxTotalBytes = options.maxTotalBytes ?? MAX_TOTAL_BYTES;
     const retentionMs = options.retentionMs ?? RETENTION_MS;
     const cleanupIntervalMs = options.cleanupIntervalMs ?? CLEANUP_INTERVAL_MS;
-    fs.mkdirSync(directory, { recursive: true, mode: 0o750 });
+    const reopenDelayMs = options.reopenDelayMs ?? REOPEN_DELAY_MS;
     let state: FileState | null = null;
     let cleanupTimer: NodeJS.Timeout | null = null;
+    // The diagnostics trail is best effort: a full disk or an unwritable
+    // directory must never take the control plane (and every output) down.
+    // While failed, events are dropped and counted, and the count is written
+    // as the first record once the file reopens.
+    let failure: { error: string; atMs: number } | null = null;
+    let dropped = 0;
+
+    const fail = (err: unknown): void => {
+        const error = err instanceof Error ? err.message : String(err);
+        if (!failure) {
+            console.error(`[diagnostics] write failed, dropping events until reopen: ${error}`);
+        }
+        failure = { error, atMs: Date.now() };
+        state?.stream.destroy();
+        state = null;
+    };
 
     const cleanup = (): void => {
         const cutoff = Date.now() - retentionMs;
@@ -100,17 +125,18 @@ export function createDiagnosticsLogger(
         } catch {
             // New file.
         }
-        return {
-            date,
-            sequence,
-            bytes,
-            stream: fs.createWriteStream(target, { flags: 'a', mode: 0o640 }),
-        };
+        const stream = fs.createWriteStream(target, { flags: 'a', mode: 0o640 });
+        stream.on('error', (err) => {
+            if (state?.stream === stream) fail(err);
+            else console.error(`[diagnostics] error on a rotated-out file: ${err.message}`);
+        });
+        return { date, sequence, bytes, stream };
     };
 
     const rotate = (date: string): void => {
         state?.stream.end();
         let sequence = state?.date === date ? state.sequence + 1 : 0;
+        fs.mkdirSync(directory, { recursive: true, mode: 0o750 });
         state = openFile(date, sequence);
         while (state.bytes >= maxFileBytes) {
             state.stream.end();
@@ -119,19 +145,54 @@ export function createDiagnosticsLogger(
         cleanup();
     };
 
-    const write = (record: Record<string, unknown>): void => {
-        const line = `${JSON.stringify({ ts: new Date().toISOString(), ...record })}\n`;
-        const date = localDate();
-        if (!state || state.date !== date || state.bytes + Buffer.byteLength(line) > maxFileBytes) {
-            rotate(date);
-        }
+    const append = (line: string): void => {
         if (!state) return;
         state.bytes += Buffer.byteLength(line);
-        if (!state.stream.write(line)) {
-            // Backpressure is handled by the stream; dropping diagnostics would
-            // defeat the purpose of keeping an incident trail.
-            state.stream.once('drain', () => undefined);
+        state.stream.write(line, (err) => {
+            if (err) dropped += 1;
+        });
+    };
+
+    const write = (record: Record<string, unknown>): void => {
+        if (failure && Date.now() - failure.atMs < reopenDelayMs) {
+            dropped += 1;
+            return;
         }
+        const line = `${JSON.stringify({ ts: new Date().toISOString(), ...record })}\n`;
+        const date = localDate();
+        try {
+            if (
+                !state ||
+                state.date !== date ||
+                state.bytes + Buffer.byteLength(line) > maxFileBytes
+            ) {
+                rotate(date);
+            }
+        } catch (err) {
+            fail(err);
+            dropped += 1;
+            return;
+        }
+        if (!state) return;
+        // The stream queues writes in memory while the disk catches up; past
+        // the cap, drop and count rather than grow without bound.
+        if (state.stream.writableLength > MAX_BUFFERED_BYTES) {
+            dropped += 1;
+            return;
+        }
+        if (dropped > 0) {
+            append(
+                `${JSON.stringify({
+                    ts: new Date().toISOString(),
+                    event: 'diagnostics-events-dropped',
+                    dropped,
+                    error: failure?.error ?? 'write buffer full',
+                })}\n`,
+            );
+            dropped = 0;
+        }
+        failure = null;
+        append(line);
     };
 
     cleanup();
@@ -142,11 +203,46 @@ export function createDiagnosticsLogger(
         event(event, fields = {}): void {
             write({ event, ...fields });
         },
-        close(): void {
+        close(): Promise<void> {
             if (cleanupTimer) clearInterval(cleanupTimer);
             cleanupTimer = null;
-            state?.stream.end();
+            const stream = state?.stream;
             state = null;
+            if (!stream || stream.destroyed) return Promise.resolve();
+            return new Promise((resolve) => {
+                stream.once('error', () => resolve());
+                stream.end(() => resolve());
+            });
+        },
+    };
+}
+
+// For a periodic loop whose tick can throw: records the first failure and any
+// change of error as `<name>-failed`, and `<name>-recovered` with the count
+// once a tick succeeds again, so a persistently failing loop logs once instead
+// of every tick.
+export function createLoopFailureReporter(
+    name: string,
+    diagnostics?: DiagnosticsLogger,
+): { failed(err: unknown): void; succeeded(): void } {
+    let failures = 0;
+    let lastError = '';
+    return {
+        failed(err: unknown): void {
+            const error = err instanceof Error ? (err.stack ?? err.message) : String(err);
+            failures += 1;
+            if (failures === 1 || error !== lastError) {
+                console.error(`[${name}] tick failed (loop keeps running): ${error}`);
+                diagnostics?.event(`${name}-failed`, { error, consecutiveFailures: failures });
+            }
+            lastError = error;
+        },
+        succeeded(): void {
+            if (failures === 0) return;
+            console.log(`[${name}] recovered after ${failures} failed ticks`);
+            diagnostics?.event(`${name}-recovered`, { failures, lastError });
+            failures = 0;
+            lastError = '';
         },
     };
 }

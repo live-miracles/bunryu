@@ -1,6 +1,7 @@
 import { installLogTimestamps } from './utils/logTimestamps.js';
 installLogTimestamps();
 
+import crypto from 'crypto';
 import express from 'express';
 import compression from 'compression';
 import path from 'path';
@@ -24,7 +25,7 @@ import {
     initializePassword,
     checkIsAuthenticated,
 } from './api/auth.js';
-import { registerVersionApi } from './api/version.js';
+import { registerVersionApi, readAppVersion } from './api/version.js';
 import { readAppConfig } from './utils/appConfig.js';
 import { createHostProbeService } from './services/hostProbes.js';
 import { createDiagnosticsLogger } from './utils/diagnostics.js';
@@ -69,6 +70,32 @@ const db = createDb();
 const diagnostics = createDiagnosticsLogger(
     path.join(path.dirname(readAppConfig().databasePath), 'diagnostics'),
 );
+// Random per process start, so restarts are unambiguous in the diagnostics
+// trail even when the clock or pid repeats.
+const instanceId = crypto.randomBytes(4).toString('hex');
+const startedAtMs = Date.now();
+diagnostics.event('server-started', {
+    instanceId,
+    version: readAppVersion(),
+    pid: process.pid,
+    node: process.version,
+});
+
+// One misbehaving timer, request or callback must not take every output down
+// with the process: record the error and keep serving. Startup failures still
+// exit through main().catch below.
+process.on('unhandledRejection', (reason) => {
+    console.error('[server] unhandled promise rejection (process kept running):', reason);
+    diagnostics.event('unhandled-rejection', { error: errorText(reason) });
+});
+process.on('uncaughtException', (err) => {
+    console.error('[server] uncaught exception (process kept running):', err);
+    diagnostics.event('uncaught-exception', { error: errorText(err) });
+});
+
+function errorText(err: unknown): string {
+    return err instanceof Error ? (err.stack ?? err.message) : String(err);
+}
 
 const inputState = createInputState();
 const rejectedPublishes = createRejectedPublishes();
@@ -98,7 +125,7 @@ const healthService = createHealthService(
 const hookApp = express();
 hookApp.disable('x-powered-by');
 hookApp.use(express.json());
-registerSrsHooks(hookApp, db, inputState, rejectedPublishes);
+registerSrsHooks(hookApp, db, inputState, rejectedPublishes, diagnostics);
 
 // Readiness only: the installer's SRS unit waits on this before starting.
 app.get('/api/ready', (_req, res) => {
@@ -215,19 +242,29 @@ async function main(): Promise<void> {
     });
 }
 
+const DIAGNOSTICS_FLUSH_TIMEOUT_MS = 2000;
+
 let shuttingDown = false;
 function shutdown(signal: string): void {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[server] ${signal} received, killing media jobs`);
     renditionReconciler.shutdown();
-    outputService.shutdown();
+    const killedOutputIds = outputService.shutdown();
     translationMixerService.shutdown();
     healthService.shutdown();
     srtRelayService.shutdown();
     previewService.shutdown();
-    diagnostics.close();
-    process.exit(0);
+    // The killed outputs' exit handlers never run before process.exit, so this
+    // one record stands in for their ffmpeg-exited events.
+    diagnostics.event('server-shutdown', {
+        instanceId,
+        signal,
+        uptimeSec: Math.round((Date.now() - startedAtMs) / 1000),
+        killedOutputIds,
+    });
+    const timeout = new Promise((resolve) => setTimeout(resolve, DIAGNOSTICS_FLUSH_TIMEOUT_MS));
+    void Promise.race([diagnostics.close(), timeout]).then(() => process.exit(0));
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

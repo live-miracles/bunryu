@@ -422,3 +422,55 @@ churn working code.
 
 **Revisit when:** the lint run gets slow enough that people skip it, or a bug
 reaches production that a rule would have caught.
+
+## Logging and diagnostics
+
+### Keep the process running after an uncaught error
+
+**Decision:** `uncaughtException` and `unhandledRejection` are logged (journal and
+a diagnostics event) and the process keeps running. Each background loop (health
+poll, output watchdog, host probes) also catches its own errors and logs the
+first failure and the recovery. The diagnostics writer handles its own stream
+errors.
+
+**Why:**
+- **Exiting kills every output.** The FFmpeg processes exit by SIGPIPE when the
+  control plane dies (by design, so none are orphaned). A bug in one timer or a
+  full disk would otherwise end every forward of a live event, and systemd's
+  restart would not bring them back for several seconds.
+- **The loops are independent.** A throw in the health poll leaves the output
+  processes and their watchdog untouched. The next tick starts from fresh state.
+
+**Evidence:** before this, nothing listened for errors on the diagnostics
+`WriteStream`, so a full disk would have crashed the app, and so would an
+unwritable diagnostics directory at startup. The health poll and host-probe loops
+had `try`/`finally` with no `catch`, the same pattern the ffprobe fix (see the
+ESLint entry above) removed. Regression tests cover a write-stream error, an
+unwritable directory and a throwing health poll.
+
+**Revisit when:** an incident shows the process kept running in a broken state
+after an uncaught error. Then exit on `uncaughtException` and rely on systemd.
+
+### Diagnostics ideas taken from SRS, MediaMTX and restream-krsna
+
+**Decision (October 2026):** adopted:
+- a per-run id on every output event (SRS tags every line, hook and API entry
+  of a connection with one context id);
+- the first occurrence plus a count of the rest for repeating events (SRS's
+  error pithy print, MediaMTX's 1 s counter dumpers), applied to rejected
+  publishes, loop failures and repeated exit stderr tails;
+- alert episodes with a start and an end, derived from the 5 s poll (krsna
+  derives alerts from its health snapshot);
+- a random id per server start (SRS's heartbeat `service_id`).
+
+Not adopted:
+- **A Prometheus `/metrics` endpoint** (both SRS and MediaMTX have one). Nothing
+  scrapes it yet, and it would be a new port or route to secure.
+- **Delivery ratio** (destination-acknowledged bytes ÷ offered bytes) and
+  **layered root-cause diagnosis** (krsna). Both are useful, but each needs new
+  state and UI.
+- **Logs in SQLite** (krsna). JSONL plus journald is enough at this size.
+
+**Revisit when:** someone wants external alerting (add `/metrics`, loopback-only),
+or an incident shows outputs connected but not keeping up (add the delivery
+ratio; `outputSockets.ts` already reads `ss`).

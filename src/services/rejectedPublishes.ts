@@ -96,7 +96,10 @@ export function isKeyShaped(stream: string): boolean {
     return KEY_LABEL_RE.test(stream);
 }
 
-export function createRejectedPublishes(now: () => number = Date.now): RejectedPublishes {
+export function createRejectedPublishes(
+    now: () => number = Date.now,
+    log: (line: string) => void = console.log,
+): RejectedPublishes {
     const entries = new Map<string, Entry>();
     // Throttle state is separate from entries: all non-key names share one log
     // bucket, so a stream of distinct junk names can't bypass the throttle.
@@ -115,8 +118,17 @@ export function createRejectedPublishes(now: () => number = Date.now): RejectedP
             }
             if (entry.names.size < MAX_DISTINCT_NAMES) entry.namesCapped = false;
         }
-        for (const [label, state] of lastLogged) {
-            if (at - state.at > RETENTION_MS) lastLogged.delete(label);
+        for (const [bucket, state] of lastLogged) {
+            // Attempts that stopped inside a throttle window would otherwise
+            // never have their count logged.
+            if (state.suppressed > 0 && at - state.at >= LOG_INTERVAL_MS) {
+                const [kind, label] = bucket.split(':');
+                log(
+                    `[srs-hook] ${state.suppressed} more rejected ${kind} attempts for ${label || 'non-key stream names'} were not logged`,
+                );
+                state.suppressed = 0;
+            }
+            if (at - state.at > RETENTION_MS) lastLogged.delete(bucket);
         }
     }
 
@@ -128,10 +140,6 @@ export function createRejectedPublishes(now: () => number = Date.now): RejectedP
         kind: RejectedKind = 'publish',
     ): RecordResult {
         const at = now();
-        if (at - lastPruneAt >= PRUNE_INTERVAL_MS) {
-            prune(at);
-            lastPruneAt = at;
-        }
         const label = KEY_LABEL_RE.exec(stream)?.[1] ?? OTHER_BUCKET;
 
         // Key-shaped names get their own entry; everything else shares one per
@@ -162,13 +170,21 @@ export function createRejectedPublishes(now: () => number = Date.now): RejectedP
         // Publish and play rejections of the same key are different incidents.
         const bucket = `${kind}:${label}`;
         const state = lastLogged.get(bucket);
+        let result: RecordResult;
         if (state && at - state.at < LOG_INTERVAL_MS) {
             state.suppressed++;
-            return { shouldLog: false, suppressed: state.suppressed };
+            result = { shouldLog: false, suppressed: state.suppressed };
+        } else {
+            lastLogged.set(bucket, { at, suppressed: 0 });
+            result = { shouldLog: true, suppressed: state?.suppressed ?? 0 };
         }
-        const suppressed = state?.suppressed ?? 0;
-        lastLogged.set(bucket, { at, suppressed: 0 });
-        return { shouldLog: true, suppressed };
+        // After the throttle decision, so this attempt's own bucket reports its
+        // suppressed count on the line it logs rather than in a flush.
+        if (at - lastPruneAt >= PRUNE_INTERVAL_MS) {
+            prune(at);
+            lastPruneAt = at;
+        }
+        return result;
     }
 
     function list(): RejectedPublish[] {

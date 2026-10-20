@@ -2,6 +2,7 @@ import dns from 'dns/promises';
 import net from 'net';
 import type { Express } from 'express';
 import { checkProbeAddress } from '../utils/destination.js';
+import { createLoopFailureReporter } from '../utils/diagnostics.js';
 import type { Db, HostProbeSample, HostProbeSummary, HostProbeTarget } from '../types.js';
 
 const PROBE_INTERVAL_MS = 5_000;
@@ -217,24 +218,33 @@ export function createHostProbeService(db: Db): {
         return samples;
     };
 
+    const cycleFailures = createLoopFailureReporter('host-probes');
+
     const runCycle = async (): Promise<void> => {
         if (tickInFlight) return;
         tickInFlight = true;
         try {
-            const targets = db.listHostProbeTargets();
-            reconcileTargets(targets);
-            if (targets.length === 0) {
-                pruneSamples(Date.now() - HISTORY_RETENTION_MS);
-                return;
-            }
-            const samples = await mapWithConcurrency(targets, PROBE_CONCURRENCY, probeTarget);
-            for (let i = 0; i < targets.length; i++) {
-                appendSample(targets[i].slot, samples[i]);
-            }
-            pruneSamples(Date.now() - HISTORY_RETENTION_MS);
+            await probeCycle();
+            cycleFailures.succeeded();
+        } catch (err) {
+            cycleFailures.failed(err);
         } finally {
             tickInFlight = false;
         }
+    };
+
+    const probeCycle = async (): Promise<void> => {
+        const targets = db.listHostProbeTargets();
+        reconcileTargets(targets);
+        if (targets.length === 0) {
+            pruneSamples(Date.now() - HISTORY_RETENTION_MS);
+            return;
+        }
+        const samples = await mapWithConcurrency(targets, PROBE_CONCURRENCY, probeTarget);
+        for (let i = 0; i < targets.length; i++) {
+            appendSample(targets[i].slot, samples[i]);
+        }
+        pruneSamples(Date.now() - HISTORY_RETENTION_MS);
     };
 
     return {

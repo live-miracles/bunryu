@@ -6,6 +6,7 @@ import { kickSrsClientsByStream } from '../utils/srs.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { SrsEvent } from '../services/health.js';
 import type { InputState } from '../services/inputState.js';
+import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import {
     createRejectedPublishes,
     isKeyShaped,
@@ -59,6 +60,9 @@ async function readJournalOnlyTail(unit: string, maxLines: number): Promise<LogT
 // the whole map each window so it can't grow unbounded under a flood of
 // distinct (attacker-controlled) stream names.
 const KICK_COOLDOWN_MS = 5000;
+// A refused cross-protocol publish is retried every second by the relay; log it
+// once per pipeline per window and count the rest.
+const CROSS_PROTOCOL_LOG_INTERVAL_MS = 60_000;
 
 // Hook bodies come from SRS, but the hook listener is the one place that parses
 // network-supplied text into our logs and dashboard state. A client IP is only
@@ -69,6 +73,13 @@ function safeIp(raw: unknown): string {
 }
 const MAX_LISTED_REJECTIONS = 25;
 
+// Kicks are throttled per stream (KICK_COOLDOWN_MS), so this cannot flood.
+function logKickFailure(err: unknown): void {
+    console.warn(
+        `[srs-hook] kicking a rejected publisher failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+}
+
 function isLoopbackIp(ip: string): boolean {
     return ip === '::1' || ip.startsWith('127.') || ip.startsWith('::ffff:127.');
 }
@@ -78,6 +89,7 @@ export function registerSrsHooks(
     db: Db,
     inputState: InputState,
     rejectedPublishes: RejectedPublishes = createRejectedPublishes(),
+    diagnostics?: DiagnosticsLogger,
 ): void {
     // Which keys exist / are assigned only decides how a rejected attempt is
     // labelled in the dashboard (never whether it is accepted), so it is cached
@@ -103,8 +115,22 @@ export function registerSrsHooks(
     };
 
     let recentlyKicked = new Map<string, number>();
+    const crossProtocolLogged = new Map<
+        number,
+        { at: number; suppressed: number; detail: string }
+    >();
     setInterval(() => {
         recentlyKicked = new Map();
+        const now = Date.now();
+        for (const [pipelineId, state] of crossProtocolLogged) {
+            if (now - state.at < CROSS_PROTOCOL_LOG_INTERVAL_MS) continue;
+            if (state.suppressed > 0) {
+                console.log(
+                    `[srs-hook] ${state.suppressed} more rejected publish attempts for pipeline ${pipelineId} (${state.detail}) were not logged`,
+                );
+            }
+            crossProtocolLogged.delete(pipelineId);
+        }
     }, KICK_COOLDOWN_MS).unref();
 
     app.post('/api/srs/on_publish', (req, res) => {
@@ -132,6 +158,14 @@ export function registerSrsHooks(
             console.log(
                 `[srs-hook] rejected publish from ${ip}: ${JSON.stringify(name)} (${protocol}, ${why})${suppressed}`,
             );
+            diagnostics?.event('publish-rejected', {
+                stream: name,
+                app: hookApp ?? null,
+                protocol,
+                ip,
+                why,
+                suppressed: result.suppressed,
+            });
         };
 
         if (!stream) {
@@ -162,7 +196,7 @@ export function registerSrsHooks(
             const kickKey = `${hookApp}/${stream}`;
             if (!recentlyKicked.has(kickKey)) {
                 recentlyKicked.set(kickKey, Date.now());
-                void kickSrsClientsByStream(hookApp, stream).catch(() => {});
+                void kickSrsClientsByStream(hookApp, stream).catch(logKickFailure);
             }
             return res.status(403).json({ code: 403 });
         }
@@ -178,7 +212,7 @@ export function registerSrsHooks(
             const kickKey = `${hookApp ?? ''}/${stream}`;
             if (hookApp && !recentlyKicked.has(kickKey)) {
                 recentlyKicked.set(kickKey, Date.now());
-                void kickSrsClientsByStream(hookApp, stream).catch(() => {});
+                void kickSrsClientsByStream(hookApp, stream).catch(logKickFailure);
             }
             return res.status(403).json({ code: 403 });
         }
@@ -195,13 +229,30 @@ export function registerSrsHooks(
         // can't happen; the existing stream must be stopped first.
         const currentProtocol = inputState.getProtocol(pipeline.id);
         if (inputState.isLive(pipeline.id) && currentProtocol && currentProtocol !== protocol) {
-            console.log(
-                `[srs-hook] rejected publish from ${ip}: ${stream} (already live via ${currentProtocol}, attempted ${protocol})`,
-            );
+            const why = `already live via ${currentProtocol}, attempted ${protocol}`;
+            const state = crossProtocolLogged.get(pipeline.id);
+            if (state) {
+                state.suppressed++;
+            } else {
+                crossProtocolLogged.set(pipeline.id, {
+                    at: Date.now(),
+                    suppressed: 0,
+                    detail: why,
+                });
+                console.log(`[srs-hook] rejected publish from ${ip}: ${stream} (${why})`);
+                diagnostics?.event('publish-rejected', {
+                    pipelineId: pipeline.id,
+                    stream,
+                    protocol,
+                    ip,
+                    why,
+                });
+            }
             return res.status(403).json({ code: 403 });
         }
 
         console.log(`[srs-hook] allowed publish from ${ip}: ${stream}`);
+        diagnostics?.event('publish-allowed', { pipelineId: pipeline.id, stream, protocol, ip });
         return res.json({ code: 0 });
     });
 

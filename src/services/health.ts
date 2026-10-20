@@ -21,7 +21,7 @@ import type {
     SrtRelayLegState,
 } from './srtRelay.js';
 import { inputPullUrl, type InputProtocol, type InputState } from './inputState.js';
-import type { DiagnosticsLogger } from '../utils/diagnostics.js';
+import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
 import { readHostMemory, topProcessesByRss } from '../utils/procStats.js';
 import {
     isProbeUsable,
@@ -43,6 +43,9 @@ const FFPROBE_FAILED_REFRESH_MS = 30000;
 // only if memory pressure from simultaneous ffprobe processes became a concern.
 const FFPROBE_STAGGER_MS = 200;
 const POLL_INTERVAL_MS = 5000;
+// An alert absent for this many polls in a row (~30 s) ends its episode, so a
+// condition that flickers poll to poll is one episode, not dozens.
+const ALERT_EPISODE_QUIET_POLLS = 6;
 const MAX_SRS_EVENTS = 200;
 const LEG_HISTORY_MAX_SAMPLES = (60 * 60 * 1000) / POLL_INTERVAL_MS;
 const LEG_HISTORY_MAX_WINDOW_MS = 30 * 60 * 1000;
@@ -324,6 +327,71 @@ export function createHealthService(
     const inputLiveStartMs = new Map<number, number>();
     const inputPublisherCid = new Map<number, string>();
     const publisherChangedAt = new Map<number, number>();
+    // Open alert episodes by `${pipelineId}:${code}`. Alerts are rebuilt every
+    // poll; these turn them into one started and one ended diagnostics event.
+    const alertEpisodes = new Map<
+        string,
+        {
+            pipelineId: number;
+            code: string;
+            startedAtMs: number;
+            lastSeenMs: number;
+            activePolls: number;
+            absentPolls: number;
+            lastMessage: string;
+        }
+    >();
+
+    function endAlertEpisode(key: string, reason: string): void {
+        const episode = alertEpisodes.get(key);
+        if (!episode) return;
+        alertEpisodes.delete(key);
+        diagnostics?.event('pipeline-alert-ended', {
+            pipelineId: episode.pipelineId,
+            code: episode.code,
+            durationMs: episode.lastSeenMs - episode.startedAtMs,
+            activePolls: episode.activePolls,
+            lastMessage: episode.lastMessage,
+            reason,
+        });
+    }
+
+    function trackAlertEpisodes(pipelineId: number, alerts: PipelineAlert[]): void {
+        const now = Date.now();
+        const seen = new Set<string>();
+        for (const alert of alerts) {
+            const key = `${pipelineId}:${alert.code}`;
+            seen.add(key);
+            const episode = alertEpisodes.get(key);
+            if (episode) {
+                episode.lastSeenMs = now;
+                episode.activePolls += 1;
+                episode.absentPolls = 0;
+                episode.lastMessage = alert.message;
+                continue;
+            }
+            alertEpisodes.set(key, {
+                pipelineId,
+                code: alert.code,
+                startedAtMs: now,
+                lastSeenMs: now,
+                activePolls: 1,
+                absentPolls: 0,
+                lastMessage: alert.message,
+            });
+            diagnostics?.event('pipeline-alert-started', {
+                pipelineId,
+                code: alert.code,
+                severity: alert.severity,
+                message: alert.message,
+            });
+        }
+        for (const [key, episode] of alertEpisodes) {
+            if (episode.pipelineId !== pipelineId || seen.has(key)) continue;
+            episode.absentPolls += 1;
+            if (episode.absentPolls >= ALERT_EPISODE_QUIET_POLLS) endAlertEpisode(key, 'cleared');
+        }
+    }
     const relayInputSamples = new Map<
         number,
         {
@@ -569,11 +637,16 @@ export function createHealthService(
         }
     }
 
+    const pollFailures = createLoopFailureReporter('health-poll', diagnostics);
+
     async function poll(): Promise<void> {
         if (pollInProgress) return;
         pollInProgress = true;
         try {
             await doPoll();
+            pollFailures.succeeded();
+        } catch (err) {
+            pollFailures.failed(err);
         } finally {
             pollInProgress = false;
         }
@@ -582,6 +655,10 @@ export function createHealthService(
     async function doPoll(): Promise<void> {
         const pipelines = db.listPipelines();
         const activePipelineIds = new Set(pipelines.map((pipeline) => pipeline.id));
+        for (const [key, episode] of alertEpisodes) {
+            if (!activePipelineIds.has(episode.pipelineId))
+                endAlertEpisode(key, 'pipeline deleted');
+        }
         for (const pipelineId of inputConnected.keys()) {
             if (!activePipelineIds.has(pipelineId)) inputConnected.delete(pipelineId);
         }
@@ -761,28 +838,6 @@ export function createHealthService(
                         from: prevLive ? 'live' : 'offline',
                         to: 'live',
                         protocol: inputState.getProtocol(pipeline.id),
-                    });
-                }
-
-                if (prevLive && !nowLive && nowConnected) {
-                    const uptimeSec = Math.round(
-                        (Date.now() - (inputLiveStartMs.get(pipeline.id) ?? Date.now())) / 1000,
-                    );
-                    inputLiveStartMs.delete(pipeline.id);
-                    try {
-                        db.appendPipelineLog(
-                            pipeline.id,
-                            'media_lost',
-                            `Input media lost (was valid for ${formatDuration(uptimeSec)})`,
-                        );
-                    } catch {
-                        /* non-critical */
-                    }
-                    diagnostics?.event('input-transition', {
-                        pipelineId: pipeline.id,
-                        from: 'live',
-                        to: 'media-lost',
-                        uptimeSec,
                     });
                 }
 
@@ -1152,6 +1207,14 @@ export function createHealthService(
                 if (series.samples.length > LEG_HISTORY_MAX_SAMPLES) series.samples.shift();
                 pipelineLegHistory.set(key, series);
             }
+            // Cellular legs change IP often; a leg that has been gone longer than
+            // the history covers would otherwise be kept for good.
+            for (const [key, series] of pipelineLegHistory) {
+                const lastTs = series.samples.at(-1)?.ts ?? 0;
+                if (now - lastTs > LEG_HISTORY_MAX_SAMPLES * POLL_INTERVAL_MS) {
+                    pipelineLegHistory.delete(key);
+                }
+            }
             legHistory.set(pipeline.id, pipelineLegHistory);
             const publisher = s?.publish?.cid ? publisherByCid.get(s.publish.cid) : undefined;
             const localSrtPublisherConflict = outputRows.some((output) => {
@@ -1220,6 +1283,7 @@ export function createHealthService(
                 alerts,
                 srtBonding: bondingStatus,
             };
+            trackAlertEpisodes(pipeline.id, alerts);
         }
 
         snapshot = {
@@ -1280,29 +1344,33 @@ export function createHealthService(
                             })),
                         },
                     },
+                    // A stopped output's fields are all null; at 500 outputs they
+                    // would dominate the snapshot's size.
                     outputs: Object.fromEntries(
-                        Object.entries(pipelineHealth.outputs).map(([outputId, output]) => [
-                            outputId,
-                            {
-                                status: output.status,
-                                pid: output.pid,
-                                bitrateKbps: output.bitrateKbps,
-                                lastOutTimeUs: output.lastOutTimeUs,
-                                lastTotalSizeBytes: output.lastTotalSizeBytes,
-                                progressAgeMs: output.progressAgeMs,
-                                outputProgressAgeMs: output.outputProgressAgeMs,
-                                startedAtMs: output.startedAtMs,
-                                failures: output.failures,
-                                warningReason: output.warningReason,
-                                memoryUsageBytes: output.memoryUsageBytes,
-                                memoryLimitBytes: output.memoryLimitBytes,
-                                cpuPercent: output.cpuPercent,
-                                role: output.role,
-                                renditionId: output.renditionId,
-                                ready: output.ready,
-                                readers: output.readers,
-                            },
-                        ]),
+                        Object.entries(pipelineHealth.outputs)
+                            .filter(([, output]) => output.status !== 'stopped')
+                            .map(([outputId, output]) => [
+                                outputId,
+                                {
+                                    status: output.status,
+                                    pid: output.pid,
+                                    bitrateKbps: output.bitrateKbps,
+                                    lastOutTimeUs: output.lastOutTimeUs,
+                                    lastTotalSizeBytes: output.lastTotalSizeBytes,
+                                    progressAgeMs: output.progressAgeMs,
+                                    outputProgressAgeMs: output.outputProgressAgeMs,
+                                    startedAtMs: output.startedAtMs,
+                                    failures: output.failures,
+                                    warningReason: output.warningReason,
+                                    memoryUsageBytes: output.memoryUsageBytes,
+                                    memoryLimitBytes: output.memoryLimitBytes,
+                                    cpuPercent: output.cpuPercent,
+                                    role: output.role,
+                                    renditionId: output.renditionId,
+                                    ready: output.ready,
+                                    readers: output.readers,
+                                },
+                            ]),
                     ),
                     alerts: pipelineHealth.alerts,
                 };

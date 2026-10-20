@@ -103,7 +103,12 @@ function createHarness(assignedKeys, unassignedKeys = [], outputs = []) {
     };
     const inputState = createInputState();
     const rejectedPublishes = createRejectedPublishes();
-    registerSrsHooks(app, db, inputState, rejectedPublishes);
+    const events = [];
+    const diagnostics = {
+        event: (event, fields = {}) => events.push({ event, ...fields }),
+        close: async () => {},
+    };
+    registerSrsHooks(app, db, inputState, rejectedPublishes, diagnostics);
     registerRejectedPublishesApi(app, rejectedPublishes);
     return {
         calls,
@@ -115,6 +120,7 @@ function createHarness(assignedKeys, unassignedKeys = [], outputs = []) {
         play: (body) => dispatch(app, 'POST', '/api/srs/on_play', body),
         ready: () => dispatch(app, 'GET', '/api/ready'),
         inputState,
+        events,
     };
 }
 
@@ -357,6 +363,41 @@ describe('SRS publish hook integration', () => {
 
         assert.equal(res.status, 403);
         assert.deepEqual(res.body, { code: 403 });
+    });
+
+    test('a retried cross-protocol publish is logged once per window, with diagnostics', async (t) => {
+        const harness = createHarness(['key01_good']);
+        harness.inputState.setPipelineState(1, true, 'rtmp');
+        const lines = [];
+        t.mock.method(console, 'log', (line) => lines.push(String(line)));
+
+        for (let i = 0; i < 5; i += 1) {
+            await harness.publish({
+                app: 'live',
+                stream: 'key01_good',
+                tcUrl: 'srt://10.0.0.1/live',
+                ip: '127.0.0.1',
+            });
+        }
+
+        assert.equal(lines.filter((l) => l.includes('already live via rtmp')).length, 1);
+        const rejected = harness.events.filter((e) => e.event === 'publish-rejected');
+        assert.equal(rejected.length, 1);
+        assert.equal(rejected[0].pipelineId, 1);
+        assert.equal(rejected[0].protocol, 'srt');
+        assert.match(rejected[0].why, /already live via rtmp/);
+    });
+
+    test('an allowed publish is recorded in diagnostics', async () => {
+        const harness = createHarness(['key01_good']);
+
+        await harness.publish({ app: 'live', stream: 'key01_good', ip: '203.0.113.5' });
+
+        const allowed = harness.events.filter((e) => e.event === 'publish-allowed');
+        assert.equal(allowed.length, 1);
+        assert.equal(allowed[0].pipelineId, 1);
+        assert.equal(allowed[0].protocol, 'rtmp');
+        assert.equal(allowed[0].ip, '203.0.113.5');
     });
 
     test('allows a same-protocol republish to an already-live pipeline (reconnect)', async () => {

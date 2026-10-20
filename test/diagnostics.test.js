@@ -343,3 +343,49 @@ describe('diagnostics logger close()', () => {
         await sleep(30);
     });
 });
+
+describe('diagnostics logger failures', () => {
+    test('a write stream error does not crash the process and drops are counted on recovery', async () => {
+        const dir = tempDiagnosticsDir();
+        fs.mkdirSync(dir, { recursive: true });
+        // A directory where the active file should be makes the open fail
+        // asynchronously with EISDIR, like a disk-full or read-only error would.
+        fs.mkdirSync(path.join(dir, todayFileName(0)));
+        const logger = createDiagnosticsLogger(dir, { reopenDelayMs: 50 });
+        logger.event('lost-1');
+        await sleep(20);
+        logger.event('lost-2');
+        fs.rmdirSync(path.join(dir, todayFileName(0)));
+        await sleep(80);
+        logger.event('after-recovery');
+        await logger.close();
+
+        const records = readLines(path.join(dir, todayFileName(0)));
+        assert.equal(records[0].event, 'diagnostics-events-dropped');
+        assert.equal(records[0].dropped, 2);
+        assert.match(records[0].error, /EISDIR/);
+        assert.equal(records[1].event, 'after-recovery');
+    });
+
+    test('an unwritable directory does not throw from construction or event()', async () => {
+        const root = mkTempDir();
+        roots.push(root);
+        const blocker = path.join(root, 'not-a-dir');
+        fs.writeFileSync(blocker, '');
+        let logger;
+        assert.doesNotThrow(() => {
+            logger = createDiagnosticsLogger(path.join(blocker, 'diagnostics'));
+            logger.event('nowhere');
+        });
+        await logger.close();
+    });
+
+    test('close() resolves after buffered events are on disk', async () => {
+        const dir = tempDiagnosticsDir();
+        const logger = createDiagnosticsLogger(dir);
+        for (let i = 0; i < 500; i += 1) logger.event('burst', { i });
+        await logger.close();
+        const records = readLines(path.join(dir, listDiagnosticsFiles(dir)[0]));
+        assert.equal(records.length, 500);
+    });
+});

@@ -188,6 +188,8 @@ function createMixerStateController(
     let rampTimer: NodeJS.Timeout | null = null;
     let commandChain = Promise.resolve();
     let closed = false;
+    // A ramp sends many commands; log a dead control socket once, not per step.
+    let gainFailing = false;
 
     function sendGain(gain: number): void {
         if (closed) return;
@@ -196,8 +198,15 @@ function createMixerStateController(
             .then(async () => {
                 await socket.send(`volume@source_gain volume ${bounded}`);
                 await socket.receive();
+                gainFailing = false;
             })
-            .catch(() => {});
+            .catch((err: unknown) => {
+                if (gainFailing || closed) return;
+                gainFailing = true;
+                console.warn(
+                    `[translation-mixer] gain command failed, source volume left unchanged: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            });
     }
 
     function rampTo(target: number, durationMs: number): void {

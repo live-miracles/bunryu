@@ -15,7 +15,7 @@ import {
 import { red, yellow, green } from '../utils/ansiColor.js';
 import type { Db, Output } from '../types.js';
 import type { InputState } from './inputState.js';
-import type { DiagnosticsLogger } from '../utils/diagnostics.js';
+import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
 import {
     encodeRecipe,
     isRenditionOutput,
@@ -223,7 +223,8 @@ export interface OutputService {
         outputId: string,
         usage: { rssBytes: number | null; limitBytes: number; cpuPercent: number | null },
     ): void;
-    shutdown(): void;
+    // Kills every ffmpeg without waiting; returns the ids that were running.
+    shutdown(): string[];
 }
 
 // A fresh instance owns no ffmpeg processes yet, so anything already running
@@ -300,7 +301,31 @@ export function createOutputService(
     >();
     // For the 'stopped' record of a stop that followed repeated failures.
     const stopFailures = new Map<string, { attempts: number; lastFailure: string | null }>();
-    const watchdogTimer = setInterval(checkOutputWatchdog, OUTPUT_WATCHDOG_INTERVAL_MS);
+    // The latest ffmpeg run of each output (kept after it exits, so the retry
+    // and stop events that follow still name it). Every diagnostics event about
+    // an output carries these, so one grep for a runId gives that run's story.
+    const runs = new Map<string, { pipelineId: number; runId: string; pid: number | null }>();
+    const runCounts = new Map<string, number>();
+    // The stderr tail of each output's previous exit: a retry flood against a
+    // dead destination repeats the same text on every attempt.
+    const lastExitStderr = new Map<string, string>();
+
+    function logEvent(
+        event: string,
+        fields: Record<string, unknown> & { outputId?: string },
+    ): void {
+        const run = fields.outputId === undefined ? undefined : runs.get(fields.outputId);
+        diagnostics?.event(event, run ? { outputId: fields.outputId, ...run, ...fields } : fields);
+    }
+    const watchdogFailures = createLoopFailureReporter('output-watchdog', diagnostics);
+    const watchdogTimer = setInterval(() => {
+        try {
+            checkOutputWatchdog();
+            watchdogFailures.succeeded();
+        } catch (err) {
+            watchdogFailures.failed(err);
+        }
+    }, OUTPUT_WATCHDOG_INTERVAL_MS);
     watchdogTimer.unref?.();
     refreshTcpSocketSnapshot();
     killOrphanedFfmpeg();
@@ -503,7 +528,7 @@ export function createOutputService(
             streak.lastFailure ? `. Last error: ${streak.lastFailure}` : ''
         }`;
         console.warn(red(`[outputs] ${output.id} (${output.name}) ${message}`));
-        diagnostics?.event('output-stopped-after-failures', {
+        logEvent('output-stopped-after-failures', {
             outputId: output.id,
             outputName: output.name,
             failedAttempts: streak.attempts,
@@ -521,7 +546,7 @@ export function createOutputService(
                 `[outputs] ${output.id} (${output.name}) retry ${r.failures} scheduled in ${delayMs}ms`,
             ),
         );
-        diagnostics?.event('ffmpeg-retry-scheduled', {
+        logEvent('ffmpeg-retry-scheduled', {
             outputId: output.id,
             outputName: output.name,
             attempt: r.failures,
@@ -566,7 +591,13 @@ export function createOutputService(
             }
             await startJob(output);
         } catch (err) {
+            // Not retried from here: whatever re-triggers a start (input back
+            // online, a reconcile, a manual start) tries again.
             console.warn(red(`[outputs] ${outputId} auto-start failed:`), err);
+            logEvent('output-start-failed', {
+                outputId,
+                error: err instanceof Error ? err.message : String(err),
+            });
         } finally {
             startLocks.delete(outputId);
         }
@@ -654,7 +685,7 @@ export function createOutputService(
 
     function flushTimestampSummary(outputId: string, burst: TimestampBurst, now: number): void {
         if (burst.pendingCount === 0) return;
-        diagnostics?.event('ffmpeg-timestamp-warning-summary', {
+        logEvent('ffmpeg-timestamp-warning-summary', {
             outputId,
             windowMs: now - burst.lastSummaryAtMs,
             count: burst.pendingCount,
@@ -704,7 +735,7 @@ export function createOutputService(
         const key = `${outputId}:${kind}`;
         if (warningEpisodes.has(key)) return;
         warningEpisodes.set(key, { startedAtMs: Date.now(), message });
-        diagnostics?.event('ffmpeg-warning-started', { outputId, kind, message });
+        logEvent('ffmpeg-warning-started', { outputId, kind, message });
     }
 
     function warningEnded(outputId: string, kind: WarningKind, reason: string): void {
@@ -713,7 +744,7 @@ export function createOutputService(
         if (!episode) return;
         warningEpisodes.delete(key);
         const durationMs = Date.now() - episode.startedAtMs;
-        diagnostics?.event('ffmpeg-warning-ended', {
+        logEvent('ffmpeg-warning-ended', {
             outputId,
             kind,
             durationMs,
@@ -767,7 +798,7 @@ export function createOutputService(
         if (now - burst.lastAtMs >= TIMESTAMP_QUIET_MS) {
             flushTimestampSummary(outputId, burst, burst.lastAtMs);
             const durationMs = burst.lastAtMs - burst.startedAtMs;
-            diagnostics?.event('ffmpeg-timestamp-recovered', {
+            logEvent('ffmpeg-timestamp-recovered', {
                 outputId,
                 durationMs,
                 count: burst.count,
@@ -821,7 +852,7 @@ export function createOutputService(
             const kind = timestampWarningKind(line);
             if (!burst.knownKinds.has(kind) && burst.knownKinds.size < TIMESTAMP_MAX_KINDS) {
                 burst.knownKinds.add(kind);
-                diagnostics?.event('ffmpeg-timestamp-warning', { outputId, line });
+                logEvent('ffmpeg-timestamp-warning', { outputId, line });
             } else {
                 const key = burst.knownKinds.has(kind) ? kind : 'other';
                 burst.pendingCount++;
@@ -963,7 +994,7 @@ export function createOutputService(
                 `[outputs] ${outputId} (${output.name}) socket unhealthy: ${reason}, killing pid=${proc.pid}`,
             ),
         );
-        diagnostics?.event('ffmpeg-restart', {
+        logEvent('ffmpeg-restart', {
             outputId,
             outputName: output.name,
             ...roleFields(output),
@@ -1048,7 +1079,7 @@ export function createOutputService(
                             )}MB), killing pid=${proc.pid} for retry`,
                         ),
                     );
-                    diagnostics?.event('ffmpeg-restart', {
+                    logEvent('ffmpeg-restart', {
                         outputId,
                         outputName: output.name,
                         ...roleFields(output),
@@ -1079,7 +1110,7 @@ export function createOutputService(
                     )}s, killing pid=${proc.pid} for retry`,
                 ),
             );
-            diagnostics?.event('ffmpeg-restart', {
+            logEvent('ffmpeg-restart', {
                 outputId,
                 outputName: output.name,
                 ...roleFields(output),
@@ -1152,7 +1183,7 @@ export function createOutputService(
                     `[outputs] ${dep.id} (${dep.name}) restarting: ${rendition.name} failed, killing pid=${proc.pid}`,
                 ),
             );
-            diagnostics?.event('ffmpeg-restart', {
+            logEvent('ffmpeg-restart', {
                 outputId: dep.id,
                 outputName: dep.name,
                 ...roleFields(dep),
@@ -1162,7 +1193,7 @@ export function createOutputService(
             void killProcess(dep.id, proc, false);
         }
         if (affected.length === 0) return;
-        diagnostics?.event('rendition-dependents-restarted', {
+        logEvent('rendition-dependents-restarted', {
             renditionId: rendition.id,
             outputIds: affected,
             killedIds: killed,
@@ -1206,6 +1237,13 @@ export function createOutputService(
         });
 
         processes.set(output.id, child);
+        const runNumber = (runCounts.get(output.id) ?? 0) + 1;
+        runCounts.set(output.id, runNumber);
+        runs.set(output.id, {
+            pipelineId: output.pipelineId,
+            runId: `${output.id}#${runNumber}`,
+            pid: child.pid ?? null,
+        });
         setStatus(output.id, 'running', child.pid ?? null);
         if (rendition) renditionOf.set(output.id, rendition.id);
         progress.set(output.id, {
@@ -1226,7 +1264,7 @@ export function createOutputService(
             lastOutTimeWallMs: null,
         });
         console.log(green(`[outputs] ${output.id} (${output.name}) started pid=${child.pid}`));
-        diagnostics?.event('ffmpeg-started', {
+        logEvent('ffmpeg-started', {
             outputId: output.id,
             outputName: output.name,
             pid: child.pid ?? null,
@@ -1246,18 +1284,23 @@ export function createOutputService(
         });
 
         let stderrTail = '';
+        // Warnings are matched per line; a pipe read can end mid-line.
+        let stderrPartial = '';
         child.stderr?.on('data', (d: Buffer) => {
             const text = d.toString();
             stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
+            const lines = (stderrPartial + text).split(/\r?\n|\r/);
+            stderrPartial = (lines.pop() ?? '').slice(-STDERR_TAIL_BYTES);
             const p = progress.get(output.id);
             if (p) {
                 p.stderrTail = stderrTail;
-                noteTimestampWarning(output.id, text);
+                if (lines.length > 0) noteTimestampWarning(output.id, lines.join('\n'));
             }
         });
 
         child.on('error', (err) => {
             console.warn(red(`[outputs] ${output.id} error:`), err.message);
+            logEvent('ffmpeg-process-error', { outputId: output.id, error: err.message });
         });
 
         child.on('close', (code, signal) => {
@@ -1286,17 +1329,23 @@ export function createOutputService(
                     `[outputs] ${output.id} (${output.name}) exited code=${code} signal=${signal} status=${status}`,
                 ),
             );
-            diagnostics?.event('ffmpeg-exited', {
+            const exitStderr = stderrTail.trim();
+            const stderrTailSameAsPrevious =
+                exitStderr !== '' && lastExitStderr.get(output.id) === exitStderr;
+            lastExitStderr.set(output.id, exitStderr);
+            logEvent('ffmpeg-exited', {
                 outputId: output.id,
                 outputName: output.name,
                 pid: child.pid ?? null,
                 code,
                 signal,
                 status,
+                ranMs,
                 ...roles,
                 watchdog: wasWatchdog,
                 reason: watchdogReason,
-                stderrTail: stderrTail.trim() || null,
+                stderrTail: stderrTailSameAsPrevious ? null : exitStderr || null,
+                ...(stderrTailSameAsPrevious ? { stderrTailSameAsPrevious } : {}),
                 ...(openBurst
                     ? {
                           timestampBurst: {
@@ -1463,7 +1512,7 @@ export function createOutputService(
                     const depProc = processes.get(dep.id);
                     if (!depProc || stopRequested.has(dep.id)) continue;
                     restartNotes.set(dep.id, 'Shared encode restarted by user');
-                    diagnostics?.event('ffmpeg-restart', {
+                    logEvent('ffmpeg-restart', {
                         outputId: dep.id,
                         outputName: dep.name,
                         ...roleFields(dep),
@@ -1475,7 +1524,7 @@ export function createOutputService(
             }
             restartNotes.set(outputId, 'Restarted by user');
             console.log(yellow(`[outputs] ${outputId} (${output.name}) restarted by user`));
-            diagnostics?.event('ffmpeg-restart', {
+            logEvent('ffmpeg-restart', {
                 outputId,
                 outputName: output.name,
                 ...roleFields(output),
@@ -1525,8 +1574,9 @@ export function createOutputService(
 
         clearRetryState: clearRetry,
 
-        shutdown(): void {
+        shutdown(): string[] {
             shuttingDown = true;
+            const killed = [...processes.keys()];
             clearInterval(watchdogTimer);
             for (const r of retryState.values()) {
                 if (r.timer) clearTimeout(r.timer);
@@ -1540,6 +1590,7 @@ export function createOutputService(
                 }
             }
             processes.clear();
+            return killed;
         },
     };
 }

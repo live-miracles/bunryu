@@ -189,7 +189,8 @@ only for a new module.
   and journal log tails; `auth.ts` login/sessions.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments; `appConfig.ts` reads
   `bunryu.json` (watchdog defaults); `diagnostics.ts` is the rotated JSONL
-  writer; `srs*.ts`/`relayConfig.ts` generate and read SRS and relay config.
+  writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
+  read SRS and relay config.
 - `src/db/` - SQLite schema and access (output Error History lives in
   `outputs.last_error` as JSON).
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
