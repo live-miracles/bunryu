@@ -1628,7 +1628,7 @@ export async function showSrsLogs(): Promise<void> {
         if (tail.lines.length === 0) {
             const msg =
                 tail.source === 'none'
-                    ? `No ${label} log output found — it may not have started yet.`
+                    ? `No ${label} log output found — it may not have started yet. In Docker this viewer is always empty; use \`docker compose logs\`.`
                     : `${label} log output is empty — no log output yet.`;
             section += `<p class="text-sm opacity-50 mb-4">${msg}</p>`;
         } else {

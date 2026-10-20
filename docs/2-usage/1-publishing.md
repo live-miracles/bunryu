@@ -28,6 +28,10 @@ bonded URL without `grouptype=broadcast`. The dashboard then shows it as an
 optional. Plain SRT sent straight to port 10080 avoids the relay's extra hop
 (about 200 ms) and keeps the stream independent of the relay process; see
 [SRT ingest](../4-reference/3-design-decisions.md#srt-ingest).
+The trade-off is visibility: SRS does not expose packet loss, retransmit or drop
+counters for an SRT publisher, so a stream sent straight to 10080 has no link
+statistics or loss alerts in the dashboard (its input card says so). Through the
+relay you get them, so use the bonded port when you want to watch the link.
 
 ## Test commands
 

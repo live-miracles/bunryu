@@ -107,6 +107,25 @@ describe('renderInputStats', () => {
         assert.ok(!/127\.0\.0\.1/.test(html));
     });
 
+    test('tells a direct SRT input that it has no loss stats, naming the bonding port', () => {
+        const html = renderInputStats(input({}), {
+            ...deps(900),
+            directSrt: true,
+            relayPort: 10081,
+        });
+        assert.match(html, /Sent straight to SRS: no packet loss or retransmit stats/);
+        assert.match(html, /bonding input \(port 10081\)/);
+    });
+
+    test('shows no direct-SRT hint otherwise', () => {
+        assert.ok(!/straight to SRS/.test(renderInputStats(input({}), deps(900))));
+        assert.ok(
+            !/straight to SRS/.test(
+                renderInputStats(input({}), { ...deps(900), directSrt: false, relayPort: 10081 }),
+            ),
+        );
+    });
+
     test('still shows the probe notice instead of stats while ffprobe has not finished', () => {
         const html = renderInputStats(input({ mediaOk: null }), deps(900));
         assert.match(html, /Waiting for ffprobe/);

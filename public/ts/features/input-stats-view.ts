@@ -12,6 +12,10 @@ type InputStatsDeps = {
     displayInputBitrateKbps: (input: InputHealth) => number | null;
     // Overrides the publisher IP when SRS only sees the relay (loopback).
     sourceIp?: string | null;
+    // Plain SRT sent straight to SRS (not through the relay): SRS exposes no
+    // loss/retransmit counters for it, so the card says so and where to get them.
+    directSrt?: boolean;
+    relayPort?: number;
 };
 
 export function formatUptime(ms: number | null): string {
@@ -46,6 +50,11 @@ function renderMediaProbeNotice(input: InputHealth): string {
     const toneClass = input.mediaError ? 'text-error' : input.live ? 'opacity-50' : 'text-warning';
     const probeStatus = input.mediaError ? null : formatMediaProbeStatus(input);
     return `<p class="text-xs ${toneClass} mt-2">${escapeHtml(message)}${probeStatus ? ` <span class="opacity-60">${escapeHtml(probeStatus)}</span>` : ''}</p>`;
+}
+
+function renderDirectSrtNotice(relayPort: number | undefined): string {
+    const port = relayPort ? ` (port ${relayPort})` : '';
+    return `<p class="text-xs opacity-50 mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the bonding input${port} to get them.</p>`;
 }
 
 export function renderInputStats(input: InputHealth, deps: InputStatsDeps): string {
@@ -87,6 +96,7 @@ export function renderInputStats(input: InputHealth, deps: InputStatsDeps): stri
             ${audioLines.length > 0 ? row('Audio', audioLines.join('<br>')) : ''}
         </div>
         ${v ? '' : renderMediaProbeNotice(input)}
+        ${deps.directSrt ? renderDirectSrtNotice(deps.relayPort) : ''}
     `;
 }
 

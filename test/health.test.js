@@ -910,6 +910,100 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
+    describe('input frame rate', () => {
+        // Polls an RTMP input whose ffprobe reports 50 fps; `framesPerPoll(i)`
+        // is how many frames SRS counts between poll i-1 and poll i (5 s).
+        // The measurement window is 2 minutes, i.e. 24 polls.
+        async function pollFrameRate(t, framesPerPoll, { polls = 27, changeCidAt = null } = {}) {
+            let frames = 1024;
+            let cid = 'cid-1';
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({
+                        code: 0,
+                        streams: [streamFixture({ frames, publish: { active: true, cid } })],
+                    });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            childProcess.execFile.mock.mockImplementation((_cmd, _args, _opts, cb) => {
+                queueMicrotask(() =>
+                    cb(
+                        null,
+                        JSON.stringify({
+                            streams: [
+                                {
+                                    codec_type: 'video',
+                                    codec_name: 'h264',
+                                    width: 1920,
+                                    height: 1080,
+                                    r_frame_rate: '50/1',
+                                },
+                            ],
+                        }),
+                        '',
+                    ),
+                );
+                return { kill() {} };
+            });
+            const service = createHealthService(
+                makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+                makeFakeOutputService(),
+                makeFakeSrtRelay(),
+                makeFakeInputState(),
+            );
+            const app = express();
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+            service.start();
+            await sleep(300);
+            const history = [];
+            for (let i = 1; i <= polls; i++) {
+                frames += framesPerPoll(i);
+                if (i === changeCidAt) cid = 'cid-2';
+                await tickPoll(t);
+                history.push((await getSnapshot(app)).pipelines['1'].alerts.map((a) => a.code));
+            }
+            service.shutdown();
+            return history;
+        }
+
+        test('warns when the counted frame rate is below 90% of the probed rate', async (t) => {
+            // 200 frames per 5 s poll is 40 fps against a 50 fps encoder.
+            const history = await pollFrameRate(t, () => 200);
+            assert.deepEqual(history[22], []);
+            assert.ok(
+                history.at(-1).includes('input-low-framerate'),
+                `expected input-low-framerate, got ${JSON.stringify(history.at(-1))}`,
+            );
+        });
+
+        test('warns when the counted frame rate is above 110% of the probed rate', async (t) => {
+            const history = await pollFrameRate(t, () => 280);
+            assert.ok(
+                history.at(-1).includes('input-high-framerate'),
+                `expected input-high-framerate, got ${JSON.stringify(history.at(-1))}`,
+            );
+        });
+
+        test('stays quiet at the probed rate, even with counter steps every other poll', async (t) => {
+            // SRS adds frames in batches; 500 then 0 is the worst alignment.
+            const history = await pollFrameRate(t, (i) => (i % 2 ? 500 : 0));
+            assert.deepEqual(history.flat(), []);
+        });
+
+        test('restarts the measurement when the publisher changes', async (t) => {
+            // 40 fps would be flagged once a full window has passed; the new
+            // cid at poll 20 restarts it, so nothing is flagged by poll 27.
+            const history = await pollFrameRate(t, () => 200, { changeCidAt: 20 });
+            assert.ok(
+                history.flat().includes('publisher-reconnected'),
+                `expected the cid change to be seen, got ${JSON.stringify(history)}`,
+            );
+            assert.ok(!history.flat().includes('input-low-framerate'), JSON.stringify(history));
+        });
+    });
+
     test('records one started and one ended event per alert episode', async (t) => {
         const stream = streamFixture();
         t.mock.method(globalThis, 'fetch', async (url) => {

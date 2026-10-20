@@ -50,6 +50,9 @@ export interface SrsStream {
     publish: { active: boolean; cid?: string };
     kbps: { recv_30s: number; send_30s: number };
     clients: number;
+    // Video frames, added in ~5 s batches (SRS 6.0). SRS 8.0 counts video + audio
+    // here and adds video_frames; the input frame-rate alert needs that field
+    // if SRS is upgraded.
     frames: number;
     recv_bytes: number;
     send_bytes: number;

@@ -54,6 +54,12 @@ const LEG_HEALTH_WINDOW_MS = 60 * 1000;
 // SRT, so warn only when the negotiated latency exceeds it with some margin.
 // Sudden latency spikes are still reported independently below.
 const SRT_HIGH_LATENCY_WARN_MS = 1500;
+// SRS adds RTMP video frames to its counter in ~5 s batches (and starts
+// ~20 s after the connect), so a window's rate is off by up to one batch at each
+// end: ±5 s / window, about ±4 % over 2 minutes. The ±10 % band sits clear of
+// that; a real encoder drops or bursts frames by far more.
+const INPUT_FPS_WINDOW_MS = 2 * 60 * 1000;
+const INPUT_FPS_TOLERANCE = 0.1;
 const DIAGNOSTICS_SNAPSHOT_INTERVAL_MS = 60 * 1000;
 // Host MemAvailable thresholds, as a fraction of total RAM. Enter/exit differ
 // so a box hovering near the line doesn't flap; the transition events carry the
@@ -392,6 +398,40 @@ export function createHealthService(
             if (episode.absentPolls >= ALERT_EPISODE_QUIET_POLLS) endAlertEpisode(key, 'cleared');
         }
     }
+    // Per-pipeline RTMP video-frame counter samples, one per poll, covering
+    // the last INPUT_FPS_WINDOW_MS.
+    const inputFrameSamples = new Map<
+        number,
+        { cid: string | undefined; points: { at: number; frames: number }[] }
+    >();
+    // Frame rate over the last full window, or null while the window is not
+    // full (new publisher, counter reset, SRS not counting yet).
+    function measureInputFps(
+        pipelineId: number,
+        stream: SrsStream | undefined,
+        now: number,
+    ): number | null {
+        const frames = stream?.frames ?? 0;
+        if (!stream || !frames) {
+            inputFrameSamples.delete(pipelineId);
+            return null;
+        }
+        const cid = stream.publish?.cid;
+        let entry = inputFrameSamples.get(pipelineId);
+        const last = entry?.points.at(-1);
+        if (!entry || entry.cid !== cid || (last && frames < last.frames)) {
+            entry = { cid, points: [] };
+            inputFrameSamples.set(pipelineId, entry);
+        }
+        const { points } = entry;
+        points.push({ at: now, frames });
+        // Keep the newest sample that is at least a window old as the baseline.
+        while (points.length > 1 && now - points[1].at >= INPUT_FPS_WINDOW_MS) points.shift();
+        const oldest = points[0];
+        const elapsedMs = now - oldest.at;
+        if (elapsedMs < INPUT_FPS_WINDOW_MS) return null;
+        return ((frames - oldest.frames) * 1000) / elapsedMs;
+    }
     const relayInputSamples = new Map<
         number,
         {
@@ -674,6 +714,9 @@ export function createHealthService(
         for (const pipelineId of relayInputSamples.keys()) {
             if (!activePipelineIds.has(pipelineId)) relayInputSamples.delete(pipelineId);
         }
+        for (const pipelineId of inputFrameSamples.keys()) {
+            if (!activePipelineIds.has(pipelineId)) inputFrameSamples.delete(pipelineId);
+        }
         for (const pipelineId of legPacketSamples.keys()) {
             if (!activePipelineIds.has(pipelineId)) legPacketSamples.delete(pipelineId);
         }
@@ -921,6 +964,25 @@ export function createHealthService(
             };
             relayInputSamples.set(pipeline.id, currentRelaySample);
             const alerts: PipelineAlert[] = [];
+            // RTMP only: an SRT input's frames are counted in larger batches,
+            // and its link quality comes from the relay's loss/drop alerts.
+            const inputFps = measureInputFps(
+                pipeline.id,
+                displayLive && !srtStream ? s : undefined,
+                now,
+            );
+            const nominalFps = probedMedia?.video?.fps ?? null;
+            if (inputFps !== null && nominalFps) {
+                const low = inputFps < nominalFps * (1 - INPUT_FPS_TOLERANCE);
+                if (low || inputFps > nominalFps * (1 + INPUT_FPS_TOLERANCE)) {
+                    alerts.push({
+                        severity: 'warning',
+                        code: low ? 'input-low-framerate' : 'input-high-framerate',
+                        message: `Input is delivering ${inputFps.toFixed(1)} fps; ffprobe reports ${nominalFps} fps.`,
+                        sinceMs: now,
+                    });
+                }
+            }
             const changedAt = publisherChangedAt.get(pipeline.id);
             if (changedAt && now - changedAt <= 30_000) {
                 alerts.push({

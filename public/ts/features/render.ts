@@ -1792,6 +1792,8 @@ function renderPipelineInfo(selectedId: string | null): void {
     const inputHtml = renderInputStats(pipeline.input, {
         displayInputBitrateKbps,
         sourceIp: relaySourceIp(pipeline),
+        directSrt: pipeline.input.isSrt && !pipeline.srtBonding.acceptedBySrs,
+        relayPort: state.health.srtRelay?.port,
     });
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
     if (statsEl) statsEl.innerHTML = inputHtml;

@@ -171,6 +171,27 @@ because the offset originates in the incoming stream and restarting would drop
 the destination connections during a live event. The fix is on the encoder side; in the
 observed incident, reconnecting the encoder cleared the condition.
 
+## Input frame rate
+
+The health poll watches the video frame counter SRS keeps for an RTMP input. When
+the rate over the last 2 minutes is more than 10 % below the frame rate ffprobe
+reported for that input (an encoder dropping frames while the bitrate still looks
+normal), the pipeline gets an `input-low-framerate` warning alert; more than 10 %
+above gives `input-high-framerate` (bursts after a stall, or an encoder sending
+more frames than it declares). It is reporting only, like the other alerts: it shows
+in the dashboard and as `pipeline-alert-started` / `pipeline-alert-ended`
+diagnostics events, and nothing is restarted.
+
+Limits: SRS 6.0 adds frames to the counter in batches of about 5 s and starts
+counting roughly 20 s after the publish begins. A window is therefore off by up to
+5 s of frames at each end (about ±4 % over 2 minutes), which is why the window is
+long and the band is ±10 %; a shorter window or a tighter band would raise false
+alarms on a steady encoder. The first alert can come about 2 minutes after the
+publish, and a new publisher restarts the measurement. SRT inputs are not checked:
+with `srt_to_rtmp off` SRS does not count their frames (`frames` stays 0). An SRT
+input through Goryu has loss, drop and retransmission alerts from the relay; one
+sent straight to SRS port 10080 has no link-quality alerts today.
+
 ## Encoder restarts do not restart outputs
 
 When an encoder stops and reconnects (for example a manual ffmpeg restart), the
