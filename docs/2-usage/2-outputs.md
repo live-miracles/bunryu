@@ -90,19 +90,16 @@ restart the encode that its other outputs use). You cannot create, edit, delete,
 and you cannot point an output at the server's internal `internal` RTMP app. They
 do not count toward the 500-output limit.
 
-**In the dashboard.** The pipeline's side column shows a **Shared encodes** card
-with one row per encode, laid out like an output card: the status, the restart
-button (it restarts the encode after a confirmation and its outputs reconnect), the
-encoding as badges (the video encoding unless it is `copy`, and the audio track as
-`T1`, `T2`, …, where `T1` is track 0), how many outputs use it and how many are
-reading it right now ("2 outs · 1 read"), uptime, bitrate | CPU | memory and the
-failure count, with **History** (its Error History) at the end. Everything sits on
-one line and wraps to a second only when the column is too narrow; the last error
-follows. While an
-output's encode is not up, the output shows a warning ("Waiting for Shared
-encode …", or "Shared encode failed: …") rather than an error. The pipeline's
-"N readers" counts only what reads the input itself, so it no longer includes
-outputs that read a shared encode.
+**In the dashboard.** The pipeline's side column has a **Shared encodes** card
+with one row per encode, laid out like an output card: status, a restart button
+(after a confirmation; its outputs reconnect), the encoding as badges (the video
+encoding unless it is `copy`, and the audio track as `T1`, `T2`, …, where `T1` is
+track 0), how many outputs use it and how many are reading it now ("2 outs · 1
+read"), uptime, bitrate, CPU, memory, the failure count and **History** (its Error
+History), followed by the last error. While an output's encode is not up, the
+output shows a warning ("Waiting for Shared encode …", or "Shared encode failed:
+…"), not an error. The pipeline's "N readers" counts only what reads the input
+itself, not outputs that read a shared encode.
 
 **When a shared encode fails,** every output that uses it is restarted and waits
 for the encode to come back; each of them gets one Error History record "Shared
@@ -125,15 +122,16 @@ settings and lets you change only its name; stop the output to change the rest.
   runs on its own.
 
 **Trade-offs.**
-- Starting a shared output takes longer than a direct one when its encode is not
-  running yet: the encode starts first and the output connects once it is writing
-  data. Measured: about 5 s from the encode's start to its first output. With the
-  encode already running an output starts at once, so an output stopped and started
-  again within the 15 s grace, or a further output of the same recipe, reuses it.
+- A shared output starts slower than a direct one when its encode is not running
+  yet: the encode starts first and the output connects once it is writing data
+  (about 5 s measured). With the encode already running an output starts at once,
+  so an output restarted within the 15 s grace, or a further output of the same
+  recipe, reuses it.
 - The encode is a single point of failure for its outputs: when it restarts, all
   of them reconnect at once.
-- CPU is counted once per recipe per pipeline. Sharing is never across pipelines.
-- Outputs get ids with gaps (the encode takes a number in the pipeline's sequence).
+- Sharing is per pipeline, never across pipelines.
+- Output ids have gaps, because the encode takes a number in the pipeline's
+  sequence.
 
 ## Running outputs
 

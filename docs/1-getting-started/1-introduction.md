@@ -35,7 +35,7 @@ watchdogs that supervise them.
 
 The server is built and operated for the envelope below. It has **not** been
 tested or designed for anything beyond it — treat these as the supported ceiling,
-not a target to exceed :)
+not a target to exceed.
 
 | Limit | Supported ceiling |
 |-------|-------------------|
@@ -48,39 +48,35 @@ Past these figures, expect host CPU/RAM/network and the number of concurrent
 FFmpeg processes (one per output, plus one per shared encode) to become the limiting factors well before the
 dashboard or API does.
 
-**Keep almost all outputs in `copy` mode.** A `copy` output is a passthrough — it
-remuxes the input without decoding it, but sending still costs CPU in proportion to
-the bitrate: on production about 4% of a vCPU per 8 Mbps output, so 100 such outputs
-take around 4 vCPUs and 800 Mbps of egress (more with an SRT input). Selecting an
-audio track re-encodes the audio, which roughly doubles that per output unless
-outputs share the encode. A custom encoding (`720p`, `1080p`, `vertical_rotate`, …) makes FFmpeg
-transcode the video, which is CPU-intensive: on a GCP `n2` with 50 fps feeds about 2
-vCPUs for `720p` and 1.2 for `vertical_rotate` from a 1080p input, and `1080p` from a
-4K input needs about 6 and does not keep up on 4. See [Sizing a server](4-sizing.md) for
-the measured costs and example VM sizes. Outputs on the same pipeline with the same
-encode (the same video encoding and the same single audio track) share **one**
-[shared encode](../2-usage/2-outputs.md#shared-encodes), so CPU is counted once per
-distinct encode per pipeline, not once per output. **Only a handful of distinct
-custom encodes should run at any one time**; everything else should be `copy`. Putting many outputs
-into custom-encoding mode will saturate the CPU long before the 500-output ceiling
-and starve the `copy` outputs and the dashboard alike.
+**Keep almost all outputs in `copy` mode.** A `copy` output remuxes the input
+without decoding it, but sending still costs CPU in proportion to the bitrate: on
+production about 4% of a vCPU per 8 Mbps output, so 100 outputs take around 4 vCPUs
+and 800 Mbps of egress (more with an SRT input). Selecting an audio track
+re-encodes the audio and roughly doubles that per output, unless outputs share the
+encode. A custom video encoding (`720p`, `1080p`, `vertical_rotate`) transcodes
+the video, which is CPU-intensive: on a GCP `n2` with 50 fps feeds about 2 vCPUs
+for `720p` and 1.2 for `vertical_rotate` from a 1080p input, and `1080p` from a 4K
+input needs about 6 and does not keep up on 4. Outputs of a pipeline with the same
+encode share **one** [shared encode](../2-usage/2-outputs.md#shared-encodes), so
+CPU is counted once per distinct encode per pipeline, not once per output. Only a
+handful of distinct custom encodes should run at once: more would saturate the CPU
+long before the 500-output ceiling and starve the `copy` outputs and the
+dashboard. [Sizing a server](4-sizing.md) has the measured costs and example VM
+sizes.
 
 **Previews** copy the input's video, so an open preview costs only a few percent
 of one core, but each viewer receives the input's full bitrate. See
 [Preview](../2-usage/1-publishing.md#preview).
 
-**Parallel dashboard clients.** Health is computed once every 5s and shared by
-all clients, so extra browser tabs do not multiply SRS/SRT-FFprobe work. API
-responses are gzip-compressed, and config changes from another session are
-picked up automatically via the health poll's config revision. Around 10
-simultaneous dashboard clients is fine; higher counts are not tuned or tested.
+**Parallel dashboard clients.** Health is computed once every 5 s and shared by
+all clients, so extra browser tabs do not multiply SRS or ffprobe work, and
+config changes from another session are picked up through the health poll. About
+10 simultaneous clients is fine; more is not tuned or tested.
 
 **Dashboard on a phone.** The dashboard is designed for a desktop browser. Below
-1024 px wide the three columns stack into one (pipeline list, then the input
-panel, then Outputs), the page scrolls normally, charts show one per row, and wide
-tables scroll sideways inside their card. This is enough to check state or start
-and stop an output from a phone; it is not tuned for editing, and drag-to-reorder
-does not work on touch screens.
+1024 px wide the columns stack into one and wide tables scroll sideways. That is
+enough to check state or start and stop an output from a phone, not to edit
+(drag-to-reorder does not work on touch screens).
 
 ## Is it a good fit?
 

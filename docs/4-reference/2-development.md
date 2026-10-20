@@ -7,15 +7,15 @@ Prerequisites: Node.js 22+ plus `curl`, `unzip`, `tar`, and `xz-utils`.
 npm install
 npm run dev-install   # downloads SRS and pinned FFmpeg into ./objs
 ```
-Rerunning `npm run dev-install` also refreshes the sibling `../goryu`
-repo when it has no local changes and rebuilds `./objs/goryu`.
+The relay lives in the sibling `../goryu` repo in development (and in
+`live-miracles/goryu` releases for production installs). Rerunning
+`npm run dev-install` refreshes that repo when it has no local changes and
+rebuilds `./objs/goryu`.
 
 To use a local SRS binary:
 ```bash
 SRS_LOCAL_BIN=./build/srs npm run dev-install
 ```
-
-The standalone relay now lives in the sibling `../goryu` repo during development and in `live-miracles/goryu` GitHub Releases for production installs.
 
 **2. Start SRS** (terminal 1):
 ```bash
