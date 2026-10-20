@@ -1128,6 +1128,103 @@ describe('output service control surface', () => {
         service.shutdown();
     });
 
+    describe('falling behind realtime', () => {
+        // Feeds -progress lines on a fake clock: `wallMs` of wall time passes and
+        // the output's media clock advances by `mediaUs`.
+        async function setup(t) {
+            const clock = { now: Date.now() };
+            t.mock.method(Date, 'now', () => clock.now);
+            const proc = new FakeFfmpeg();
+            const db = makeDb();
+            const diagnostics = makeDiagnosticsSpy();
+            const createOutputService = loadOutputService(t, proc, {
+                progressStallMs: 1e9,
+                socketWarmupMs: 1e9,
+            });
+            const service = createOutputService(db, makeReadyInputState(), diagnostics);
+            await service.start('out1');
+            let outTimeUs = 1_000_000;
+            const progress = async (wallMs, mediaUs) => {
+                clock.now += wallMs;
+                outTimeUs += mediaUs;
+                proc.stdout.write(`out_time_ms=${outTimeUs}\n`);
+                await sleep(5);
+            };
+            await progress(0, 0);
+            return { service, db, diagnostics, progress, clock };
+        }
+
+        test('two slow 30 s windows raise a warning, and one good window clears it', async (t) => {
+            const { service, db, diagnostics, progress } = await setup(t);
+
+            for (let i = 0; i < 70; i++) await progress(1000, 500_000);
+            assert.match(service.getStats('out1').warningReason, /0\.50x realtime.*falling behind/);
+            assert.ok(
+                diagnostics.events.some(
+                    (e) => e.event === 'ffmpeg-warning-started' && e.kind === 'falling-behind',
+                ),
+            );
+            assert.equal(db.errorRecords.length, 0, 'recorded when it ends, not when it starts');
+
+            for (let i = 0; i < 65; i++) await progress(1000, 1_000_000);
+            assert.equal(service.getStats('out1').warningReason, null);
+            assert.deepEqual(
+                db.errorRecords.map((r) => r.kind),
+                ['warning'],
+            );
+            assert.match(db.errorRecords[0].message, /falling behind.*lasted/);
+
+            service.shutdown();
+        });
+
+        test('reports when the warning started, and nothing once it clears', async (t) => {
+            const { service, progress, clock } = await setup(t);
+            const startedAt = clock.now;
+            assert.equal(service.getStats('out1').warningSinceMs, null);
+
+            for (let i = 0; i < 70; i++) await progress(1000, 500_000);
+            // The second slow window closed 60 s after the first sample.
+            assert.equal(service.getStats('out1').warningSinceMs, startedAt + 60_000);
+
+            for (let i = 0; i < 65; i++) await progress(1000, 1_000_000);
+            assert.equal(service.getStats('out1').warningSinceMs, null);
+            service.shutdown();
+        });
+
+        test('one slow window (a brief input hiccup) does not warn', async (t) => {
+            const { service, progress } = await setup(t);
+
+            for (let i = 0; i < 30; i++) await progress(1000, 500_000);
+            for (let i = 0; i < 90; i++) await progress(1000, 1_000_000);
+
+            assert.equal(service.getStats('out1').warningReason, null);
+            service.shutdown();
+        });
+
+        test('realtime pacing never warns', async (t) => {
+            const { service, diagnostics, progress } = await setup(t);
+
+            for (let i = 0; i < 120; i++) await progress(1000, 1_000_000);
+
+            assert.equal(service.getStats('out1').warningReason, null);
+            assert.ok(!diagnostics.events.some((e) => e.kind === 'falling-behind'));
+            service.shutdown();
+        });
+
+        test('a long gap in progress ends the warning instead of leaving it stale', async (t) => {
+            const { service, progress } = await setup(t);
+
+            for (let i = 0; i < 70; i++) await progress(1000, 500_000);
+            assert.match(service.getStats('out1').warningReason, /falling behind/);
+
+            // Nothing advances for a minute (input down, stall watchdog's case),
+            // then media flows again: the old slow windows no longer apply.
+            await progress(60_000, 1_000_000);
+            assert.equal(service.getStats('out1').warningReason, null);
+            service.shutdown();
+        });
+    });
+
     test('start() throws for an unknown output id and never spawns', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
@@ -1204,6 +1301,7 @@ describe('output service control surface', () => {
             startedAtMs: null,
             failures: 0,
             warningReason: null,
+            warningSinceMs: null,
             memoryUsageBytes: null,
             memoryLimitBytes: null,
             cpuPercent: null,

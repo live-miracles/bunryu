@@ -1,5 +1,6 @@
 import {
     escapeHtml,
+    formatClockTime,
     formatLocalTime,
     STATUS_COLOR_ERROR,
     STATUS_COLOR_GOOD,
@@ -15,6 +16,7 @@ import {
     ICON_STOP,
     outputMetricsBadge,
 } from './output-badges.js';
+import { errorHint } from '../core/hints.js';
 
 export type OutputCardStatus = 'good' | 'warn' | 'error' | 'off';
 // outputId lets an output card leave itself out of its own duplicate list.
@@ -97,6 +99,20 @@ function outputEncodingWarnings(output: OutputView, input: InputHealth): string[
         }
     }
     return warnings;
+}
+
+// "since 09:18" after a warning that is still going on.
+function sinceHtml(sinceMs: number | null | undefined): string {
+    return sinceMs
+        ? `<span class="text-xs opacity-60 shrink-0">since ${formatClockTime(sinceMs)}</span>`
+        : '';
+}
+
+// A muted line of advice under an error or warning (see core/hints.ts).
+function hintHtml(hint: string | null): string {
+    return hint
+        ? `<div class="text-xs opacity-60 pl-2 mt-0.5 max-lg:break-words">Hint: ${escapeHtml(hint)}</div>`
+        : '';
 }
 
 export function renderOutputCard(
@@ -185,7 +201,7 @@ export function renderOutputCard(
                 ${retryBadge}
                 <span class="text-xs text-error shrink-0">${lastErrorTs}</span>
                 <span class="text-xs text-error truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>
-           </div>`
+           </div>${hintHtml(errorHint(lastErrorLine))}`
         : '';
     // Red only while the latest record is a crash or a stop after repeated failures;
     // after a plain stop (or only warnings) the history is there to open but nothing
@@ -199,29 +215,34 @@ export function renderOutputCard(
     const otherDupRefs = (output.url ? (dupUrls.get(output.url) ?? []) : []).filter(
         (ref) => ref.outputId !== output.id,
     );
-    const warnings = [
-        ...(output.warningReason ? [output.warningReason] : []),
+    const warnings: Array<{ message: string; sinceMs?: number | null }> = [
+        ...(output.warningReason
+            ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
+            : []),
         ...(otherDupRefs.length > 0
             ? [
-                  `Same destination as ${otherDupRefs
-                      .map((ref) =>
-                          ref.outputName
-                              ? `${ref.pipelineName} → ${ref.outputName}`
-                              : ref.pipelineName,
-                      )
-                      .join(', ')}`,
+                  {
+                      message: `Same destination as ${otherDupRefs
+                          .map((ref) =>
+                              ref.outputName
+                                  ? `${ref.pipelineName} → ${ref.outputName}`
+                                  : ref.pipelineName,
+                          )
+                          .join(', ')}`,
+                  },
               ]
             : []),
-        ...outputEncodingWarnings(output, input),
+        ...outputEncodingWarnings(output, input).map((message) => ({ message })),
     ];
     const warningsHtml = warnings
         .map(
-            (
+            ({
                 message,
-            ) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
+                sinceMs,
+            }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
-                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>
-           </div>`,
+                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${sinceHtml(sinceMs)}
+           </div>${hintHtml(errorHint(message))}`,
         )
         .join('');
     // The card takes the colour of its most severe current problem: red for an

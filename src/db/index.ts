@@ -169,7 +169,12 @@ export function createDb(dbPath?: string): Db {
     const sqlite = new BetterSqlite3(resolvedPath);
     // WAL mode not enabled: better-sqlite3 is synchronous with a single connection, so all
     // reads and writes are already serialized by the JS event loop — no concurrency benefit.
-    setupDatabaseSchema(sqlite);
+    try {
+        setupDatabaseSchema(sqlite);
+    } catch (err) {
+        sqlite.close();
+        throw err;
+    }
 
     // Seed stream key slots 1–99 if missing
     for (let slot = 1; slot <= STREAM_KEY_SLOTS; slot++) {

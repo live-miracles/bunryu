@@ -6,6 +6,8 @@ import express from 'express';
 import compression from 'compression';
 import path from 'path';
 import { createDb } from './db/index.js';
+import { DatabaseSchemaError } from './db/schema.js';
+import type { Db } from './types.js';
 import { createOutputService } from './services/outputs.js';
 import { createSrtRelayService } from './services/srtRelay.js';
 import { createHealthService } from './services/health.js';
@@ -66,7 +68,24 @@ app.use(
 // Room for a 500-output bulk create with long destination URLs.
 app.use(express.json({ limit: '1mb' }));
 
-const db = createDb();
+// EX_CONFIG: bunryu.service has RestartPreventExitStatus=78, so a failure that
+// needs an operator (a database of another schema version) leaves the unit
+// failed with its message instead of restarting every 2 s forever.
+const EXIT_NEEDS_OPERATOR = 78;
+
+function openDatabase(): Db {
+    try {
+        return createDb();
+    } catch (err) {
+        if (err instanceof DatabaseSchemaError) {
+            console.error(`[server] ${err.message}`);
+            process.exit(EXIT_NEEDS_OPERATOR);
+        }
+        throw err;
+    }
+}
+
+const db = openDatabase();
 const diagnostics = createDiagnosticsLogger(
     path.join(path.dirname(readAppConfig().databasePath), 'diagnostics'),
 );

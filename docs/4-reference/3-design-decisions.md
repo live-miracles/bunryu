@@ -474,3 +474,68 @@ Not adopted:
 **Revisit when:** someone wants external alerting (add `/metrics`, loopback-only),
 or an incident shows outputs connected but not keeping up (add the delivery
 ratio; `outputSockets.ts` already reads `ss`).
+
+### Warn when an output falls behind realtime, measured from its media clock
+
+**Decision (October 2026):** every output gets a "falling behind" card warning when
+its media clock runs below 0.9x wall time over two 30 s windows in a row. The speed
+is computed from FFmpeg's `out_time` progress, not read from its `speed=` or `fps=`.
+It is a warning only, like the other card warnings.
+
+**Why:**
+- **The existing watchdogs miss it.** The progress watchdog fires only when progress
+  stops for 45 s, and the socket watchdog only when the socket is gone. An output
+  whose destination or encode accepts data slower than realtime has both, yet gets
+  further behind live every second until SRS's play queue drops data.
+- **`speed=` and `fps=` are whole-run averages** (measured with the pinned FFmpeg
+  on a copy output: `speed` and `fps` after 2.5 s still carried the initial burst).
+  After hours of healthy running a slowdown would barely move them.
+- **Two windows, and a gap resets.** One slow window is what an input hiccup looks
+  like. A pause of more than 10 s is a stall, which the progress watchdog owns.
+- **Warn, never restart.** A restart does not fix a slow destination or a slow
+  encode, and would drop the platform session for nothing.
+
+**Not adopted:** killing a slow output; a per-output `speed` field in the API (the
+warning text carries the number).
+
+**Revisit when:** the warning fires on healthy outputs (then widen the window or
+lower the threshold), or operators want to see the speed continuously.
+
+### Failures that need an operator exit with status 78, which systemd does not restart
+
+**Decision (October 2026):** a database stamped with another schema version makes
+the app print why and exit with status 78 (`EX_CONFIG`). `bunryu.service` sets
+`RestartPreventExitStatus=78`, so it stays failed instead of restarting.
+
+**Why:** the units set `StartLimitIntervalSec=0` so a crashing service always comes
+back, and that would turn an error only a person can fix into a restart every 2 s,
+filling the 1 GB journal with the same message and pushing out older, useful logs.
+Verified on systemd 259 with throwaway units: exit 78 stays `failed` with no
+restarts, and any other exit keeps restarting. SRS and the relay `Require` the app,
+so they stay down too, and nothing accepts a publish it cannot authorize.
+
+**Not adopted:** a migration path, which AGENTS.md rules out; the schema version
+only turns a confusing failure into a clear one. The Docker supervisor does not
+stop on 78 (evaluation only, the message repeats until the volume's `db.sqlite` is
+removed).
+
+**Revisit when:** a second failure class needs the same treatment, or the Docker
+image is used for real deployments.
+
+### Hints are a dashboard lookup, not an API field
+
+**Decision (October 2026):** the "Hint:" lines under known errors, warnings and
+alerts come from patterns in `public/ts/core/hints.ts`, matched against the text the
+server already sends. There is no `hint` or `recommendedAction` field in the API.
+
+**Why:** the advice is presentation (it can change wording without touching the
+server or its diagnostics), and an API field would be one more thing to document and
+keep stable. Matching the stderr text is as fragile as the FFmpeg messages it matches,
+so an unmatched error is shown as it was, with no hint, which costs nothing.
+
+**Not adopted:** restream-krsna's `evidence` and `recommended_action` on every alert,
+which needs structured causes the server does not have for FFmpeg output errors.
+
+**Revisit when:** a client other than the dashboard needs the advice, or a hint
+should depend on state the dashboard does not have.
+

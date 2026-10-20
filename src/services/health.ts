@@ -46,6 +46,11 @@ const POLL_INTERVAL_MS = 5000;
 // An alert absent for this many polls in a row (~30 s) ends its episode, so a
 // condition that flickers poll to poll is one episode, not dozens.
 const ALERT_EPISODE_QUIET_POLLS = 6;
+// An input that disconnects this many times within the window is flapping (a bad
+// uplink or a crashing encoder), which one "Input disconnected" line per drop in
+// the pipeline log does not make obvious.
+const INPUT_FLAP_WINDOW_MS = 5 * 60 * 1000;
+const INPUT_FLAP_DISCONNECTS = 3;
 const MAX_SRS_EVENTS = 200;
 const LEG_HISTORY_MAX_SAMPLES = (60 * 60 * 1000) / POLL_INTERVAL_MS;
 const LEG_HISTORY_MAX_WINDOW_MS = 30 * 60 * 1000;
@@ -103,6 +108,7 @@ interface OutputHealth {
     startedAtMs: number | null;
     failures: number;
     warningReason: string | null;
+    warningSinceMs: number | null;
     lastError: string | null;
     hasErrorHistory: boolean;
     memoryUsageBytes: number | null;
@@ -333,6 +339,8 @@ export function createHealthService(
     const inputLiveStartMs = new Map<number, number>();
     const inputPublisherCid = new Map<number, string>();
     const publisherChangedAt = new Map<number, number>();
+    // When each pipeline's input disconnected, within INPUT_FLAP_WINDOW_MS.
+    const inputDisconnectsAt = new Map<number, number[]>();
     // Open alert episodes by `${pipelineId}:${code}`. Alerts are rebuilt every
     // poll; these turn them into one started and one ended diagnostics event.
     const alertEpisodes = new Map<
@@ -370,6 +378,7 @@ export function createHealthService(
             seen.add(key);
             const episode = alertEpisodes.get(key);
             if (episode) {
+                alert.sinceMs = episode.startedAtMs;
                 episode.lastSeenMs = now;
                 episode.activePolls += 1;
                 episode.absentPolls = 0;
@@ -385,6 +394,7 @@ export function createHealthService(
                 absentPolls: 0,
                 lastMessage: alert.message,
             });
+            alert.sinceMs = now;
             diagnostics?.event('pipeline-alert-started', {
                 pipelineId,
                 code: alert.code,
@@ -711,6 +721,9 @@ export function createHealthService(
         for (const pipelineId of publisherChangedAt.keys()) {
             if (!activePipelineIds.has(pipelineId)) publisherChangedAt.delete(pipelineId);
         }
+        for (const pipelineId of inputDisconnectsAt.keys()) {
+            if (!activePipelineIds.has(pipelineId)) inputDisconnectsAt.delete(pipelineId);
+        }
         for (const pipelineId of relayInputSamples.keys()) {
             if (!activePipelineIds.has(pipelineId)) relayInputSamples.delete(pipelineId);
         }
@@ -888,6 +901,10 @@ export function createHealthService(
                     const liveStartMs = inputLiveStartMs.get(pipeline.id);
                     const uptimeSec =
                         liveStartMs != null ? Math.round((Date.now() - liveStartMs) / 1000) : null;
+                    inputDisconnectsAt.set(pipeline.id, [
+                        ...(inputDisconnectsAt.get(pipeline.id) ?? []),
+                        Date.now(),
+                    ]);
                     inputConnected.delete(pipeline.id);
                     inputPublisherCid.delete(pipeline.id);
                     inputState.clearPipeline(pipeline.id);
@@ -982,6 +999,20 @@ export function createHealthService(
                         sinceMs: now,
                     });
                 }
+            }
+            const recentDisconnects = (inputDisconnectsAt.get(pipeline.id) ?? []).filter(
+                (at) => now - at <= INPUT_FLAP_WINDOW_MS,
+            );
+            if (recentDisconnects.length > 0)
+                inputDisconnectsAt.set(pipeline.id, recentDisconnects);
+            else inputDisconnectsAt.delete(pipeline.id);
+            if (recentDisconnects.length >= INPUT_FLAP_DISCONNECTS) {
+                alerts.push({
+                    severity: 'warning',
+                    code: 'input-flapping',
+                    message: `Input disconnected ${recentDisconnects.length} times in the last 5 minutes.`,
+                    sinceMs: recentDisconnects[0],
+                });
             }
             const changedAt = publisherChangedAt.get(pipeline.id);
             if (changedAt && now - changedAt <= 30_000) {

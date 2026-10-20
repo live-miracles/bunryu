@@ -1039,3 +1039,69 @@ describe('Output capacity and renditions', () => {
         assert.equal(db.listOutputs().length, 505);
     });
 });
+
+describe('schema version stamp', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const Database = require('better-sqlite3');
+    const { SCHEMA_VERSION, DatabaseSchemaError } = require('../src/db/schema');
+
+    function withDbFile(fn) {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-db-version-'));
+        try {
+            fn(path.join(dir, 'test.db'));
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    }
+
+    function userVersion(file) {
+        const raw = new Database(file);
+        try {
+            return raw.pragma('user_version', { simple: true });
+        } finally {
+            raw.close();
+        }
+    }
+
+    test('a new database is stamped with the current version', () => {
+        withDbFile((file) => {
+            createDb(file);
+            assert.equal(userVersion(file), SCHEMA_VERSION);
+        });
+    });
+
+    test('a database from before the stamp existed (same schema) is accepted and stamped', () => {
+        withDbFile((file) => {
+            const db = createDb(file);
+            const pipeline = db.createPipeline();
+            const raw = new Database(file);
+            raw.pragma('user_version = 0');
+            raw.close();
+
+            const reopened = createDb(file);
+            assert.equal(reopened.listPipelines().length, 1);
+            assert.equal(reopened.listPipelines()[0].id, pipeline.id);
+            assert.equal(userVersion(file), SCHEMA_VERSION);
+        });
+    });
+
+    test('a database of another schema version is refused and left untouched', () => {
+        withDbFile((file) => {
+            createDb(file);
+            const raw = new Database(file);
+            raw.pragma(`user_version = ${SCHEMA_VERSION + 1}`);
+            raw.close();
+
+            assert.throws(
+                () => createDb(file),
+                (err) =>
+                    err instanceof DatabaseSchemaError &&
+                    new RegExp(`version ${SCHEMA_VERSION + 1}`).test(err.message) &&
+                    /no migrations/i.test(err.message),
+            );
+            assert.equal(userVersion(file), SCHEMA_VERSION + 1);
+        });
+    });
+});

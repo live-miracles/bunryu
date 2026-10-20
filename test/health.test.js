@@ -1099,6 +1099,100 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
+    test('an alert keeps the time its episode started instead of moving to each poll', async (t) => {
+        const stream = streamFixture();
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [stream] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        let received = 1000;
+        let dropped = 0;
+        const status = () =>
+            makeBondingStatus({
+                forwardedPackets: received,
+                input: { recvUniquePacketsTotal: received, recvDropTotal: dropped },
+            });
+        const relay = makeFakeSrtRelayMutable(status());
+        const service = createHealthService(
+            makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+            makeFakeOutputService(),
+            relay,
+            makeFakeInputState(),
+        );
+        const app = express();
+        service.registerRoutes(app);
+        t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+        service.start();
+        await sleep(20);
+
+        const sinceByPoll = [];
+        for (const drops of [5, 5, 5]) {
+            received += 900;
+            dropped += drops;
+            relay.setStatus(status());
+            await tickPoll(t);
+            const alert = (await getSnapshot(app)).pipelines['1'].alerts.find(
+                (a) => a.code === 'srt-packets-dropped',
+            );
+            sinceByPoll.push(alert.sinceMs);
+        }
+
+        assert.equal(sinceByPoll[1], sinceByPoll[0], 'sinceMs must not move with each poll');
+        assert.equal(sinceByPoll[2], sinceByPoll[0]);
+        service.shutdown();
+    });
+
+    test('the output health passes the warning start time through', async (t) => {
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [streamFixture()] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const service = createHealthService(
+            makeFakeDb(
+                [{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }],
+                [
+                    {
+                        id: '1-1',
+                        pipelineId: 1,
+                        seq: 1,
+                        name: 'out',
+                        desiredState: 'running',
+                        videoEncoding: 'copy',
+                        url: 'rtmp://dest.example/live/k',
+                        audioEncoding: 'copy',
+                        translation: null,
+                        lastError: null,
+                        hasErrorHistory: false,
+                    },
+                ],
+            ),
+            {
+                ...makeFakeOutputService(),
+                getStats: () => ({
+                    ...makeFakeOutputService().getStats(),
+                    status: 'running',
+                    warningReason: 'falling behind',
+                    warningSinceMs: 1234,
+                }),
+            },
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+        );
+        const app = express();
+        service.registerRoutes(app);
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+
+        const out = (await getSnapshot(app)).pipelines['1'].outputs['1-1'];
+        assert.equal(out.warningSinceMs, 1234);
+        service.shutdown();
+    });
+
     test('reports pure packet loss (no drops) instead of the drop alert', async (t) => {
         const stream = streamFixture();
         t.mock.method(globalThis, 'fetch', async (url) => {
@@ -1318,6 +1412,104 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         );
 
         service.shutdown();
+    });
+
+    describe('input-flapping alert', () => {
+        async function pollWithConnectionPattern(t, pattern) {
+            let present = pattern[0];
+            const stream = streamFixture();
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({ code: 0, streams: present ? [stream] : [] });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            const diagnostics = makeDiagnosticsSpy();
+            const service = createHealthService(
+                makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+                makeFakeOutputService(),
+                makeFakeSrtRelay(),
+                makeFakeInputState(),
+                diagnostics,
+            );
+            const app = express();
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+            service.start();
+            await sleep(20);
+            for (const next of pattern.slice(1)) {
+                present = next;
+                await tickPoll(t);
+            }
+            const snapshot = await getSnapshot(app);
+            service.shutdown();
+            return { alerts: snapshot.pipelines['1'].alerts, diagnostics, tickPoll };
+        }
+
+        test('three disconnects within five minutes raise a warning', async (t) => {
+            const { alerts, diagnostics } = await pollWithConnectionPattern(t, [
+                true,
+                false,
+                true,
+                false,
+                true,
+                false,
+                true,
+            ]);
+            const flap = alerts.find((a) => a.code === 'input-flapping');
+            assert.ok(flap, 'expected an input-flapping alert');
+            assert.equal(flap.severity, 'warning');
+            assert.match(flap.message, /disconnected 3 times in the last 5 minutes/);
+            assert.ok(
+                diagnostics.events.some(
+                    (e) => e.event === 'pipeline-alert-started' && e.code === 'input-flapping',
+                ),
+            );
+        });
+
+        test('two disconnects (an encoder restart or two) do not', async (t) => {
+            const { alerts } = await pollWithConnectionPattern(t, [true, false, true, false, true]);
+            assert.ok(!alerts.some((a) => a.code === 'input-flapping'));
+        });
+
+        test('disconnects older than five minutes no longer count', async (t) => {
+            let present = true;
+            const stream = streamFixture();
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({ code: 0, streams: present ? [stream] : [] });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            const service = createHealthService(
+                makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+                makeFakeOutputService(),
+                makeFakeSrtRelay(),
+                makeFakeInputState(),
+            );
+            const app = express();
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+            service.start();
+            await sleep(20);
+            for (const next of [false, true, false, true, false, true]) {
+                present = next;
+                await tickPoll(t);
+            }
+            assert.ok(
+                (await getSnapshot(app)).pipelines['1'].alerts.some(
+                    (a) => a.code === 'input-flapping',
+                ),
+            );
+            // Stay connected for six minutes (72 polls): the three drops age out.
+            for (let i = 0; i < 72; i++) await tickPoll(t);
+            assert.ok(
+                !(await getSnapshot(app)).pipelines['1'].alerts.some(
+                    (a) => a.code === 'input-flapping',
+                ),
+            );
+            service.shutdown();
+        });
     });
 
     test('logs srs-transition and input-transition diagnostics events across an outage and recovery', async (t) => {

@@ -302,8 +302,12 @@ if [[ -s "$DB_FILE" ]]; then
             ;;
     esac
     if [[ "$wipe_db" == "yes" ]]; then
+        # Keep a copy (same owner-only mode: it holds the stream keys and
+        # destination URLs) so the pipelines and outputs can be re-created.
+        DB_BACKUP="$DB_FILE.$(date +%Y%m%d-%H%M%S).bak"
+        cp -p "$DB_FILE" "$DB_BACKUP"
         rm -f "$DB_FILE"
-        echo "Database wiped; defaults will be re-seeded on first boot."
+        echo "Database wiped (backup: $DB_BACKUP); defaults will be re-seeded on first boot."
     else
         fresh_db=no
         echo "Keeping existing database."
@@ -418,6 +422,9 @@ Environment=NODE_ENV=production
 ExecStart=/usr/bin/node $APP_DIR/dist/index.js
 Restart=always
 RestartSec=2
+# Exit 78 means a database of another schema version: it needs an operator, so
+# do not restart it in a loop (see src/index.ts).
+RestartPreventExitStatus=78
 # This service forks one ffmpeg per output (300+) plus ffprobe/preview helpers,
 # each carrying several threads. LimitNOFILE covers the parent's pipe/socket fds;
 # TasksMax/LimitNPROC lift the task (thread+process) cap, which otherwise falls

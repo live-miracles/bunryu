@@ -37,6 +37,8 @@ import { outputStatusCounts } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
 import { renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
+import { alertHint } from '../core/hints.js';
+import { INPUT_ALERT_CODES } from '../core/pipeline.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderHostConnectionsOverview } from './host-connections-view.js';
 import {
@@ -71,6 +73,10 @@ function statusBadge(n: number, cls: string): string {
 type OverviewIssue = {
     severity: 'warning' | 'error';
     message: string;
+    // What to do about it, when known (see core/hints.ts).
+    hint?: string;
+    // When it began, for an issue that is still going on.
+    sinceMs?: number;
 };
 type BondingIndicator = {
     leftColor: string;
@@ -419,6 +425,15 @@ function inputHealth(input: InputHealth): DerivedInputHealth {
     if (input.audioTracks.length === 0 && input.audio === null) {
         issues.push({ severity: 'warning', message: 'No audio track detected in input.' });
     }
+    for (const alert of input.alerts ?? []) {
+        issues.push({
+            severity: alert.severity,
+            message: alert.message,
+            hint: alertHint(alert.code) ?? undefined,
+            sinceMs: alert.sinceMs,
+        });
+    }
+    if (issues.some((issue) => issue.severity === 'error')) return { status: 'error', issues };
     return { status: issues.length > 0 ? 'warn' : 'good', issues };
 }
 
@@ -445,7 +460,13 @@ function issueLinesHtml(issues: OverviewIssue[]): string {
     return issues
         .map((issue) => {
             const cls = issue.severity === 'error' ? 'text-error' : 'text-warning';
-            return `<div class="${cls} text-xs leading-snug">${escapeHtml(issue.message)}</div>`;
+            const hint = issue.hint
+                ? `<div class="text-xs leading-snug opacity-60">Hint: ${escapeHtml(issue.hint)}</div>`
+                : '';
+            const since = issue.sinceMs
+                ? ` <span class="opacity-60">since ${formatClockTime(issue.sinceMs)}</span>`
+                : '';
+            return `<div class="${cls} text-xs leading-snug">${escapeHtml(issue.message)}${since}</div>${hint}`;
         })
         .join('');
 }
@@ -497,7 +518,14 @@ function relayIssues(
         if (alert.code === 'bonded-leg-no-flow' || alert.code === 'bonded-leg-quality') {
             continue;
         }
-        issues.push({ severity: alert.severity, message: alert.message });
+        // Input alerts are shown with the input (see inputHealth).
+        if (INPUT_ALERT_CODES.has(alert.code)) continue;
+        issues.push({
+            severity: alert.severity,
+            message: alert.message,
+            hint: alertHint(alert.code) ?? undefined,
+            sinceMs: alert.sinceMs,
+        });
     }
     const inputSeverity = inputSt === 'error' ? 'error' : 'warning';
     const outputSeverity = outputSt === 'error' ? 'error' : 'warning';

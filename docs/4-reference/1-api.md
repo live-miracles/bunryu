@@ -11,7 +11,7 @@ RTMP input → RTMP pull), so there is no pull-method setting.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/config` | Pipelines, outputs, encodings, stream keys, server name |
-| GET | `/api/health` | Live input/output status snapshot (refreshed every 5s) |
+| GET | `/api/health` | Live input/output status snapshot (refreshed every 5s). An output has `warningReason` and `warningSinceMs` (when that warning began); each pipeline alert has `sinceMs`, the time its current episode started, which stays the same while the alert lasts. An alert is one episode until it has been absent for six polls (~30 s) |
 | GET | `/api/rejected-publishes` | Recent publish attempts rejected for a key with no pipeline (label only, never the secret) |
 | GET | `/api/version` | App, SRS, relay, FFmpeg and Node versions, git commit, OS, kernel and CPU model (cached after the first request) |
 | GET | `/api/metrics/history` | System metric samples every 5 s for the last 2 hours; `?after=<ms>` returns only newer samples |

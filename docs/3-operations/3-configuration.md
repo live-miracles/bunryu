@@ -73,7 +73,8 @@ Other things the diagnostics record so an incident can be pieced together:
   destination), it is replaced by `stderrTailSameAsPrevious: true`.
 - **Pipeline alerts:** `pipeline-alert-started` and `pipeline-alert-ended`
   (duration, number of polls it was active, last message). An alert absent for
-  six polls (~30 s) ends its episode, so a flickering condition is one episode.
+  six polls (~30 s) ends its episode, so a flickering condition is one episode. The
+  dashboard shows the episode's start ("since 09:18") next to the alert.
 - **Publish hooks:** `publish-allowed`, and `publish-rejected` for each rejection
   that is logged. Repeats are throttled to one journal line per minute per key.
   The number not logged goes on the next line, or, if the attempts stopped, on a
@@ -98,6 +99,16 @@ cap that removes the oldest rotated files first. The installer configures
 persistent journald with a seven-day retention limit, 1 GB system journal cap,
 256 MB runtime cap, and one-day journal file rotation.
 
+### Database schema version
+
+The SQLite database carries a schema version (`PRAGMA user_version`, `SCHEMA_VERSION`
+in `src/db/schema.ts`). There are no migrations, so a change to a table or column
+bumps it, and a database stamped with another version is refused at startup with a
+message saying so, instead of failing later on a query. The fix is to recreate the
+database: re-run the installer and answer `n` to "Preserve it?" (or set `WIPE_DB=y`),
+which keeps a `db.sqlite.<timestamp>.bak` copy to re-create pipelines from. A database
+from before the stamp existed is accepted and stamped, since its schema is version 1.
+
 Relay ports and status polling are read from `goryu.json`, located beside `srs_config_path`.
 
 Installer/development overrides:
@@ -108,5 +119,5 @@ Installer/development overrides:
 | `SRT_RELEASE_TAG` | `server-install.sh` | Relay GitHub release tag to install |
 | `SRT_URL` | `server-install.sh` | Custom relay release archive URL |
 | `SRT_SHA256` | `server-install.sh` | Expected SHA256 for the relay archive; blank skips verification |
-| `WIPE_DB` | `server-install.sh` | Set `y`/`n` to force or skip wiping the existing SQLite DB |
+| `WIPE_DB` | `server-install.sh` | Set `y`/`n` to force or skip wiping the existing SQLite DB. A wipe first copies it to `db.sqlite.<timestamp>.bak` (owner-only, it holds stream keys and destination URLs) |
 | `SRS_LOCAL_BIN` | `dev-server-install.sh` | Local executable SRS binary to copy into `./objs/srs` |

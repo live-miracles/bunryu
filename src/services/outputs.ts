@@ -119,7 +119,7 @@ function timestampWarningKind(line: string): string {
     return line.replace(/0x[0-9a-f]+/gi, '0x').replace(/-?\d+/g, '#');
 }
 
-const WARNING_KINDS = ['memory', 'socket', 'media-clock'] as const;
+const WARNING_KINDS = ['memory', 'socket', 'media-clock', 'falling-behind'] as const;
 type WarningKind = (typeof WARNING_KINDS)[number];
 
 function formatDuration(ms: number): string {
@@ -138,6 +138,8 @@ interface OutputStats {
     startedAtMs: number | null;
     failures: number;
     warningReason: string | null;
+    // When the warning in warningReason began (ms since epoch), else null.
+    warningSinceMs: number | null;
     memoryUsageBytes: number | null;
     memoryLimitBytes: number | null;
     cpuPercent: number | null;
@@ -166,6 +168,18 @@ interface TimestampBurst {
     pendingKinds: Map<string, number>;
 }
 
+// An output that processes media slower than realtime falls further behind live
+// every second (slow encode or destination, or an input delivering slowly). Speed
+// is measured over windows of media time against wall time, because FFmpeg's own
+// speed= and fps= are averages over the whole run and react far too slowly. It
+// takes two slow windows in a row to warn, so a brief input hiccup does not, and a
+// gap with no progress at all (a stall, which the progress watchdog handles)
+// restarts the measurement.
+const SPEED_WINDOW_MS = 30_000;
+const SPEED_WARN_BELOW = 0.9;
+const SPEED_WARN_WINDOWS = 2;
+const SPEED_GAP_RESET_MS = 10_000;
+
 interface OutputProgress {
     lastProgressAtMs: number;
     lastOutputProgressAtMs: number;
@@ -177,6 +191,9 @@ interface OutputProgress {
     monitorMediaClock: boolean;
     fastMediaSinceMs: number | null;
     mediaClockWarning: string | null;
+    speedWindow: { wallMs: number; outTimeUs: number } | null;
+    slowWindows: number;
+    fallingBehindWarning: string | null;
     lastTimestampWarningAtMs: number | null;
     lastTimestampWarning: string | null;
     timestampBurst: TimestampBurst | null;
@@ -351,16 +368,14 @@ export function createOutputService(
         const role = row && isRenditionOutput(row) ? 'rendition' : 'output';
         const usage = memoryUsage.get(outputId);
         const p = progress.get(outputId);
-        const timingWarning = p ? timingWarningFor(p, Date.now()) : null;
+        const warning = currentWarning(outputId, p);
         return {
             ...s,
             bitrateKbps: p?.lastBitrateKbps ?? null,
             startedAtMs: startTimes.get(outputId) ?? null,
             failures: retryState.get(outputId)?.failures ?? 0,
-            warningReason:
-                socketWarnings.get(outputId)?.reason ??
-                memoryWarnings.get(outputId) ??
-                timingWarning,
+            warningReason: warning?.reason ?? null,
+            warningSinceMs: warning?.sinceMs ?? null,
             memoryUsageBytes: usage?.rssBytes ?? null,
             memoryLimitBytes: usage?.limitBytes ?? null,
             cpuPercent: cpuUsage.get(outputId) ?? null,
@@ -470,6 +485,9 @@ export function createOutputService(
             monitorMediaClock: false,
             fastMediaSinceMs: null,
             mediaClockWarning: null,
+            speedWindow: null,
+            slowWindows: 0,
+            fallingBehindWarning: null,
             lastTimestampWarningAtMs: existing?.lastTimestampWarningAtMs ?? null,
             lastTimestampWarning: existing?.lastTimestampWarning ?? null,
             timestampBurst: existing?.timestampBurst ?? null,
@@ -635,6 +653,34 @@ export function createOutputService(
         return Number.isFinite(val) ? val : null;
     }
 
+    function trackSpeed(outputId: string, p: OutputProgress, now: number, outTimeUs: number): void {
+        if (p.lastOutTimeWallMs !== null && now - p.lastOutTimeWallMs > SPEED_GAP_RESET_MS) {
+            p.speedWindow = null;
+            p.slowWindows = 0;
+            p.fallingBehindWarning = null;
+            warningEnded(outputId, 'falling-behind', 'progress paused');
+        }
+        if (!p.speedWindow) {
+            p.speedWindow = { wallMs: now, outTimeUs };
+            return;
+        }
+        const wallMs = now - p.speedWindow.wallMs;
+        if (wallMs < SPEED_WINDOW_MS) return;
+        const speed = (outTimeUs - p.speedWindow.outTimeUs) / 1000 / wallMs;
+        p.speedWindow = { wallMs: now, outTimeUs };
+        if (speed >= SPEED_WARN_BELOW) {
+            p.slowWindows = 0;
+            p.fallingBehindWarning = null;
+            warningEnded(outputId, 'falling-behind', 'cleared');
+            return;
+        }
+        p.slowWindows++;
+        if (p.slowWindows < SPEED_WARN_WINDOWS) return;
+        const warning = `Output is running at ${speed.toFixed(2)}x realtime and falling behind live (slow encode or destination, or the input is delivering slowly).`;
+        p.fallingBehindWarning = warning;
+        warningStarted(outputId, 'falling-behind', warning);
+    }
+
     function noteOutputProgress(outputId: string, line: string): void {
         const p = progress.get(outputId);
         if (!p) return;
@@ -673,6 +719,7 @@ export function createOutputService(
                     }
                 }
             }
+            trackSpeed(outputId, p, now, outTimeMs);
             p.lastOutTimeMs = outTimeMs;
             p.lastOutTimeWallMs = now;
             p.lastOutputProgressAtMs = p.lastProgressAtMs;
@@ -684,8 +731,38 @@ export function createOutputService(
         }
     }
 
-    function timingWarningFor(p: OutputProgress, now: number): string | null {
-        if (p.mediaClockWarning) return p.mediaClockWarning;
+    // The warning an output's card shows, and when it began. One at a time, in
+    // this order of importance.
+    function currentWarning(
+        outputId: string,
+        p: OutputProgress | undefined,
+    ): { reason: string; sinceMs: number | null } | null {
+        const startedAt = (kind: WarningKind): number | null =>
+            warningEpisodes.get(`${outputId}:${kind}`)?.startedAtMs ?? null;
+        const socket = socketWarnings.get(outputId);
+        if (socket) return { reason: socket.reason, sinceMs: socket.badSinceMs };
+        const memory = memoryWarnings.get(outputId);
+        if (memory) return { reason: memory, sinceMs: startedAt('memory') };
+        if (!p) return null;
+        const timing = timingWarningFor(outputId, p, Date.now());
+        if (timing) return timing;
+        if (p.fallingBehindWarning) {
+            return { reason: p.fallingBehindWarning, sinceMs: startedAt('falling-behind') };
+        }
+        return null;
+    }
+
+    function timingWarningFor(
+        outputId: string,
+        p: OutputProgress,
+        now: number,
+    ): { reason: string; sinceMs: number | null } | null {
+        if (p.mediaClockWarning) {
+            return {
+                reason: p.mediaClockWarning,
+                sinceMs: warningEpisodes.get(`${outputId}:media-clock`)?.startedAtMs ?? null,
+            };
+        }
         const burst = p.timestampBurst;
         if (
             p.lastTimestampWarning &&
@@ -694,10 +771,13 @@ export function createOutputService(
             burst &&
             (burst.timing || burst.lastAtMs - burst.startedAtMs >= DECODE_WARNING_GRACE_MS)
         ) {
-            return p.lastTimestampWarning;
+            return { reason: p.lastTimestampWarning, sinceMs: burst.startedAtMs };
         }
         if (p.monitorMediaClock && now - p.lastOutputProgressAtMs >= 15_000) {
-            return `FFmpeg media progress has stalled for ${Math.round((now - p.lastOutputProgressAtMs) / 1000)}s.`;
+            return {
+                reason: `FFmpeg media progress has stalled for ${Math.round((now - p.lastOutputProgressAtMs) / 1000)}s.`,
+                sinceMs: p.lastOutputProgressAtMs,
+            };
         }
         return null;
     }
@@ -1311,6 +1391,9 @@ export function createOutputService(
                 (output.url.startsWith('rtmp://') || output.url.startsWith('rtmps://')),
             fastMediaSinceMs: null,
             mediaClockWarning: null,
+            speedWindow: null,
+            slowWindows: 0,
+            fallingBehindWarning: null,
             lastTimestampWarningAtMs: null,
             lastTimestampWarning: null,
             timestampBurst: null,

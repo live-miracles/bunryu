@@ -143,12 +143,16 @@ so outputs that were running are started again automatically when the input
 comes back or the server restarts.
 
 The output card shows status, uptime, bitrate, CPU and memory. Problems appear on
-the card as warnings, and every crash, watchdog restart and finished warning
+the card as warnings, each with the time it began ("since 09:18"), and every crash, watchdog restart and finished warning
 episode is kept in the output's **Error History** with the FFmpeg stderr tail.
 The History button is red while the latest record is a crash or watchdog restart;
 after a stop, or with only warnings, it keeps the normal color. The exception is an
 output you stop after 5 failed attempts in a row: its card keeps a red "Stopped
 after 5 failed attempts" line with the last error, and the History button stays red,
 until you start the output again.
+Under a known error or warning (connection refused, a rejected stream key, an
+unresolvable host, a failed SRT handshake, an output falling behind realtime) the card
+adds a muted "Hint:" line with what to check first; so do the pipeline alerts. An
+error it has no advice for is shown as is.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.

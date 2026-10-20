@@ -73,6 +73,36 @@ right after it starts as failed and stops restarting it until someone runs
 `systemctl start`. With it, the unit keeps retrying every 2 s until the cause is
 gone. The Docker image's supervisor behaves the same way.
 
+The exception is a failure that needs an operator. If the database was written by a
+build with another schema version (`PRAGMA user_version`; see
+[Configuration](3-configuration.md#database-schema-version)), `bunryu.service` prints
+why and exits with status 78, and `RestartPreventExitStatus=78` leaves it failed
+instead of restarting it every 2 s. SRS and the relay `Require` it, so they do not
+start either, which keeps the server from accepting publishes it cannot authorize. The
+Docker image has no such stop: its supervisor restarts the app every 2 s and repeats
+the message until `/data/db.sqlite` is removed.
+
+## Falling behind realtime
+
+An output that processes media slower than realtime falls further behind live every
+second: a slow encode or destination, or an input delivering slowly. The output
+service measures the output's media clock (`out_time` from FFmpeg's progress) against
+wall time over windows of 30 s, and when two windows in a row run below 0.9x the card
+shows "Output is running at 0.62x realtime and falling behind live". One good window
+clears it. It is a warning only: nothing is restarted, and it is recorded like the
+other card warnings (an `ffmpeg-warning-started` / `ffmpeg-warning-ended` pair of
+diagnostics events with `kind: falling-behind`, and an Error History record when it
+ends). The card shows when the warning began ("since 09:18").
+
+- **Why not FFmpeg's own `speed=` or `fps=`:** both are averages over the whole run,
+  so after hours of healthy output a sudden slowdown would barely move them.
+- **Why two windows:** one slow window is what a brief input hiccup looks like, and
+  the warning would flicker. A gap with no progress at all (more than 10 s) restarts
+  the measurement instead, because a stall is the progress watchdog's case.
+- **Many outputs at once:** when the input itself delivers slowly, every output of
+  that pipeline reads slowly and each shows the warning; for an RTMP input the
+  pipeline's `input-low-framerate` alert says which side it is.
+
 ## Shared encodes
 
 Outputs on one pipeline that need the same encode share one FFmpeg, a *shared
@@ -212,6 +242,20 @@ publish, and a new publisher restarts the measurement. SRT inputs are not checke
 with `srt_to_rtmp off` SRS does not count their frames (`frames` stays 0). An SRT
 input through Goryu has loss, drop and retransmission alerts from the relay; one
 sent straight to SRS port 10080 has no link-quality alerts today.
+
+## Flapping inputs
+
+When an input disconnects 3 or more times within 5 minutes (a bad uplink, a
+crashing encoder), the pipeline gets an `input-flapping` warning alert saying how
+many times. It is reporting only, like the other alerts, and it clears once fewer
+than 3 disconnects remain inside the window. Each disconnect is still its own line in
+the pipeline log; the alert is what makes a pattern visible without reading it.
+
+Input alerts (`input-flapping`, `input-low-framerate`, `input-high-framerate`) belong
+to the input itself, so they show on every input, RTMP included: the pipeline's
+status icon and the Inputs table's status and Issues column turn to warning, with the
+time the alert began. The SRT link-quality alerts (loss, drops, retransmissions,
+latency, forwarding) stay with the SRT relay views.
 
 ## Encoder restarts do not restart outputs
 

@@ -269,3 +269,62 @@ describe('card tint follows the most severe problem', () => {
         );
     });
 });
+
+describe('hints on the output card', () => {
+    test('a known last error gets a hint line under it', () => {
+        const html = render({
+            status: 'failed',
+            lastError: '1700000000000\nrtmp://a.example/live/key: Connection refused',
+            lastErrorAt: 1700000000000,
+        });
+        assert.match(html, /Connection refused/);
+        assert.match(html, /refused the connection/i);
+    });
+
+    test('an unknown last error gets no hint', () => {
+        const html = render({
+            status: 'failed',
+            lastError: '1700000000000\nsomething entirely different',
+            lastErrorAt: 1700000000000,
+        });
+        assert.doesNotMatch(html, /Hint:/);
+    });
+
+    test('a falling-behind warning gets a hint', () => {
+        const html = render({
+            warningReason:
+                'Output is running at 0.62x realtime and falling behind live (slow encode or destination, or the input is delivering slowly).',
+        });
+        assert.match(html, /Hint:/);
+    });
+});
+
+describe('when a warning started', () => {
+    const clock = (ts) => {
+        const d = new Date(ts);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    const startedAt = Date.UTC(2026, 9, 20, 9, 18, 30);
+
+    test('the card shows "since HH:MM" next to the warning', () => {
+        const html = render({
+            warningReason: 'Output is running at 0.62x realtime and falling behind live.',
+            warningSinceMs: startedAt,
+        });
+        assert.match(html, new RegExp(`since ${clock(startedAt)}`));
+    });
+
+    test('a warning without a start time shows none', () => {
+        const html = render({
+            warningReason: 'Output is running at 0.62x realtime and falling behind live.',
+            warningSinceMs: null,
+        });
+        assert.doesNotMatch(html, /since \d/);
+    });
+
+    test('other warnings on the card get no time', () => {
+        const html = render({ warningSinceMs: startedAt, warningReason: null, audioEncoding: '0' });
+        assert.doesNotMatch(html, /since \d/);
+    });
+});

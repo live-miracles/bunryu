@@ -1,6 +1,21 @@
 import type Database from 'better-sqlite3';
 
+// Bump when a table or column changes. There are no migrations: a database
+// stamped with another version is refused at startup (see DatabaseSchemaError)
+// and has to be recreated. Databases from before the stamp existed carry user
+// version 0 and have the version-1 schema, so they are accepted and stamped.
+export const SCHEMA_VERSION = 1;
+
+export class DatabaseSchemaError extends Error {}
+
 export function setupDatabaseSchema(db: Database.Database): void {
+    const found = db.pragma('user_version', { simple: true }) as number;
+    if (found !== 0 && found !== SCHEMA_VERSION) {
+        throw new DatabaseSchemaError(
+            `Database schema version ${found} does not match this build (version ${SCHEMA_VERSION}). ` +
+                'There are no migrations: stop the service, move db.sqlite aside (the installer keeps a backup when it wipes) and start again to create a fresh database.',
+        );
+    }
     db.pragma('foreign_keys = ON');
 
     db.prepare(
@@ -89,4 +104,6 @@ export function setupDatabaseSchema(db: Database.Database): void {
             created_at INTEGER NOT NULL
         )`,
     ).run();
+
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }

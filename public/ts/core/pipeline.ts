@@ -108,6 +108,15 @@ function reconcileOrder<T>(
     return ordered;
 }
 
+// Alerts about the input itself. They belong to the input's own status and Issues
+// (so a plain RTMP input shows them too); every other pipeline alert is about the
+// SRT relay link and is shown by the relay views.
+export const INPUT_ALERT_CODES = new Set([
+    'input-flapping',
+    'input-low-framerate',
+    'input-high-framerate',
+]);
+
 export function parsePipelines(
     config: Partial<ConfigData>,
     health: Partial<HealthData>,
@@ -124,7 +133,10 @@ export function parsePipelines(
 
     return pipelines.map((p) => {
         const ph = pipelinesHealth[String(p.id)];
-        const input: InputHealth = ph?.input ?? EMPTY_INPUT;
+        const input: InputHealth = {
+            ...(ph?.input ?? EMPTY_INPUT),
+            alerts: (ph?.alerts ?? []).filter((a) => INPUT_ALERT_CODES.has(a.code)),
+        };
 
         const pipelineOutputs = reconcileOrder(
             outputs.filter((o) => String(o.pipelineId) === String(p.id)),
@@ -146,6 +158,7 @@ export function parsePipelines(
                 startedAtMs: oh?.startedAtMs ?? null,
                 failures: oh?.failures ?? 0,
                 warningReason: oh?.warningReason ?? null,
+                warningSinceMs: oh?.warningSinceMs ?? null,
                 lastError: err?.message ?? null,
                 hasErrorHistory,
                 lastErrorAt: err?.ts ?? null,

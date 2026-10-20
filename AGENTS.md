@@ -195,9 +195,12 @@ only for a new module.
   `outputs.last_error` as JSON).
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
-  `renditions`; `features/shared-encodes.ts` renders the Shared encodes card.
+  `renditions` and decides which pipeline alerts belong to the input (`INPUT_ALERT_CODES`);
+  `features/shared-encodes.ts` renders the Shared encodes card.
   `core/media-spec.ts` formats the one-line video/audio descriptions the Overview
   and the pipeline panel's input stats share.
+  `core/hints.ts` maps known FFmpeg errors, warnings and alert codes to the
+  one-line "Hint:" advice under them.
 - `test/*.test.js` unit tests and `test/integration/` API tests (`npm test`).
 - `Dockerfile`, `compose.yaml`, `docker/entrypoint.sh` - single-container image
   for evaluation; the entrypoint supervises the app, SRS and the relay with the
@@ -233,6 +236,9 @@ When the schema or persisted data model changes, prefer wiping the old SQLite
 database and creating it fresh rather than adding migration machinery or
 maintaining compatibility with obsolete formats. Preserve only the data that
 is explicitly required by the current application and deployment workflow.
+When you change a table or column, bump `SCHEMA_VERSION` in `src/db/schema.ts`: a
+database of another version is refused at startup (exit 78, which the systemd unit
+does not restart) instead of failing later.
 
 Keep the implementation straightforward: prefer simple code and clear
 behavior over abstractions, compatibility layers, or speculative flexibility.

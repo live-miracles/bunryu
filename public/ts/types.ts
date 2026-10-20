@@ -150,6 +150,8 @@ export interface OutputStatus {
     startedAtMs: number | null;
     failures: number;
     warningReason: string | null;
+    // When the warning in warningReason began (ms since epoch).
+    warningSinceMs: number | null;
     lastError: string | null;
     hasErrorHistory: boolean;
     memoryUsageBytes: number | null;
@@ -308,6 +310,8 @@ export interface InputHealth {
     video: VideoInfo | null;
     audio: AudioInfo | null;
     audioTracks: AudioTrackInfo[];
+    // Alerts about the input itself (see INPUT_ALERT_CODES in core/pipeline.ts).
+    alerts?: PipelineAlert[];
 }
 
 export interface PipelineHealth {
@@ -447,6 +451,8 @@ export interface OutputView extends Output {
     startedAtMs: number | null;
     failures: number;
     warningReason: string | null;
+    // When the warning in warningReason began (ms since epoch).
+    warningSinceMs: number | null;
     lastError: string | null;
     hasErrorHistory: boolean;
     lastErrorAt: number | null;
