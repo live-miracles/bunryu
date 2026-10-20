@@ -183,6 +183,42 @@ describe('buildFfmpegArgs', () => {
         assert.equal(args[i + 1], String(10 * 60 * 1_000_000));
     });
 
+    describe('output write timeout', () => {
+        const OUTPUT_TIMEOUT = String(10 * 1_000_000);
+        const outputTimeoutOf = (args) => {
+            const url = args.at(-1);
+            const i = args.lastIndexOf('-rw_timeout');
+            return { url, i, value: args[i + 1] };
+        };
+
+        for (const url of ['rtmp://out.example/live/k', 'rtmps://out.example/live/k']) {
+            test(`${url.split(':')[0]} destinations get a 10 s -rw_timeout right before the url`, () => {
+                const args = buildFfmpegArgs('rtmp://in', url, 'copy');
+                const { i, value } = outputTimeoutOf(args);
+                assert.equal(value, OUTPUT_TIMEOUT);
+                assert.equal(i, args.length - 3, 'must sit directly before the destination url');
+                assert.ok(i > args.indexOf('-i'), 'must be an output option, not the input one');
+            });
+        }
+
+        test('the input keeps its own 10-minute timeout', () => {
+            const args = buildFfmpegArgs('rtmp://in', 'rtmp://out', 'copy');
+            assert.equal(args[args.indexOf('-rw_timeout') + 1], String(10 * 60 * 1_000_000));
+            assert.equal(args.filter((a) => a === '-rw_timeout').length, 2);
+        });
+
+        test('SRT destinations are left alone (the option means something else there)', () => {
+            const args = buildFfmpegArgs('rtmp://in', 'srt://out:9000', 'copy');
+            assert.equal(args.filter((a) => a === '-rw_timeout').length, 1);
+        });
+
+        test('-timeout is never used: for RTMP it switches the output to listen mode', () => {
+            for (const url of ['rtmp://out', 'rtmps://out', 'srt://out:9000']) {
+                assert.ok(!buildFfmpegArgs('rtmp://in', url, 'copy').includes('-timeout'));
+            }
+        });
+    });
+
     test('suppresses ffmpeg stderr stats spam (-nostats -loglevel warning)', () => {
         const args = buildFfmpegArgs('rtmp://in', 'rtmp://out', 'copy');
         assert.ok(args.includes('-nostats'));
@@ -232,6 +268,48 @@ describe('buildTranslationMixerArgs', () => {
         assert.equal(dbToAmplitude(undefined), 1);
         assert.equal(dbToAmplitude(NaN), 1);
         assert.equal(dbToAmplitude(-Infinity), 0);
+    });
+
+    describe('output write timeout', () => {
+        const config = {
+            videoEncoding: 'copy',
+            translationDelayMs: 800,
+            voiceThresholdDb: -45,
+            controlPort: 5555,
+            duckVolumeDb: -24,
+            duckDurationMs: 100,
+            restoreSilenceMs: 1000,
+            restoreVolumeDb: 0,
+            restoreDurationMs: 500,
+        };
+        for (const [mode, translator] of [
+            ['source only', null],
+            ['source and translator', 'rtmp://translator'],
+        ]) {
+            for (const url of ['rtmp://mixed', 'rtmps://mixed']) {
+                test(`${mode}: ${url.split(':')[0]} destination gets a 10 s -rw_timeout`, () => {
+                    const args = buildTranslationMixerArgs(
+                        'rtmp://source',
+                        translator,
+                        url,
+                        config,
+                    );
+                    const i = args.lastIndexOf('-rw_timeout');
+                    assert.equal(args[i + 1], String(10 * 1_000_000));
+                    assert.equal(i, args.length - 3);
+                    assert.equal(args.at(-1), url);
+                });
+            }
+            test(`${mode}: SRT destination does not`, () => {
+                const args = buildTranslationMixerArgs(
+                    'rtmp://source',
+                    translator,
+                    'srt://mixed:9000',
+                    config,
+                );
+                assert.equal(args.filter((a) => a === '-rw_timeout').length, 1);
+            });
+        }
     });
 
     test('publishes source-only audio/video when translator is unavailable', () => {

@@ -119,6 +119,23 @@ stream.
 
 ## SRT ingest
 
+### A separate relay accepts bonded SRT, because neither FFmpeg nor SRS can
+
+**Decision:** bonded SRT (several network links carrying one stream, as cellular
+bonding units and AJA Bridge Live send it) goes to `goryu`, its own service on
+`10081`. It listens with `SRTO_GROUPCONNECT=1`, accepts each bonded session, reads
+its `streamid` and publishes a normal SRT stream to SRS with the same `streamid`.
+It connects to SRS only after an encoder has connected, so SRS's idle-publisher
+timeout is not triggered by an empty publisher at boot.
+
+**Why a relay at all:**
+- FFmpeg's SRT handler does not set `SRTO_GROUPCONNECT=1` on its listener socket,
+  so bonded connection attempts are rejected at the handshake.
+- SRS accepts normal SRT publishers but not bonded groups.
+
+**Revisit when:** SRS accepts SRT groups natively (filed upstream as ossrs/srs#4771),
+which would make the relay unnecessary.
+
 ### Plain SRT goes directly to SRS by default; the relay also accepts it
 
 **Decision:** encoders publish plain SRT to SRS's SRT port by default. The
@@ -310,6 +327,63 @@ when no viewer remains.
   with a long keyframe interval starts slower and runs further behind live.
 - **HEVC** inputs preview only where Chrome can decode HEVC; there is no
   transcode fallback.
+
+### Give up on a blocked RTMP/RTMPS destination with an output `-rw_timeout`
+
+**Decision (October 2026):** every RTMP and RTMPS destination gets `-rw_timeout
+10000000` (10 s) as an output option, placed directly before the destination URL
+(`buildFfmpegArgs` and the translation mixer). SRT destinations do not.
+
+**Why:** a destination that accepts the TCP connection and then goes quiet leaves the
+socket ESTABLISHED. The socket watchdog treats that as healthy, and FFmpeg waits
+forever, so only the progress watchdog (45 s without progress, after a 90 s warmup)
+ends it. Measured with the pinned FFmpeg n7.1.4 on loopback, 100-110 s cap per run:
+
+| Case | Without | With 10 s |
+|------|---------|-----------|
+| Connect never completes (accept queue full) | 5.2 s | 5.2 s |
+| Accepts, never answers (RTMP and RTMPS, also a completed TLS handshake) | never | 10.2-10.3 s |
+| Frozen mid-stream, RTMP (SRS `SIGSTOP`; `ss` showed ESTAB with 2.7 MB queued) | never | 30.8 s |
+| Frozen mid-stream, RTMPS (TLS proxy in front of the frozen SRS) | never | 10.6 s |
+| Healthy destination, 70 s at real pace, RTMP and RTMPS | publishing | publishing (also at 3 s) |
+
+- **How each case was produced** (all on loopback, FFmpeg copying a local file with
+  Bunryu's real arguments, runs in parallel):
+  - *connect never completes:* a listener with a full accept queue, so the kernel
+    drops further SYNs;
+  - *accepts, never answers:* a listener that accepts and sends nothing; for RTMPS
+    also a TLS server (self-signed certificate) that completes the handshake and then
+    says nothing;
+  - *frozen mid-stream:* SRS as the destination, stopped with `SIGSTOP`, so the
+    kernel keeps accepting until the socket buffers are full and then advertises a
+    zero window. For RTMPS a TLS proxy sat in front of the frozen SRS. FFmpeg ran
+    unthrottled so the buffers fill at once and the block starts right away;
+  - *healthy:* SRS behind the same proxy, FFmpeg paced at real time (`-re`).
+- **Scaling:** for RTMP mid-stream the give-up time is three times the value (5 s gave
+  15.6 s, 10 s gave 30.9 s twice, 20 s gave 60.9 s).
+- **10 s is a compromise:** 30 s of fully blocked writes is under the progress
+  watchdog's 45 s, so it adds no new kind of restart, only an earlier one. A smaller
+  value would restart outputs sooner on a platform that merely pauses reading.
+- **The connect case needs nothing:** FFmpeg's own connect timeout already ends it
+  after 5 s, long before the 45 s socket watchdog.
+- **Regression test:** `test/outputTimeout.test.js` runs real FFmpeg on the arguments
+  Bunryu builds against a destination that never answers (RTMP and RTMPS, no
+  certificate needed), plus a control without the option; it passed on FFmpeg 7.1.4
+  and the development machine's 8.0.1.
+
+**Not adopted:**
+- **`-timeout`.** It is not a TCP timeout for RTMP: it implies listen mode and
+  FFmpeg tries to bind the destination port ("Address already in use").
+- **SRT destinations.** The option is a different setting for `srt://`; not tested.
+- **A shorter progress-watchdog stall.** It would also restart outputs fed by an
+  idle input, which the watchdog deliberately ignores.
+
+**Not tested:** a real platform ingest, and RTMPS certificate verification (FFmpeg's
+default does not verify).
+
+**Revisit when:** outputs restart with "Connection timed out" against a healthy
+platform (raise the value), or FFmpeg is upgraded (the regression test checks the
+mechanism).
 
 ## Sizing
 

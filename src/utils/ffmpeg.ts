@@ -77,6 +77,25 @@ function buildAudioMapArgs(audioTrack: string): string[] {
 // the preview's ffmpeg pull uses the same bound.
 export const INPUT_TIMEOUT_US = 10 * 60 * 1_000_000; // 10 minutes
 
+// Give up on an RTMP/RTMPS destination whose writes stay blocked. A destination
+// that accepts the connection but then stops reading (or never answers) leaves
+// the TCP socket ESTABLISHED, which the socket watchdog treats as healthy, and
+// without a bound ffmpeg waits forever; only the progress watchdog restarts it
+// (about 45-50 s after progress stops, 90 s or more if the destination never
+// answered at all). With this, ffmpeg exits on its own. Measured with the pinned
+// ffmpeg: 10 s when the destination never answers (RTMP and RTMPS), 30 s when
+// RTMP writes block mid-stream (3x the value), about 10 s for RTMPS; a connect
+// that never completes already ends after ffmpeg's own 5 s, and a healthy
+// destination is unaffected. Only RTMP/RTMPS: for SRT the option means something
+// else. Never use -timeout here: for RTMP it switches the output to listen mode.
+export const OUTPUT_IO_TIMEOUT_US = 10 * 1_000_000;
+
+function outputTimeoutArgs(url: string): string[] {
+    return url.startsWith('rtmp://') || url.startsWith('rtmps://')
+        ? ['-rw_timeout', String(OUTPUT_IO_TIMEOUT_US)]
+        : [];
+}
+
 // Build a single ffmpeg command that pulls the input once and pushes it to one
 // destination. The destination's audio track(s) are selected via -map; SRT
 // destinations use mpegts, everything else uses flv.
@@ -137,7 +156,7 @@ export function buildFfmpegArgs(
     const audioArgs =
         audioEncoding === 'copy' ? (['-c:a', 'copy'] as const) : encodeAudioArgs(isSrtOrigin);
     const fmt = isSrtDestination ? ['-f', 'mpegts'] : ['-f', 'flv'];
-    args.push(...mapArgs, ...encArgs, ...audioArgs, ...fmt, url);
+    args.push(...mapArgs, ...encArgs, ...audioArgs, ...fmt, ...outputTimeoutArgs(url), url);
     return args;
 }
 
@@ -219,6 +238,7 @@ export function buildTranslationMixerArgs(
             '-progress',
             'pipe:1',
             ...formatArgs,
+            ...outputTimeoutArgs(outputUrl),
             outputUrl,
         );
         return args;
@@ -275,6 +295,7 @@ export function buildTranslationMixerArgs(
         '-progress',
         'pipe:1',
         ...formatArgs,
+        ...outputTimeoutArgs(outputUrl),
         outputUrl,
     );
     return args;

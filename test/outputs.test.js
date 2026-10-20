@@ -2187,6 +2187,9 @@ describe('shared renditions', () => {
                 'copy',
                 '-f',
                 'flv',
+                // The output-side bound on a blocked destination (OUTPUT_IO_TIMEOUT_US).
+                '-rw_timeout',
+                '10000000',
                 'rtmp://youtube.example/live/key',
             ]);
             assert.deepEqual(fleet.spawned[1].args, [

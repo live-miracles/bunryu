@@ -3,6 +3,13 @@
 // and an unknown message simply gets no hint.
 
 const ERROR_HINTS: Array<[RegExp, string]> = [
+    // First: a write that stayed blocked until ffmpeg gave up (OUTPUT_IO_TIMEOUT_US
+    // in src/utils/ffmpeg.ts). RTMPS words it as an I/O error, which the generic
+    // rule below would blame on the stream key.
+    [
+        /error closing file/i,
+        'The destination stopped accepting data and FFmpeg gave up on it. Check the destination’s status and the network; the output reconnects by itself.',
+    ],
     [
         /connection refused/i,
         'The destination refused the connection. Check the host and port in the URL and that the platform’s ingest is up.',

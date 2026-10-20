@@ -10,6 +10,16 @@ describe('errorHint', () => {
         ['tcp://a.example:1935: Operation timed out', /did not answer/i],
         ['Failed to resolve hostname a.example: Name or service not known', /host name/i],
         ['rtmp://a.example/live/key: Input/output error', /stream key/i],
+        // A write that stayed blocked until ffmpeg gave up (see OUTPUT_IO_TIMEOUT_US)
+        // is not a rejected key, even though RTMPS words it as an I/O error.
+        [
+            '[out#0/flv @ 0x5d2058edfac0] Error closing file: Input/output error',
+            /stopped accepting data/i,
+        ],
+        [
+            '[out#0/flv @ 0x648c4b905580] Error closing file: Connection timed out',
+            /stopped accepting data/i,
+        ],
         ['Error writing trailer: Broken pipe', /stream key/i],
         ['Server returned 403 Forbidden', /rejected the login/i],
         ['srt://a.example:9000: Connection setup failure: connection rejected', /passphrase/i],

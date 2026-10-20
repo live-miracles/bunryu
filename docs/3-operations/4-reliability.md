@@ -24,6 +24,18 @@ fresh process while the output's desired state remains `running`. The socket
 watchdog is advisory: if `ss` fails or times out, it does not restart anything,
 and a socket warning does not prevent the other watchdogs from acting.
 
+**Blocked destinations.** Every RTMP/RTMPS output carries `-rw_timeout 10000000`
+(10 s) before its destination URL, so FFmpeg ends a connection to a destination that
+stopped answering instead of waiting for the progress watchdog: a connect that never
+completes ends after 5 s (FFmpeg's own timeout), a destination that never answers
+after 10 s, and one that stops reading mid-stream after 30 s for RTMP (three times
+the value) or about 10 s for RTMPS. The socket watchdog cannot see these, because
+the socket stays ESTABLISHED. The exit shows in the Error History as "Connection
+timed out" (or "Error closing file: Input/output error" for RTMPS mid-stream) and
+the retry loop takes over. SRT destinations are not covered. The measurements and
+why 10 s are in
+[the design decision](../4-reference/3-design-decisions.md#give-up-on-a-blocked-rtmprtmps-destination-with-an-output--rw_timeout).
+
 **Retries.** An output retries indefinitely. The wait grows with the number of
 failed attempts in a row that never stayed up for 60 s: 1, 2, 4, 8, then 16 s. A
 run that lasted at least 60 s starts the sequence over, so a drop late in a long
@@ -380,13 +392,3 @@ outputs, about 2-3x a healthy output's normal 65-90 MB baseline, with higher
 per-encoding limits for transcoding profiles; far below the 1.5 GB+ range where
 the kernel OOM-killer struck) — well before the kernel ever needs to get
 involved, so the cascading restart doesn't happen.
-
-## Why Goryu exists
-
-The relay exists to work around two constraints:
-
-1. **ffmpeg cannot accept bonded SRT group connections.** ffmpeg's SRT handler does not set `SRTO_GROUPCONNECT=1` on its listener socket, so bonded connection attempts from encoders like AJA Bridge Live are rejected at the handshake level.
-
-2. **SRS has no native SRT bonding support.** SRS accepts normal SRT publishers, but it does not accept bonded/redundant SRT groups directly.
-
-**How it is fixed:** `goryu` starts as its own systemd service, listens on `10081` with `SRTO_GROUPCONNECT=1`, accepts each bonded source session, reads its incoming `streamid`, and opens a normal SRT publisher connection to SRS using the same `streamid`. It only connects to SRS after an encoder connects, so SRS's idle-publisher timeout is not triggered by an empty boot-time publisher.
