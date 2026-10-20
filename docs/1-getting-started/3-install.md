@@ -14,7 +14,9 @@ The installer downloads the official SRS release binary and a pinned `goryu` bin
 Startup is ordered so the Node.js control plane is reachable before SRS accepts
 publishes. `srs.service` waits for the unauthenticated readiness endpoint
 `http://127.0.0.1:8080/api/ready` before starting; this prevents SRS publish
-hooks from racing the dashboard/API process during boot.
+hooks from racing the dashboard/API process during boot. All three units restart
+their process 2 s after it exits and never give up (`StartLimitIntervalSec=0`); see
+[Reliability](../3-operations/4-reliability.md#watchdogs).
 
 **Production install:**
 ```bash

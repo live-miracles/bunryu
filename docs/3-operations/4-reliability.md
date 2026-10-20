@@ -24,13 +24,27 @@ fresh process while the output's desired state remains `running`. The socket
 watchdog is advisory: if `ss` fails or times out, it does not restart anything,
 and a socket warning does not prevent the other watchdogs from acting.
 
-**Outputs that never stay up.** An output retries indefinitely (back-off 1, 2, 4, 8
-then 16 s). If it is stopped after 5 failed attempts in a row, none of which stayed
-up for 60 s, the stop is recorded with the count and the last failure ("Stopped
-after 5 failed attempts. Last error: Connection refused"), the output's card keeps
-showing that line in red, and its History button stays red, until the output is
-started again. A plain stop, or a run that lasted at least 60 s, leaves no such
-mark. The stop also writes an `output-stopped-after-failures` diagnostics event.
+**Retries.** An output retries indefinitely. The wait grows with the number of
+failed attempts in a row that never stayed up for 60 s: 1, 2, 4, 8, then 16 s. A
+run that lasted at least 60 s starts the sequence over, so a drop late in a long
+event is retried after about a second. Each wait is shortened by up to a quarter
+at random, so outputs that fail together (a platform ingest blip) do not respawn
+in lockstep.
+
+Every 30 s a backstop also looks for outputs that should be running on a live
+input but have no process, no pending retry and no start in progress, and starts
+them (staggered, with an `output-restarted-by-backstop` diagnostics event). An
+output has to look that way on two checks in a row, so it does not race the
+normal staggered start when an input comes online. Normally nothing matches; it
+exists for unexpected errors, such as a start that threw.
+
+**Outputs that never stay up.** If an output is stopped after 5 failed attempts in a
+row, none of which stayed up for 60 s, the stop is recorded with the count and the
+last failure ("Stopped after 5 failed attempts. Last error: Connection refused"),
+the output's card keeps showing that line in red, and its History button stays red,
+until the output is started again. A plain stop, or a run that lasted at least 60 s,
+leaves no such mark. The stop also writes an `output-stopped-after-failures`
+diagnostics event.
 
 Input media validation is separate from the output watchdogs. The health service
 stays on the regular 5s poll, but ffprobe backs off once a publisher's probe
@@ -52,12 +66,19 @@ failure (disk full, directory unwritable) drops and counts events instead of
 crashing; see
 [Configuration](3-configuration.md).
 
+**Service restarts.** The three systemd units restart a process 2 s after it exits
+(`Restart=always`, `RestartSec=2`) and set `StartLimitIntervalSec=0`. Without it,
+systemd's default start limit (5 starts in 10 s) marks a unit that keeps failing
+right after it starts as failed and stops restarting it until someone runs
+`systemctl start`. With it, the unit keeps retrying every 2 s until the cause is
+gone. The Docker image's supervisor behaves the same way.
+
 ## Shared encodes
 
 Outputs on one pipeline that need the same encode share one FFmpeg, a *shared
 encode* (see [Outputs](../2-usage/2-outputs.md#shared-encodes)). It is an ordinary
 output row, so it is supervised exactly like one: the same retry back-off
-(1, 2, 4, 8, then 16 s, without limit), output progress, memory and socket
+(see [Retries](#watchdogs)), output progress, memory and socket
 watchdogs (with the memory limit of its video encoding), Error History and
 diagnostics. The outputs that read it are ordinary outputs that copy from it.
 

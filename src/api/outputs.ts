@@ -293,7 +293,14 @@ export function registerOutputApi(
         const name = 'name' in parsedName ? parsedName.name : '';
         const videoEncoding =
             (req.body?.videoEncoding as string | undefined)?.trim() ?? output.videoEncoding;
-        const parsed = parseDestination(req.body);
+        // Like name and videoEncoding, a field left out keeps its stored value,
+        // so a script sending only { name } can't silently reset the audio tracks.
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        const parsed = parseDestination({
+            url: body.url === undefined ? output.url : body.url,
+            audioEncoding:
+                body.audioEncoding === undefined ? output.audioEncoding : body.audioEncoding,
+        });
 
         if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
         if (!ENCODINGS[videoEncoding])

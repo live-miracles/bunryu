@@ -14,21 +14,24 @@ RTMP input → RTMP pull), so there is no pull-method setting.
 | GET | `/api/health` | Live input/output status snapshot (refreshed every 5s) |
 | GET | `/api/rejected-publishes` | Recent publish attempts rejected for a key with no pipeline (label only, never the secret) |
 | GET | `/api/version` | App, SRS, relay, FFmpeg and Node versions, git commit, OS, kernel and CPU model (cached after the first request) |
+| GET | `/api/metrics/history` | System metric samples every 5 s for the last 2 hours; `?after=<ms>` returns only newer samples |
 | GET | `/api/metrics/system` | Host CPU, RAM, disk and network stats (RAM used is total minus `MemAvailable`, so reclaimable page cache does not count) |
 | GET | `/api/srs-logs` | Recent SRS up/down events and log tails for SRS, the dashboard, and the relay |
+| GET | `/api/host-probes` | Host reachability probe targets and their samples, `?hours=` up to 6 (default 6) |
 | GET | `/api/ready` | Unauthenticated readiness check used by systemd before starting SRS |
 | POST | `/api/pipelines` | Create pipeline (auto-names and assigns stream key) |
 | GET | `/api/pipelines/:id` | Pipeline details including relay health and bonded-input activity |
 | POST | `/api/pipelines/:id` | Rename pipeline `{ name }`, optionally reassign key `{ name, streamKeyId }` — a key change returns 409 while any of your outputs is running; a shared encode still running is stopped first, so the next one pulls the new key |
 | DELETE | `/api/pipelines/:id` | Delete pipeline (stream key is freed, not deleted) — 409 while any of your outputs is running; its shared encodes are stopped and removed with it |
 | GET | `/api/pipelines/:id/logs` | Pipeline online/offline event log |
+| GET | `/api/health/pipelines/:id/legs/history` | Per-leg SRT history of a bonded input (state, health, rate, RTT, loss), 5 s samples for up to 30 min; `?from=`, `?to=`, `?after=` in ms |
 | POST | `/api/pipelines/:id/preview/start` | Start an HLS preview `{ audioTrackCount? }` (1–50, default 1); returns `{ hlsUrl }`. Video is copied, audio is AAC, one rendition per track |
 | POST | `/api/pipelines/:id/preview/keepalive` | Refresh the preview TTL — a preview with no keepalive and no HLS fetch for 20s is stopped automatically; closing the tab also stops it immediately |
 | POST | `/api/pipelines/:id/preview/stop` | Stop the HLS preview |
 | POST | `/api/pipelines/:id/outputs` | Create output `{ name, videoEncoding, url, audioEncoding }` |
 | POST | `/api/pipelines/:id/outputs/bulk` | Bulk create outputs `{ outputs: [{ name, videoEncoding, url, audioEncoding }] }` — validates all before creating any |
 | DELETE | `/api/pipelines/:id/outputs` | Clear all outputs for the pipeline — returns 409 if any of your outputs is still running (shared encodes are stopped and removed with them) |
-| POST | `/api/pipelines/:id/outputs/:outId` | Update output (same body as create). A running output accepts only `{ name }` — any other field gives 409, even with an unchanged value — and a shared encode always gives 409 |
+| POST | `/api/pipelines/:id/outputs/:outId` | Update output (same body as create; a field left out keeps its stored value). A running output accepts only `{ name }` — any other field gives 409, even with an unchanged value — and a shared encode always gives 409 |
 | DELETE | `/api/pipelines/:id/outputs/:outId` | Delete output (stops it first if running) — 409 for a shared encode |
 | POST | `/api/pipelines/:id/outputs/start-all` | Start all outputs (staggered at 200 ms intervals, returns immediately) |
 | POST | `/api/pipelines/:id/outputs/stop-all` | Stop all outputs |
@@ -37,11 +40,15 @@ RTMP input → RTMP pull), so there is no pull-method setting.
 | POST | `/api/pipelines/:id/outputs/:outId/restart` | Stop a running output and start it again; works for any output including a shared encode, whose outputs reconnect with it. Returns `{ ok: true }`, or 409 when the output is not running, is a translation output, or was restarted less than 5 s ago. Recorded in its Error History as "Restarted by user" (not a failure) |
 | GET | `/api/pipelines/:id/outputs/:outId/errors` | Output Error History (also for a shared encode) |
 | DELETE | `/api/pipelines/:id/outputs/:outId/errors` | Clear the Error History (also for a shared encode) |
-| POST | `/api/settings` | Update settings `{ name, publicHost }` |
+| POST | `/api/settings/general` | Update the server name and public host `{ name, publicHost? }` |
+| POST | `/api/settings/host-probes` | Replace the host probe targets `{ hostProbeTargets: [{ slot, label, host, port }] }`; a target resolving to a blocked address is refused with 400 |
+| POST | `/api/settings/layout-order` | Save the dashboard's pipeline and output order `{ order: [{ id, outs: [outputId] }] }` |
+| POST | `/api/settings/pipeline-groups` | Replace the sidebar pipeline groups `{ groups: [{ id?, name }] }` |
 | POST | `/api/settings/regenerate-stream-keys` | Regenerate all stream keys |
 | POST | `/api/auth/login` | Login `{ password }` — sets session cookie |
 | POST | `/api/auth/logout` | Logout — clears session cookie |
 | POST | `/api/auth/change-password` | Change password `{ currentPassword, newPassword }` |
+| POST | `/api/srs/on_play` | SRS play hook (on the loopback-only `hook_port`). Only plays from loopback (the app's own FFmpeg) are accepted; others are refused and listed in `/api/rejected-publishes` |
 | POST | `/api/srs/on_publish` | SRS publish hook (called by SRS on the loopback-only `hook_port`, not on the dashboard port). Pipeline keys are accepted in the `live` app; the reserved `internal` app is accepted only for a running shared encode, over RTMP from loopback |
 
 ## Shared encodes

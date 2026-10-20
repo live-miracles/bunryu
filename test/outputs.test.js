@@ -93,6 +93,9 @@ function makeDb() {
         listOutputsForPipeline() {
             return [output];
         },
+        listOutputs() {
+            return [output];
+        },
         errorRecords: [],
         setOutputLastError(_id, message, kind, failedAttempts) {
             this.errorRecords.push({ message, kind, failedAttempts });
@@ -138,6 +141,8 @@ function loadOutputService(t, fakeProc, options = {}) {
     t.mock.method(childProcess, 'spawn', (_cmd, args) =>
         typeof fakeProc === 'function' ? fakeProc(args) : fakeProc,
     );
+    // No retry jitter unless a test asks for it, so back-off steps are exact.
+    t.mock.method(Math, 'random', () => options.random ?? 0);
     if (options.ssError) {
         t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
             queueMicrotask(() => cb(options.ssError, '', ''));
@@ -695,6 +700,97 @@ describe('output stop/start race', () => {
         service.stop('out1');
 
         assert.equal(db.errorRecords.at(-1).failedAttempts, undefined);
+
+        service.shutdown();
+    });
+
+    test('the retry delay starts over after a run that stayed up', async (t) => {
+        const procs = [];
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
+        );
+        t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+        const settle = () => new Promise((resolve) => setImmediate(resolve));
+        const service = createOutputService(makeDb(), makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        // Five quick failures walk the back-off up to its 16 s cap...
+        for (const delayMs of [1000, 2000, 4000, 8000, 16000]) {
+            procs.at(-1).emit('close', 1, null);
+            t.mock.timers.tick(delayMs);
+            await settle();
+        }
+        // ...then a run that stays up for two minutes before dropping.
+        t.mock.timers.tick(120_000);
+        procs.at(-1).emit('close', 1, null);
+        await settle();
+
+        const retries = diagnostics.events.filter((e) => e.event === 'ffmpeg-retry-scheduled');
+        assert.equal(retries.length, 6);
+        assert.ok(retries[4].delayMs > 8000, 'the fifth quick failure waits the longest');
+        assert.ok(
+            retries[5].delayMs <= 1000,
+            `a drop after a stable run must retry fast, got ${retries[5].delayMs} ms`,
+        );
+        assert.equal(service.getStats('out1').failures, 6, 'failures still counts every exit');
+
+        service.shutdown();
+    });
+
+    test('retry delays are shortened by up to a quarter at random', async (t) => {
+        const proc = new FakeFfmpeg();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            random: 0.999,
+        });
+        const service = createOutputService(makeDb(), makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        proc.emit('close', 1, null);
+
+        const retry = diagnostics.events.find((e) => e.event === 'ffmpeg-retry-scheduled');
+        assert.equal(retry.delayMs, 750);
+
+        service.shutdown();
+    });
+
+    test('an output left with nothing driving it is started again by the backstop', async (t) => {
+        const procs = [];
+        const db = makeDb();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
+        );
+        const service = createOutputService(db, makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        // The retry's start throws (a transient DB error), which leaves the
+        // output desired-running with no process and no timer.
+        const getPipeline = db.getPipeline;
+        db.getPipeline = () => {
+            db.getPipeline = getPipeline;
+            throw new Error('database is locked');
+        };
+        procs[0].emit('close', 1, null);
+        await sleep(1500);
+
+        assert.equal(procs.length, 2, 'the backstop must start the orphaned output');
+        assert.ok(diagnostics.events.some((e) => e.event === 'output-start-failed'));
+        assert.ok(diagnostics.events.some((e) => e.event === 'output-restarted-by-backstop'));
 
         service.shutdown();
     });

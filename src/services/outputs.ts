@@ -29,6 +29,10 @@ import {
 } from './outputSockets.js';
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
+// Each retry waits up to this fraction less than its step, at random: when a
+// platform ingest blips, every output sending to it fails in the same second,
+// and identical delays would respawn them (and their SRS pulls) in lockstep.
+const RETRY_JITTER = 0.25;
 // An output stopped after this many failed attempts in a row keeps showing that
 // as an error until it is started again, so the operator can see it was tried
 // and stopped for a reason. A run that lasts STABLE_RUN_MS breaks the streak.
@@ -44,6 +48,8 @@ const RENDITION_RECHECK_DELAY_MS = 1000;
 const SIGKILL_DELAY_MS = 5000;
 const STDERR_TAIL_BYTES = 3000;
 const RESTART_STAGGER_MS = 200;
+// Watchdog ticks between backstop passes (~30 s at the default 5 s interval).
+const BACKSTOP_EVERY_TICKS = 6;
 // One line saying how an attempt failed, for the "stopped after N failed attempts"
 // record: the last line ffmpeg printed, else the watchdog reason or exit status.
 function failureSummary(
@@ -318,12 +324,21 @@ export function createOutputService(
         diagnostics?.event(event, run ? { outputId: fields.outputId, ...run, ...fields } : fields);
     }
     const watchdogFailures = createLoopFailureReporter('output-watchdog', diagnostics);
+    const backstopFailures = createLoopFailureReporter('output-backstop', diagnostics);
+    let watchdogTicks = 0;
     const watchdogTimer = setInterval(() => {
         try {
             checkOutputWatchdog();
             watchdogFailures.succeeded();
         } catch (err) {
             watchdogFailures.failed(err);
+        }
+        if (++watchdogTicks % BACKSTOP_EVERY_TICKS !== 0) return;
+        try {
+            startOrphanedOutputs();
+            backstopFailures.succeeded();
+        } catch (err) {
+            backstopFailures.failed(err);
         }
     }, OUTPUT_WATCHDOG_INTERVAL_MS);
     watchdogTimer.unref?.();
@@ -540,7 +555,11 @@ export function createOutputService(
 
     function scheduleRetry(output: Output): void {
         const r = getRetry(output.id);
-        const delayMs = RETRY_DELAYS_MS[Math.min(r.failures - 1, RETRY_DELAYS_MS.length - 1)];
+        // The step follows the current streak of quick failures, not the
+        // lifetime count, so a drop after a run that stayed up retries in ~1 s
+        // even late in a long event.
+        const step = Math.min(Math.max(r.quickFailures, 1) - 1, RETRY_DELAYS_MS.length - 1);
+        const delayMs = Math.round(RETRY_DELAYS_MS[step] * (1 - RETRY_JITTER * Math.random()));
         console.warn(
             yellow(
                 `[outputs] ${output.id} (${output.name}) retry ${r.failures} scheduled in ${delayMs}ms`,
@@ -591,8 +610,8 @@ export function createOutputService(
             }
             await startJob(output);
         } catch (err) {
-            // Not retried from here: whatever re-triggers a start (input back
-            // online, a reconcile, a manual start) tries again.
+            // Not retried from here: the next input edge or manual start, or
+            // else the backstop (startOrphanedOutputs), tries again.
             console.warn(red(`[outputs] ${outputId} auto-start failed:`), err);
             logEvent('output-start-failed', {
                 outputId,
@@ -1004,6 +1023,40 @@ export function createOutputService(
         noteWatchdogKill(outputId, `socket unhealthy: ${reason}`);
         void killProcess(outputId, proc, false);
         return true;
+    }
+
+    // Outputs that should be running but have no process, no pending retry or
+    // re-check and no start in progress. Every normal path leaves one of those
+    // behind, so this only catches bugs and unexpected throws (see tryStart).
+    // An output must look orphaned on two passes in a row, so outputs about to
+    // be started by the health poll's staggered restart are left to it.
+    let orphansSeen = new Set<string>();
+    function startOrphanedOutputs(): void {
+        if (shuttingDown) return;
+        const orphans = new Set<string>();
+        let kicked = 0;
+        for (const output of db.listOutputs()) {
+            if (output.desiredState !== 'running') continue;
+            if (isTranslationAudio(output.audioEncoding) || isRenditionOutput(output)) continue;
+            if (processes.has(output.id) || startLocks.has(output.id)) continue;
+            if (retryState.get(output.id)?.timer) continue;
+            if (!inputState.isReady(output.pipelineId)) continue;
+            if (!orphansSeen.has(output.id)) {
+                orphans.add(output.id);
+                continue;
+            }
+            console.warn(
+                yellow(
+                    `[outputs] ${output.id} (${output.name}) should be running but nothing was starting it; starting it`,
+                ),
+            );
+            logEvent('output-restarted-by-backstop', {
+                outputId: output.id,
+                outputName: output.name,
+            });
+            scheduleTryStart(output.id, kicked++ * RESTART_STAGGER_MS);
+        }
+        orphansSeen = orphans;
     }
 
     function checkOutputWatchdog(): void {

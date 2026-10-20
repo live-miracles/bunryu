@@ -346,6 +346,7 @@ Description=SRS Streaming Server
 After=network-online.target bunryu.service
 Wants=network-online.target
 Requires=bunryu.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -372,6 +373,7 @@ Description=Shared Goryu relay
 After=network-online.target bunryu.service srs.service
 Wants=network-online.target
 Requires=bunryu.service srs.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -397,6 +399,10 @@ cat > /etc/systemd/system/bunryu.service << EOF
 Description=Bunryu Control Plane
 After=network-online.target
 Wants=network-online.target
+# Restart=always alone still gives up after systemd's default start limit
+# (5 starts in 10 s) and leaves the unit failed until someone intervenes; 0
+# turns the limit off so all three units keep retrying every RestartSec.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

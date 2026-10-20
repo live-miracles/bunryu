@@ -781,6 +781,33 @@ describe('Outputs API integration', () => {
             assert.equal(res.body.url, 'rtmp://new');
         });
 
+        test('fields left out of an edit keep their stored values', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'Old',
+                url: 'srt://dest.example:9000',
+                audioEncoding: '1,2',
+            });
+
+            const renamed = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${o.id}`,
+                { name: 'New' },
+            );
+            assert.equal(renamed.status, 200);
+            assert.equal(renamed.body.name, 'New');
+            assert.equal(renamed.body.url, 'srt://dest.example:9000');
+            assert.equal(renamed.body.audioEncoding, '1,2');
+
+            const moved = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
+                url: 'srt://other.example:9000',
+            });
+            assert.equal(moved.status, 200);
+            assert.equal(moved.body.audioEncoding, '1,2', 'a url change keeps the tracks');
+        });
+
         test('409s when the output is running in the process layer even if desiredState is stopped', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
