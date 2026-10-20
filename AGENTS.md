@@ -160,6 +160,12 @@ find every doc page that describes it and update it in the same change. Search
 Remove or correct text that the change makes wrong; don't just append. A stale
 statement is worse than a missing one.
 
+CI fails on a broken relative link or anchor in `README.md` or `docs/`, and on a
+docs page that `docs/README.md` does not link to. The checker is
+`scripts/check-docs.js` in the org site repository (`live-miracles.github.io`);
+with a sibling checkout, run `node ../live-miracles.github.io/scripts/check-docs.js .`
+before committing doc changes.
+
 ## Code map
 
 Navigation only; correct an entry when a change makes it stale, and add one

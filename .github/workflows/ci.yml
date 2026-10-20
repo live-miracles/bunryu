@@ -74,3 +74,23 @@ jobs:
       - run: npm ci
       # Runs both unit and integration suites (see the "test" script).
       - run: npm test
+
+  docs:
+    name: Docs links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The checker lives in the org site repository, which publishes these docs
+      # and resolves their links the same way, so every project can reuse it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: live-miracles/live-miracles.github.io
+          path: site
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        working-directory: site
+      # Broken relative links or anchors in README.md and docs/, and docs pages
+      # missing from docs/README.md.
+      - run: node site/scripts/check-docs.js .
