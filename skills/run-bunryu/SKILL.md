@@ -59,6 +59,31 @@ each output's warning plus `('warning', 'input-timestamps-unstable')`;
 `flood off`, wait ~35 s, `status` is clean again. Events are in
 `$WORK/diagnostics/*.jsonl`.
 
+### Fault scenarios (`scripts/test-faults.mjs`)
+
+The default outputs are a shim and never touch the network, so a destination cannot
+fail. `scripts/test-faults.mjs` runs real FFmpeg copy outputs to real local
+destinations to exercise the stall watchdog, isolation and bounded resources:
+
+```bash
+FAST_WATCHDOG=1 $H start            # 20 s warm-up / 15 s stall instead of 90 s / 45 s
+node scripts/test-faults.mjs freeze     # 50 healthy outputs + one whose destination is kill -STOP'd
+node scripts/test-faults.mjs blackhole  # ... + one that accepts the TCP connection and never reads
+node scripts/test-faults.mjs soak --minutes 60   # both, thawing and freezing every 2.5 min
+$H stop
+```
+
+Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4 and N+3 minutes). It
+replaces the stack's four default outputs with 50 `h01…h50`, `frozen` and `blackhole`
+(about 1 GB for the 52 FFmpeg processes), starts two extra SRS instances as the
+destinations, and removes them when it ends. `soak` writes `$WORK/soak.csv` (app, SRS
+and FFmpeg memory, FFmpeg count, app file handles every 30 s) and, for runs of 20+
+minutes, fails if memory grows by 50 MB/h or more after a 10 minute warm-up. How it
+works: an output to `rtmp://192.0.2.<N>/<name>` is pushed for real to
+`rtmp://127.0.0.1:<port>/dest/<name>` when `$WORK/dest-<N>.port` exists (the shim reads it).
+The socket watchdog stays off (it matches the configured destination port, which these
+loopback destinations do not have), so these scenarios test the progress watchdog.
+
 Run the repo's own tests separately with `npm test` (not part of this harness).
 
 ## Gotchas

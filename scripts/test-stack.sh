@@ -57,10 +57,17 @@ case "${1:-}" in
             exit 1
         }
         (cd "$REPO" && npx tsc -p tsconfig.json) # public/js is gitignored build output
+        # FAST_WATCHDOG=1 shortens the stall watchdog (20 s warm-up, 15 s stall) so the
+        # fault scenarios of test-faults.mjs finish in minutes, not tens of minutes.
+        if [ -n "${FAST_WATCHDOG:-}" ]; then
+            WATCHDOG='"warmup_ms": 20000, "stall_ms": 15000, "interval_ms": 2000'
+        else
+            WATCHDOG='"warmup_ms": 90000, "stall_ms": 45000, "interval_ms": 5000'
+        fi
         cat > "$WORK/bunryu.json" << JSON
 { "port": $APP_PORT, "hook_port": $HOOK_PORT, "database_path": "./db.sqlite", "srs_config_path": "./srs.conf",
   "ffmpeg_path": "$WORK/ffmpeg-shim.sh", "ffprobe_path": "$REPO/objs/ffprobe",
-  "output_watchdog": { "warmup_ms": 90000, "stall_ms": 45000, "interval_ms": 5000,
+  "output_watchdog": { $WATCHDOG,
                        "socket_warmup_ms": 3600000, "socket_grace_ms": 3600000 } }
 JSON
         sed -e "s/listen              21935;/listen              $RTMP_PORT;/" \
@@ -74,7 +81,10 @@ JSON
         # - an output that reads one (its input is an internal stream) runs the real
         #   ffmpeg with the destination replaced by /dev/null, so it really reads the
         #   shared encode from SRS (readers, fan-out, restarts are real);
-        # - while $WORK/real-outputs exists every output does that (CPU comparisons).
+        # - while $WORK/real-outputs exists every output does that (CPU comparisons);
+        # - an output to rtmp://192.0.2.<N>/<name> with $WORK/dest-<N>.port present really
+        #   pushes to rtmp://127.0.0.1:<port>/dest/<name> (a destination that
+        #   scripts/test-faults.mjs can freeze or black-hole).
         # Real runs use `exec -a` so argv[0] stays the configured ffmpeg_path, which is
         # how the app's startup sweep recognises orphaned ffmpeg processes.
         cat > "$WORK/ffmpeg-shim.sh" << SHIM
@@ -84,6 +94,15 @@ case "\$last" in
   rtmp://127.0.0.1:$RTMP_PORT/internal/*) exec -a \$0 $REPO/objs/ffmpeg "\$@" ;;
   rtmp://*|rtmps://*|srt://*) ;;
   *) exec -a \$0 $REPO/objs/ffmpeg "\$@" ;;
+esac
+case "\$last" in
+  rtmp://192.0.2.*/*)
+    n=\${last#rtmp://192.0.2.}; n=\${n%%/*}
+    if [ -s "$WORK/dest-\$n.port" ]; then
+      args=("\$@")
+      args[\$((\${#args[@]} - 1))]="rtmp://127.0.0.1:\$(cat "$WORK/dest-\$n.port")/dest/\${last##*/}"
+      exec -a \$0 $REPO/objs/ffmpeg "\${args[@]}"
+    fi ;;
 esac
 real=
 [ -e "$WORK/real-outputs" ] && real=1
