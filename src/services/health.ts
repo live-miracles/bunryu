@@ -49,6 +49,10 @@ const ALERT_EPISODE_QUIET_POLLS = 6;
 // An input that disconnects this many times within the window is flapping (a bad
 // uplink or a crashing encoder), which one "Input disconnected" line per drop in
 // the pipeline log does not make obvious.
+// An encoder that reconnects with another codec, resolution or audio track count
+// breaks the running outputs, so they are restarted. At most one such restart per
+// pipeline per window, so an encoder that alternates formats cannot start a storm.
+const INPUT_FORMAT_RESTART_COOLDOWN_MS = 60 * 1000;
 const INPUT_FLAP_WINDOW_MS = 5 * 60 * 1000;
 const INPUT_FLAP_DISCONNECTS = 3;
 const MAX_SRS_EVENTS = 200;
@@ -72,6 +76,15 @@ const DIAGNOSTICS_SNAPSHOT_INTERVAL_MS = 60 * 1000;
 const HOST_MEMORY_LOW_RATIO = 0.15;
 const HOST_MEMORY_RECOVER_RATIO = 0.2;
 const bytesToMb = (bytes: number): number => Math.round(bytes / (1024 * 1024));
+
+// The part of a probe that running outputs depend on, as one comparable string.
+function inputFormatOf(result: ProbeResult): string {
+    const video = result.video
+        ? `${result.video.codec} ${result.video.width}x${result.video.height}`
+        : 'no video';
+    const n = result.audioTracks.length;
+    return `${video}, ${n} audio track${n === 1 ? '' : 's'}`;
+}
 
 function counterDelta(current: number | null, previous: number | null | undefined): number | null {
     if (current === null || previous === null || previous === undefined) return null;
@@ -339,6 +352,10 @@ export function createHealthService(
     const inputLiveStartMs = new Map<number, number>();
     const inputPublisherCid = new Map<number, string>();
     const publisherChangedAt = new Map<number, number>();
+    // The format of each pipeline's last successfully probed input, kept across
+    // reconnects so a different one on the next publisher is noticed.
+    const inputFormats = new Map<number, string>();
+    const lastFormatRestartAt = new Map<number, number>();
     // When each pipeline's input disconnected, within INPUT_FLAP_WINDOW_MS.
     const inputDisconnectsAt = new Map<number, number[]>();
     // Open alert episodes by `${pipelineId}:${code}`. Alerts are rebuilt every
@@ -562,6 +579,50 @@ export function createHealthService(
         }
     }
 
+    // Called with every successful probe. A format that differs from the previous
+    // publisher's restarts the outputs that were already running (never on a failed
+    // probe, which proves nothing about the format).
+    function noteInputFormat(pipelineId: number, result: ProbeResult): void {
+        const format = inputFormatOf(result);
+        const previous = inputFormats.get(pipelineId);
+        inputFormats.set(pipelineId, format);
+        if (previous === undefined || previous === format) return;
+        const now = Date.now();
+        // Outputs that started after the new publisher connected already read the
+        // new format.
+        const publisherStartedAt = Math.max(
+            publisherChangedAt.get(pipelineId) ?? 0,
+            inputLiveStartMs.get(pipelineId) ?? 0,
+        );
+        const sinceLastRestartMs = now - (lastFormatRestartAt.get(pipelineId) ?? -Infinity);
+        const suppressed = sinceLastRestartMs < INPUT_FORMAT_RESTART_COOLDOWN_MS;
+        const why = `input format changed from ${previous} to ${format}`;
+        let restarted = 0;
+        if (!suppressed && publisherStartedAt > 0) {
+            lastFormatRestartAt.set(pipelineId, now);
+            restarted = outputService.restartRunningOutputs(pipelineId, why, publisherStartedAt);
+        }
+        diagnostics?.event('input-format-changed', {
+            pipelineId,
+            from: previous,
+            to: format,
+            outputsRestarted: restarted,
+            suppressed,
+            cooldownMs: INPUT_FORMAT_RESTART_COOLDOWN_MS,
+        });
+        try {
+            db.appendPipelineLog(
+                pipelineId,
+                'format_changed',
+                suppressed
+                    ? `Input format changed from ${previous} to ${format}; outputs not restarted (another format restart less than ${INPUT_FORMAT_RESTART_COOLDOWN_MS / 1000} s ago)`
+                    : `Input format changed from ${previous} to ${format}; restarting ${restarted} running ${restarted === 1 ? 'output' : 'outputs'}`,
+            );
+        } catch {
+            /* non-critical */
+        }
+    }
+
     async function runScheduledFfprobe(
         pipelineId: number,
         url: string,
@@ -596,6 +657,7 @@ export function createHealthService(
                 error,
                 failedAttempts: ok ? 0 : previousFailures + 1,
             });
+            if (ok && result) noteInputFormat(pipelineId, result);
             recordProbeOutcome(pipelineId, protocol, {
                 ok,
                 previousFailures,
@@ -723,6 +785,12 @@ export function createHealthService(
         }
         for (const pipelineId of inputDisconnectsAt.keys()) {
             if (!activePipelineIds.has(pipelineId)) inputDisconnectsAt.delete(pipelineId);
+        }
+        for (const pipelineId of inputFormats.keys()) {
+            if (!activePipelineIds.has(pipelineId)) {
+                inputFormats.delete(pipelineId);
+                lastFormatRestartAt.delete(pipelineId);
+            }
         }
         for (const pipelineId of relayInputSamples.keys()) {
             if (!activePipelineIds.has(pipelineId)) relayInputSamples.delete(pipelineId);

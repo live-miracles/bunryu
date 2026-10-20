@@ -260,11 +260,29 @@ latency, forwarding) stay with the SRT relay views.
 ## Encoder restarts do not restart outputs
 
 When an encoder stops and reconnects (for example a manual ffmpeg restart), the
-pipeline's input reconnects but its **outputs keep running and are not restarted**.
-If the encoder's timeline restarted (timestamps back near 0), the running outputs
+pipeline's input reconnects but its **outputs keep running and are not restarted**,
+unless the format changed (see below). If the encoder's timeline restarted (timestamps back near 0), the running outputs
 see a discontinuity and may log timestamp warnings until the condition clears (see
 [Input timestamp fault detection](#input-timestamp-fault-detection)); restarting the
 outputs by hand clears it, at the cost of dropping the destination connections.
+
+**Exception: a changed format.** When the encoder reconnects with a different video
+codec, resolution or number of audio tracks, the running outputs cannot carry it (an
+output copying the stream cannot change its codec parameters mid-stream), so they are
+restarted. This needs no guess about why the encoder reconnected: the ffprobe result of
+the new publisher is compared with the last successful one for that pipeline.
+
+- Only outputs that were already running before the new publisher connected are
+  restarted, 200 ms apart; one that started afterwards already reads the new stream.
+  Readers of a shared encode restart with it.
+- A failed probe restarts nothing, and the comparison keeps the last good format. The
+  first probe after a server start only records one.
+- Frame rate and bitrate changes do not count.
+- At most one such restart per pipeline per minute, so an encoder that alternates
+  formats cannot start a restart storm; a change inside that window is only reported.
+- Each restart is an `input-format-changed` diagnostics event (outputs restarted,
+  `suppressed`), a line in the pipeline log, and a "Restarted: input format changed
+  from … to …" record in each output's Error History (a deliberate stop, not a crash).
 
 Restarting outputs automatically whenever the input restarts is **not implemented**
 because the server cannot reliably tell an encoder restart from a network

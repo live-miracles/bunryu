@@ -187,8 +187,9 @@ only for a new module.
   recipe), naming and URL recognition; the dashboard twins are in
   `public/ts/core/renditions.ts`.
 - `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay
-  state, input live/media state (schedules ffprobe via `mediaProbe.ts`),
-  alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
+  state, input live/media state (schedules ffprobe via `mediaProbe.ts`, and
+  restarts running outputs when a new publisher's probed format differs from the
+  last one), alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
   readiness/protocol and builds the pull URL outputs read.
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `translationMixer.ts`
   (translation output mixer), `preview.ts` (HLS previews with a keepalive TTL),

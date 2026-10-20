@@ -2784,6 +2784,80 @@ describe('shared renditions', () => {
         });
     });
 
+    describe('restartRunningOutputs', () => {
+        const WHY = 'input format changed from h264 1920x1080 to h264 1280x720';
+        const OTHER = 'rtmp://other.example/live/key';
+
+        test('restarts the running outputs one stagger apart, recorded as a deliberate stop with the reason', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb([
+                { id: '1-1', name: 'a', url: YOUTUBE },
+                { id: '1-2', name: 'b', url: TWITCH },
+                { id: '1-3', name: 'c', url: OTHER, desiredState: 'stopped' },
+            ]);
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            await service.start('1-2');
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            assert.equal(service.restartRunningOutputs(1, WHY, Date.now() + 60_000), 2);
+            t.mock.timers.tick(0);
+            await flush();
+            assert.deepEqual(fleet.procFor(YOUTUBE).killSignals, ['SIGTERM']);
+            assert.deepEqual(fleet.procFor(TWITCH).killSignals, [], 'the second waits its turn');
+            t.mock.timers.tick(200);
+            await flush();
+            assert.deepEqual(fleet.procFor(TWITCH).killSignals, ['SIGTERM']);
+
+            for (const id of ['1-1', '1-2']) {
+                assert.equal(db.recordsFor(id, 'crash').length, 0, id);
+                const stopped = db.recordsFor(id, 'stopped');
+                assert.equal(stopped.length, 1, id);
+                assert.equal(stopped[0].message.split('\n')[0], `Restarted: ${WHY}`);
+            }
+            assert.equal(db.recordsFor('1-3', 'stopped').length, 0);
+            service.shutdown();
+        });
+
+        test('leaves outputs that started after the new publisher connected', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb([{ id: '1-1', name: 'a', url: YOUTUBE }]);
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            assert.equal(service.restartRunningOutputs(1, WHY, 0), 0);
+            t.mock.timers.tick(1000);
+            await flush();
+            assert.deepEqual(fleet.procFor(YOUTUBE).killSignals, []);
+            service.shutdown();
+        });
+
+        test('restarts a shared encode once, with its readers, and not the readers separately', async (t) => {
+            const fleet = makeFleet(t);
+            const db = makeFleetDb();
+            const service = fleet.createOutputService(db, makeReadyInputState());
+            await service.start('1-1');
+            markReady(fleet.procFor(RENDITION_URL));
+            await flush();
+            await service.start('1-2');
+            await service.start('1-3');
+            t.mock.timers.enable({ apis: ['setTimeout'] });
+
+            assert.equal(service.restartRunningOutputs(1, WHY, Date.now() + 60_000), 1);
+            t.mock.timers.tick(0);
+            await flush();
+            await flush();
+            for (const id of ['1-1', '1-2', '1-3']) {
+                assert.equal(db.recordsFor(id, 'stopped').length, 1, id);
+                assert.equal(db.recordsFor(id, 'crash').length, 0, id);
+            }
+            assert.match(db.recordsFor('1-1', 'stopped')[0].message, /^Restarted: input format/);
+            assert.match(db.recordsFor('1-2', 'stopped')[0].message, /^Shared encode restarted/);
+            service.shutdown();
+        });
+    });
+
     describe('stats and diagnostics', () => {
         test('getStats tells renditions from outputs and links shared outputs to their rendition', async (t) => {
             const fleet = makeFleet(t);

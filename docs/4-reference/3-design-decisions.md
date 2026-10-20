@@ -539,3 +539,30 @@ which needs structured causes the server does not have for FFmpeg output errors.
 **Revisit when:** a client other than the dashboard needs the advice, or a hint
 should depend on state the dashboard does not have.
 
+### Restart outputs when a reconnecting encoder changes format, not when it merely reconnects
+
+**Decision (October 2026):** after a new publisher's ffprobe succeeds, its format
+(video codec, resolution, audio track count) is compared with the pipeline's last
+successful probe. If they differ, the outputs that were running before that publisher
+connected are restarted, 200 ms apart, at most once per pipeline per minute. Outputs are
+still not restarted for a plain reconnect.
+
+**Why:**
+- **It is a deterministic signal.** The decision to never restart on a reconnect rests on
+  there being no reliable way to tell an encoder restart from a network drop (see
+  [Reliability](../3-operations/4-reliability.md#encoder-restarts-do-not-restart-outputs)).
+  A different format needs no such guess; a stream copy cannot follow it, so a restart
+  repairs something already broken instead of dropping a working destination.
+- **It reuses the existing re-probe**, which already runs once per new publisher, so
+  there is no new polling.
+- **Failed probes and the first probe never trigger it**, since neither shows a change.
+- **The cooldown bounds it**, so an encoder that alternates formats does not cause a
+  restart storm; the skipped change is still reported.
+
+**Not adopted:** restarting on a frame-rate or bitrate change (copy outputs carry both);
+restarting every output on every new publisher (the rejected approach above); a
+`bunryu.json` switch (the restart only fires on a stream that was already breaking).
+
+**Revisit when:** a format change turns out not to need a restart for some destination
+type, or probes after a reconnect prove unreliable enough to report a change that did
+not happen.

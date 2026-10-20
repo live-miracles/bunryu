@@ -212,7 +212,13 @@ export interface OutputService {
     // Stops a running output and starts it again, recording the restart in its
     // Error History as a deliberate stop (not a failure). Restarting a rendition
     // also restarts the outputs pulling from it. False when it is not running.
-    restart(outputId: string): boolean;
+    restart(outputId: string, why?: string): boolean;
+    // The input's format changed under running outputs (an encoder reconnected with
+    // another codec, resolution or audio track count): restarts, one RESTART_STAGGER_MS
+    // apart, the pipeline's outputs that were already running before `startedBeforeMs`
+    // (the new publisher's start; later ones already read the new format). Readers of
+    // a shared encode restart with it. Returns how many restarts were scheduled.
+    restartRunningOutputs(pipelineId: number, why: string, startedBeforeMs: number): number;
     // How many running outputs are reading this shared encode right now.
     readersOf(renditionId: string): number;
     restartPipelineOutputs(pipelineId: number, staggerBase?: number): number;
@@ -1566,7 +1572,7 @@ export function createOutputService(
         });
     }
 
-    return {
+    const service: OutputService = {
         getStats,
 
         reportExternalStatus: setStatus,
@@ -1628,7 +1634,7 @@ export function createOutputService(
 
         readersOf,
 
-        restart(outputId: string): boolean {
+        restart(outputId: string, why?: string): boolean {
             const proc = processes.get(outputId);
             const output = db.getOutput(outputId);
             if (
@@ -1658,13 +1664,17 @@ export function createOutputService(
                     void killProcess(dep.id, depProc, true);
                 }
             }
-            restartNotes.set(outputId, 'Restarted by user');
-            console.log(yellow(`[outputs] ${outputId} (${output.name}) restarted by user`));
+            restartNotes.set(outputId, why ? `Restarted: ${why}` : 'Restarted by user');
+            console.log(
+                yellow(
+                    `[outputs] ${outputId} (${output.name}) restarted ${why ? `(${why})` : 'by user'}`,
+                ),
+            );
             logEvent('ffmpeg-restart', {
                 outputId,
                 outputName: output.name,
                 ...roleFields(output),
-                reason: 'restarted by user',
+                reason: why ?? 'restarted by user',
                 pid: proc.pid ?? null,
             });
             void killProcess(outputId, proc, true);
@@ -1679,6 +1689,20 @@ export function createOutputService(
                 return;
             }
             await killProcess(outputId, proc);
+        },
+
+        restartRunningOutputs(pipelineId: number, why: string, startedBeforeMs: number): number {
+            let scheduled = 0;
+            for (const output of db.listOutputsForPipeline(pipelineId)) {
+                if (output.desiredState !== 'running') continue;
+                if (isTranslationAudio(output.audioEncoding)) continue;
+                // A reader goes down with its shared encode (see restart()).
+                if (renditionOf.has(output.id)) continue;
+                if ((startTimes.get(output.id) ?? Infinity) >= startedBeforeMs) continue;
+                setTimeout(() => service.restart(output.id, why), scheduled * RESTART_STAGGER_MS);
+                scheduled++;
+            }
+            return scheduled;
         },
 
         restartPipelineOutputs(pipelineId: number, staggerBase = 0): number {
@@ -1729,4 +1753,5 @@ export function createOutputService(
             return killed;
         },
     };
+    return service;
 }

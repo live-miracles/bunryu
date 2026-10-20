@@ -269,6 +269,11 @@ function makeFakeOutputService() {
             restarts.push({ pipelineId, staggerBase });
             return 0;
         },
+        formatRestarts: [],
+        restartRunningOutputs(pipelineId, why, startedBeforeMs) {
+            this.formatRestarts.push({ pipelineId, why, startedBeforeMs });
+            return 3;
+        },
     };
 }
 
@@ -1001,6 +1006,141 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 `expected the cid change to be seen, got ${JSON.stringify(history)}`,
             );
             assert.ok(!history.flat().includes('input-low-framerate'), JSON.stringify(history));
+        });
+    });
+
+    describe('input format change on a new publisher', () => {
+        // One pipeline whose publisher cid and ffprobe answer the test controls.
+        async function format(t) {
+            let cid = 'cid-1';
+            let probe = { codec: 'h264', width: 1920, height: 1080, audio: 1 };
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({
+                        code: 0,
+                        streams: [streamFixture({ publish: { active: true, cid } })],
+                    });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            childProcess.execFile.mock.mockImplementation((_cmd, _args, _opts, cb) => {
+                queueMicrotask(() => {
+                    if (!probe) return cb(new Error('no media'), '', '');
+                    const streams = [
+                        {
+                            codec_type: 'video',
+                            codec_name: probe.codec,
+                            width: probe.width,
+                            height: probe.height,
+                            r_frame_rate: '50/1',
+                        },
+                        ...Array.from({ length: probe.audio }, () => ({
+                            codec_type: 'audio',
+                            codec_name: 'aac',
+                            sample_rate: '48000',
+                            channels: 2,
+                        })),
+                    ];
+                    cb(null, JSON.stringify({ streams }), '');
+                });
+                return { kill() {} };
+            });
+            const outputs = makeFakeOutputService();
+            const diagnostics = makeDiagnosticsSpy();
+            const db = makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]);
+            const service = createHealthService(
+                db,
+                outputs,
+                makeFakeSrtRelay(),
+                makeFakeInputState(),
+                diagnostics,
+            );
+            t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+            service.start();
+            await sleep(300); // first poll and its probe
+            return {
+                outputs,
+                diagnostics,
+                db,
+                // A new publisher: another cid, probed on the next poll.
+                async reconnect(nextProbe, nextCid, ms = 5000) {
+                    probe = nextProbe;
+                    cid = nextCid;
+                    await tickPoll(t, ms);
+                    await sleep(300);
+                },
+                shutdown: () => service.shutdown(),
+            };
+        }
+
+        test('restarts the running outputs when the next publisher has another resolution', async (t) => {
+            const ctx = await format(t);
+            assert.equal(ctx.outputs.formatRestarts.length, 0, 'the first probe only records');
+            await ctx.reconnect({ codec: 'h264', width: 1280, height: 720, audio: 1 }, 'cid-2');
+            assert.equal(ctx.outputs.formatRestarts.length, 1);
+            const [call] = ctx.outputs.formatRestarts;
+            assert.equal(call.pipelineId, 1);
+            assert.match(call.why, /h264 1920x1080, 1 audio track to h264 1280x720, 1 audio track/);
+            assert.ok(call.startedBeforeMs > 0);
+            const event = ctx.diagnostics.events.find((e) => e.event === 'input-format-changed');
+            assert.equal(event.outputsRestarted, 3);
+            assert.equal(event.suppressed, false);
+            assert.ok(ctx.db.logs.some((l) => l.event === 'format_changed'));
+            ctx.shutdown();
+        });
+
+        test('restarts on a changed codec or audio track count too', async (t) => {
+            const ctx = await format(t);
+            await ctx.reconnect({ codec: 'hevc', width: 1920, height: 1080, audio: 1 }, 'cid-2');
+            assert.match(ctx.outputs.formatRestarts.at(-1).why, /to hevc 1920x1080/);
+            await ctx.reconnect(
+                { codec: 'hevc', width: 1920, height: 1080, audio: 2 },
+                'cid-3',
+                65_000,
+            );
+            assert.match(
+                ctx.outputs.formatRestarts.at(-1).why,
+                /1 audio track to hevc 1920x1080, 2 audio tracks/,
+            );
+            ctx.shutdown();
+        });
+
+        test('leaves the outputs alone when the next publisher has the same format', async (t) => {
+            const ctx = await format(t);
+            await ctx.reconnect({ codec: 'h264', width: 1920, height: 1080, audio: 1 }, 'cid-2');
+            assert.equal(ctx.outputs.formatRestarts.length, 0);
+            assert.ok(!ctx.diagnostics.events.some((e) => e.event === 'input-format-changed'));
+            ctx.shutdown();
+        });
+
+        test('a failed probe restarts nothing and does not forget the last good format', async (t) => {
+            const ctx = await format(t);
+            await ctx.reconnect(null, 'cid-2');
+            assert.equal(ctx.outputs.formatRestarts.length, 0);
+            // The encoder comes back as it was: still no change from the last good probe.
+            await ctx.reconnect(
+                { codec: 'h264', width: 1920, height: 1080, audio: 1 },
+                'cid-3',
+                65_000,
+            );
+            assert.equal(ctx.outputs.formatRestarts.length, 0);
+            ctx.shutdown();
+        });
+
+        test('a second change within a minute is reported but does not restart again', async (t) => {
+            const ctx = await format(t);
+            await ctx.reconnect({ codec: 'h264', width: 1280, height: 720, audio: 1 }, 'cid-2');
+            await ctx.reconnect({ codec: 'h264', width: 1920, height: 1080, audio: 1 }, 'cid-3');
+            assert.equal(ctx.outputs.formatRestarts.length, 1);
+            const events = ctx.diagnostics.events.filter((e) => e.event === 'input-format-changed');
+            assert.deepEqual(
+                events.map((e) => [e.suppressed, e.outputsRestarted]),
+                [
+                    [false, 3],
+                    [true, 0],
+                ],
+            );
+            ctx.shutdown();
         });
     });
 
