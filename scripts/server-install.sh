@@ -93,6 +93,32 @@ step "1/9 System packages"
 apt-get update -q
 apt-get install -y -q curl tar xz-utils unzip git ca-certificates build-essential
 
+# Update the source first, before any step reads the pinned versions or writes
+# config: this script is itself part of the update, so a run that pulled newer
+# code halfway through would carry on with the old script's pins and units (bash
+# also reads a script lazily, so replacing it mid-run can garble the rest). After
+# the pull, hand over to the freshly pulled copy; BUNRYU_INSTALL_REEXEC stops a loop.
+# The brace group is parsed in full before git runs, so the exec is already in memory.
+SELF_SUM="$(sha256sum "$(readlink -f "$0")" 2> /dev/null | awk '{print $1}' || true)"
+{
+    if [[ ! -d "$APP_DIR/.git" ]]; then
+        git clone "$REPO_URL" "$APP_DIR"
+    else
+        echo "Repository already present at $APP_DIR, pulling latest code."
+        # Root owns the tree (the service user must not), which git requires of
+        # the user running it; older installs may still have another owner.
+        chown -R root:root "$APP_DIR"
+        git -C "$APP_DIR" fetch origin
+        git -C "$APP_DIR" reset --hard '@{u}'
+    fi
+    NEW_SELF="$APP_DIR/scripts/server-install.sh"
+    if [[ -z "${BUNRYU_INSTALL_REEXEC:-}" && "$(sha256sum "$NEW_SELF" | awk '{print $1}')" != "$SELF_SUM" ]]; then
+        echo "Restarting with the updated installer ($NEW_SELF)."
+        export BUNRYU_INSTALL_REEXEC=1
+        exec bash "$NEW_SELF" "$@"
+    fi
+}
+
 step "2/9 Node.js 22"
 if node --version 2> /dev/null | grep -q '^v22'; then
     echo "Node.js 22 already installed: $(node --version)"
@@ -183,13 +209,6 @@ chmod -R go-w "$APP_DIR"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR" "$DATA_DIR/objs" "$CONF_DIR"
 
 step "7/9 Application"
-if [[ ! -d "$APP_DIR/.git" ]]; then
-    git clone "$REPO_URL" "$APP_DIR"
-else
-    echo "Repository already present at $APP_DIR, pulling latest code."
-    git -C "$APP_DIR" fetch origin
-    git -C "$APP_DIR" reset --hard '@{u}'
-fi
 cd "$APP_DIR"
 # No dependency lifecycle scripts run as root: only the two native modules the
 # app needs are built, explicitly.

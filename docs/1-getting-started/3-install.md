@@ -40,6 +40,11 @@ sudo systemctl restart srs.service bunryu.service goryu.service
 ```bash
 sudo bash /opt/bunryu/scripts/server-install.sh
 ```
+The installer pulls the latest code before anything else and, if the installer
+itself changed, restarts itself from the new copy, so one run applies the new
+pinned versions, config and units. (An installer older than this behavior pulls
+its own replacement halfway through and keeps running the old steps; run it a second
+time once to move past it.)
 
 **Stop services:**
 ```bash
