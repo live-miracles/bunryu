@@ -162,6 +162,21 @@ find every doc page that describes it and update it in the same change. Search
 Remove or correct text that the change makes wrong; don't just append. A stale
 statement is worse than a missing one.
 
+**Keep the docs lean.** They have two audiences and nothing else:
+
+- **Users** learning what the app does and how to use it. Say what a feature is
+  and the steps to use it; leave out implementation detail.
+- **Developers** learning why the system is the way it is. Record the real
+  problem we hit and why a watchdog, parameter, threshold or alert exists, backed
+  by data (an incident, a measurement, a test showing the case it catches and the
+  failure it prevents). That goes in `docs/4-reference/3-design-decisions.md` and
+  the reliability and sizing pages. A parameter or alert with no recorded reason
+  gets removed or questioned later.
+
+Don't add changelog-style narration, speculative options, repeated explanations
+or text that restates the code. Say each thing once, in the page it belongs to,
+and link to it from elsewhere.
+
 CI fails on a broken relative link or anchor in `README.md` or `docs/`, and on a
 docs page that `docs/README.md` does not link to. The checker is
 `scripts/check-docs.js` in the org site repository (`live-miracles.github.io`);
