@@ -514,13 +514,26 @@ Verified on systemd 259 with throwaway units: exit 78 stays `failed` with no
 restarts, and any other exit keeps restarting. SRS and the relay `Require` the app,
 so they stay down too, and nothing accepts a publish it cannot authorize.
 
-**Not adopted:** a migration path, which AGENTS.md rules out; the schema version
-only turns a confusing failure into a clear one. The Docker supervisor does not
-stop on 78 (evaluation only, the message repeats until the volume's `db.sqlite` is
-removed).
+The installer reads the database's stamp (byte 60 of the SQLite header, so it needs
+neither `sqlite3` nor the node modules an update has not rebuilt yet, see
+`scripts/db-schema-version.sh`) after pulling the new code and refuses to continue on a
+mismatch unless `WIPE_DB=y` (or a `y` at the prompt) agrees to the wipe, so the failure
+shows up at deploy time with the running service untouched. The Docker supervisor
+treats 78 the same way: it does not restart the app, does not start SRS or the relay,
+and keeps the container up (unhealthy, with the message in `docker logs`) rather than
+exiting into the restart policy, which would repeat the message.
 
-**Revisit when:** a second failure class needs the same treatment, or the Docker
-image is used for real deployments.
+**Not adopted:**
+- A migration path, which AGENTS.md rules out; the schema version only turns a
+  confusing failure into a clear one.
+- A dashboard alert with the app running on the wrong database: login, sessions and
+  the SRS publish hook all read that database, so it would need a special mode
+  guarding every route, and an app that is up but cannot work passes liveness checks
+  and lets SRS and the relay start.
+- Wiping automatically under `-y`: it discards the pipelines and outputs (a backup
+  copy is kept), so it needs an explicit `WIPE_DB=y`.
+
+**Revisit when:** a second failure class needs the same treatment.
 
 ### Hints are a dashboard lookup, not an API field
 

@@ -79,8 +79,9 @@ build with another schema version (`PRAGMA user_version`; see
 why and exits with status 78, and `RestartPreventExitStatus=78` leaves it failed
 instead of restarting it every 2 s. SRS and the relay `Require` it, so they do not
 start either, which keeps the server from accepting publishes it cannot authorize. The
-Docker image has no such stop: its supervisor restarts the app every 2 s and repeats
-the message until `/data/db.sqlite` is removed.
+installer catches this before it restarts anything. The Docker supervisor stops the same
+way: it logs the error once, starts neither SRS nor the relay, and leaves the container
+running but unhealthy until it is stopped; remove `/data/db.sqlite` and start it again.
 
 ## Falling behind realtime
 

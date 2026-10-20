@@ -149,18 +149,39 @@ fi
 fresh_db=yes
 wipe_db=no
 if [[ -s "$DB_FILE" ]]; then
-    case "${WIPE_DB:-}" in
-        y | Y) wipe_db=yes ;;
-        n | N) wipe_db=no ;;
-        *)
-            if [[ "$ASSUME_YES" == yes ]]; then
-                echo "Existing database found at $DB_FILE. Preserving it (-y/--yes)."
-            elif [[ -t 0 ]]; then
-                read -rp "Existing database found at $DB_FILE. Preserve it? [Y/n] " reply
-                [[ "$reply" == "n" || "$reply" == "N" ]] && wipe_db=yes
-            fi
-            ;;
-    esac
+    # The app refuses to start on another schema version (exit 78, which systemd
+    # does not restart), so a database of another version cannot be kept: say so
+    # now, before anything is changed, instead of leaving a failed service.
+    db_version="$(bash "$APP_DIR/scripts/db-schema-version.sh" "$DB_FILE")"
+    build_version="$(bash "$APP_DIR/scripts/db-schema-version.sh" --build)"
+    if [[ "$db_version" != 0 && "$db_version" != "$build_version" ]]; then
+        echo "Existing database $DB_FILE has schema version ${db_version:-unknown (not a SQLite database)}, this build needs $build_version."
+        echo "There are no migrations, so it cannot be kept; wiping it keeps a backup copy."
+        if [[ "${WIPE_DB:-}" == y || "${WIPE_DB:-}" == Y ]]; then
+            wipe_db=yes
+        elif [[ -t 0 && "$ASSUME_YES" != yes && "${WIPE_DB:-}" != n && "${WIPE_DB:-}" != N ]]; then
+            read -rp "Wipe it and start with an empty database? [y/N] " reply
+            [[ "$reply" == "y" || "$reply" == "Y" ]] && wipe_db=yes
+        fi
+        if [[ "$wipe_db" != yes ]]; then
+            echo "ERROR: the database and the running service are untouched. Re-run with WIPE_DB=y to wipe the database:" >&2
+            echo "    sudo WIPE_DB=y BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash $0" >&2
+            exit 1
+        fi
+    else
+        case "${WIPE_DB:-}" in
+            y | Y) wipe_db=yes ;;
+            n | N) wipe_db=no ;;
+            *)
+                if [[ "$ASSUME_YES" == yes ]]; then
+                    echo "Existing database found at $DB_FILE. Preserving it (-y/--yes)."
+                elif [[ -t 0 ]]; then
+                    read -rp "Existing database found at $DB_FILE. Preserve it? [Y/n] " reply
+                    [[ "$reply" == "n" || "$reply" == "N" ]] && wipe_db=yes
+                fi
+                ;;
+        esac
+    fi
     [[ "$wipe_db" == "yes" ]] || fresh_db=no
 fi
 if [[ "$fresh_db" == "yes" && -z "$DASHBOARD_PASSWORD" ]]; then

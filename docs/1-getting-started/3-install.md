@@ -51,6 +51,12 @@ pinned versions, config and units. (An installer older than this behavior pulls
 its own replacement halfway through and keeps running the old steps; run it a second
 time once to move past it.)
 
+If a release changed the database schema (there are no migrations), the installer
+says so after pulling the code and stops before restarting anything; the running
+server is untouched. Re-run it with `WIPE_DB=y` to wipe the database (a backup copy is
+kept and pipelines have to be re-created); see
+[Configuration](../3-operations/3-configuration.md#database-schema-version).
+
 **Stop services:**
 ```bash
 sudo bash /opt/bunryu/scripts/server-down.sh

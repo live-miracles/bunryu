@@ -9,6 +9,11 @@
 # Each process is restarted 2 s after it exits (RestartSec=2 in systemd), and
 # every start/exit is logged with its status. On SIGTERM the relay and SRS are
 # stopped before the control plane, which stops its FFmpeg outputs.
+#
+# Exit status 78 from the control plane means a failure only an operator can fix
+# (a database of another schema version), as in bunryu.service's
+# RestartPreventExitStatus=78: it is not restarted, SRS and the relay are not
+# started, and the container stays up (unhealthy) with the message in its log.
 set -uo pipefail
 # Files the app creates (database, HLS previews, diagnostics) are private, as
 # with UMask=0077 in the systemd units.
@@ -19,6 +24,8 @@ APP_DIR=/app
 PORT=8080
 RESTART_DELAY_S=2
 READY_TIMEOUT_S=60
+# Created by the bunryu supervisor when the control plane exits with status 78.
+REFUSED_FLAG=/tmp/bunryu-refused
 
 log() {
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [entrypoint] $*"
@@ -94,9 +101,11 @@ fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n", { mode: 0o600 });
     chmod 640 srs.conf goryu.json
 }
 
+# Returns 2 (stop supervising) once the control plane has refused to start.
 wait_ready() {
     local i
     for ((i = 0; i < READY_TIMEOUT_S; i++)); do
+        [[ -e "$REFUSED_FLAG" ]] && return 2
         # `stopping` is the calling supervise()'s local (bash dynamic scope).
         ((stopping)) && return 1
         curl -fsS "http://127.0.0.1:$PORT/api/ready" > /dev/null 2>&1 && return 0
@@ -113,10 +122,15 @@ no_gate() {
 supervise() {
     local name="$1" gate="$2"
     shift 2
-    local child="" stopping=0 status again
+    local child="" stopping=0 status again gate_status
     trap 'stopping=1; [[ -n "$child" ]] && kill -TERM "$child" 2> /dev/null' TERM INT
     while ((!stopping)); do
-        if ! "$gate"; then
+        "$gate"
+        gate_status=$?
+        if ((gate_status == 2)); then
+            log "$name: not starting, the control plane refused to start (see its error above)"
+            break
+        elif ((gate_status != 0)); then
             ((stopping)) && break
             log "$name: control plane not ready after ${READY_TIMEOUT_S}s; retrying"
             continue
@@ -136,6 +150,11 @@ supervise() {
             log "$name: stopped (status $status)"
             break
         fi
+        if [[ "$name" == bunryu ]] && ((status == 78)); then
+            log "ERROR: $name: exited with status 78: it cannot start until an operator acts (see its error above); not restarting"
+            touch "$REFUSED_FLAG"
+            break
+        fi
         log "$name: exited with status $status; restarting in ${RESTART_DELAY_S}s"
         child=""
         sleep "$RESTART_DELAY_S" &
@@ -144,6 +163,7 @@ supervise() {
     exit 0
 }
 
+rm -f "$REFUSED_FLAG"
 prepare_data
 
 supervise bunryu no_gate node "$APP_DIR/dist/index.js" &
@@ -165,3 +185,10 @@ shutdown() {
 trap shutdown TERM INT
 
 wait
+# Every supervisor has returned only when the control plane refused to start.
+# Stay up, unhealthy, until stopped, instead of exiting into the restart policy.
+if [[ -e "$REFUSED_FLAG" ]]; then
+    log "control plane refused to start; waiting to be stopped (fix the cause, then restart the container)"
+    sleep infinity &
+    wait $!
+fi

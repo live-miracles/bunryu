@@ -21,7 +21,10 @@ pinned FFmpeg build as the native installer (x86_64 only). One container runs
 all three processes under a small supervisor (`docker/entrypoint.sh`) that
 keeps the native startup order: SRS starts only after `/api/ready` answers,
 each process is restarted 2 s after it exits, and every start and exit is
-logged with its status.
+logged with its status. The exception is a database of another schema version:
+the control plane exits with status 78, the supervisor logs it and starts nothing
+else, and the container stays up but unhealthy until `/data/db.sqlite` is removed and
+it is restarted.
 
 ```bash
 docker compose up -d                       # build and start (compose.yaml)

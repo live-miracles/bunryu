@@ -109,9 +109,13 @@ The SQLite database carries a schema version (`PRAGMA user_version`, `SCHEMA_VER
 in `src/db/schema.ts`). There are no migrations, so a change to a table or column
 bumps it, and a database stamped with another version is refused at startup with a
 message saying so, instead of failing later on a query. The fix is to recreate the
-database: re-run the installer and answer `n` to "Preserve it?" (or set `WIPE_DB=y`),
-which keeps a `db.sqlite.<timestamp>.bak` copy to re-create pipelines from. A database
-from before the stamp existed is accepted and stamped, since its schema is version 1.
+database. The installer checks this first: after it pulls the new code it compares the
+database's stamp with the build's, and when they differ it says so and stops before it
+changes anything or restarts a service, so a running server keeps running. Re-run it with
+`WIPE_DB=y` (or answer `y` to "Wipe it and start with an empty database?" in a terminal,
+which `-y` does not) to wipe the database; a `db.sqlite.<timestamp>.bak` copy is kept to
+re-create pipelines from. A database from before the stamp existed is accepted and
+stamped, since its schema is version 1.
 
 Relay ports and status polling are read from `goryu.json`, located beside `srs_config_path`.
 
