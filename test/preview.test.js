@@ -29,6 +29,7 @@ class FakeFfmpeg extends EventEmitter {
         this.killSignals.push(signal);
         queueMicrotask(() => {
             this.emit('exit', null, signal);
+            this.emit('close', null, signal);
         });
         return true;
     }
@@ -276,6 +277,7 @@ describe('preview lifecycle', () => {
         // Simulate ffmpeg dying on its own (nonzero exit, no signal) rather
         // than being killed via stop()/shutdown().
         proc.emit('exit', 1, null);
+        proc.emit('close', 1, null);
         await sleep(30);
 
         assert.equal(service.keepalive(1), false);
@@ -305,12 +307,55 @@ describe('preview lifecycle', () => {
         assert.equal(procs.length, 2);
 
         procs[0].emit('exit', 1, null);
+        procs[0].emit('close', 1, null);
         await sleep(30);
 
         assert.equal(service.keepalive(1), false);
         assert.equal(service.keepalive(2), true);
         assert.equal(fs.existsSync(path.join(tempDir, 'hls', '2')), true);
 
+        service.shutdown();
+    });
+});
+
+describe('preview spawn failure', () => {
+    beforeEach(() => {
+        process.chdir(tempDir);
+    });
+
+    afterEach(async () => {
+        await sleep(30);
+        process.chdir(originalCwd);
+        delete require.cache[require.resolve('../src/services/preview')];
+        delete require.cache[require.resolve('../src/utils/appConfig')];
+    });
+
+    // A failed spawn (ENOENT, EAGAIN) emits 'error' and 'close' but never 'exit'.
+    function failingSpawn(spawned) {
+        return () => {
+            const proc = new FakeFfmpeg();
+            proc.pid = undefined;
+            spawned.push(proc);
+            queueMicrotask(() => {
+                proc.emit('error', new Error('spawn ffmpeg EAGAIN'));
+                proc.emit('close', -11, null);
+            });
+            return proc;
+        };
+    }
+
+    test('a failed spawn rejects start promptly and leaves no stuck preview', async (t) => {
+        const spawned = [];
+        const createPreviewService = loadPreviewService(t, failingSpawn(spawned));
+        const service = createPreviewService(makeDb(), makeInputState());
+
+        const startedAt = Date.now();
+        await assert.rejects(service.start(1, 1), /EAGAIN/);
+        assert.ok(Date.now() - startedAt < 2000, 'must not wait for the playlist timeout');
+        assert.equal(service.keepalive(1), false, 'no preview entry may be left behind');
+
+        await assert.rejects(service.start(1, 1), /EAGAIN/);
+        assert.equal(spawned.length, 2, 'a retry must spawn again');
         service.shutdown();
     });
 });

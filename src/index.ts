@@ -237,8 +237,18 @@ async function main(): Promise<void> {
         });
         server.once('error', reject);
     });
-    app.listen(PORT, () => {
-        console.log(`[server] listening on http://0.0.0.0:${PORT}`);
+    // Express 5 hands a listen error (EADDRINUSE) only to this callback; ignoring
+    // it would leave the process up with no dashboard, which systemd never
+    // restarts. Exit instead, like a hook-port failure.
+    await new Promise<void>((resolve, reject) => {
+        app.listen(PORT, (err?: Error) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            console.log(`[server] listening on http://0.0.0.0:${PORT}`);
+            resolve();
+        });
     });
 }
 
@@ -263,8 +273,12 @@ function shutdown(signal: string): void {
         uptimeSec: Math.round((Date.now() - startedAtMs) / 1000),
         killedOutputIds,
     });
+    flushDiagnosticsAndExit(0);
+}
+
+function flushDiagnosticsAndExit(code: number): void {
     const timeout = new Promise((resolve) => setTimeout(resolve, DIAGNOSTICS_FLUSH_TIMEOUT_MS));
-    void Promise.race([diagnostics.close(), timeout]).then(() => process.exit(0));
+    void Promise.race([diagnostics.close(), timeout]).then(() => process.exit(code));
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));
@@ -272,5 +286,6 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 main().catch((err) => {
     console.error('Fatal startup error:', err);
-    process.exit(1);
+    diagnostics.event('server-start-failed', { instanceId, error: errorText(err) });
+    flushDiagnosticsAndExit(1);
 });

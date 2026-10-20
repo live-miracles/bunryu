@@ -29,9 +29,17 @@ function resolveBaseDir(): string {
     return path.join(path.dirname(readAppConfig().databasePath), 'hls');
 }
 
-async function waitForPlaylist(m3u8Path: string, timeoutMs: number): Promise<void> {
+// exitReason returns why the preview ffmpeg is gone (null while it runs), so a
+// process that failed to spawn or exited early fails start() right away.
+async function waitForPlaylist(
+    m3u8Path: string,
+    timeoutMs: number,
+    exitReason: () => string | null,
+): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+        const reason = exitReason();
+        if (reason) throw new Error(reason);
         try {
             const content = fs.readFileSync(m3u8Path, 'utf8');
             if (content.includes('.ts')) return;
@@ -253,7 +261,16 @@ export function createPreviewService(
             stderrTail = (stderrTail + d.toString()).slice(-STDERR_TAIL_BYTES);
         });
 
-        proc.on('exit', (code, signal) => {
+        // A failed spawn (ENOENT, EAGAIN) emits 'error' and 'close' but no
+        // 'exit', so cleanup hangs off 'close'.
+        let exitReason: string | null = null;
+        proc.on('error', (err) => {
+            exitReason = `Preview FFmpeg failed to start: ${err.message}`;
+            console.warn(`[preview] ${pipelineId} ffmpeg failed to start: ${err.message}`);
+        });
+
+        proc.on('close', (code, signal) => {
+            exitReason ??= 'Preview FFmpeg exited — no active input stream on this pipeline';
             if (previews.get(pipelineId)?.proc === proc) previews.delete(pipelineId);
             // Clean up this pipeline's HLS dir unless a newer preview now owns it
             // (covers both a user stop, which clears the map entry first, and a crash).
@@ -270,7 +287,7 @@ export function createPreviewService(
         });
 
         try {
-            await waitForPlaylist(readyPlaylist, 10_000);
+            await waitForPlaylist(readyPlaylist, 10_000, () => exitReason);
         } catch (err) {
             doStop(pipelineId);
             throw err;

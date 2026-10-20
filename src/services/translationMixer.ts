@@ -620,13 +620,15 @@ export function createTranslationMixerService(
                 }
             }
         });
-        child.once('error', (error) => {
+        child.on('error', (error) => {
             diagnostics?.event('translation-mixer-error', {
                 outputId: output.id,
                 message: error.message,
             });
         });
-        child.once('exit', (code, signal) => {
+        // 'close', not 'exit': a failed spawn (ENOENT, EAGAIN) emits 'error' and
+        // 'close' but no 'exit', which would leave the job registered forever.
+        child.once('close', (code, signal) => {
             controller.close();
             cpuTracker.delete(output.id);
             void control?.close();

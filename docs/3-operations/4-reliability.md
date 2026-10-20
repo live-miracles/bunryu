@@ -45,8 +45,11 @@ each catch errors from their own tick and run again on the next one. They log th
 first failure (and any new error) and a recovery event with the count, not one line
 per tick. An error that escapes everything else is logged as
 `uncaught-exception` / `unhandled-rejection` and the process keeps running, because
-exiting would stop every output. A diagnostics write failure (disk full, directory
-unwritable) drops and counts events instead of crashing; see
+exiting would stop every output. A startup failure is the exception: if the hook or
+dashboard port cannot be bound, the app writes `server-start-failed` and exits so
+systemd restarts it, instead of running without a dashboard. A diagnostics write
+failure (disk full, directory unwritable) drops and counts events instead of
+crashing; see
 [Configuration](3-configuration.md).
 
 ## Shared encodes

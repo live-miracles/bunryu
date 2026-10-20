@@ -429,6 +429,41 @@ describe('translation mixer watchdog integration', () => {
         delete require.cache[require.resolve('../src/utils/appConfig')];
     });
 
+    test('a mixer whose spawn fails is cleaned up and started again', async (t) => {
+        const procs = [];
+        const spawnNext = () => {
+            const proc = new FakeMixerFfmpeg(4242 + procs.length);
+            procs.push(proc);
+            // A failed spawn (ENOENT, EAGAIN) emits 'error' and 'close' but never 'exit'.
+            if (procs.length === 1) {
+                proc.pid = undefined;
+                queueMicrotask(() => {
+                    proc.emit('error', new Error('spawn ffmpeg EAGAIN'));
+                    proc.emit('close', -11, null);
+                });
+            }
+            return proc;
+        };
+        const output = makeTranslationOutput();
+        const db = makeTranslationDb(output);
+        const diagnostics = makeDiagnosticsRecorder();
+        const createTranslationMixerService = loadTranslationMixerService(t, spawnNext);
+        const service = createTranslationMixerService(
+            db,
+            makeTranslationInputState(),
+            { reportExternalStatus() {}, reportExternalProgress() {}, reportExternalUsage() {} },
+            diagnostics,
+        );
+
+        service.start();
+        await sleep(1200);
+        service.shutdown();
+
+        assert.ok(procs.length >= 2, 'expected the failed mixer to be spawned again');
+        assert.ok(diagnostics.events.some((e) => e.name === 'translation-mixer-error'));
+        assert.ok(diagnostics.events.some((e) => e.name === 'translation-mixer-exited'));
+    });
+
     test('restarts a translated-mode job whose translator meter never produces a sample', async (t) => {
         const procs = [];
         const spawnNext = () => {
@@ -530,6 +565,7 @@ describe('translation mixer watchdog integration', () => {
         service.start();
         await sleep(1200);
         procs[0].emit('exit', 137, null); // crash: the exit event should carry the last RSS
+        procs[0].emit('close', 137, null);
         service.shutdown();
 
         assert.equal(procs.length, 1, 'must not restart while under the memory limit');

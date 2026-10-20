@@ -61,9 +61,10 @@ former with the five largest processes by RSS.
 
 Other things the diagnostics record so an incident can be pieced together:
 
-- **Restarts:** `server-started` (version, pid, a random `instanceId` per start)
-  and `server-shutdown` (signal, uptime, the outputs it killed — their own
-  `ffmpeg-exited` events are not written during a shutdown).
+- **Restarts:** `server-started` (version, pid, a random `instanceId` per start),
+  `server-shutdown` (signal, uptime, the outputs it killed — their own
+  `ffmpeg-exited` events are not written during a shutdown) and
+  `server-start-failed` (for example the dashboard port already in use).
 - **One output run:** every output event carries `outputId`, `pipelineId`, the
   FFmpeg `pid` and a `runId` (`<outputId>#<n>`, counted from the server start),
   so grepping a `runId` gives that run's start, warnings, restart, exit and the
