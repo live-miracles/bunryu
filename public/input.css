@@ -41,6 +41,18 @@ body {
     --panel: var(--color-base-300);
 }
 
+/* Login page only: a stylized wave crest rising from the bottom-left corner. */
+.login-crest {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: min(clamp(200px, 47vh, 420px), 60vw);
+    pointer-events: none;
+    background: url('wave-crest.svg') left bottom / auto 100% no-repeat;
+    mask-image: linear-gradient(to top, #000 70%, transparent 100%);
+}
+
 #overview-col .overview-name-col {
     min-width: 11rem;
 }
