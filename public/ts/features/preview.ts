@@ -17,6 +17,8 @@ declare const Hls: any;
 
 interface HlsLike {
     destroy(): void;
+    startLoad(): void;
+    recoverMediaError(): void;
     audioTrack: number;
     audioTracks: unknown[];
 }
@@ -253,7 +255,7 @@ function startKeepalive(pipelineId: string): void {
             // (reaped, crashed, or restarted) — tear the player down instead of
             // letting it stall on a dead playlist.
             if (result && !result.active && previewPipelineId === pipelineId) {
-                stopCurrentPreview();
+                failPreview('the server ended it');
             }
         });
     }, KEEPALIVE_INTERVAL_MS);
@@ -266,8 +268,66 @@ function stopKeepalive(): void {
     }
 }
 
+// ── Failure handling ──────────────────────────────────
+
+// A source that stops raises no hls.js error: the playlist just stops growing and
+// the video freezes while the server's keepalive still says the preview is active.
+// So watch the buffered range. 30s clears a long-GOP source, whose copied video
+// gives segments as long as its keyframe interval.
+const STALL_MS = 30_000;
+const STALL_CHECK_MS = 1_000;
+// Fatal hls.js errors we try to recover from before giving up. Reset on every
+// segment that loads, so only an unbroken run of failures stops the preview.
+const MAX_RECOVERIES = 3;
+let stallTimer: ReturnType<typeof setInterval> | null = null;
+let recoveries = 0;
+
+/** Stop the preview and tell the operator why, instead of closing it silently. */
+function failPreview(reason: string): void {
+    if (!previewPipelineId) return;
+    stopCurrentPreview();
+    void import('../core/api.js').then(({ showError }) => showError(`Preview stopped: ${reason}`));
+}
+
+function startStallWatch(video: HTMLVideoElement): void {
+    stopStallWatch();
+    let edge = 0;
+    let grewAt = Date.now();
+    stallTimer = setInterval(() => {
+        const ranges = video.buffered;
+        const end = ranges.length > 0 ? ranges.end(ranges.length - 1) : 0;
+        // A paused video (not started yet, or a hidden tab) may stop loading once
+        // its buffer is full, which is not a stall.
+        if (end !== edge || video.paused) {
+            edge = end;
+            grewAt = Date.now();
+        } else if (Date.now() - grewAt > STALL_MS) {
+            failPreview('no new video arrived for 30 s; the source may have stopped');
+        }
+    }, STALL_CHECK_MS);
+}
+
+function stopStallWatch(): void {
+    if (stallTimer) {
+        clearInterval(stallTimer);
+        stallTimer = null;
+    }
+}
+
+function playOrFail(video: HTMLVideoElement, numAudioChannels: number): void {
+    video
+        .play()
+        .then(() => setupMeter(video, numAudioChannels))
+        .catch((err: unknown) => {
+            // A reload or stop interrupts a pending play(); that is not a failure.
+            if ((err as { name?: string } | null)?.name === 'AbortError') return;
+            failPreview('the browser could not start playback');
+        });
+}
+
 function teardownHls(): void {
     stopKeepalive();
+    stopStallWatch();
     if (hlsInstance) {
         hlsInstance.destroy();
         hlsInstance = null;
@@ -353,6 +413,8 @@ function startPlayback(video: HTMLVideoElement, hlsUrl: string): void {
     // is always stereo, so the meter watches two channels.
     const numAudioChannels = 2;
 
+    recoveries = 0;
+    startStallWatch(video);
     if (typeof Hls !== 'undefined' && Hls.isSupported()) {
         const hls = new Hls({
             // Always start at the live edge — no DVR.
@@ -370,25 +432,39 @@ function startPlayback(video: HTMLVideoElement, hlsUrl: string): void {
             loadSource(u: string): void;
             attachMedia(v: HTMLVideoElement): void;
             on(e: string, cb: (...args: unknown[]) => void): void;
-            Events: { MANIFEST_PARSED: string; ERROR: string };
+            Events: { MANIFEST_PARSED: string; FRAG_LOADED: string; ERROR: string };
         };
         hls.loadSource(hlsUrl);
         hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED as string, () => {
-            void video.play().then(() => {
-                setupMeter(video, numAudioChannels);
-            });
+        hls.on(Hls.Events.MANIFEST_PARSED as string, () => playOrFail(video, numAudioChannels));
+        hls.on(Hls.Events.FRAG_LOADED as string, () => {
+            recoveries = 0;
         });
         hls.on(Hls.Events.ERROR as string, (...args: unknown[]) => {
-            const data = args[1] as { fatal?: boolean };
-            if (data?.fatal) setTimeout(() => stopCurrentPreview(), 0);
+            const data = args[1] as { fatal?: boolean; type?: string; details?: string };
+            if (!data?.fatal) return;
+            // hls.js gives up after its own retries; these are its documented ways
+            // back in, so a short outage or one bad segment does not end the preview.
+            if (recoveries < MAX_RECOVERIES) {
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                    recoveries++;
+                    hls.startLoad();
+                    return;
+                }
+                if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                    recoveries++;
+                    hls.recoverMediaError();
+                    return;
+                }
+            }
+            setTimeout(() => failPreview(data.details ?? 'player error'), 0);
         });
         hlsInstance = hls;
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = hlsUrl;
-        void video.play().then(() => {
-            setupMeter(video, numAudioChannels);
-        });
+        playOrFail(video, numAudioChannels);
+    } else {
+        failPreview('this browser cannot play HLS');
     }
 }
 
