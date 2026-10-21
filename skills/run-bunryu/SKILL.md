@@ -55,7 +55,8 @@ emulate a phone, where the columns stack). **Look at the PNG.** Open `/?p=1` for
 output cards.
 
 Typical timestamp-fault check: `start`, `flood on`, wait ~12 s, `status` shows
-each output's warning plus `('warning', 'input-timestamps-unstable')`;
+each output's warning ("FFmpeg reported: … timestamp discontinuity") and no pipeline
+alert, by design ([Reliability](../../docs/3-operations/4-reliability.md#input-timestamp-fault-detection));
 `flood off`, wait ~35 s, `status` is clean again. Events are in
 `$WORK/diagnostics/*.jsonl`.
 
