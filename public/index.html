@@ -141,6 +141,22 @@
       <span id="srt-relay-banner-text">SRT relay is not running — SRT input through the relay unavailable</span>
     </div>
 
+    <!-- Public Host not set banner -->
+    <div
+      id="public-host-banner"
+      class="bg-warning text-warning-content hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+      </svg>
+      <span>
+        Public Host is not set — publish URLs show localhost.
+        <button type="button" class="link font-semibold" onclick="openSettingsBtn()">Set it in Settings</button>
+      </span>
+    </div>
+
     <!-- Error banner -->
     <div class="fixed left-1/2 z-50 -translate-x-1/2" style="top: 0.5rem; pointer-events: none">
       <div role="alert" id="error-alert" class="alert alert-error hidden max-w-xl opacity-90" style="pointer-events: auto">
@@ -1019,7 +1035,11 @@
               </fieldset>
               <fieldset class="fieldset min-w-0 flex-1">
                 <legend class="fieldset-legend">Public Host</legend>
-                <input type="text" id="settings-public-host-input" class="input w-full font-mono text-sm" placeholder="localhost" />
+                <input
+                  type="text"
+                  id="settings-public-host-input"
+                  class="input w-full font-mono text-sm"
+                  placeholder="stream.example.com or 203.0.113.10" />
               </fieldset>
             </div>
             <div class="flex items-center justify-end gap-2">

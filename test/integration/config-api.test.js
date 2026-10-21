@@ -157,7 +157,7 @@ describe('Config API integration', () => {
         assert.deepEqual(res.body.hostProbeTargets, []);
         assert.deepEqual(res.body.groups, []);
         assert.equal(res.body.serverName, 'Bunryu');
-        assert.equal(res.body.publicHost, 'localhost');
+        assert.equal(res.body.publicHost, '');
         assert.deepEqual(res.body.layoutOrder, []);
         assert.equal(res.body.streamKeys.length, 99);
         assert.ok(Array.isArray(res.body.encodings) && res.body.encodings.includes('copy'));
@@ -176,6 +176,16 @@ describe('Config API integration', () => {
         assert.match(pipeline.rtmpPublishUrlLocal, /localhost/);
         assert.match(pipeline.srtPublishUrlLocal, /localhost/);
         assert.doesNotMatch(pipeline.rtmpPublishUrlLocal, /stream\.example\.com/);
+    });
+
+    test('publish URLs fall back to localhost while the public host is unset', async () => {
+        const { db, get } = loadHarness();
+        db.createPipeline();
+
+        const res = await get();
+        assert.equal(res.body.publicHost, '');
+        assert.match(res.body.pipelines[0].rtmpPublishUrl, /^rtmp:\/\/localhost:/);
+        assert.match(res.body.pipelines[0].srtPublishUrl, /^srt:\/\/localhost:/);
     });
 
     test('srtPublishUrl carries the SRS-side srt_server passphrase from srs.conf', async () => {

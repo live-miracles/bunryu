@@ -141,6 +141,11 @@ async function fetchAndRender(): Promise<void> {
                 ? `SRT relay is not responding (${state.health.srtRelay.lastError}) — inputs on the bonded SRT port may be down; RTMP and direct SRT are unaffected`
                 : 'SRT relay is not running — inputs on the bonded SRT port are down; RTMP and direct SRT are unaffected';
     }
+    // The config says publicHost is empty (undefined until it has loaded).
+    const showPublicHostBanner = !isServerUnreachable() && state.config.publicHost === '';
+    const publicHostBanner = document.getElementById('public-host-banner');
+    publicHostBanner?.classList.toggle('hidden', !showPublicHostBanner);
+    publicHostBanner?.classList.toggle('flex', showPublicHostBanner);
     if (rejectedResult) {
         state.rejectedPublishes = rejectedResult.rejected;
         state.rejectedOmitted = rejectedResult.omitted;

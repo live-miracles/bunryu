@@ -105,7 +105,7 @@ export function registerSettingsApi(app: Express, db: Db): void {
 
         return res.json({
             serverName: name,
-            publicHost: publicHost ?? db.getSetting('publicHost') ?? 'localhost',
+            publicHost: publicHost ?? db.getSetting('publicHost') ?? '',
         });
     });
 

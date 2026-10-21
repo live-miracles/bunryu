@@ -38,7 +38,10 @@ export function registerConfigApi(app: Express, db: Db): void {
         // but each URL must reflect the config its endpoint actually checks.
         const srtPassphrase = readRelayConfig().passphrase || null;
         const srsSrtPassphrase = readSrsConfigValues().srtPassphrase;
-        const host = db.getSetting('publicHost') || 'localhost';
+        // Empty until the operator sets it (the dashboard then asks for it); the
+        // publish URLs fall back to localhost meanwhile.
+        const publicHost = db.getSetting('publicHost') ?? '';
+        const host = publicHost || 'localhost';
         const pipelines = db.listPipelines().map((p) => ({
             ...p,
             rtmpPublishUrl: rtmpPublishUrl(p.streamKey, host),
@@ -58,7 +61,7 @@ export function registerConfigApi(app: Express, db: Db): void {
             streamKeys: db.listStreamKeys(),
             serverName: db.getSetting('serverName') ?? 'Bunryu',
             srtPassphrase,
-            publicHost: host,
+            publicHost,
             layoutOrder: parseLayoutOrder(db.getSetting('layoutOrder')),
         });
     });

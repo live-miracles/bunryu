@@ -12,7 +12,9 @@ panel does not display the URLs themselves.
 | SRT | 10080/udp | `srt://<public-host>:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
 | Bonded SRT | 10081/udp | `srt://<public-host>:10081?mode=caller&grouptype=broadcast&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
 
-`<public-host>` is the **Public Host** set in Settings. The SRT passphrase is
+`<public-host>` is the **Public Host** set in Settings. It is empty on a new install:
+the dashboard shows a banner asking for it, and the publish URLs use `localhost` until
+you set it. The SRT passphrase is
 generated at install time; see [SRS and SRT relay config](../1-getting-started/3-install.md#srs-and-srt-relay-config).
 
 Prefer SRT when the encoder supports it: it has fixed, predictable latency,

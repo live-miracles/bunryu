@@ -116,7 +116,7 @@ describe('Settings API integration', () => {
             assert.equal(res.status, 200);
             assert.deepEqual(res.body, {
                 serverName: 'Control Room',
-                publicHost: 'localhost',
+                publicHost: '',
             });
             assert.equal(harness.db.getSetting('serverName'), 'Control Room');
         });
