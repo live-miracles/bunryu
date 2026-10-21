@@ -69,20 +69,44 @@ destinations to exercise the stall watchdog, isolation and bounded resources:
 FAST_WATCHDOG=1 $H start            # 20 s warm-up / 15 s stall instead of 90 s / 45 s
 node scripts/test-faults.mjs freeze     # 50 healthy outputs + one whose destination is kill -STOP'd
 node scripts/test-faults.mjs blackhole  # ... + one that accepts the TCP connection and never reads
-node scripts/test-faults.mjs soak --minutes 60   # both, thawing and freezing every 2.5 min
+node scripts/test-faults.mjs refused    # 10 healthy + two outputs whose destination refuses connections
+node scripts/test-faults.mjs churn      # 10 healthy while 45 outputs are added, started, stopped, deleted
+node scripts/test-faults.mjs publisher-drop  # 10 healthy while the publisher disappears for 3 s and 25 s
+node scripts/test-faults.mjs soak --minutes 60   # freeze and blackhole, thawing and freezing every 2.5 min
+$H stop
+$H start                            # production windows, for the next one
+node scripts/test-faults.mjs contention [--burn-seconds 90]   # 50 healthy while CPU burners saturate the host
 $H stop
 ```
 
-Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4 and N+3 minutes). It
-replaces the stack's four default outputs with 50 `h01…h50`, `frozen` and `blackhole`
-(about 1 GB for the 52 FFmpeg processes), starts two extra SRS instances as the
-destinations, and removes them when it ends. `soak` writes `$WORK/soak.csv` (app, SRS
-and FFmpeg memory, FFmpeg count, app file handles every 30 s) and, for runs of 20+
-minutes, fails if memory grows by 50 MB/h or more after a 10 minute warm-up. How it
-works: an output to `rtmp://192.0.2.<N>/<name>` is pushed for real to
+Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4, 3, 2, 3, N+3 and 3
+minutes). The 50-output scenarios replace the stack's four default outputs with 50
+`h01…h50` plus the faulty ones (about 1 GB for the 52 FFmpeg processes); the others use 10.
+They start extra SRS instances as the destinations and remove them when they end.
+
+- `blackhole` checks that the output's own `-rw_timeout` ends each attempt with
+  "Connection timed out" and that the retry back-off paces them; the stall watchdog is
+  the backstop and is not reached for RTMP.
+- `refused` checks the 1, 2, 4, 8, 16 s retry back-off from the diagnostics, that an
+  operator stop after a streak writes "Stopped after N failed attempts", that the
+  output recovers by itself when the destination returns and that one stopped by hand
+  stays stopped.
+- `publisher-drop` expects a 3 s blip to restart nothing. After 25 s the destination
+  SRS has dropped each idle publish connection (about 5 s without data), so every
+  output reconnects once when the input returns; the scenario only asserts that this
+  is bounded and automatic.
+- `contention` runs one busy loop per CPU and is only meaningful with the production
+  windows (no `FAST_WATCHDOG`); it prints the load average. It makes the machine busy
+  for the whole burn, so don't run it on a host someone is working on.
+- `soak` writes `$WORK/soak.csv` (app, SRS and FFmpeg memory, FFmpeg count, app file
+  handles every 30 s) and, for runs of 20+ minutes, fails if memory grows by 50 MB/h or
+  more after a 10 minute warm-up.
+
+How it works: an output to `rtmp://192.0.2.<N>/<name>` is pushed for real to
 `rtmp://127.0.0.1:<port>/dest/<name>` when `$WORK/dest-<N>.port` exists (the shim reads it).
 The socket watchdog stays off (it matches the configured destination port, which these
-loopback destinations do not have), so these scenarios test the progress watchdog.
+loopback destinations do not have), so these scenarios test the progress watchdog and
+the output timeouts, not the socket watchdog.
 
 Run the repo's own tests separately with `npm test` (not part of this harness).
 

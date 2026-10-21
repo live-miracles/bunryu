@@ -5,21 +5,38 @@
 //
 //   freeze     50 healthy outputs + one whose destination is stopped (kill -STOP)
 //   blackhole  50 healthy outputs + one whose destination accepts the TCP
-//              connection and never reads or answers
+//              connection and never reads or answers (the output's -rw_timeout
+//              ends each attempt, and the retry back-off paces them)
 //   soak       both faults for --minutes N (default 60), sampled every 30 s; fails
 //              if memory, file handles or process count keep growing
+//   refused    10 healthy outputs + two whose destination refuses connections: the
+//              retry back-off, an operator stop after the streak, and recovery once
+//              the destination is back
+//   churn      10 healthy outputs while outputs are added, started, stopped and
+//              deleted in quick succession: no orphan FFmpeg, no leaked handles
+//   publisher-drop
+//              10 healthy outputs while the input publisher disappears for 3 s and
+//              for 25 s: a blip restarts nothing, a longer outage recovers by itself
+//              (the destination drops its idle connection after about 5 s, so each
+//              output reconnects once)
+//   contention 50 healthy outputs while CPU burners saturate the host for
+//              --burn-seconds N (default 90): the watchdogs must not fire on a
+//              slow but healthy host
 //
 // Usage:  FAST_WATCHDOG=1 scripts/test-stack.sh start
-//         node scripts/test-faults.mjs freeze|blackhole|soak [--minutes N]
+//         node scripts/test-faults.mjs <scenario> [--minutes N] [--burn-seconds N]
 //         scripts/test-stack.sh stop
 //
 // FAST_WATCHDOG=1 shortens the stall watchdog (20 s warm-up, 15 s stall) so the
-// scenarios take minutes. Needs ~1 GB free for the 50 FFmpeg processes. Exits 1 if
-// any check fails; each check is printed as PASS or FAIL.
+// scenarios take minutes; leave it off for `contention`, which is only meaningful
+// with the production windows. Needs ~1 GB free for 50 FFmpeg processes (less for
+// the 10-output scenarios). Exits 1 if any check fails; each check is printed as
+// PASS or FAIL.
 
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 
 const WORK = process.env.WORK ?? path.join(process.env.TMPDIR ?? '/tmp', 'bunryu-ui');
@@ -32,8 +49,10 @@ const SHIM = path.join(WORK, 'ffmpeg-shim.sh');
 const DEST_HEALTHY = 1;
 const DEST_FROZEN = 2;
 const DEST_BLACKHOLE = 3;
+const DEST_REFUSED = 4;
 const PORT_BASE = 31950;
 const HEALTHY_OUTPUTS = 50;
+const SMALL_HEALTHY_OUTPUTS = 10;
 const PIPELINE = 1;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -139,7 +158,7 @@ function sample(destPids) {
 
 // ── diagnostics ─────────────────────────────────────────────────────────────
 
-function diagnosticsEvents(event, outputId) {
+function diagnosticsEvents(event, outputId, sinceMs = 0) {
     const dir = path.join(WORK, 'diagnostics');
     if (!fs.existsSync(dir)) return [];
     const events = [];
@@ -148,7 +167,8 @@ function diagnosticsEvents(event, outputId) {
             if (!line.includes(event)) continue;
             try {
                 const e = JSON.parse(line);
-                if (e.event === event && (!outputId || e.outputId === outputId)) events.push(e);
+                if (e.event !== event || (outputId && e.outputId !== outputId)) continue;
+                if (Date.parse(e.ts) >= sinceMs) events.push(e);
             } catch {
                 /* a partial last line */
             }
@@ -199,16 +219,27 @@ function startBlackhole(n) {
     fs.writeFileSync(path.join(WORK, `dest-${n}.port`), String(port));
 }
 
+// A destination that refuses connections: the shim pushes to this port, where
+// nothing listens, until startDestSrs(DEST_REFUSED) opens it.
+function startRefusedDest() {
+    fs.writeFileSync(path.join(WORK, `dest-${DEST_REFUSED}.port`), String(destPort(DEST_REFUSED)));
+}
+
 function cleanup() {
     for (const fn of cleanups.splice(0)) fn();
-    for (const n of [DEST_HEALTHY, DEST_FROZEN, DEST_BLACKHOLE]) {
+    for (const n of [DEST_HEALTHY, DEST_FROZEN, DEST_BLACKHOLE, DEST_REFUSED]) {
         fs.rmSync(path.join(WORK, `dest-${n}.port`), { force: true });
     }
 }
 
 // ── setup ───────────────────────────────────────────────────────────────────
 
-async function setup({ frozen, blackhole }) {
+async function setup({
+    frozen = false,
+    blackhole = false,
+    refused = false,
+    healthy = HEALTHY_OUTPUTS,
+}) {
     if (!listenerPid(APP_PORT))
         throw new Error('the test stack is not running (test-stack.sh start)');
     await login();
@@ -229,7 +260,7 @@ async function setup({ frozen, blackhole }) {
     await api('DELETE', `/api/pipelines/${PIPELINE}/outputs`);
 
     const outputs = [];
-    for (let i = 1; i <= HEALTHY_OUTPUTS; i++) {
+    for (let i = 1; i <= healthy; i++) {
         outputs.push({
             name: `h${String(i).padStart(2, '0')}`,
             url: `rtmp://192.0.2.${DEST_HEALTHY}/live/h${i}`,
@@ -238,6 +269,12 @@ async function setup({ frozen, blackhole }) {
     if (frozen) outputs.push({ name: 'frozen', url: `rtmp://192.0.2.${DEST_FROZEN}/live/frozen` });
     if (blackhole) {
         outputs.push({ name: 'blackhole', url: `rtmp://192.0.2.${DEST_BLACKHOLE}/live/blackhole` });
+    }
+    if (refused) {
+        startRefusedDest();
+        for (const name of ['refA', 'refB']) {
+            outputs.push({ name, url: `rtmp://192.0.2.${DEST_REFUSED}/live/${name}` });
+        }
     }
     const created = await api('POST', `/api/pipelines/${PIPELINE}/outputs/bulk`, { outputs });
     const ids = Object.fromEntries(created.map((o) => [o.name, o.id]));
@@ -252,7 +289,7 @@ async function setup({ frozen, blackhole }) {
         },
         180_000,
     );
-    check(`${HEALTHY_OUTPUTS} healthy outputs reach running with data flowing`, !!ready);
+    check(`${healthy} healthy outputs reach running with data flowing`, !!ready);
     if (!ready) throw new Error('healthy outputs did not start; see ' + WORK + '/app.log');
     return { ids, healthyIds, destPids, expectedFfmpeg: created.length };
 }
@@ -345,9 +382,8 @@ async function freeze(ctx) {
 }
 
 async function blackhole(ctx) {
-    const { ids, healthyIds, destPids, expectedFfmpeg } = ctx;
+    const { ids, healthyIds, destPids, expectedFfmpeg, since } = ctx;
     const baseline = await baselineOf(healthyIds);
-    const restartsBefore = diagnosticsEvents('ffmpeg-restart', ids.blackhole).length;
     const t0 = Date.now();
     let maxFfmpeg = 0;
     let worstHealthy = 0;
@@ -359,27 +395,373 @@ async function blackhole(ctx) {
         if (o[ids.blackhole]?.bitrateKbps > 0) everFlowing = true;
         await sleep(3000);
     }
-    const restarts = diagnosticsEvents('ffmpeg-restart', ids.blackhole).slice(restartsBefore);
-    check('no data ever flows to the black-holed destination', !everFlowing);
-    const gapsSec = restarts
+    // The output's own -rw_timeout ends a destination that never answers, well before
+    // the stall watchdog's warm-up, so each attempt is an exit followed by a retry.
+    const exits = diagnosticsEvents('ffmpeg-exited', ids.blackhole, since);
+    const starts = diagnosticsEvents('ffmpeg-started', ids.blackhole, since);
+    const startGapsSec = starts
         .slice(1)
-        .map((e, i) => (Date.parse(e.ts) - Date.parse(restarts[i].ts)) / 1000);
+        .map((e, i) => (Date.parse(e.ts) - Date.parse(starts[i].ts)) / 1000);
+    check('no data ever flows to the black-holed destination', !everFlowing);
     check(
-        'the stall watchdog restarts the stuck output, every time for a stall',
-        restarts.length >= 2 && restarts.every((e) => e.reason === 'output progress stalled'),
-        `${restarts.length} restarts`,
+        'the output gives up on it by itself with "Connection timed out", each time',
+        exits.length >= 3 && exits.every((e) => /timed out/i.test(e.stderrTail ?? '')),
+        `${exits.length} exits`,
     );
-    // A run needs the 20 s warm-up before it can be judged stalled, so a gap
-    // shorter than that would be a retry loop spinning.
     check(
-        'restarts are spaced out, never a tight loop',
-        gapsSec.length > 0 && gapsSec.every((g) => g >= 20),
-        `gaps ${gapsSec.map((g) => Math.round(g)).join(', ')} s`,
+        'the stall watchdog is not what ends it',
+        diagnosticsEvents('ffmpeg-restart', ids.blackhole, since).length === 0,
+    );
+    // An attempt lasts about the 10 s timeout, so a shorter gap would be a spinning loop.
+    check(
+        'attempts are spaced out, never a tight loop',
+        startGapsSec.length >= 2 && startGapsSec.every((g) => g >= 10),
+        `gaps ${startGapsSec.map((g) => Math.round(g)).join(', ')} s`,
     );
     check('no healthy output restarted or stopped', worstHealthy === 0, `worst ${worstHealthy}`);
     check(
         'FFmpeg process count stays bounded',
         maxFfmpeg <= expectedFfmpeg + 1,
+        `max ${maxFfmpeg} of ${expectedFfmpeg}`,
+    );
+}
+
+// Retry delays of src/services/outputs.ts (RETRY_DELAYS_MS, RETRY_JITTER): the wait
+// after the n-th failure in a row is the step's delay, shortened by up to 25 %.
+const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
+
+async function refused(ctx) {
+    const { ids, healthyIds, expectedFfmpeg, since } = ctx;
+    const baseline = await baselineOf(healthyIds);
+    let maxFfmpeg = 0;
+    let worstHealthy = 0;
+    console.log('waiting for the refused outputs to fail six times in a row');
+    const failing = await waitFor(
+        'refused outputs failing',
+        async () => {
+            const o = await outputsHealth();
+            maxFfmpeg = Math.max(maxFfmpeg, sample([]).ffmpegCount);
+            worstHealthy = Math.max(worstHealthy, restartedHealthy(o, baseline));
+            return o[ids.refA]?.failures >= 6 && o[ids.refB]?.failures >= 6;
+        },
+        150_000,
+        2000,
+    );
+    check('a refused destination makes the output fail again and again', !!failing);
+
+    const retries = diagnosticsEvents('ffmpeg-retry-scheduled', ids.refA, since);
+    const inBounds = retries.every((e) => {
+        const step = RETRY_DELAYS_MS[Math.min(e.attempt - 1, RETRY_DELAYS_MS.length - 1)];
+        return e.delayMs >= step * 0.75 - 1 && e.delayMs <= step;
+    });
+    check(
+        'retry waits follow the 1, 2, 4, 8, 16 s back-off, at most a quarter shorter',
+        retries.length >= 5 && inBounds,
+        retries.map((e) => `${e.attempt}:${e.delayMs}`).join(' '),
+    );
+    const starts = diagnosticsEvents('ffmpeg-started', ids.refA, since);
+    const gapsMs = starts.slice(1).map((e, i) => Date.parse(e.ts) - Date.parse(starts[i].ts));
+    check(
+        'attempts are spaced out, never a tight loop',
+        gapsMs.length >= 5 && gapsMs.every((g) => g >= 700),
+        `gaps ${gapsMs.join(', ')} ms`,
+    );
+
+    console.log('stopping refB by hand after its streak of failures');
+    await api('POST', `/api/pipelines/${PIPELINE}/outputs/${ids.refB}/stop`);
+    const stopped = await waitFor(
+        'stop recorded',
+        async () => diagnosticsEvents('output-stopped-after-failures', ids.refB, since).length > 0,
+        15_000,
+        1000,
+    );
+    check(
+        'a stop after a streak of failures is recorded as "Stopped after N failed attempts"',
+        !!stopped,
+    );
+    const history = JSON.stringify(
+        await api('GET', `/api/pipelines/${PIPELINE}/outputs/${ids.refB}/errors`),
+    );
+    check('the Error History says so', history.includes('Stopped after'));
+
+    console.log('the destination comes back');
+    startDestSrs(DEST_REFUSED);
+    const recovered = await waitFor(
+        'refA recovers',
+        async () => {
+            const o = await outputsHealth();
+            worstHealthy = Math.max(worstHealthy, restartedHealthy(o, baseline));
+            return o[ids.refA]?.status === 'running' && o[ids.refA].bitrateKbps > 0;
+        },
+        60_000,
+        2000,
+    );
+    check('the retrying output recovers by itself once the destination is back', !!recovered);
+    await sleep(20_000);
+    const o = await outputsHealth();
+    check(
+        'the output stopped by hand stays stopped',
+        o[ids.refB]?.status !== 'running',
+        o[ids.refB]?.status,
+    );
+    check('no healthy output restarted or stopped', worstHealthy === 0, `worst ${worstHealthy}`);
+    check(
+        'FFmpeg process count stays bounded and settles at one per running output',
+        maxFfmpeg <= expectedFfmpeg + 1 && sample([]).ffmpegCount === healthyIds.length + 1,
+        `max ${maxFfmpeg}, now ${sample([]).ffmpegCount}`,
+    );
+}
+
+async function churn(ctx) {
+    const { healthyIds } = ctx;
+    const baseline = await baselineOf(healthyIds);
+    const before = sample([]);
+    let maxFfmpeg = 0;
+    let worstHealthy = 0;
+    const apiErrors = [];
+    const outputsPath = `/api/pipelines/${PIPELINE}/outputs`;
+    const step = async (what, fn) => {
+        try {
+            await fn();
+        } catch (err) {
+            apiErrors.push(`${what}: ${err.message}`);
+        }
+    };
+    // Three outputs per round, each ended differently: deleted while still being
+    // started, deleted while running, and stopped and then deleted.
+    const one = async (name, mode) => {
+        let out;
+        await step(`create ${name}`, async () => {
+            out = await api('POST', outputsPath, {
+                name,
+                url: `rtmp://192.0.2.${DEST_HEALTHY}/live/${name}`,
+            });
+        });
+        if (!out) return;
+        await step(`start ${name}`, () => api('POST', `${outputsPath}/${out.id}/start`));
+        await sleep(mode === 0 ? 200 : 2500);
+        if (mode === 2)
+            await step(`stop ${name}`, () => api('POST', `${outputsPath}/${out.id}/stop`));
+        await step(`delete ${name}`, () => api('DELETE', `${outputsPath}/${out.id}`));
+    };
+    const rounds = 15;
+    console.log(`${rounds * 3} outputs added, started and removed, three at a time`);
+    for (let i = 0; i < rounds; i++) {
+        await Promise.all([0, 1, 2].map((mode) => one(`c${i}m${mode}`, mode)));
+        const o = await outputsHealth();
+        maxFfmpeg = Math.max(maxFfmpeg, sample([]).ffmpegCount);
+        worstHealthy = Math.max(worstHealthy, restartedHealthy(o, baseline));
+    }
+    const settled = await waitFor(
+        'FFmpeg count settles',
+        async () => sample([]).ffmpegCount === healthyIds.length,
+        30_000,
+        1000,
+    );
+    const after = sample([]);
+    // /api/health is a shared 5 s poll, so removed outputs may linger for one cycle.
+    let left = -1;
+    await waitFor(
+        'removed outputs leave the health list',
+        async () => (left = Object.keys(await outputsHealth()).length) === healthyIds.length,
+        15_000,
+        1000,
+    );
+    check(
+        'every add, start, stop and delete call succeeded',
+        apiErrors.length === 0,
+        apiErrors.slice(0, 3).join('; '),
+    );
+    check('no healthy output restarted or stopped', worstHealthy === 0, `worst ${worstHealthy}`);
+    check(
+        'no FFmpeg is left behind by removed outputs',
+        !!settled,
+        `${after.ffmpegCount} running, ${healthyIds.length} outputs should run`,
+    );
+    check(
+        'removed outputs leave the health list within one poll',
+        left === healthyIds.length,
+        `${left} listed`,
+    );
+    check(
+        'FFmpeg process count stays bounded',
+        maxFfmpeg <= healthyIds.length + 6,
+        `max ${maxFfmpeg} with at most 3 churned at a time`,
+    );
+    check(
+        'control-plane file handles return to their starting level',
+        after.appFds - before.appFds <= 10,
+        `${before.appFds} -> ${after.appFds}`,
+    );
+    check(
+        'control-plane memory grows by under 40 MB',
+        after.appRssMb - before.appRssMb < 40,
+        `${before.appRssMb} -> ${after.appRssMb} MB`,
+    );
+}
+
+// The publisher the stack starts (scripts/test-stack.sh): same stream, same encode.
+function publisherArgs() {
+    const key = JSON.parse(fs.readFileSync(path.join(WORK, 'pipe.json'), 'utf8')).streamKey;
+    return [
+        ...['-re', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=25'],
+        ...['-f', 'lavfi', '-i', 'sine=frequency=440', '-c:v', 'libx264', '-preset', 'ultrafast'],
+        ...['-tune', 'zerolatency', '-b:v', '800k', '-g', '50', '-c:a', 'aac', '-b:a', '64k'],
+        ...['-f', 'flv', `rtmp://127.0.0.1:31935/live/${key}`],
+    ];
+}
+
+function startPublisher() {
+    const log = fs.openSync(path.join(WORK, 'pub.log'), 'a');
+    const child = spawn(path.join(REPO, 'objs/ffmpeg'), publisherArgs(), {
+        stdio: ['ignore', log, log],
+        detached: true,
+    });
+    child.unref();
+    fs.writeFileSync(path.join(WORK, 'pub.pid'), String(child.pid));
+    return child.pid;
+}
+
+function stopPublisher(signal) {
+    const pid = Number(fs.readFileSync(path.join(WORK, 'pub.pid'), 'utf8'));
+    process.kill(pid, signal);
+}
+
+async function publisherDrop(ctx) {
+    const { healthyIds } = ctx;
+    // The harness must leave the stack's publisher running whatever happens.
+    cleanups.push(() => {
+        try {
+            if (!listenerPid(31935) || !isPublisherAlive()) startPublisher();
+        } catch {
+            /* best effort */
+        }
+    });
+    const notFlowing = async () => {
+        const o = await outputsHealth();
+        return healthyIds.filter((id) => !(o[id]?.status === 'running' && o[id].bitrateKbps > 0));
+    };
+    const inputLive = async () => (await api('GET', '/api/health')).pipelines[PIPELINE]?.input.live;
+
+    for (const { seconds, signal, strict } of [
+        { seconds: 3, signal: 'SIGTERM', strict: true },
+        { seconds: 25, signal: 'SIGKILL', strict: false },
+    ]) {
+        const baseline = await baselineOf(healthyIds);
+        const since = Date.now();
+        console.log(`the publisher goes away for ${seconds} s (${signal})`);
+        stopPublisher(signal);
+        await sleep(seconds * 1000);
+        startPublisher();
+        await waitFor('input live again', inputLive, 60_000, 1000);
+        await sleep(10_000);
+        const back = await waitFor(
+            'outputs flowing again',
+            async () => (await notFlowing()).length === 0,
+            90_000,
+            2000,
+        );
+        const o = await outputsHealth();
+        const restarted = restartedHealthy(o, baseline);
+        const starts = diagnosticsEvents('ffmpeg-started', undefined, since).length;
+        check(
+            `all outputs carry data again after a ${seconds} s publisher outage`,
+            !!back,
+            back ? '' : `not flowing: ${(await notFlowing()).join(', ')}`,
+        );
+        if (strict) {
+            check(
+                'a 3 s blip restarts no output',
+                restarted === 0 && starts === 0,
+                `${restarted} restarted, ${starts} FFmpeg starts`,
+            );
+        } else {
+            // Not asserted either way: the destination SRS drops a publisher that sends
+            // nothing for about 5 s, so outputs reconnect once when the input returns
+            // (a platform ingest does the same). What matters is that recovery is
+            // automatic and bounded, with no restart storm.
+            console.log(
+                `INFO  ${restarted} of ${healthyIds.length} outputs restarted, ${starts} FFmpeg starts`,
+            );
+            check(
+                'recovery does not start more than a few FFmpeg per output',
+                starts <= healthyIds.length * 3,
+                `${starts} starts`,
+            );
+        }
+        const count = sample([]).ffmpegCount;
+        check('FFmpeg count returns to one per output', count === healthyIds.length, `${count}`);
+    }
+}
+
+function isPublisherAlive() {
+    try {
+        process.kill(Number(fs.readFileSync(path.join(WORK, 'pub.pid'), 'utf8')), 0);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function contention(ctx, burnSeconds) {
+    const { healthyIds, expectedFfmpeg } = ctx;
+    let stallMs = '?';
+    try {
+        stallMs = JSON.parse(fs.readFileSync(path.join(WORK, 'bunryu.json'), 'utf8'))
+            .output_watchdog.stall_ms;
+    } catch {
+        /* the watchdog setting is only printed */
+    }
+    console.log(`stall window ${stallMs} ms; ${os.cpus().length} CPU burners for ${burnSeconds} s`);
+    const baseline = await baselineOf(healthyIds);
+    const since = Date.now();
+    const burners = [];
+    for (let i = 0; i < os.cpus().length; i++) {
+        burners.push(spawn(process.execPath, ['-e', 'for(;;){}'], { stdio: 'ignore' }));
+    }
+    cleanups.push(() => burners.forEach((b) => b.kill('SIGKILL')));
+
+    let worstHealthy = 0;
+    let maxFfmpeg = 0;
+    let slowestApiMs = 0;
+    const t0 = Date.now();
+    while (Date.now() - t0 < burnSeconds * 1000) {
+        const started = Date.now();
+        let o;
+        try {
+            o = await outputsHealth();
+        } catch (err) {
+            console.log(`INFO  health call failed under load: ${err.message}`);
+            slowestApiMs = 15_000;
+            continue;
+        }
+        slowestApiMs = Math.max(slowestApiMs, Date.now() - started);
+        maxFfmpeg = Math.max(maxFfmpeg, sample([]).ffmpegCount);
+        worstHealthy = Math.max(worstHealthy, restartedHealthy(o, baseline));
+        await sleep(2000);
+    }
+    const load = os.loadavg()[0];
+    burners.forEach((b) => b.kill('SIGKILL'));
+    await sleep(5000);
+
+    const restarts = diagnosticsEvents('ffmpeg-restart', undefined, since);
+    check(
+        'no output is restarted by a watchdog while the host is saturated',
+        restarts.length === 0,
+        restarts
+            .map((e) => `${e.outputId}:${e.reason}`)
+            .slice(0, 3)
+            .join('; '),
+    );
+    check('no healthy output restarted or stopped', worstHealthy === 0, `worst ${worstHealthy}`);
+    check(
+        'the API keeps answering under load',
+        slowestApiMs < 5000,
+        `slowest ${slowestApiMs} ms, load average ${load.toFixed(1)} on ${os.cpus().length} CPUs`,
+    );
+    check(
+        'FFmpeg process count stays at one per output',
+        maxFfmpeg <= expectedFfmpeg && sample([]).ffmpegCount === expectedFfmpeg,
         `max ${maxFfmpeg} of ${expectedFfmpeg}`,
     );
 }
@@ -465,10 +847,25 @@ async function soak(ctx, minutes) {
 // ── main ────────────────────────────────────────────────────────────────────
 
 const scenario = process.argv[2];
-const minutesIdx = process.argv.indexOf('--minutes');
-const minutes = minutesIdx > 0 ? Number(process.argv[minutesIdx + 1]) : 60;
-if (!['freeze', 'blackhole', 'soak'].includes(scenario) || !(minutes > 0)) {
-    console.error('usage: node scripts/test-faults.mjs freeze|blackhole|soak [--minutes N]');
+const numberArg = (name, fallback) => {
+    const idx = process.argv.indexOf(name);
+    return idx > 0 ? Number(process.argv[idx + 1]) : fallback;
+};
+const minutes = numberArg('--minutes', 60);
+const burnSeconds = numberArg('--burn-seconds', 90);
+const SCENARIOS = [
+    'freeze',
+    'blackhole',
+    'soak',
+    'refused',
+    'churn',
+    'publisher-drop',
+    'contention',
+];
+if (!SCENARIOS.includes(scenario) || !(minutes > 0) || !(burnSeconds > 0)) {
+    console.error(
+        `usage: node scripts/test-faults.mjs ${SCENARIOS.join('|')} [--minutes N] [--burn-seconds N]`,
+    );
     process.exit(2);
 }
 
@@ -479,14 +876,24 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
     });
 }
 
+const scenarioStartedAt = Date.now();
 try {
     const ctx = await setup({
-        frozen: scenario !== 'blackhole',
-        blackhole: scenario !== 'freeze',
+        frozen: ['freeze', 'soak'].includes(scenario),
+        blackhole: ['blackhole', 'soak'].includes(scenario),
+        refused: scenario === 'refused',
+        healthy: ['refused', 'churn', 'publisher-drop'].includes(scenario)
+            ? SMALL_HEALTHY_OUTPUTS
+            : HEALTHY_OUTPUTS,
     });
+    ctx.since = scenarioStartedAt;
     if (scenario === 'freeze') await freeze(ctx);
     else if (scenario === 'blackhole') await blackhole(ctx);
-    else await soak(ctx, minutes);
+    else if (scenario === 'soak') await soak(ctx, minutes);
+    else if (scenario === 'refused') await refused(ctx);
+    else if (scenario === 'churn') await churn(ctx);
+    else if (scenario === 'publisher-drop') await publisherDrop(ctx);
+    else await contention(ctx, burnSeconds);
 } catch (err) {
     console.error(`scenario aborted: ${err instanceof Error ? err.message : err}`);
     results.push(false);
