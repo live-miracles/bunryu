@@ -25,15 +25,19 @@ docker exec bunryu ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=30 \
   -f flv rtmp://localhost:21935/live/<stream-key>
 ```
 
-The image is x86_64 only, so on Apple Silicon Macs it runs only under emulation
+The image is x86_64 only. On Apple Silicon Macs and other ARM hosts it runs
+emulated, which is for trying and developing only; run production on Linux x86_64
 (see [Details](#details)).
 
 ## Details
 
 The image bundles the control plane, SRS, goryu and the same
-pinned FFmpeg build as the native installer (x86_64 only; Apple Silicon Macs
-need `DOCKER_DEFAULT_PLATFORM=linux/amd64` and run it emulated, which is fine to
-try it but not to judge performance). One container runs
+pinned FFmpeg build as the native installer (x86_64 only). On an ARM host such
+as an Apple Silicon Mac, `compose.yaml` makes Docker emulate it (with plain
+`docker build` and `docker run`, add `--platform linux/amd64`); that is slower, so
+use it only to try or develop Bunryu. See
+[why there is no ARM image](../4-reference/3-design-decisions.md#the-docker-image-is-x86_64-only-arm-hosts-run-it-emulated-for-development).
+One container runs
 all three processes under a small supervisor (`docker/entrypoint.sh`) that
 keeps the native startup order: SRS starts only after `/api/ready` answers,
 each process is restarted 2 s after it exits, and every start and exit is

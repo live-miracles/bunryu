@@ -957,3 +957,25 @@ environment after the first start.
 
 **Revisit when:** a second secret needs the same handling, or the Docker image is
 used for real deployments and `docker secret` support matters.
+
+### The Docker image is x86_64 only; ARM hosts run it emulated, for development
+
+**Decision (October 2026):** no native arm64 image. Production is Linux x86_64, and
+`compose.yaml` sets `platform: linux/amd64`, so Docker on an Apple Silicon Mac or
+other ARM host runs the same image emulated. That is enough to try Bunryu or
+develop against it.
+
+**Why:** production doesn't need ARM, and two of the three pinned binaries have no
+arm64 build to pin: goryu's releases are x86_64 only, and the FFmpeg 7.1 we mirror
+has no arm64 counterpart (BtbN now builds arm64 only for 8.1 and later; FFmpeg 8.0.1
+stalled pulling SRT from SRS on a development machine). SRS does publish an arm64
+`ossrs/srs:v6.0-r2`. The emulated run was not tested, because the development host
+is x86_64.
+
+**Tradeoffs:** emulated timing and CPU say nothing about real capacity, so the
+sizing numbers are x86_64 only.
+
+**Revisit when:** developers need to debug media behavior on ARM, or production
+moves to arm64 VMs. It needs an FFmpeg 7.1 arm64 build mirrored like the amd64 one,
+an arm64 goryu release, the arm64 SRS from `ossrs/srs`, and a multi-platform image
+build.

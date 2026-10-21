@@ -5,6 +5,9 @@ services:
     bunryu:
         build: .
         image: bunryu
+        # The bundled SRS, goryu and FFmpeg are x86_64 builds. On an ARM host
+        # (Apple Silicon) this makes Docker emulate them, for development only.
+        platform: linux/amd64
         restart: unless-stopped
         ports:
             - '8080:8080/tcp' # dashboard + API
