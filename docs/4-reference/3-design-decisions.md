@@ -470,6 +470,29 @@ They exclude previews and translation mixers.
 - People keep asking for an interactive tool: a spreadsheet linked from the page is
   the cheapest next step before a dashboard feature.
 
+## Dashboard
+
+### Installable as an app with a manifest only, no service worker
+
+**Decision:** `public/manifest.webmanifest` and the icons in `public/icons/` let
+Chrome and Edge install the dashboard as a standalone window. There is no service
+worker.
+
+**Reasons:**
+
+- Chrome does not require a service worker to offer install on desktop.
+- The server sends `no-store` on every JS and CSS file so a deploy never leaves a
+  browser on an old module graph (see `src/index.ts`). A service worker is a
+  second cache that could undo that.
+- An offline shell would be useless: the dashboard is only meaningful with the
+  live API.
+- The manifest link uses `crossorigin="use-credentials"`. Production sits behind
+  Cloudflare Access, and a manifest request without the Access cookie is
+  redirected to the Access login and silently ignored.
+
+**Revisit** if push notifications or an offline page are wanted; both need a
+service worker and a cache policy that keeps deploys from going stale.
+
 ## Tooling
 
 ### ESLint checks promise handling; Prettier stays the formatter

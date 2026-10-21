@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Bunryu</title>
     <link rel="icon" type="image/png" href="logo.png" />
+    <!-- use-credentials: behind Cloudflare Access the manifest request needs the
+         Access cookie, or it is redirected to the Access login and ignored. -->
+    <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials" />
+    <meta name="theme-color" content="#2a303c" />
     <link rel="stylesheet" type="text/css" href="output.css" />
   </head>
   <body class="bg-base-100 text-base-content flex h-screen flex-col items-center justify-center p-4">

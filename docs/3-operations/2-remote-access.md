@@ -60,3 +60,12 @@ To rotate the token, generate a new one in the Zero Trust dashboard, update
 `/etc/cloudflared/tunnel.env`, and `sudo systemctl restart cloudflared`. Treat
 the token as compromised (and rotate it) if it was ever printed in a log or
 terminal, or was previously passed on the command line.
+
+## Installing the dashboard as an app
+
+In Chrome or Edge, open the dashboard over HTTPS (the tunnel hostname) and use
+the install icon in the address bar, or the menu's *Install Bunryu*. It opens
+in its own window without browser chrome and gets a launcher icon. It is the
+same dashboard: you still log in, and it needs the server to be reachable (there
+is no offline mode). Plain `http://` is installable only on `localhost`, so a
+dashboard reached by IP and port does not offer it.
