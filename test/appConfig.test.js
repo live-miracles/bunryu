@@ -123,8 +123,8 @@ describe('readAppConfig: hook_port', () => {
 });
 
 describe('readAppConfig: dashboard_password', () => {
-    test('defaults to admin when absent', () => {
-        assert.equal(loadAppConfig({})().dashboardPassword, 'admin');
+    test('is empty (no default) when absent', () => {
+        assert.equal(loadAppConfig({})().dashboardPassword, '');
     });
 
     test('is used as given, without trimming', () => {
@@ -133,11 +133,21 @@ describe('readAppConfig: dashboard_password', () => {
     });
 
     for (const bad of ['', 12345, null, true, ['x']]) {
-        test(`rejects ${JSON.stringify(bad)} and falls back to admin`, () => {
+        test(`treats ${JSON.stringify(bad)} as no password`, () => {
             const readAppConfig = loadAppConfig({ dashboard_password: bad });
-            assert.equal(readAppConfig().dashboardPassword, 'admin');
+            assert.equal(readAppConfig().dashboardPassword, '');
         });
     }
+
+    test('BUNRYU_DASHBOARD_PASSWORD wins over the file', () => {
+        process.env.BUNRYU_DASHBOARD_PASSWORD = 'from-env';
+        try {
+            const readAppConfig = loadAppConfig({ dashboard_password: 'from-file' });
+            assert.equal(readAppConfig().dashboardPassword, 'from-env');
+        } finally {
+            delete process.env.BUNRYU_DASHBOARD_PASSWORD;
+        }
+    });
 });
 
 describe('readAppConfig: port validation (asPort)', () => {

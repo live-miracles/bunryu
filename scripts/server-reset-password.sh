@@ -15,8 +15,8 @@ fi
 APP_DIR="${APP_DIR:-/opt/bunryu}"
 CONFIG_PATH="${BUNRYU_CONFIG:-/etc/bunryu/bunryu.json}"
 
-# The dashboard reseeds from this value on restart. With none it would fall back
-# to the public default 'admin', so refuse instead.
+# The dashboard reseeds from this value on restart and refuses to start without
+# one, so check first and say how to fix it.
 if ! node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); process.exit(typeof c.dashboard_password==='string' && c.dashboard_password!=='' ? 0 : 1)" "$CONFIG_PATH" 2> /dev/null; then
     echo "ERROR: no dashboard_password in $CONFIG_PATH. Add one, for example" >&2
     echo "  \"dashboard_password\": \"choose-a-long-password\"" >&2

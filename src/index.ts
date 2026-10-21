@@ -25,6 +25,7 @@ import {
     registerAuthApi,
     requireAuth,
     initializePassword,
+    MissingInitialPasswordError,
     checkIsAuthenticated,
 } from './api/auth.js';
 import { registerVersionApi, readAppVersion } from './api/version.js';
@@ -312,7 +313,11 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 main().catch((err) => {
-    console.error('Fatal startup error:', err);
+    // No password to seed the database with: only an operator can fix that, so
+    // exit 78 and stay down (see EXIT_NEEDS_OPERATOR) instead of restarting.
+    const needsOperator = err instanceof MissingInitialPasswordError;
+    if (needsOperator) console.error(`[server] ${err.message}`);
+    else console.error('Fatal startup error:', err);
     diagnostics.event('server-start-failed', { instanceId, error: errorText(err) });
-    flushDiagnosticsAndExit(1);
+    flushDiagnosticsAndExit(needsOperator ? EXIT_NEEDS_OPERATOR : 1);
 });

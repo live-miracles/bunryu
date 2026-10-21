@@ -66,6 +66,7 @@ case "${1:-}" in
         fi
         cat > "$WORK/bunryu.json" << JSON
 { "port": $APP_PORT, "hook_port": $HOOK_PORT, "database_path": "./db.sqlite", "srs_config_path": "./srs.conf",
+  "dashboard_password": "admin",
   "ffmpeg_path": "$WORK/ffmpeg-shim.sh", "ffprobe_path": "$REPO/objs/ffprobe",
   "output_watchdog": { $WATCHDOG,
                        "socket_warmup_ms": 3600000, "socket_grace_ms": 3600000 } }

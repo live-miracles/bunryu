@@ -1,9 +1,12 @@
 {
     "port": 8080,
+    "hook_port": 8082,
+    "trust_proxy": 0,
     "database_path": "./db.sqlite",
     "srs_config_path": "./srs.conf",
     "ffmpeg_path": "./objs/ffmpeg",
     "ffprobe_path": "./objs/ffprobe",
+    "dashboard_password": "change-me",
     "output_watchdog": {
         "warmup_ms": 90000,
         "stall_ms": 45000,

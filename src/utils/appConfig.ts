@@ -82,7 +82,6 @@ const DEFAULT_RAW_CONFIG = {
     srs_config_path: './srs.conf',
     ffmpeg_path: 'ffmpeg',
     ffprobe_path: 'ffprobe',
-    dashboard_password: 'admin',
 } as const;
 
 let cachedConfig: AppConfig | null = null;
@@ -91,6 +90,11 @@ function asPort(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 65535
         ? value
         : fallback;
+}
+
+function asPassword(fromEnv: string | undefined, fromFile: unknown): string {
+    if (fromEnv) return fromEnv;
+    return typeof fromFile === 'string' ? fromFile : '';
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -219,11 +223,14 @@ export function readAppConfig(): AppConfig {
             asString(raw.ffprobe_path, DEFAULT_RAW_CONFIG.ffprobe_path as string),
             configDir,
         ),
-        // Not run through asString(): a password must not be trimmed.
-        dashboardPassword:
-            typeof raw.dashboard_password === 'string' && raw.dashboard_password !== ''
-                ? raw.dashboard_password
-                : DEFAULT_RAW_CONFIG.dashboard_password,
+        // Not run through asString(): a password must not be trimmed. Empty means
+        // none; there is no default, initializePassword() refuses to start without
+        // one when the database needs it. BUNRYU_DASHBOARD_PASSWORD wins over the
+        // file, like PORT and DATABASE_PATH above.
+        dashboardPassword: asPassword(
+            process.env.BUNRYU_DASHBOARD_PASSWORD,
+            raw.dashboard_password,
+        ),
         outputWatchdog: readWatchdogConfig(raw.output_watchdog),
     };
     return cachedConfig;

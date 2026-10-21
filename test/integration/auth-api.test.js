@@ -89,7 +89,7 @@ function makeDb() {
 
 // The auth module keeps sessions and the login rate limiter in module state,
 // so each test loads a fresh copy.
-async function createHarness(initialPassword, existingDb) {
+async function createHarness(initialPassword = 'admin', existingDb) {
     delete require.cache[require.resolve('../../src/api/auth')];
     const { registerAuthApi, initializePassword } = require('../../src/api/auth');
     const app = express();
@@ -397,7 +397,21 @@ describe('auth session integration', () => {
 });
 
 describe('initial dashboard password', () => {
-    test('a configured initial password seeds an empty database instead of admin', async () => {
+    test('an empty database with no initial password refuses to start', async () => {
+        delete require.cache[require.resolve('../../src/api/auth')];
+        const { initializePassword, MissingInitialPasswordError } = require('../../src/api/auth');
+        for (const none of ['', undefined]) {
+            await assert.rejects(initializePassword(makeDb(), none), MissingInitialPasswordError);
+        }
+    });
+
+    test('a database that already has a password starts without an initial one', async () => {
+        const first = await createHarness('existing-db-pw');
+        const reopened = await createHarness('', first.db);
+        assert.equal((await reopened.login('existing-db-pw')).status, 200);
+    });
+
+    test('a configured initial password seeds an empty database', async () => {
         const harness = await createHarness('config-seeded-pw');
         assert.equal((await harness.login('config-seeded-pw')).status, 200);
         assert.equal((await harness.login('admin')).status, 401);

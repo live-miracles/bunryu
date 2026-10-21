@@ -152,10 +152,19 @@ function pruneSessions(db: Db): void {
     }
 }
 
+// A database with no password hash and no initial password to seed it with.
+export class MissingInitialPasswordError extends Error {}
+
 // initialPassword (bunryu.json's dashboard_password) only seeds a database
-// that has no password hash yet; an existing hash is never overwritten.
-export async function initializePassword(db: Db, initialPassword = 'admin'): Promise<void> {
+// that has no password hash yet; an existing hash is never overwritten. There
+// is no default password: without one the server does not start.
+export async function initializePassword(db: Db, initialPassword: string): Promise<void> {
     if (!db.getSetting('dashboardPasswordHash')) {
+        if (!initialPassword) {
+            throw new MissingInitialPasswordError(
+                'No dashboard password is set and the database has none. Set dashboard_password in bunryu.json (or BUNRYU_DASHBOARD_PASSWORD) and start again.',
+            );
+        }
         db.setSetting('dashboardPasswordHash', await hashPassword(initialPassword));
     }
     pruneSessions(db);

@@ -17,7 +17,7 @@ in the `/data` volume.
 | `srs_config_path` | `./srs.conf` | SRS config path |
 | `ffmpeg_path` | `ffmpeg` | FFmpeg binary for outputs and previews |
 | `ffprobe_path` | `ffprobe` | FFprobe binary for input media probing and validation |
-| `dashboard_password` | `admin` | Initial dashboard password, used only when the database has no password yet (first boot or after a reset). Stored in plain text; the installer sets the file to mode `0600`. The installer and the Docker image require one on a fresh install and never generate or print it; the `admin` default only applies to a dev checkout |
+| `dashboard_password` | none (the repo's dev `bunryu.json` ships `change-me`) | Initial dashboard password, used only when the database has no password yet (first boot or after a reset). There is no default: with an empty database and no password the server does not start (exit status 78). The installer and the Docker image require one on a fresh install and never generate or print it. Stored in plain text; the installer sets the file to mode `0600` |
 | `output_watchdog.warmup_ms` | `90000` | Warmup before stall checks, shared by the output progress watchdog and the translation-mixer watchdogs below |
 | `output_watchdog.stall_ms` | `45000` | Output progress stall window before restarting FFmpeg |
 | `output_watchdog.translator_meter_stale_ms` | `10000` | How long a translation output's translator audio meter can go quiet (including never producing a sample) before the mixer is restarted |
@@ -140,7 +140,7 @@ Installer/development overrides:
 | `SRT_RELEASE_TAG` | `server-install.sh` | Relay GitHub release tag to install |
 | `SRT_URL` | `server-install.sh` | Custom relay release archive URL |
 | `SRT_SHA256` | `server-install.sh` | Expected SHA256 for the relay archive; blank skips verification |
-| `BUNRYU_DASHBOARD_PASSWORD` | `server-install.sh`, Docker entrypoint | Initial dashboard password, required when the database is empty (first install, a wipe, or an empty `/data` volume). Overrides `dashboard_password` in `bunryu.json` |
+| `BUNRYU_DASHBOARD_PASSWORD` | the app, `server-install.sh`, Docker entrypoint | Initial dashboard password, required when the database is empty (first install, a wipe, or an empty `/data` volume). Overrides `dashboard_password` in `bunryu.json` |
 | `BUNRYU_CONFIG` | the app | Path of `bunryu.json`; unset reads `./bunryu.json`. Set by the installer's unit |
 | `WIPE_DB` | `server-install.sh` | Set `y`/`n` to force or skip wiping the existing SQLite DB. A wipe first copies it to `db.sqlite.<timestamp>.bak` (owner-only, it holds stream keys and destination URLs) |
 | `SRS_LOCAL_BIN` | `dev-server-install.sh` | Local executable SRS binary to copy into `./objs/srs` |

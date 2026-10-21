@@ -884,8 +884,12 @@ unchanged). `server-reset-password.sh` refuses to run when the file has no
   matched the kept database, and `server-reset-password.sh` would then apply the
   wrong one. `srs.conf` and `goryu.json` were already in `/etc/bunryu`, which is why
   the SRT passphrase survived reinstalls. The app config now sits beside them.
-- **Failing early beats a default.** The app's own fallback is the public `admin`;
-  the installer, the entrypoint and the reset script all refuse to rely on it.
+- **Failing early beats a default.** The app used to fall back to the public
+  `admin` when it had no password to seed an empty database with, so a wiped
+  database or a hand-made config could silently create that login. It now exits
+  with status 78 instead, and the installer, the entrypoint and the reset script
+  check first and say how to fix it. The repo's own `bunryu.json` ships `change-me` for
+  development, which the installer, the unit and the image never read.
 
 **Not adopted:**
 - **Generate and print once**, the previous behavior: the leak above.

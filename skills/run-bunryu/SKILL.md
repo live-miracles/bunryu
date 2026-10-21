@@ -47,7 +47,7 @@ VIEWPORT=390x844 $H shot $WORK/phone.png "window.selectPipeline('1')" 2500   # p
 $H stop           # kills app, SRS, Chrome, publisher; prints "all test ports closed"
 ```
 
-`shot <png> [js] [waitMs]` logs in (fresh DB password is `admin`), loads the
+`shot <png> [js] [waitMs]` logs in (the stack seeds the fresh DB with the password `admin`), loads the
 dashboard, optionally evals `js`, and writes the PNG; `MOVE=x,y` hovers first
 (46,194 is the pipeline status icon in the sidebar, whose tooltip lists every
 issue). `VIEWPORT=WxH` resizes the screen (default 1500x1000; widths under 1024

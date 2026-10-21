@@ -34,7 +34,7 @@ await send('Emulation.setDeviceMetricsOverride', {
 });
 const href = await evalJs('location.href');
 if (!href.startsWith(APP) || href.includes('login')) {
-    // Fresh DB => default dashboard password is "admin".
+    // test-stack.sh seeds the fresh DB with dashboard_password "admin".
     await send('Page.navigate', { url: `${APP}/login.html` });
     await sleep(1500);
     await evalJs(

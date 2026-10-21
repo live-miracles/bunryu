@@ -38,6 +38,12 @@ bonded-input status.
 npm run dev           # tsx watch + tsc watch + tailwind watch
 ```
 
+A fresh database is seeded with the `dashboard_password` in `bunryu.json`, which
+the repo ships as `change-me` for development only (the installer and the Docker image
+never use that file). The app has no built-in default: if you empty or delete that
+line it refuses to start on a fresh database, unless `BUNRYU_DASHBOARD_PASSWORD` is
+set. Later starts use the hash stored in the database.
+
 ## Tests
 
 ```bash
