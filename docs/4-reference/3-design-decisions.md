@@ -692,6 +692,34 @@ exiting into the restart policy, which would repeat the message.
 
 **Revisit when:** a second failure class needs the same treatment.
 
+### Keep a fixed 2 s systemd restart delay, with no back-off
+
+**Decision (October 2026):** the units keep `Restart=always`, `RestartSec=2` and
+`StartLimitIntervalSec=0`. A service that crashes right after it starts is restarted
+every 2 s until someone fixes it.
+
+**Why:**
+- The loops that matter are already bounded: an error only an operator can fix exits
+  with 78 and is not restarted, SRS waits for the app's readiness check (up to 60 s)
+  before it starts, and the journal is capped at 1 GB.
+- A crash during a live event is back in 2 s. A back-off would only add delay to the
+  case that matters most.
+- No crash loop has happened, so there is no incident to size a back-off against.
+
+**Not adopted:**
+- `RestartSteps=` and `RestartMaxDelaySec=`: they need systemd 254. The production VM
+  runs Ubuntu 22.04 with systemd 249, where a throwaway unit with `RestartSec=1`,
+  `RestartSteps=4` and `RestartMaxDelaySec=8` restarted 21 times in 25 s at a constant
+  gap of about 1.2 s. The directives are silently ignored.
+- A delay computed in `ExecStartPre` from `NRestarts`: systemd only resets that counter
+  on a manual start or stop, so a crash a week into an event would inherit the delay.
+- `StartLimitIntervalSec` and `StartLimitBurst`: the unit would give up and stay down,
+  which is what `StartLimitIntervalSec=0` exists to prevent.
+
+**Revisit when:** the production VM moves to systemd 254 or later (Ubuntu 24.04 ships
+255), or a crash loop fills the journal or loads the host. The Docker supervisor has
+the same fixed 2 s delay (`docker/entrypoint.sh`).
+
 ### Hints are a dashboard lookup, not an API field
 
 **Decision (October 2026):** the "Hint:" lines under known errors, warnings and
