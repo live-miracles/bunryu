@@ -160,27 +160,21 @@ if [[ -s "$DB_FILE" ]]; then
         if [[ "${WIPE_DB:-}" == y || "${WIPE_DB:-}" == Y ]]; then
             wipe_db=yes
         elif [[ -t 0 && "$ASSUME_YES" != yes && "${WIPE_DB:-}" != n && "${WIPE_DB:-}" != N ]]; then
-            read -rp "Wipe it and start with an empty database? [y/N] " reply
-            [[ "$reply" == "y" || "$reply" == "Y" ]] && wipe_db=yes
+            # Enter wipes: the only other outcome is leaving without installing.
+            # Only an interactive answer counts; -y and a missing terminal never
+            # wipe on their own (that needs WIPE_DB=y).
+            read -rp "Wipe it and start with an empty database? [Y/n] " reply
+            [[ "$reply" == "n" || "$reply" == "N" ]] || wipe_db=yes
         fi
         if [[ "$wipe_db" != yes ]]; then
-            echo "ERROR: the database and the running service are untouched. Re-run with WIPE_DB=y to wipe the database:" >&2
+            echo "ERROR: not wiping, so the install stops here. The database and the running service are untouched." >&2
+            echo "  To wipe it (a backup copy is kept) and install, re-run with WIPE_DB=y:" >&2
             echo "    sudo WIPE_DB=y BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash $0" >&2
             exit 1
         fi
-    else
-        case "${WIPE_DB:-}" in
-            y | Y) wipe_db=yes ;;
-            n | N) wipe_db=no ;;
-            *)
-                if [[ "$ASSUME_YES" == yes ]]; then
-                    echo "Existing database found at $DB_FILE. Preserving it (-y/--yes)."
-                elif [[ -t 0 ]]; then
-                    read -rp "Existing database found at $DB_FILE. Preserve it? [Y/n] " reply
-                    [[ "$reply" == "n" || "$reply" == "N" ]] && wipe_db=yes
-                fi
-                ;;
-        esac
+    elif [[ "${WIPE_DB:-}" == y || "${WIPE_DB:-}" == Y ]]; then
+        # A compatible database is kept without asking; wiping it takes WIPE_DB=y.
+        wipe_db=yes
     fi
     [[ "$wipe_db" == "yes" ]] || fresh_db=no
 fi

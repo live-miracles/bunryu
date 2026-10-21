@@ -52,9 +52,10 @@ its own replacement halfway through and keeps running the old steps; run it a se
 time once to move past it.)
 
 If a release changed the database schema (there are no migrations), the installer
-says so after pulling the code and stops before restarting anything; the running
-server is untouched. Re-run it with `WIPE_DB=y` to wipe the database (a backup copy is
-kept and pipelines have to be re-created); see
+says so after pulling the code, before restarting anything; the running server is
+untouched. In a terminal it asks whether to wipe the database (Enter wipes; a backup
+copy is kept and pipelines have to be re-created) and stops if you decline; without a
+terminal it stops, and you re-run it with `WIPE_DB=y`. A database that still fits is kept without asking. See
 [Configuration](../3-operations/3-configuration.md#database-schema-version).
 
 **Stop services:**

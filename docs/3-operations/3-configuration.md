@@ -124,11 +124,12 @@ bumps it, and a database stamped with another version is refused at startup with
 message saying so, instead of failing later on a query. The fix is to recreate the
 database. The installer checks this first: after it pulls the new code it compares the
 database's stamp with the build's, and when they differ it says so and stops before it
-changes anything or restarts a service, so a running server keeps running. Re-run it with
-`WIPE_DB=y` (or answer `y` to "Wipe it and start with an empty database?" in a terminal,
-which `-y` does not) to wipe the database; a `db.sqlite.<timestamp>.bak` copy is kept to
-re-create pipelines from. A database from before the stamp existed is accepted and
-stamped, since its schema is version 1.
+changes anything or restarts a service, so a running server keeps running. Only then does
+it ask, in a terminal, "Wipe it and start with an empty database? [Y/n]": Enter wipes, and
+`n`, `-y` or no terminal stops the install (`WIPE_DB=y` wipes without asking). A
+`db.sqlite.<timestamp>.bak` copy is kept to re-create pipelines from. A database with the
+current version is kept without any prompt. A database from before the stamp existed is
+accepted and stamped, since its schema is version 1.
 
 Relay ports and status polling are read from `goryu.json`, located beside `srs_config_path`.
 
@@ -142,5 +143,5 @@ Installer/development overrides:
 | `SRT_SHA256` | `server-install.sh` | Expected SHA256 for the relay archive; blank skips verification |
 | `BUNRYU_DASHBOARD_PASSWORD` | the app, `server-install.sh`, Docker entrypoint | Initial dashboard password, required when the database is empty (first install, a wipe, or an empty `/data` volume). Overrides `dashboard_password` in `bunryu.json` |
 | `BUNRYU_CONFIG` | the app | Path of `bunryu.json`; unset reads `./bunryu.json`. Set by the installer's unit |
-| `WIPE_DB` | `server-install.sh` | Set `y`/`n` to force or skip wiping the existing SQLite DB. A wipe first copies it to `db.sqlite.<timestamp>.bak` (owner-only, it holds stream keys and destination URLs) |
+| `WIPE_DB` | `server-install.sh` | Set `y` to wipe the existing SQLite DB without asking (needed when its schema changed and there is no terminal); `n` never wipes. A wipe first copies it to `db.sqlite.<timestamp>.bak` (owner-only, it holds stream keys and destination URLs) |
 | `SRS_LOCAL_BIN` | `dev-server-install.sh` | Local executable SRS binary to copy into `./objs/srs` |
