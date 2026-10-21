@@ -25,10 +25,14 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](http
 - [Mix translation audio](docs/2-usage/3-translation.md) (beta) from an interpreter's pipeline over the source, with speech detection, ducking, delay and restore timing. If the translator drops, the output continues with source audio.
 - [Recover automatically](docs/3-operations/4-reliability.md): stall, socket and memory watchdogs with bounded restarts. One failing destination never affects the others.
 - Keep [post-incident evidence](docs/3-operations/4-reliability.md#input-timestamp-fault-detection): per-output Error History with FFmpeg stderr tails, grouped timestamp warnings, and [rotated structured diagnostics](docs/3-operations/3-configuration.md).
-- Watch everything in a live dashboard: HLS preview, ffprobe media details, bitrates, host and per-process CPU/RAM/network charts, and copy-ready publish URLs.
+- Watch everything in a live dashboard: HLS preview, ffprobe media details, bitrates, host and per-process CPU/RAM/network charts, and copy-ready publish URLs, and it stays readable with 50 inputs and 500 outputs ([measured](docs/1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling)).
 - Restart safely: SRS accepts publishes only once the control plane is ready, and all configuration persists in SQLite.
 
 ![Overview page with host charts and per-process resources](.github/assets/overview.png)
+
+![The dashboard with 50 inputs and 500 outputs: two inputs drop, and the totals, the affected pipelines and the Issues tab show it](.github/assets/dashboard-problems.gif)
+
+_50 inputs and 500 outputs in one dashboard. The control plane, SRS and inputs are real; the outputs are simulated, so no FFmpeg load is shown ([details](docs/1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling))._
 
 ## Built for reliability
 
@@ -39,6 +43,7 @@ A live event can't be restarted. Bunryu assumes something will go wrong (a desti
 - **Safe startup:** SRS accepts publishes only once the control plane is ready, and a service restart or host reboot comes back from SQLite without manual steps.
 - **Accurate state:** inputs and outputs don't stay "running" in the dashboard after a disconnect, crash or restart.
 - **Evidence:** per-output Error History, rotated diagnostics, and [incident write-ups](fail-reports/README.md) of real failures and their fixes.
+- **Small and boring:** no media code of our own. SRS, libsrt and FFmpeg do the media work, and the control plane is about 11,000 lines of TypeScript; it costs some efficiency ([why](docs/1-getting-started/5-comparison.md#design-approach)).
 
 These paths are exercised with fault-injection scenarios (a frozen destination, one that never reads, one that refuses connections, output churn, a publisher outage, a CPU-saturated host and a soak with 50 healthy outputs). No software can promise that nothing fails: see [Known issues](docs/3-operations/5-known-issues.md) and the [supported capacity](docs/1-getting-started/1-introduction.md#capacity-and-limits) for what Bunryu does not cover.
 
@@ -65,7 +70,7 @@ The installer needs the initial dashboard password on a fresh install and never 
 
 ## Documentation
 
-- **Getting started:** [Introduction](docs/1-getting-started/1-introduction.md) · [Docker](docs/1-getting-started/2-docker.md) · [Native install](docs/1-getting-started/3-install.md)
+- **Getting started:** [Introduction](docs/1-getting-started/1-introduction.md) · [Docker](docs/1-getting-started/2-docker.md) · [Native install](docs/1-getting-started/3-install.md) · [Comparison with alternatives](docs/1-getting-started/5-comparison.md)
 - **Usage:** [Publishing](docs/2-usage/1-publishing.md) · [Outputs](docs/2-usage/2-outputs.md) · [Translation outputs](docs/2-usage/3-translation.md) (beta)
 - **Operations:** [Security](docs/3-operations/1-security.md) · [Remote access](docs/3-operations/2-remote-access.md) · [Configuration](docs/3-operations/3-configuration.md) · [Reliability](docs/3-operations/4-reliability.md) · [Known issues](docs/3-operations/5-known-issues.md)
 - **Reference:** [REST API](docs/4-reference/1-api.md) · [Development](docs/4-reference/2-development.md)

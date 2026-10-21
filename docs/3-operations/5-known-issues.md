@@ -3,6 +3,15 @@
 Translation-specific limitations are listed on the
 [Translation outputs](../2-usage/3-translation.md#known-limitations) page.
 
+## Finding one output among hundreds
+
+The dashboard has no search box. The Overview lists every input and then every output
+in one scrolling page (about 32 screens at 500 outputs), so finding one output by name
+or destination means scrolling.
+
+**Workaround:** put pipelines in sidebar groups and open the pipeline: its view shows
+only its own outputs. The **Issues** tab narrows the Overview to outputs with a problem.
+
 ## Short CPU spikes from host package inventory checks every 10 min
 
 On GCP Ubuntu hosts, `google-osconfig-agent.service` may periodically run

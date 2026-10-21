@@ -117,6 +117,13 @@ timestamps, enhanced RTMP) and behavior on bad networks, which only show up in
 real use. A new server carries every input at once, so its bugs reach every
 stream.
 
+**Tradeoffs:** every output is an FFmpeg process, so a copy output costs about 65 to
+90 MB of RAM, where a MediaMTX forwarding hub used about 10x less (and about 1.5x more
+CPU; see [One FFmpeg process per output](#one-ffmpeg-process-per-output)). That is
+acceptable at the supported 500 outputs. In return the control plane stays small
+(about 11,000 lines of TypeScript) and FFmpeg and libsrt handle the damaged-input
+cases.
+
 ## SRT ingest
 
 ### A separate relay accepts bonded SRT, because neither FFmpeg nor SRS can

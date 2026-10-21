@@ -91,6 +91,34 @@ measured). Bandwidth is a limit of its own: 100 outputs at 8 Mbps send 800 Mbps,
 500-output ceiling at that bitrate needs about 30 vCPUs, 4 Gbps of egress and 17–30 GB
 of RAM, so check the egress cap of the machine type too.
 
+## The dashboard at the supported ceiling
+
+Measured on the isolated test stack ([Development](../4-reference/2-development.md)) on
+an 8-core laptop shared with other work: 50 pipelines, each with a live 720p RTMP input
+(a looped clip, stream copy) and 10 copy outputs, so 500 outputs, all running. The
+outputs are a stand-in for FFmpeg that reports progress and sends nothing, so FFmpeg's
+own CPU and RAM are not here (see [Outputs](#outputs)). These numbers are the cost of
+the control plane and the dashboard.
+
+| Measure | Result |
+|---|---|
+| Control plane with one dashboard open | about 17% of one core, 251 MB RSS |
+| `/api/health`, fetched every 5 s by each dashboard | 296 KB, 18 KB gzipped, about 30 ms to produce |
+| `/api/config` | 149 KB, 11 KB gzipped |
+| Dashboard first render (headless Chrome, same machine) | 0.7-0.8 s (one run of four took 1.3 s), about 9,100 DOM nodes |
+| Overview page length | about 28,000 px (about 32 screens): 50 input rows, then 500 output rows |
+
+What the dashboard shows at that size:
+
+- The header totals (48 of 50 inputs live, 480 of 500 outputs healthy, 20 flagged) and
+  the sidebar's pipeline groups and status dots show a problem without scrolling. With
+  two inputs taken offline, those two pipelines turned yellow in their groups.
+- The **Issues** tab narrows the output list to the affected outputs, each with its
+  reason ("Output is running but input is not live").
+- A pipeline's own view shows its 10 outputs on one screen.
+
+There is no search box; see [Known issues](../3-operations/5-known-issues.md#finding-one-output-among-hundreds).
+
 ## Limits of these numbers
 
 - **One machine family.** Only `n2` was measured; newer families (`c3`, `n4`) should

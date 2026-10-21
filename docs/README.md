@@ -6,6 +6,7 @@
 - [Docker](1-getting-started/2-docker.md): try it in a container
 - [Native install](1-getting-started/3-install.md): production install with systemd, firewall ports, SRT passphrase
 - [Sizing a server](1-getting-started/4-sizing.md): measured CPU and RAM costs and example GCP machine sizes
+- [Comparison with alternatives](1-getting-started/5-comparison.md): how Bunryu differs from Restreamer, SRS and MediaMTX, and when not to use it
 
 ## Usage
 
