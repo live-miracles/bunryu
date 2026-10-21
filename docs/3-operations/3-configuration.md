@@ -103,6 +103,18 @@ cap that removes the oldest rotated files first. The installer configures
 persistent journald with a seven-day retention limit, 1 GB system journal cap,
 256 MB runtime cap, and one-day journal file rotation.
 
+### UDP buffer ceiling
+
+The installer writes `/etc/sysctl.d/90-bunryu.conf`, which raises
+`net.core.rmem_max` and `net.core.wmem_max` to 16 MB (default 212992). libsrt asks
+for a 12 MB UDP buffer per socket and the kernel caps the request at that
+ceiling; sockets that ask for nothing keep the default size. The services read it
+when they create their sockets, so a change needs a restart of SRS and goryu.
+The ingest sockets are the ones to check: `sudo ss -uanmp` shows each socket's
+buffer as `rb` (24576000 for SRS on 10080 and goryu on 10081) and its drops as
+`d`, and `nstat -az UdpRcvbufErrors` counts drops host-wide. In Docker the
+container uses the host's kernel setting; set it on the Docker host.
+
 ### Database schema version
 
 The SQLite database carries a schema version (`PRAGMA user_version`, `SCHEMA_VERSION`

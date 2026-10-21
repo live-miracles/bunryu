@@ -55,4 +55,5 @@ docker run -d --name bunryu --restart unless-stopped \
 - **Limitations**: the dashboard's SRS/relay/app log viewers read journald, so
   they are empty in Docker; use `docker compose logs`. The version panel
   shows the commit as `unknown`. The Goryu needs UDP port 10081
-  published as above.
+  published as above. The image can't raise the kernel's UDP buffer ceiling;
+  see [UDP buffer ceiling](../3-operations/3-configuration.md#udp-buffer-ceiling).

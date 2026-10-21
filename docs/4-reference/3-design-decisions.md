@@ -192,6 +192,35 @@ The coupling is the relay's config file and its `/status` JSON. Treat `/status`
 as a contract: add fields, and bump the relay's major version for anything
 else.
 
+### Raise the kernel UDP buffer ceiling, but don't alert on it
+
+**Decision:** the installer sets `net.core.rmem_max` and `wmem_max` to 16 MB. There is
+no health alert or startup check for the value.
+
+**Why:**
+- libsrt requests a 12 MB UDP buffer per socket. Prod had the Linux default
+  ceiling of 212992, so SRS (10080) and goryu (10081) ingest sockets ran with
+  `rb425984` (the kernel doubles the capped value), about 70 ms of a 50 Mbps feed.
+  A stall longer than that, such as an encode starving the ingest thread, drops
+  packets and costs SRT retransmits.
+- Raising a ceiling is cheap. It changes nothing for sockets that don't ask for
+  more, and memory is only used while a queue is full (bounded by `udp_mem`).
+
+**Evidence:** no drops were observed, so this is headroom, not an incident fix.
+A 2 vCPU / 2 GB prod VM (outputs stopped, host about 85% idle) receiving a
+bonded SRT feed at 6.6k then 11k packets/s over 33 minutes showed
+`UdpRcvbufErrors` 0 and every ingest socket's `d` 0. The default ceiling was
+enough at that load, but nothing ran under CPU contention. With the 16 MB ceiling
+the same sockets got `rb24576000` (12 MB doubled) after a restart and again
+after a reboot, so the sysctl file is applied at boot.
+
+**Why no alert:** an alert needs a recorded incident to justify it. Without drops
+there is nothing to calibrate it against.
+
+**Revisit when:** `UdpRcvbufErrors` rises or an ingest socket shows `d` above 0
+(then add a health check for the ceiling and the counter), or inputs carry
+4K SRT at 50 Mbps or more with encodes running on the same host.
+
 ## Outputs and preview
 
 ### One FFmpeg process per output

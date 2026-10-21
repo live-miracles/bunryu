@@ -401,6 +401,16 @@ SystemMaxFileSize=100M
 EOF
 systemctl restart systemd-journald
 
+# libsrt asks for a 12 MB UDP buffer per socket, and the kernel silently caps the
+# request at net.core.rmem_max/wmem_max (212992 by default, about 425 KB in
+# effect). Raise the ceiling; sockets that ask for nothing keep the default size.
+# The services are restarted below, so they pick the new ceiling up.
+cat > /etc/sysctl.d/90-bunryu.conf << 'EOF'
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+EOF
+sysctl -q -p /etc/sysctl.d/90-bunryu.conf || echo "WARNING: could not apply /etc/sysctl.d/90-bunryu.conf; SRT sockets keep the default UDP buffer cap" >&2
+
 cat > /etc/systemd/system/srs.service << EOF
 [Unit]
 Description=SRS Streaming Server
