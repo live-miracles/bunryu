@@ -117,7 +117,7 @@ What the dashboard shows at that size:
   reason ("Output is running but input is not live").
 - A pipeline's own view shows its 10 outputs on one screen.
 
-There is no search box; see [Known issues](../3-operations/5-known-issues.md#finding-one-output-among-hundreds).
+Each table has a search box for names; the page itself is long, see [Known issues](../3-operations/5-known-issues.md#the-overview-is-one-long-page).
 
 ## Limits of these numbers
 

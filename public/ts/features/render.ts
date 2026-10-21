@@ -39,6 +39,13 @@ import { renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import { alertHint } from '../core/hints.js';
 import { INPUT_ALERT_CODES } from '../core/pipeline.js';
+import {
+    affectedOutputCount,
+    countLabel,
+    matchesName,
+    noMatchRowHtml,
+    searchBoxHtml,
+} from '../core/overview-filter.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderHostConnectionsOverview } from './host-connections-view.js';
 import {
@@ -1318,19 +1325,32 @@ function renderOverview(): void {
     }
 
     // ── Inputs ────────────────────────────────────────────
-    const inputProblemCount = state.pipelines.filter((p) => isProblem(inputStatus(p.input))).length;
+    // An input nobody publishes to is "off". With outputs in trouble because of it, it
+    // is also an issue, so the Issues view lists the cause beside its affected outputs.
+    const affectedOutputs = (p: PipelineView): number =>
+        affectedOutputCount(
+            inputStatus(p.input),
+            p.outs.map((o) => outStatus(o, p.input)),
+        );
+    const inputProblemCount = state.pipelines.filter(
+        (p) => isProblem(inputStatus(p.input)) || affectedOutputs(p) > 0,
+    ).length;
     const inputActiveCount = state.pipelines.filter((p) => !isOffline(inputStatus(p.input))).length;
     let inputRows = '';
+    let inputsShown = 0;
     if (state.pipelines.length === 0) {
         inputRows = `<tr><td colspan="7" class="py-4 text-center opacity-50">No pipelines yet.</td></tr>`;
     } else {
         for (const p of state.pipelines) {
             const inp = p.input;
             const st = inputStatus(inp);
-            const isWarn = st === 'warn';
+            const affected = affectedOutputs(p);
+            const isWarn = st === 'warn' || affected > 0;
             const isError = st === 'error';
             if (problemsOnly && !isWarn && !isError) continue;
             if (activeOnly && isOffline(st)) continue;
+            if (!matchesName(state.inputSearch, p.name)) continue;
+            inputsShown += 1;
             const protocolLabel = inp.connected
                 ? p.srtBonding.acceptedBySrs
                     ? relayTypeLabel(p)
@@ -1343,14 +1363,16 @@ function renderOverview(): void {
             inputRows += `<tr class="hover" ${statusBg(isError, isWarn)}>
                 <td class="overview-name-col font-semibold cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}">${escapeHtml(p.name)}</td>
                 <td>${overviewStatusBadge(st)}</td>
-                <td>${renderOverviewIssues(inputIssues(inp))}</td>
+                <td>${renderOverviewIssues(affected > 0 ? [{ severity: 'warning', message: `No publisher is connected; ${affected} output${affected === 1 ? '' : 's'} affected.` }] : inputIssues(inp))}</td>
                 <td class="font-mono text-xs">${inp.live ? formatUptime(inp.uptimeMs) : '—'}</td>
                 <td class="font-mono text-xs">${inp.connected ? formatBitrate(displayInputBitrateKbps(inp)) : '—'}</td>
                 <td>${typeBadge(protocolLabel)}</td>
                 <td class="font-mono text-xs">${spec}</td>
             </tr>`;
         }
-        if (problemsOnly && inputRows === '') {
+        if (inputRows === '' && state.inputSearch.trim() !== '') {
+            inputRows = noMatchRowHtml(7, 'inputs', state.inputSearch);
+        } else if (problemsOnly && inputRows === '') {
             inputRows = `<tr><td colspan="7" class="py-4 text-center opacity-50">No input issues.</td></tr>`;
         } else if (activeOnly && inputRows === '') {
             inputRows = `<tr><td colspan="7" class="py-4 text-center opacity-50">No active inputs.</td></tr>`;
@@ -1367,6 +1389,7 @@ function renderOverview(): void {
         0,
     );
     let outputRows = '';
+    let outputsShown = 0;
     if (totalOuts === 0) {
         outputRows = `<tr><td colspan="9" class="py-4 text-center opacity-50">No outputs yet.</td></tr>`;
     } else {
@@ -1375,6 +1398,8 @@ function renderOverview(): void {
                 const st = outStatus(o, p.input);
                 if (problemsOnly && !isProblem(st)) continue;
                 if (activeOnly && isOffline(st)) continue;
+                if (!matchesName(state.outputSearch, p.name, o.name)) continue;
+                outputsShown += 1;
                 const badge = overviewStatusBadge(st);
 
                 const isOn = o.status === 'running';
@@ -1399,7 +1424,9 @@ function renderOverview(): void {
                 </tr>`;
             }
         }
-        if (problemsOnly && outputRows === '') {
+        if (outputRows === '' && state.outputSearch.trim() !== '') {
+            outputRows = noMatchRowHtml(9, 'outputs', state.outputSearch);
+        } else if (problemsOnly && outputRows === '') {
             outputRows = `<tr><td colspan="9" class="py-4 text-center opacity-50">No output issues.</td></tr>`;
         } else if (activeOnly && outputRows === '') {
             outputRows = `<tr><td colspan="9" class="py-4 text-center opacity-50">No active outputs.</td></tr>`;
@@ -1640,6 +1667,14 @@ function renderOverview(): void {
             </table>
         </div>`;
 
+    // The whole Overview is rebuilt on every refresh, so a search box being typed in
+    // would lose focus and caret: remember them and put them back afterwards.
+    const focused = document.activeElement;
+    const typingIn =
+        focused instanceof HTMLInputElement && overviewEl.contains(focused) && focused.id
+            ? { id: focused.id, start: focused.selectionStart, end: focused.selectionEnd }
+            : null;
+
     setHtmlKeepScroll(
         overviewEl,
         `
@@ -1647,14 +1682,20 @@ function renderOverview(): void {
         ${systemUsageHtml}
         ${filterChips}
         ${relaySectionHtml}
-        <h2 class="mb-2 text-lg font-bold">Inputs <span class="badge badge-neutral badge-sm ml-1">${state.pipelines.length}</span></h2>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-lg font-bold">Inputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(inputsShown, state.pipelines.length)}</span></h2>
+            ${searchBoxHtml('ov-search-inputs', 'Search inputs by name', state.inputSearch)}
+        </div>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm">
                 ${thead(['Pipeline', 'Status', 'Issues', 'Uptime', 'Bitrate', 'Type', 'Stream Specification'])}
                 <tbody>${inputRows}</tbody>
             </table>
         </div>
-        <h2 class="mb-2 text-lg font-bold">Outputs <span class="badge badge-neutral badge-sm ml-1">${totalOuts}</span></h2>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-lg font-bold">Outputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(outputsShown, totalOuts)}</span></h2>
+            ${searchBoxHtml('ov-search-outputs', 'Search outputs by name', state.outputSearch)}
+        </div>
         <div class="overflow-x-auto">
             <table class="table table-sm">
                 ${thead(['Pipeline · Output', 'Status', 'Issues', 'Uptime', 'Bitrate', 'CPU', 'RAM', 'Type', 'Stream Specification'])}
@@ -1662,6 +1703,14 @@ function renderOverview(): void {
             </table>
         </div>`,
     );
+
+    if (typingIn) {
+        const box = document.getElementById(typingIn.id);
+        if (box instanceof HTMLInputElement) {
+            box.focus();
+            box.setSelectionRange(typingIn.start, typingIn.end);
+        }
+    }
 
     const fmtPct = (v: number) => `${Math.round(v)}%`;
     drawChart('chart-cpu', chartSamples, (s) => s.cpu, 100, '#3b82f6', fmtPct);
@@ -1710,6 +1759,26 @@ function renderOverview(): void {
     document.getElementById('ov-filter-problems')?.addEventListener('click', () => {
         state.overviewFilter = 'problems';
         renderOverview();
+    });
+    // Search boxes filter their own table by name as you type. Text being composed
+    // (an IME) is applied when the composition ends, since a re-render would break it.
+    const wireSearch = (id: string, apply: (value: string) => void): void => {
+        const box = document.getElementById(id);
+        if (!(box instanceof HTMLInputElement)) return;
+        const update = (): void => {
+            apply(box.value);
+            renderOverview();
+        };
+        box.addEventListener('input', (e) => {
+            if (!(e as InputEvent).isComposing) update();
+        });
+        box.addEventListener('compositionend', update);
+    };
+    wireSearch('ov-search-inputs', (value) => {
+        state.inputSearch = value;
+    });
+    wireSearch('ov-search-outputs', (value) => {
+        state.outputSearch = value;
     });
     // Assignment (not addEventListener) since overviewEl itself persists across
     // renders while its contents are fully replaced above — addEventListener

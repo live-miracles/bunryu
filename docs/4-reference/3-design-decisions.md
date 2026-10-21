@@ -634,6 +634,39 @@ worker.
 **Revisit** if push notifications or an offline page are wanted; both need a
 service worker and a cache policy that keeps deploys from going stale.
 
+### The Overview filters in the browser, and searches names only
+
+**Decision:** each Overview table has its own search box on its heading line, matching
+the pipeline or output name as plain, case-insensitive text. It filters the rows already
+in the browser and combines with the All/Active/Issues tabs. The Issues tab also lists an
+offline input when outputs of its pipeline are in trouble, and the heading badges show
+"shown of total".
+
+**Why:**
+
+- **At 50 inputs and 500 outputs the Overview is about 32 screens**
+  ([Sizing](../1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling)), and
+  finding one output meant scrolling. The page already holds all 500 rows (about 18 KB
+  gzipped each refresh), so a server-side search would add an API route for nothing.
+- **Two boxes, not one:** the tables have different rows and an output matches on its
+  pipeline's name too, so one box would filter two lists by different rules.
+- **An offline input stays "off" everywhere else.** An idle pipeline before a show is
+  normal, so marking it a warning would turn the sidebar yellow for every unused
+  pipeline. It is an issue only where an operator is looking for causes: the Issues view
+  with affected outputs. Before, that view listed 20 affected outputs and "No input
+  issues" while two inputs were down.
+- **A heading that says 500 above a list of 20** hid how much a filter had removed.
+
+**Not adopted:** matching destinations or statuses (the destination URL can hold a
+platform stream key), regular expressions, and a search that also covers the SRT Relay
+table.
+
+**Tested:** 50 pipelines and 500 outputs on the test stack, typing during the 5 s
+refresh (focus, text and caret survive it).
+
+**Revisit when:** operators ask to search by destination host or status, or the output
+limit rises.
+
 ## Tooling
 
 ### ESLint checks promise handling; Prettier stays the formatter

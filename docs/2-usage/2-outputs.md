@@ -140,6 +140,15 @@ starts them staggered at 200 ms intervals. An output's desired state is saved,
 so outputs that were running are started again automatically when the input
 comes back or the server restarts.
 
+### Overview
+
+The dashboard's **Overview** lists every input and every output in two tables. The
+**All**, **Active** and **Issues** tabs narrow both: Active hides what is offline or
+stopped, and Issues keeps only warnings and errors, plus an offline input whose outputs
+are affected, with the reason. The search box on each table's heading line filters it by
+name as you type; an output matches on its own name or its pipeline's. The heading badge
+shows how many rows are left ("20 of 500").
+
 The output card shows status, uptime, bitrate, CPU and memory. Problems appear on
 the card as warnings, each with the time it began ("since 09:18"), and every crash, watchdog restart and finished warning
 episode is kept in the output's **Error History** with the FFmpeg stderr tail.

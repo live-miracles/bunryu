@@ -3,14 +3,13 @@
 Translation-specific limitations are listed on the
 [Translation outputs](../2-usage/3-translation.md#known-limitations) page.
 
-## Finding one output among hundreds
+## The Overview is one long page
 
-The dashboard has no search box. The Overview lists every input and then every output
-in one scrolling page (about 32 screens at 500 outputs), so finding one output by name
-or destination means scrolling.
+The Overview lists every input and then every output in one scrolling page (about 32
+screens at 500 outputs). Search matches names only, not destinations or statuses.
 
-**Workaround:** put pipelines in sidebar groups and open the pipeline: its view shows
-only its own outputs. The **Issues** tab narrows the Overview to outputs with a problem.
+**Workaround:** search by name, use the **Issues** tab, or open the pipeline from the
+sidebar: its view shows only its own outputs. Sidebar groups keep the pipeline list short.
 
 ## Short CPU spikes from host package inventory checks every 10 min
 
