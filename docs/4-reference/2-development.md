@@ -47,6 +47,13 @@ npm run lint          # ESLint: unhandled promises, dead code
 npm run format:check
 ```
 
+`test/malformedInput.test.js` feeds seeded random mutations of `ss` output,
+destination URLs, names, the relay config and the relay `/status` JSON to their
+parsers and asserts they never throw, hang or return a malformed value. A failure
+prints the seed and input; turn it into a regression test next to the parser's own.
+Add a parser that reads text from outside the process (a new `ss`, FFmpeg, SRS or
+relay output) to that file.
+
 `scripts/test-stack.sh` starts an isolated local stack (its own SRS, control
 plane and fresh database, with a fake output FFmpeg) that does not touch a
 developer's own `npm run dev`. It is documented in
