@@ -57,7 +57,8 @@ export function audioSpec(
 }
 
 // One line per audio track, "Track N: …" ("Track N (PID p): …" when the
-// input is MPEG-TS and reports one), falling back to SRS's single-audio
+// input is MPEG-TS, reports one and carries several tracks, since the PID is
+// what tells them apart), falling back to SRS's single-audio
 // metadata when ffprobe reported no tracks. Returns HTML.
 export function audioSpecLines(
     audioTracks: AudioTrackInfo[] | null,
@@ -66,7 +67,7 @@ export function audioSpecLines(
     if (audioTracks && audioTracks.length > 0) {
         return audioTracks.map((t, i) => {
             const label = escapeHtml([t.language, t.title].filter(Boolean).join(' '));
-            const pid = t.pid != null ? ` (PID ${t.pid})` : '';
+            const pid = audioTracks.length > 1 && t.pid != null ? ` (PID ${t.pid})` : '';
             return `Track ${i + 1}${pid}: ${audioSpec(t.codec, t.profile, t.channels, t.sampleRate, label || undefined)}`;
         });
     }

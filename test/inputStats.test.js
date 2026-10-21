@@ -57,10 +57,16 @@ describe('audioSpecLines', () => {
         );
     });
 
-    test('includes the PID when the input reports one (MPEG-TS over SRT)', () => {
+    test('includes the PID when a multi-track input reports one (MPEG-TS over SRT)', () => {
         const lines = audioSpecLines([track({ pid: 257 }), track({ index: 1, pid: null })], null);
         assert.equal(lines[0], 'Track 1 (PID 257): aac LC 2ch 48kHz');
         assert.equal(lines[1], 'Track 2: aac LC 2ch 48kHz');
+    });
+
+    test('leaves the PID out for a single track', () => {
+        assert.deepEqual(audioSpecLines([track({ pid: 257 })], null), [
+            'Track 1: aac LC 2ch 48kHz',
+        ]);
     });
 
     test('falls back to the single SRS audio when there are no tracks', () => {
