@@ -295,12 +295,12 @@ for understanding an incident). If a real secret is committed and pushed
 anyway, treat it as compromised: rotate it, and don't rely on a history
 rewrite alone to undo the exposure.
 
-Test effort should be proportional to the change during implementation. Small,
-low-risk changes—especially UI-only styling changes—may skip the full test
-suite after targeted validation. Substantial changes should run the full test
-suite during implementation as well. Regardless of change size, the full test
-suite must always be run immediately before committing, and the results must
-be checked to ensure existing behavior has not been broken.
+Test effort should be proportional to the change. A change that only touches
+documentation, comments or cosmetic styling skips the full test suite: run just
+the checks that apply (the format check, the docs link checker for docs, lint
+for code). Any other change must run the full test suite immediately before
+committing, and the results must be checked to ensure existing behavior has not
+been broken. Substantial changes should run it during implementation as well.
 
 ## Development expectations
 
