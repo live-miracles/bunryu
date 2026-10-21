@@ -326,6 +326,11 @@ export function createOutputService(
             quickFailures: number;
             lastFailure: string | null;
             timer: NodeJS.Timeout | null;
+            // Which start problems the current episode (since the last spawn)
+            // already put in the Error History, so a start that keeps failing
+            // adds one record, not one per attempt.
+            startFailureNoted: boolean;
+            backstopNoted: boolean;
         }
     >();
     // For the 'stopped' record of a stop that followed repeated failures.
@@ -524,9 +529,30 @@ export function createOutputService(
                 quickFailures: 0,
                 lastFailure: null,
                 timer: null,
+                startFailureNoted: false,
+                backstopNoted: false,
             });
         }
         return retryState.get(outputId)!;
+    }
+
+    // A start that fails before spawning, or an output nothing was starting, has
+    // no ffmpeg run to leave a history record, so write one here: otherwise the
+    // card shows nothing while the output sits stopped.
+    function noteStartProblem(
+        outputId: string,
+        kind: 'startFailure' | 'backstop',
+        message: string,
+    ): void {
+        const r = getRetry(outputId);
+        const noted = kind === 'startFailure' ? 'startFailureNoted' : 'backstopNoted';
+        if (r[noted]) return;
+        r[noted] = true;
+        try {
+            db.setOutputLastError(outputId, message, kind === 'startFailure' ? 'crash' : 'warning');
+        } catch (err) {
+            console.warn(red(`[outputs] ${outputId} could not record "${message}":`), err);
+        }
     }
 
     function clearRetry(outputId: string): void {
@@ -637,10 +663,9 @@ export function createOutputService(
             // Not retried from here: the next input edge or manual start, or
             // else the backstop (startOrphanedOutputs), tries again.
             console.warn(red(`[outputs] ${outputId} auto-start failed:`), err);
-            logEvent('output-start-failed', {
-                outputId,
-                error: err instanceof Error ? err.message : String(err),
-            });
+            const error = err instanceof Error ? err.message : String(err);
+            logEvent('output-start-failed', { outputId, error });
+            noteStartProblem(outputId, 'startFailure', `Start failed: ${error}`);
         } finally {
             startLocks.delete(outputId);
         }
@@ -1140,6 +1165,11 @@ export function createOutputService(
                 outputId: output.id,
                 outputName: output.name,
             });
+            noteStartProblem(
+                output.id,
+                'backstop',
+                'Watchdog: nothing was starting this output; starting it',
+            );
             scheduleTryStart(output.id, kicked++ * RESTART_STAGGER_MS);
         }
         orphansSeen = orphans;
@@ -1394,6 +1424,11 @@ export function createOutputService(
         });
 
         processes.set(output.id, child);
+        const retry = retryState.get(output.id);
+        if (retry) {
+            retry.startFailureNoted = false;
+            retry.backstopNoted = false;
+        }
         const runNumber = (runCounts.get(output.id) ?? 0) + 1;
         runCounts.set(output.id, runNumber);
         runs.set(output.id, {

@@ -795,6 +795,53 @@ describe('output stop/start race', () => {
         service.shutdown();
     });
 
+    test('a start that fails before spawning leaves one Error History record per episode', async (t) => {
+        const procs = [];
+        const db = makeDb();
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
+        );
+        const service = createOutputService(db, makeReadyInputState());
+        const started = () => db.errorRecords.filter((r) => /^Start failed/.test(r.message));
+        const watchdog = () => db.errorRecords.filter((r) => /^Watchdog: /.test(r.message));
+
+        await service.start('out1');
+        const getPipeline = db.getPipeline;
+        db.getPipeline = () => {
+            throw new Error('database is locked');
+        };
+        procs[0].emit('close', 1, null);
+        // The retry fails, then the backstop kicks and fails again, repeatedly.
+        await sleep(1700);
+
+        assert.equal(started().length, 1, 'every failed attempt must not add a record');
+        assert.equal(started()[0].kind, 'crash');
+        assert.match(started()[0].message, /database is locked/);
+        assert.equal(watchdog().length, 1);
+        assert.equal(watchdog()[0].kind, 'warning');
+
+        // Once it spawns again the episode is over: the next one is recorded.
+        db.getPipeline = getPipeline;
+        await sleep(400);
+        assert.equal(procs.length, 2, 'the backstop must start the output once it can');
+        db.getPipeline = () => {
+            throw new Error('database is locked');
+        };
+        procs[1].emit('close', 1, null);
+        // Its retry waits 2 s: the second quick failure in a row.
+        await sleep(2400);
+
+        assert.equal(started().length, 2);
+
+        service.shutdown();
+    });
+
     test('never spawns a second ffmpeg while one is registered for the output', async (t) => {
         const procs = [];
         const createOutputService = loadOutputService(
