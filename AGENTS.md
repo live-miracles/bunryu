@@ -249,6 +249,8 @@ symlinks `.claude/skills` and `.agents/skills`; add new ones there, not in a
 tool folder.
 
 - `run-bunryu` - isolated local test stack and dashboard screenshots.
+- `control-bunryu` - drive a running instance (local, test stack or production)
+  through the REST API: login, read health, create/start/stop outputs.
 - `investigate-prod` - read-only inspection of the production VM (logs,
   diagnostics, deployed version).
 - `write-fail-report` - incident write-ups in `fail-reports/` and the redaction

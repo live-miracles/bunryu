@@ -53,6 +53,23 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | POST | `/api/srs/on_play` | SRS play hook (on the loopback-only `hook_port`). Only plays from loopback (the app's own FFmpeg) are accepted; others are refused and listed in `/api/rejected-publishes` |
 | POST | `/api/srs/on_publish` | SRS publish hook (called by SRS on the loopback-only `hook_port`, not on the dashboard port). Pipeline keys are accepted in the `live` app; the reserved `internal` app is accepted only for a running shared encode, over RTMP from loopback |
 
+## Using the API from a script
+
+There is no CLI or API token: a script logs in with the dashboard password and
+sends the session cookie (valid 7 days) on every call. Five wrong passwords in a
+minute block that IP for five minutes (`429`), so don't retry a failed login in a loop.
+
+```bash
+curl -sS -c jar -H 'content-type: application/json' \
+  -d '{"password":"…"}' http://localhost:8080/api/auth/login
+curl -sS -b jar http://localhost:8080/api/health
+curl -sS -b jar -X POST http://localhost:8080/api/pipelines/1/outputs/start-all
+```
+
+A start returns before anything is running, so poll `/api/health` for the result.
+An output started while its pipeline has no live input stays `stopped` (its
+desired state is `running`) until a publisher connects.
+
 ## Shared encodes
 
 Outputs of one pipeline that need the same encode (the same `videoEncoding` plus
