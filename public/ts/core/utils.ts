@@ -79,14 +79,17 @@ export function formatBytes(bytes: number): string {
 
 // Shared formatter for millisecond durations (RTT, negotiated latency,
 // receive/send buffer occupancy, host probe latency): the dashboard's number rule.
+// What the fmt* helpers show for a value the source did not report.
+export const NO_VALUE = '—';
+
 export function fmtMs(ms: number | null | undefined): string {
-    return ms != null ? `${fmtUnder10(ms)} ms` : '—';
+    return ms != null ? `${fmtUnder10(ms)} ms` : NO_VALUE;
 }
 
 // For a value already expressed in Mb/s (relay bandwidth/rate fields), as
 // opposed to formatBitrate above which takes raw kb/s.
 export function fmtMbpsValue(v: number | null | undefined): string {
-    return v != null ? formatBitrate(v * 1000) : '—';
+    return v != null ? formatBitrate(v * 1000) : NO_VALUE;
 }
 
 export function formatLocalTime(ts: number): string {

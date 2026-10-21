@@ -1,6 +1,6 @@
 import * as api from '../core/api.js';
 import { state } from '../core/state.js';
-import { escapeHtml, fmtMs, fmtMbpsValue } from '../core/utils.js';
+import { escapeHtml, fmtMs, fmtMbpsValue, NO_VALUE } from '../core/utils.js';
 import type { LegHistoryData, LegHistorySample } from '../types.js';
 
 const LEG_HISTORY_WINDOW_MS = 30 * 60 * 1000;
@@ -398,7 +398,10 @@ const SRT_STAT_DESCRIPTIONS: Record<string, string> = {
 
 const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 
-function srtDetailRow(label: string, value: string): string {
+// A statistic the relay did not report (null, shown as NO_VALUE) has no row; a
+// reported 0 does, since "no drops" is worth seeing.
+export function srtDetailRow(label: string, value: string): string {
+    if (value === NO_VALUE || value === '') return '';
     const description = SRT_STAT_DESCRIPTIONS[label];
     const info = description
         ? `<span class="js-tooltip inline-flex shrink-0 opacity-50 hover:opacity-100" tabindex="0" aria-label="${escapeHtml(description)}">${ICON_INFO}<div class="js-tooltip-content hidden"><div class="max-w-xs text-xs whitespace-normal">${escapeHtml(description)}</div></div></span>`
@@ -409,7 +412,9 @@ function srtDetailRow(label: string, value: string): string {
     </div>`;
 }
 
-function srtDetailSection(title: string, rowsHtml: string): string {
+// A section whose statistics were all unreported is left out with its title.
+export function srtDetailSection(title: string, rowsHtml: string): string {
+    if (!rowsHtml) return '';
     return `<div class="mb-4">
         <div class="text-xs font-semibold uppercase opacity-50 mb-1">${escapeHtml(title)}</div>
         <div class="text-xs">${rowsHtml}</div>
@@ -417,7 +422,7 @@ function srtDetailSection(title: string, rowsHtml: string): string {
 }
 
 function fmtRawCount(n: number | null | undefined): string {
-    return n != null ? n.toLocaleString() : '—';
+    return n != null ? n.toLocaleString() : NO_VALUE;
 }
 
 // Full, unabbreviated dump of every field the relay reports for a stream's
