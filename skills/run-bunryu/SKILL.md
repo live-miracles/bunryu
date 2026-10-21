@@ -113,6 +113,25 @@ The socket watchdog stays off (it matches the configured destination port, which
 loopback destinations do not have), so these scenarios test the progress watchdog and
 the output timeouts, not the socket watchdog.
 
+### Dashboard at the supported ceiling (50 inputs, 500 outputs)
+
+Measured in October 2026 for [Sizing](../../docs/1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling):
+
+1. `$H start`, then with [control-bunryu](../control-bunryu/SKILL.md) create 49 more
+   pipelines and add outputs with the bulk route until each has 10 (500 is the cap; it
+   takes under a second). Optionally group them with `POST /api/settings/pipeline-groups`
+   and `groupId` on each pipeline.
+2. Publish a real stream to each pipeline: stream-copy one short clip in a loop with
+   `objs/ffmpeg -re -stream_loop -1 -i clip.mp4 -c copy -f flv rtmp://127.0.0.1:31935/live/<key>`
+   (about 25 MB each), then `start-all` on every pipeline.
+3. Check `/api/health` (all `running`), then use `$H shot` and `scripts/test-stack-cdp.mjs`
+   for screenshots and page metrics. Taking two publishers down shows how problems
+   surface.
+
+The shim's progress loop uses only bash builtins (a fork per output per second saturated
+an 8-core host at 500 outputs); the outputs send nothing, so FFmpeg's own CPU and RAM are
+not in the result, only the control plane's and the dashboard's.
+
 Run the repo's own tests separately with `npm test` (not part of this harness).
 
 ## Gotchas

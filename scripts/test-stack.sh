@@ -127,9 +127,12 @@ if [ -n "\$real" ]; then
   exec -a \$0 $REPO/objs/ffmpeg -y "\${args[@]}"
 fi
 trap 'exit 0' TERM INT
-start=\$(date +%s%N); i=0
+# No fork per tick (bash builtins only): 500 outputs would otherwise fork about 1000
+# processes a second and saturate the host, which says nothing about the app.
+exec 9<> <(:)
+start=\${EPOCHREALTIME/[.,]/}; i=0
 while true; do
-  us=\$(( (\$(date +%s%N) - start) / 1000 ))
+  us=\$(( \${EPOCHREALTIME/[.,]/} - start ))
   echo "total_size=\$((us/2))"; echo "out_time_ms=\$us"; echo "bitrate=4000.0kbits/s"; echo "progress=continue"
   if [ -e "$WORK/flood" ]; then
     for n in \$(seq 40); do
@@ -138,7 +141,7 @@ while true; do
       echo "[vist#0:1/h264 @ 0x62c407ef8200] timestamp discontinuity (stream id=257): 14980000, new offset= -\$((20140000+i%3))" >&2
     done
   fi
-  sleep 1
+  read -t 1 -u 9 || true
 done
 SHIM
         chmod +x "$WORK/ffmpeg-shim.sh"
