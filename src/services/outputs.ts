@@ -1364,6 +1364,24 @@ export function createOutputService(
                   output.videoEncoding,
               );
 
+        // The one place that spawns, so the one place that can promise a single
+        // ffmpeg per output whichever caller got here (start(), tryStart(), the
+        // backstop) and however the checks before it interleave. A second spawn
+        // would overwrite the map entry and leave the first process orphaned.
+        if (processes.has(output.id)) {
+            console.warn(
+                yellow(
+                    `[outputs] ${output.id} (${output.name}) already has an ffmpeg process; not starting a second one`,
+                ),
+            );
+            logEvent('output-start-skipped', {
+                outputId: output.id,
+                outputName: output.name,
+                reason: 'process already registered',
+            });
+            return;
+        }
+
         // stdout and stderr must stay as 'pipe' (not 'ignore' or 'inherit').
         // When Node.js exits for any reason — including SIGKILL or a crash — the OS
         // closes the read ends of these pipes. ffmpeg writes to stdout every ~1s via
@@ -1579,12 +1597,9 @@ export function createOutputService(
         reportExternalProgress,
         reportExternalUsage,
 
-        // Double-start safety here relies on startJob() being synchronous up to and
-        // including spawn()+setStatus('running'): there is no await before the process
-        // is registered, so a second concurrent start() always observes status
-        // 'running' below and bails. If an await is ever introduced before spawn in
-        // startJob, this check is no longer sufficient — add an explicit start lock
-        // (as tryStart uses) to prevent racing spawns.
+        // The status check below is the cheap early exit. What guarantees a single
+        // ffmpeg per output is the processes check inside startJob(), right before
+        // the spawn, so it holds even if an await is added before it.
         async start(outputId: string): Promise<void> {
             if (startLocks.has(outputId)) return;
             if (statuses.get(outputId)?.status === 'running') return;

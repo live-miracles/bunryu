@@ -48,7 +48,10 @@ input but have no process, no pending retry and no start in progress, and starts
 them (staggered, with an `output-restarted-by-backstop` diagnostics event). An
 output has to look that way on two checks in a row, so it does not race the
 normal staggered start when an input comes online. Normally nothing matches; it
-exists for unexpected errors, such as a start that threw.
+exists for unexpected errors, such as a start that threw. However a start is
+triggered (API, retry, health poll or backstop), the spawn itself refuses to run a
+second FFmpeg for an output that already has one (`output-start-skipped` event), so
+overlapping triggers cannot leave an orphaned process.
 
 **Outputs that never stay up.** If an output is stopped after 5 failed attempts in a
 row, none of which stayed up for 60 s, the stop is recorded with the count and the

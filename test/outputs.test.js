@@ -795,6 +795,31 @@ describe('output stop/start race', () => {
         service.shutdown();
     });
 
+    test('never spawns a second ffmpeg while one is registered for the output', async (t) => {
+        const procs = [];
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new ManualExitFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
+        );
+        const service = createOutputService(makeDb(), makeReadyInputState());
+
+        await service.start('out1');
+        assert.equal(procs.length, 1);
+
+        // The status check in start() and tryStart() is what normally stops a
+        // second spawn; with it defeated, the spawn itself must still refuse.
+        service.reportExternalStatus('out1', 'stopped', null);
+        await service.start('out1');
+        assert.equal(procs.length, 1, 'a second ffmpeg would orphan the first');
+
+        service.shutdown();
+    });
+
     test('stopping a live attempt after repeated failed attempts records the count and the last failure', async (t) => {
         const procs = [];
         const db = makeDb();
