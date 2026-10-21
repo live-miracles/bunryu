@@ -8,7 +8,7 @@ _Bunryu (分流, "branching flow"): one live stream, many destinations._
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/website-live--miracles.github.io-blue.svg)](https://live-miracles.github.io/projects/bunryu/)
 
-**Self-hosted restreaming server for long live events.** Take inputs over RTMP, SRT and bonded SRT, and forward each one to many RTMP/RTMPS/SRT destinations (YouTube, Facebook, Twitch, CDNs) from one Linux server. Watchdogs restart a failed output without affecting the others.
+**Self-hosted restreaming server built for reliability, for live events that run for many hours.** Take inputs over RTMP, SRT and bonded SRT, and forward each one to many RTMP/RTMPS/SRT destinations (YouTube, Facebook, Twitch, CDNs) from one Linux server. Watchdogs restart a failed output without affecting the others.
 
 Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](https://github.com/live-miracles/goryu) for bonded SRT ingress, and FFmpeg for outputs, with a Node.js + TypeScript control plane, web dashboard and REST API.
 
@@ -29,6 +29,18 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](http
 - Restart safely: SRS accepts publishes only once the control plane is ready, and all configuration persists in SQLite.
 
 ![Overview page with host charts and per-process resources](.github/assets/overview.png)
+
+## Built for reliability
+
+A live event can't be restarted. Bunryu assumes something will go wrong (a destination stalls, an encoder drops, a process runs out of memory) and is built so the failure stays small, fixes itself where that is safe, and is explained afterwards.
+
+- **Isolated:** each output is its own FFmpeg process. A frozen, refusing or non-reading destination, a dropped input or a crashed FFmpeg doesn't touch the other outputs or pipelines.
+- **Bounded recovery:** [watchdogs](docs/3-operations/4-reliability.md) restart stuck outputs with limits, so a bad destination can't cause a restart storm.
+- **Safe startup:** SRS accepts publishes only once the control plane is ready, and a service restart or host reboot comes back from SQLite without manual steps.
+- **Accurate state:** inputs and outputs don't stay "running" in the dashboard after a disconnect, crash or restart.
+- **Evidence:** per-output Error History, rotated diagnostics, and [incident write-ups](fail-reports/README.md) of real failures and their fixes.
+
+These paths are exercised with fault-injection scenarios (a frozen destination, one that never reads, one that refuses connections, output churn, a publisher outage, a CPU-saturated host and a soak with 50 healthy outputs). No software can promise that nothing fails: see [Known issues](docs/3-operations/5-known-issues.md) and the [supported capacity](docs/1-getting-started/1-introduction.md#capacity-and-limits) for what Bunryu does not cover.
 
 ## Quick start
 
