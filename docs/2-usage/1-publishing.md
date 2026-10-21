@@ -37,9 +37,38 @@ relay you get them, so use the bonded port when you want to watch the link.
 
 ## Test commands
 
-These `ffmpeg` commands publish a looping file. Replace `localhost` with the
+These `ffmpeg` commands publish a test stream. Replace `localhost` with the
 server address, and `<stream-key>` / `<passphrase>` with the values from the
 dashboard.
+
+### Without a camera, file or destination
+
+This generates a test card and a tone, so you need no encoder, video file or
+platform account:
+
+```bash
+ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=30 \
+  -f lavfi -i sine=frequency=440 \
+  -c:v libx264 -preset veryfast -b:v 2500k -pix_fmt yuv420p -g 60 \
+  -c:a aac -b:a 128k \
+  -f flv rtmp://localhost:21935/live/<stream-key>
+```
+
+To see an output run without a real destination, forward one pipeline into
+another on the same server:
+
+1. Create two pipelines, A and B.
+2. Add an output to A with the destination
+   `rtmp://localhost:21935/live/<stream-key-of-B>`. An output may connect to
+   loopback only on the server's own RTMP/SRT ports.
+3. Run the command above with A's stream key.
+
+A goes live and its output shows running, and B goes live with the forwarded
+stream. Preview either one.
+
+### From a file
+
+These commands publish a looping file.
 
 RTMP:
 

@@ -40,7 +40,7 @@ cd bunryu
 BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' docker compose up -d
 ```
 
-Open `http://localhost:8080`, log in with that password, create a pipeline and publish to the URL the dashboard shows.
+Open `http://localhost:8080`, log in with that password, create a pipeline and publish to the URL the dashboard shows. No camera? [Publish a test card](docs/2-usage/1-publishing.md#without-a-camera-file-or-destination) with FFmpeg.
 
 Install on a server (Debian/Ubuntu, x86_64, systemd), the recommended setup for production:
 

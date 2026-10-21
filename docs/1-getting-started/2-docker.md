@@ -14,10 +14,26 @@ BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' docker compose up -d
 Open `http://localhost:8080`, log in with that password, create a
 pipeline and [publish](../2-usage/1-publishing.md) to it.
 
+No camera or local FFmpeg? Run the image's own FFmpeg as a test source
+(`<stream-key>` is from the pipeline panel; stop it with Ctrl+C):
+
+```bash
+docker exec bunryu ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=30 \
+  -f lavfi -i sine=frequency=440 \
+  -c:v libx264 -preset veryfast -b:v 2500k -pix_fmt yuv420p -g 60 \
+  -c:a aac -b:a 128k \
+  -f flv rtmp://localhost:21935/live/<stream-key>
+```
+
+The image is x86_64 only, so on Apple Silicon Macs it runs only under emulation
+(see [Details](#details)).
+
 ## Details
 
 The image bundles the control plane, SRS, goryu and the same
-pinned FFmpeg build as the native installer (x86_64 only). One container runs
+pinned FFmpeg build as the native installer (x86_64 only; Apple Silicon Macs
+need `DOCKER_DEFAULT_PLATFORM=linux/amd64` and run it emulated, which is fine to
+try it but not to judge performance). One container runs
 all three processes under a small supervisor (`docker/entrypoint.sh`) that
 keeps the native startup order: SRS starts only after `/api/ready` answers,
 each process is restarted 2 s after it exits, and every start and exit is
