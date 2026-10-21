@@ -279,6 +279,8 @@ describe('hints on the output card', () => {
         });
         assert.match(html, /Connection refused/);
         assert.match(html, /refused the connection/i);
+        // The advice is in the info tooltip on the error line, not a line of its own.
+        assert.match(html, /js-tooltip-content[^]*Hint:[^]*refused the connection/i);
     });
 
     test('an unknown last error gets no hint', () => {

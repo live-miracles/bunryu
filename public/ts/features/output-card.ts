@@ -30,6 +30,7 @@ type OutputCardDeps = {
 
 const ICON_PENCIL = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
 const ICON_TRASH = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-1 2-1h4c1 0 2 1 2 2v1"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>`;
+const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 const ICON_WARN = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
 
 export function formatOutputName(name: string): string {
@@ -108,10 +109,11 @@ function sinceHtml(sinceMs: number | null | undefined): string {
         : '';
 }
 
-// A muted line of advice under an error or warning (see core/hints.ts).
+// An info icon at the end of an error or warning line; the advice (see
+// core/hints.ts) is in its hover/focus tooltip so it does not make the card taller.
 function hintHtml(hint: string | null): string {
     return hint
-        ? `<div class="text-xs opacity-60 pl-2 mt-0.5 max-lg:break-words">Hint: ${escapeHtml(hint)}</div>`
+        ? `<span class="js-tooltip inline-flex shrink-0 opacity-50 hover:opacity-100" tabindex="0" aria-label="Hint: ${escapeHtml(hint)}">${ICON_INFO}<div class="js-tooltip-content hidden"><div class="max-w-xs text-xs leading-snug whitespace-normal">Hint: ${escapeHtml(hint)}</div></div></span>`
         : '';
 }
 
@@ -200,8 +202,8 @@ export function renderOutputCard(
         ? `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
                 ${retryBadge}
                 <span class="text-xs text-error shrink-0">${lastErrorTs}</span>
-                <span class="text-xs text-error truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>
-           </div>${hintHtml(errorHint(lastErrorLine))}`
+                <span class="text-xs text-error truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>${hintHtml(errorHint(lastErrorLine))}
+           </div>`
         : '';
     // Red only while the latest record is a crash or a stop after repeated failures;
     // after a plain stop (or only warnings) the history is there to open but nothing
@@ -241,8 +243,8 @@ export function renderOutputCard(
                 sinceMs,
             }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
-                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${sinceHtml(sinceMs)}
-           </div>${hintHtml(errorHint(message))}`,
+                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${hintHtml(errorHint(message))}${sinceHtml(sinceMs)}
+           </div>`,
         )
         .join('');
     // The card takes the colour of its most severe current problem: red for an

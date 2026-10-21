@@ -722,8 +722,7 @@ the same fixed 2 s delay (`docker/entrypoint.sh`).
 
 ### Hints are a dashboard lookup, not an API field
 
-**Decision (October 2026):** the "Hint:" lines under known errors, warnings and
-alerts come from patterns in `public/ts/core/hints.ts`, matched against the text the
+**Decision (October 2026):** the hints on known errors, warnings and alerts come from patterns in `public/ts/core/hints.ts`, matched against the text the
 server already sends. There is no `hint` or `recommendedAction` field in the API.
 
 **Why:** the advice is presentation (it can change wording without touching the

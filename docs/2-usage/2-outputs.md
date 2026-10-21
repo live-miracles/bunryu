@@ -150,7 +150,8 @@ after 5 failed attempts" line with the last error, and the History button stays 
 until you start the output again.
 Under a known error or warning (connection refused, a rejected stream key, an
 unresolvable host, a failed SRT handshake, an output falling behind realtime) the card
-adds a muted "Hint:" line with what to check first; so do the pipeline alerts. An
-error it has no advice for is shown as is.
+adds an info icon to the line; hover or focus it for a "Hint:" with what to check first.
+The pipeline alerts show their hint as a muted line. An error it has no advice for is
+shown as is.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.
