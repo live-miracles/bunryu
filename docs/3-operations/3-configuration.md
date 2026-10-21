@@ -4,7 +4,9 @@ The app reads runtime settings from `bunryu.json`. A dev checkout reads the one
 in the app root; the native install keeps it at `/etc/bunryu/bunryu.json` next to
 `srs.conf` and `goryu.json` (outside the git checkout, which every update resets)
 and the unit points the app at it with `BUNRYU_CONFIG`. The Docker image keeps it
-in the `/data` volume.
+in the `/data` volume. The installer and the Docker entrypoint set only `port`, the
+file paths and `dashboard_password`; every other setting you add stays when you
+update.
 
 `bunryu.json`:
 

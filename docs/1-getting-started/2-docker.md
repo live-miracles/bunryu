@@ -45,7 +45,9 @@ docker run -d --name bunryu --restart unless-stopped \
 - **Data**: everything persistent is in the `/data` volume: `db.sqlite`,
   `bunryu.json`, the generated `srs.conf` / `goryu.json`, HLS
   previews and diagnostics. On every start the SRS and relay configs are
-  refreshed from the image and keep their SRT passphrase, like a reinstall.
+  refreshed from the image and keep their SRT passphrase, like a reinstall;
+  `bunryu.json` keeps any setting you added and gets only the port, paths and
+  password set.
 - **Secrets**: the first start needs `BUNRYU_DASHBOARD_PASSWORD` (it is stored
   as `dashboard_password` in `/data/bunryu.json`, so later starts don't) and
   otherwise stops with an error in the logs; it never generates or logs a

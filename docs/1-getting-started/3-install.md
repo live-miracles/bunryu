@@ -93,7 +93,7 @@ The repository copies both runtime config files during install:
 - `/etc/bunryu/srs.conf`
 - `/etc/bunryu/goryu.json`
 
-The app's own `/etc/bunryu/bunryu.json` is rewritten on every install too (the unit sets `BUNRYU_CONFIG` to it); only its `dashboard_password` carries over.
+The app's own `/etc/bunryu/bunryu.json` (the unit sets `BUNRYU_CONFIG` to it) is updated, not replaced: the installer sets only `port`, the file paths and, when it has one, `dashboard_password`. Any other setting you add, such as `trust_proxy` or watchdog values, stays across updates. A file that is not valid JSON is replaced by the defaults, with a notice.
 
 SRS only reads its config at startup, and Goryu only reads its
 JSON config file at startup.

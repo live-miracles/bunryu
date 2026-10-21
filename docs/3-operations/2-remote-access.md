@@ -48,7 +48,13 @@ interrupts dashboard/API access.
    [Install]
    WantedBy=multi-user.target
    ```
-7. **Start it and check**:
+7. **Tell the app it is behind a proxy.** In `/etc/bunryu/bunryu.json` add
+   `"trust_proxy": 1` and run `sudo systemctl restart bunryu.service`. Without it
+   every dashboard user appears to come from the tunnel's address: they share one
+   login rate-limit bucket (5 failures a minute), so one person's typos can lock
+   out the others, and the logs show only that address. The installer keeps this
+   value when you update. See [Configuration](3-configuration.md).
+8. **Start it and check**:
    ```bash
    sudo systemctl daemon-reload
    sudo systemctl enable --now cloudflared

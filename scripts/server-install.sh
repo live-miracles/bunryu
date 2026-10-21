@@ -327,29 +327,34 @@ node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=fs.
 node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
     "$CONF_DIR/goryu.json" "$RELAY_SRT_PASSPHRASE"
 # App config, next to the other deployed configs and outside the git checkout.
-# dashboard_password was settled above; a kept database may have none. Written
-# via node for the same reason as the passphrases above: a hand-typed password
-# containing quotes or backslashes must not corrupt the JSON.
-cat > "$APP_CONFIG" << EOF
-{
-    "port": 8080,
-    "database_path": "$DATA_DIR/db.sqlite",
-    "srs_config_path": "$CONF_DIR/srs.conf",
-    "ffmpeg_path": "/usr/local/bin/ffmpeg",
-    "ffprobe_path": "/usr/local/bin/ffprobe",
-    "output_watchdog": {
-        "warmup_ms": 90000,
-        "stall_ms": 45000,
-        "interval_ms": 5000,
-        "socket_warmup_ms": 15000,
-        "socket_grace_ms": 30000
-    }
+# The installer owns only what it must: the port (the units check it), the file
+# paths and, when it has one, dashboard_password. Every other key an operator added
+# (trust_proxy behind a tunnel, watchdog tuning, ...) stays; a missing or unreadable
+# file starts from the defaults below. Written via node for the same reason as the
+# passphrases above: a hand-typed password containing quotes or backslashes must not
+# corrupt the JSON.
+node -e '
+const fs = require("fs");
+const [p, dataDir, confDir, pass] = process.argv.slice(1);
+let c = null;
+try {
+    c = JSON.parse(fs.readFileSync(p, "utf8"));
+} catch (e) {
+    if (e.code !== "ENOENT") console.error("Config: " + p + " is not valid JSON (" + e.message + "); starting from the defaults");
 }
-EOF
-if [[ -n "$DASHBOARD_PASSWORD" ]]; then
-    node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.dashboard_password=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
-        "$APP_CONFIG" "$DASHBOARD_PASSWORD"
-fi
+if (!c || typeof c !== "object" || Array.isArray(c)) {
+    c = { output_watchdog: { warmup_ms: 90000, stall_ms: 45000, interval_ms: 5000, socket_warmup_ms: 15000, socket_grace_ms: 30000 } };
+}
+Object.assign(c, {
+    port: 8080,
+    database_path: dataDir + "/db.sqlite",
+    srs_config_path: confDir + "/srs.conf",
+    ffmpeg_path: "/usr/local/bin/ffmpeg",
+    ffprobe_path: "/usr/local/bin/ffprobe",
+});
+if (pass) c.dashboard_password = pass;
+fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n");
+' "$APP_CONFIG" "$DATA_DIR" "$CONF_DIR" "$DASHBOARD_PASSWORD"
 echo "Config: refreshed $APP_CONFIG"
 # Database. We don't run data migrations, so a db.sqlite left over from an older
 # version could be schema-incompatible and cause hard-to-debug issues. Whether to

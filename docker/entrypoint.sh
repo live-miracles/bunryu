@@ -77,23 +77,35 @@ prepare_data() {
     node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
         goryu.json "$relay_pass"
 
+    # The entrypoint owns only the port, the paths and the initial password; any
+    # other key already in the volume's bunryu.json stays.
     node -e '
 const fs = require("fs");
 const [p, pass] = process.argv.slice(1);
-const c = {
+let c = null;
+try {
+    c = JSON.parse(fs.readFileSync(p, "utf8"));
+} catch (e) {
+    if (e.code !== "ENOENT") console.error("Config: " + p + " is not valid JSON (" + e.message + "); starting from the defaults");
+}
+if (!c || typeof c !== "object" || Array.isArray(c)) {
+    c = {
+        output_watchdog: {
+            warmup_ms: 90000,
+            stall_ms: 45000,
+            interval_ms: 5000,
+            socket_warmup_ms: 15000,
+            socket_grace_ms: 30000,
+        },
+    };
+}
+Object.assign(c, {
     port: 8080,
     database_path: "/data/db.sqlite",
     srs_config_path: "/data/srs.conf",
     ffmpeg_path: "/usr/local/bin/ffmpeg",
     ffprobe_path: "/usr/local/bin/ffprobe",
-    output_watchdog: {
-        warmup_ms: 90000,
-        stall_ms: 45000,
-        interval_ms: 5000,
-        socket_warmup_ms: 15000,
-        socket_grace_ms: 30000,
-    },
-};
+});
 if (pass) c.dashboard_password = pass;
 fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n", { mode: 0o600 });
 ' bunryu.json "$password"

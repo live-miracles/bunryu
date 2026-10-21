@@ -872,7 +872,8 @@ anything. The Docker entrypoint applies the same rule on an empty `/data` volume
 run that keeps the database needs none, because the password only seeds an empty
 one. `bunryu.json` moved from `/opt/bunryu` to `/etc/bunryu`, and the app finds it
 through `BUNRYU_CONFIG` (unset means `./bunryu.json`, so dev checkouts are
-unchanged). `server-reset-password.sh` refuses to run when the file has no
+unchanged). The installer and the Docker entrypoint set only `port`, the file paths
+and the password in that file and keep every other key. `server-reset-password.sh` refuses to run when the file has no
 `dashboard_password`.
 
 **Why:**
@@ -892,14 +893,27 @@ unchanged). `server-reset-password.sh` refuses to run when the file has no
   with status 78 instead, and the installer, the entrypoint and the reset script
   check first and say how to fix it. The repo's own `bunryu.json` ships `change-me` for
   development, which the installer, the unit and the image never read.
+- **Hand edits must survive an update.** The installer used to write the whole
+  file from a template, so a value an operator added, such as `trust_proxy` behind
+  the Cloudflare Tunnel (without it every user shares one login rate-limit bucket),
+  was lost on the next update without a message. Its template values equalled the
+  app's own defaults, so rewriting them changed nothing except undoing edits. It now
+  sets only what it has to (`port`, which the units' readiness check hardcodes, the
+  file paths and the password) and keeps every other key.
 
 **Not adopted:**
+- **Carrying over a named list of keys** (first `dashboard_password`, then
+  `trust_proxy`): every setting someone needs next would need adding to the list.
+- **The same merge for `srs.conf` and `goryu.json`:** they are refreshed from the
+  repo on purpose, because the app, the units and the docs assume their hook URLs,
+  ports and SRT settings. Only the SRT passphrase is kept.
 - **Generate and print once**, the previous behavior: the leak above.
 - **Generate and write only to the file**: the operator would then have to read a
   root-only file to log in, and the installer could not tell a deliberate empty
   value from a missing one.
-- **An empty `dashboard_password` in the tracked `bunryu.json`**: it invites
-  editing a tracked file in a public repository.
+- **A real password in the tracked `bunryu.json`**: it invites editing a tracked
+  file in a public repository, so the repo ships only the `change-me` dev
+  placeholder.
 
 **Tradeoffs:** `compose.yaml` passes the variable through, so `docker compose up`
 without it restarts the container with the error in `docker compose logs` until it
