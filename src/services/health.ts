@@ -154,6 +154,7 @@ interface PipelineHealth {
         publishConflict: boolean;
         srsPublisher: SrsPublisherInfo | null;
         localSrtPublisherConflict: boolean;
+        input: { expectedLegs: number };
     };
 }
 
@@ -488,6 +489,10 @@ export function createHealthService(
         >
     >();
     const legHistory = new Map<number, Map<string, LegHistorySeries>>();
+    // The relay drops a failed leg from its legs[] instead of reporting it broken,
+    // so a lost leg shows only as a smaller count than the group has had. Keyed by
+    // pipeline; reset when the input goes away.
+    const legGroups = new Map<number, { expected: number; shortSinceMs: number | null }>();
     const ffprobeResults = new Map<number, ProbeStatus>();
     const ffprobeTimers = new Map<number, NodeJS.Timeout>();
     const ffprobeInFlight = new Set<number>();
@@ -803,6 +808,9 @@ export function createHealthService(
         }
         for (const pipelineId of legHistory.keys()) {
             if (!activePipelineIds.has(pipelineId)) legHistory.delete(pipelineId);
+        }
+        for (const pipelineId of legGroups.keys()) {
+            if (!activePipelineIds.has(pipelineId)) legGroups.delete(pipelineId);
         }
         for (const pipelineId of ffprobeResults.keys()) {
             if (!activePipelineIds.has(pipelineId)) clearFfprobeState(pipelineId);
@@ -1191,6 +1199,26 @@ export function createHealthService(
                     });
                 }
             }
+            let expectedLegs = relayInput.legs.length;
+            if (rawBondingStatus.inputActive && relayInput.bonded) {
+                const group = legGroups.get(pipeline.id) ?? { expected: 0, shortSinceMs: null };
+                group.expected = Math.max(group.expected, relayInput.legs.length);
+                if (relayInput.legs.length < group.expected) group.shortSinceMs ??= now;
+                else group.shortSinceMs = null;
+                legGroups.set(pipeline.id, group);
+                expectedLegs = group.expected;
+                if (group.shortSinceMs !== null) {
+                    const down = group.expected - relayInput.legs.length;
+                    alerts.push({
+                        severity: 'warning',
+                        code: 'bonded-leg-down',
+                        message: `${down} of ${group.expected} bonded legs ${down === 1 ? 'is' : 'are'} down.`,
+                        sinceMs: group.shortSinceMs,
+                    });
+                }
+            } else {
+                legGroups.delete(pipeline.id);
+            }
             const previousLegs = legPacketSamples.get(pipeline.id) ?? new Map();
             const currentLegs = new Map<
                 string,
@@ -1236,7 +1264,7 @@ export function createHealthService(
                 });
                 let health: 'ok' | 'warn' | 'error' = 'ok';
                 let reason: string | null = null;
-                if (leg.state === 'broken' || leg.state === 'unknown') {
+                if (leg.state === 'unknown') {
                     health = 'error';
                     reason = `${linkNoun} state is ${leg.state}.`;
                 } else if (leg.state === 'pending' || leg.state === 'idle') {
@@ -1402,6 +1430,7 @@ export function createHealthService(
                 localSrtPublisherConflict,
                 input: {
                     ...rawBondingStatus.input,
+                    expectedLegs,
                     legs: rawLegs.map((leg) => {
                         const status = legHealth.get(`${leg.ip}:${leg.port}`);
                         return {
@@ -1488,6 +1517,7 @@ export function createHealthService(
                             retransTotal: pipelineHealth.srtBonding.input.retransTotal,
                             recvRateMbps: pipelineHealth.srtBonding.input.recvRateMbps,
                             latencyMs: pipelineHealth.srtBonding.input.latencyMs,
+                            expectedLegs: pipelineHealth.srtBonding.input.expectedLegs,
                             legs: pipelineHealth.srtBonding.input.legs.map((leg) => ({
                                 ip: leg.ip,
                                 port: leg.port,

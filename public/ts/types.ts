@@ -176,7 +176,7 @@ export interface SrtRelayStatus {
     port: number;
 }
 
-export type SrtBondingLegState = 'pending' | 'idle' | 'running' | 'broken' | 'unknown';
+export type SrtBondingLegState = 'pending' | 'idle' | 'running' | 'unknown';
 
 export interface SrtBondingLeg {
     ip: string;
@@ -221,6 +221,9 @@ export interface SrtBondingInputStatus {
     reorderDistance: number | null;
     rcvBufMs: number | null;
     legs: SrtBondingLeg[];
+    // The most legs this bonded input has had since it connected. A failed leg
+    // leaves `legs`, so `expectedLegs - legs.length` is the number that are down.
+    expectedLegs: number;
 }
 
 export interface SrtBondingOutputStatus {

@@ -357,7 +357,7 @@ function renderLegHistorySection(): string {
 const SRT_STAT_DESCRIPTIONS: Record<string, string> = {
     IP: 'Remote IP address of the sender (encoder) for this bonded link.',
     Port: 'Remote UDP port the sender is transmitting from.',
-    Health: 'Leg health based on its connection state and whether packets are still flowing. OK is healthy, WARN is pending or stalled, ERROR is broken or unknown.',
+    Health: 'Leg health based on its connection state and whether packets are still flowing. OK is healthy, WARN is pending or stalled, ERROR is an unknown state or heavy packet drops.',
     'Health issue': 'The specific condition that moved this link out of OK health.',
     State: 'Whether this leg is currently connected and delivering packets.',
     'Recv Packets Total':

@@ -57,6 +57,7 @@ const EMPTY_BONDING: SrtBondingStatus = {
         reorderDistance: null,
         rcvBufMs: null,
         legs: [],
+        expectedLegs: 0,
     },
     output: {
         sentPacketsTotal: 0,

@@ -1449,6 +1449,104 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
+    test('flags a bonded leg that drops out of the group and clears it when the leg returns', async (t) => {
+        const stream = streamFixture();
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [stream] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const leg = (ip) => makeLeg({ ip });
+        const withLegs = (...ips) => makeBondingStatus({ input: { legs: ips.map(leg) } });
+        const relay = makeFakeSrtRelayMutable(withLegs('203.0.113.10', '203.0.113.11'));
+        const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+        const service = createHealthService(
+            makeFakeDb([pipeline]),
+            makeFakeOutputService(),
+            relay,
+            makeFakeInputState(),
+            makeDiagnosticsSpy(),
+        );
+        const app = express();
+        service.registerRoutes(app);
+        const legDownAlert = async () => {
+            const snapshot = await getSnapshot(app);
+            const { alerts, srtBonding } = snapshot.pipelines['1'];
+            return {
+                alert: alerts.find((a) => a.code === 'bonded-leg-down'),
+                legs: srtBonding.input.legs.length,
+                expectedLegs: srtBonding.input.expectedLegs,
+            };
+        };
+
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+        assert.deepEqual(await legDownAlert(), { alert: undefined, legs: 2, expectedLegs: 2 });
+
+        // The relay lists a failed leg as absent, never as broken.
+        relay.setStatus(withLegs('203.0.113.10'));
+        await tickPoll(t);
+        const lost = await legDownAlert();
+        assert.equal(lost.legs, 1);
+        assert.equal(lost.expectedLegs, 2);
+        assert.equal(lost.alert.severity, 'warning');
+        assert.equal(lost.alert.message, '1 of 2 bonded legs is down.');
+
+        relay.setStatus(withLegs('203.0.113.10', '203.0.113.12'));
+        await tickPoll(t);
+        assert.deepEqual(await legDownAlert(), { alert: undefined, legs: 2, expectedLegs: 2 });
+
+        service.shutdown();
+    });
+
+    test('forgets how many legs a bonded input had once the input goes away', async (t) => {
+        const stream = streamFixture();
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [stream] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const relay = makeFakeSrtRelayMutable(
+            makeBondingStatus({
+                input: {
+                    legs: [makeLeg({ ip: '203.0.113.10' }), makeLeg({ ip: '203.0.113.11' })],
+                },
+            }),
+        );
+        const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+        const service = createHealthService(
+            makeFakeDb([pipeline]),
+            makeFakeOutputService(),
+            relay,
+            makeFakeInputState(),
+            makeDiagnosticsSpy(),
+        );
+        const app = express();
+        service.registerRoutes(app);
+
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+
+        relay.setStatus(makeBondingStatus({ inputActive: false, input: { legs: [] } }));
+        await tickPoll(t);
+        // A new session that starts with a single leg has not lost anything.
+        relay.setStatus(makeBondingStatus({ input: { legs: [makeLeg({ ip: '203.0.113.10' })] } }));
+        await tickPoll(t);
+
+        const { alerts, srtBonding } = (await getSnapshot(app)).pipelines['1'];
+        assert.equal(
+            alerts.some((a) => a.code === 'bonded-leg-down'),
+            false,
+        );
+        assert.equal(srtBonding.input.expectedLegs, 1);
+
+        service.shutdown();
+    });
+
     test('describes a plain relay input as an SRT input, not a bonded leg', async (t) => {
         const stream = streamFixture();
         t.mock.method(globalThis, 'fetch', async (url) => {

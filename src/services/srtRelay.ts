@@ -12,7 +12,7 @@ export interface SrtRelayStats {
     port: number;
 }
 
-export type SrtRelayLegState = 'pending' | 'idle' | 'running' | 'broken' | 'unknown';
+export type SrtRelayLegState = 'pending' | 'idle' | 'running' | 'unknown';
 
 export interface SrtRelayLegStatus {
     ip: string;
@@ -177,7 +177,7 @@ interface RelayStatusResponse {
     }>;
 }
 
-const VALID_LEG_STATES: readonly SrtRelayLegState[] = ['pending', 'idle', 'running', 'broken'];
+const VALID_LEG_STATES: readonly SrtRelayLegState[] = ['pending', 'idle', 'running'];
 const MAX_REASONABLE_BELATED_AVG_MS = 1_000_000_000;
 
 function numOrNull(v: unknown): number | null {

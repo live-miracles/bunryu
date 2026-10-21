@@ -667,17 +667,11 @@ function relayTypeLabel(pipeline: PipelineView): string {
     return pipeline.srtBonding.input.bonded ? 'Bonded' : 'Relay';
 }
 
-function brokenLegCount(pipeline: PipelineView): number {
-    return pipeline.srtBonding.input.legs.filter((leg) => leg.state === 'broken').length;
-}
-
-// True only when every configured leg is down — a total input failure, not
-// just reduced redundancy. Callers treat this as the 'error' floor for the
-// input side; anything less (some legs down, or only one leg configured to
-// begin with) is a 'warn', not an 'error'.
-function allLegsBroken(pipeline: PipelineView): boolean {
-    const legs = pipeline.srtBonding.input.legs;
-    return legs.length > 0 && brokenLegCount(pipeline) === legs.length;
+// A failed leg leaves the relay's legs[] instead of being reported as broken, so
+// legs that are down are the ones the group had (`expectedLegs`) and no longer has.
+function downLegCount(pipeline: PipelineView): number {
+    const { bonded, legs, expectedLegs } = pipeline.srtBonding.input;
+    return bonded ? Math.max(0, expectedLegs - legs.length) : 0;
 }
 
 function flowStatusColor(status: RelayFlowStatus): string {
@@ -693,11 +687,9 @@ function flowStatusColor(status: RelayFlowStatus): string {
 // tooltip instead of one hiding the other.
 function relayInputReasons(pipeline: PipelineView, relayProcessRunning: boolean): string[] {
     if (!relayProcessRunning || !pipeline.srtBonding.inputActive) return [];
-    const legs = pipeline.srtBonding.input.legs;
-    const broken = brokenLegCount(pipeline);
+    const { bonded, legs, expectedLegs } = pipeline.srtBonding.input;
+    const down = downLegCount(pipeline);
     const reasons: string[] = [];
-
-    const bonded = pipeline.srtBonding.input.bonded;
 
     for (const leg of legs) {
         if (leg.health && leg.health !== 'ok' && leg.healthReason) {
@@ -705,17 +697,10 @@ function relayInputReasons(pipeline: PipelineView, relayProcessRunning: boolean)
         }
     }
 
-    if (!bonded) {
-        // One plain connection: it is up (it is listed) or the input is not active.
-        if (broken > 0) reasons.push('SRT connection is down');
-    } else if (legs.length > 0 && broken === legs.length) {
-        reasons.push(`All ${legs.length} bonded leg${legs.length === 1 ? '' : 's'} are down`);
-    } else if (broken > 0) {
-        reasons.push(`${broken}/${legs.length} legs down`);
-    } else if (legs.length === 0) {
-        reasons.push('No bonded legs reporting');
-    } else if (legs.length === 1) {
-        reasons.push('Only 1 leg connected — no redundancy');
+    if (bonded) {
+        if (legs.length === 0) reasons.push('No bonded legs reporting');
+        else if (down > 0) reasons.push(`${down} of ${expectedLegs} bonded legs down`);
+        else if (legs.length === 1) reasons.push('Only 1 leg connected — no redundancy');
     }
 
     if (!relayHasRecentInputFlow(pipeline)) {
@@ -830,17 +815,14 @@ function relayInputStatus(pipeline: PipelineView, relayProcessRunning: boolean):
     if (!pipeline.srtBonding.inputActive) return 'off';
     if (pipeline.srtBonding.input.legs.some((leg) => leg.health === 'error')) return 'error';
     if (pipeline.srtBonding.input.legs.some((leg) => leg.health === 'warn')) return 'warn';
-    // A single connected leg has no failover if it drops — that's a warning
-    // floor even when everything else about it looks healthy. A total outage
-    // (every configured leg broken) is worse than reduced redundancy, so it
-    // escalates past that floor to 'error'.
-    if (allLegsBroken(pipeline)) return 'error';
+    const { bonded, legs, expectedLegs } = pipeline.srtBonding.input;
+    // A bonded group that had legs and has none left is a total input failure,
+    // worse than reduced redundancy.
+    if (bonded && legs.length === 0 && expectedLegs > 0) return 'error';
     if (!relayHasRecentInputFlow(pipeline)) return 'warn';
-    if (brokenLegCount(pipeline) > 0) return 'warn';
-    // A plain input has no redundancy by design; only a bonded group that is
-    // down to one leg has lost something.
-    if (pipeline.srtBonding.input.bonded && pipeline.srtBonding.input.legs.length <= 1)
-        return 'warn';
+    // A plain input has no redundancy by design. A bonded group has it only while
+    // it has two or more legs, and a leg that dropped out is redundancy lost.
+    if (bonded && legs.length < Math.max(2, expectedLegs)) return 'warn';
     return 'good';
 }
 

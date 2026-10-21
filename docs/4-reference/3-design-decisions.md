@@ -154,6 +154,27 @@ warnings.
 - It would add ~200 ms of latency and a second process every SRT input depends on;
   a relay restart would drop all SRT inputs instead of only the bonded ones.
 
+### A lost bonded leg is found by counting legs, because the relay drops it instead of reporting `broken`
+
+**Decision:** the health poll remembers the most legs a bonded input has had since it
+connected (`expectedLegs`). Fewer legs than that is a down leg: a `bonded-leg-down`
+alert, a warning on the input, and "N of M bonded legs down" in the dashboard. The
+count resets when the input goes away.
+
+**Why:** the relay's `/status` documented a `broken` leg state but never sent it. It
+skips broken group members, and with that filter removed a pulled LAN cable still
+never showed `broken`: libsrt dropped the leg from the group within the relay's
+one-second sample (2026-10-21, bonded stream over two legs, polled every 0.25 s). The
+dashboard's broken-leg checks therefore never fired, and only a group down to one leg
+raised a warning, so a three-leg group that lost one showed nothing.
+
+**Why a count and not the leg's address:** cellular legs change IP often, so a leg that
+comes back on a new address would stay "lost" if tracked by address.
+
+**Cost, and when to revisit:** an encoder deliberately run with fewer legs keeps the
+warning until the input reconnects. Revisit if the relay starts reporting lost legs
+itself.
+
 ### Outputs pull from SRS, not from the relay
 
 **Decision:** the relay stays a byte-level pipe (one input, one downstream SRT

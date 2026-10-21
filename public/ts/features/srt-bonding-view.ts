@@ -88,7 +88,10 @@ export function renderBondingStats(
 export function renderBondedLegs(input: SrtBondingStatus['input'], deps: BondingViewDeps): string {
     const legs = input.legs;
     if (legs.length === 0) return '';
-    const heading = input.bonded ? `Bonded legs (${legs.length})` : 'SRT input via relay';
+    const expected = Math.max(input.expectedLegs, legs.length);
+    const heading = input.bonded
+        ? `Bonded legs (${legs.length}${expected > legs.length ? ` of ${expected}` : ''})`
+        : 'SRT input via relay';
     return `<div class="text-xs font-semibold opacity-60 mb-1">${heading}</div>
                    <div class="overflow-x-auto">
                    <table class="table table-xs">
