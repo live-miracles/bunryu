@@ -85,7 +85,8 @@ JSON
         # - while $WORK/real-outputs exists every output does that (CPU comparisons);
         # - an output to rtmp://192.0.2.<N>/<name> with $WORK/dest-<N>.port present really
         #   pushes to rtmp://127.0.0.1:<port>/dest/<name> (a destination that
-        #   scripts/test-faults.mjs can freeze or black-hole).
+        #   scripts/test-faults.mjs can freeze or black-hole); an srt://192.0.2.<N>:<p>?...
+        #   output is redirected the same way to srt://127.0.0.1:<port>?... .
         # Real runs use `exec -a` so argv[0] stays the configured ffmpeg_path, which is
         # how the app's startup sweep recognises orphaned ffmpeg processes.
         cat > "$WORK/ffmpeg-shim.sh" << SHIM
@@ -102,6 +103,16 @@ case "\$last" in
     if [ -s "$WORK/dest-\$n.port" ]; then
       args=("\$@")
       args[\$((\${#args[@]} - 1))]="rtmp://127.0.0.1:\$(cat "$WORK/dest-\$n.port")/dest/\${last##*/}"
+      exec -a \$0 $REPO/objs/ffmpeg "\${args[@]}"
+    fi ;;
+esac
+case "\$last" in
+  srt://192.0.2.*)
+    rest=\${last#srt://192.0.2.}; n=\${rest%%[:/?]*}
+    if [ -s "$WORK/dest-\$n.port" ]; then
+      query=; case "\$last" in *\?*) query="?\${last#*\?}" ;; esac
+      args=("\$@")
+      args[\$((\${#args[@]} - 1))]="srt://127.0.0.1:\$(cat "$WORK/dest-\$n.port")\$query"
       exec -a \$0 $REPO/objs/ffmpeg "\${args[@]}"
     fi ;;
 esac

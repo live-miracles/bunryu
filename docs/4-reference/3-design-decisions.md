@@ -424,7 +424,8 @@ ends it. Measured with the pinned FFmpeg n7.1.4 on loopback, 100-110 s cap per r
 **Not adopted:**
 - **`-timeout`.** It is not a TCP timeout for RTMP: it implies listen mode and
   FFmpeg tries to bind the destination port ("Address already in use").
-- **SRT destinations.** The option is a different setting for `srt://`; not tested.
+- **SRT destinations.** The option is a different setting for `srt://`; they need no
+  timeout, see [below](#srt-destinations-need-no-output-timeout).
 - **A shorter progress-watchdog stall.** It would also restart outputs fed by an
   idle input, which the watchdog deliberately ignores.
 
@@ -480,9 +481,43 @@ long YouTube or Facebook pause reading before they resume is unknown.
 
 **Revisit when:** a silently dead connection costs more than the current give-up
 time in a real incident, or outputs need to give up in under 15 s without the
-false restarts that a shorter `-rw_timeout` risks. The untested gap is SRT
-destinations, which neither `-rw_timeout` nor `ss` covers; only the 45 s progress
-watchdog does.
+false restarts that a shorter `-rw_timeout` risks.
+
+### SRT destinations need no output timeout
+
+**Decision (October 2026):** SRT destinations get no equivalent of the RTMP
+`-rw_timeout`. FFmpeg's libsrt already ends a dead one within seconds.
+
+**Measured** on the production VM (Ubuntu 22.04, FFmpeg n7.1.4) with a 4.2 Mbps copy
+push of a looped clip, `-c copy -f mpegts srt://127.0.0.1:<port>?streamid=…`, no extra
+options, to a private loopback port:
+
+| Destination | What ffmpeg did |
+|-------------|-----------------|
+| Never answers (a bound UDP socket that replies to nothing) | exit after 4 s with "Connection … failed: Input/output error" |
+| SRS as the SRT listener, `SIGSTOP`'d mid-stream | exit 6 s later (`Error writing trailer: Input/output error`) |
+| SRS as the listener, every packet of the port dropped in both directions mid-stream | exit 6 s later, the same error |
+| A libsrt receiver (FFmpeg) whose output pipe nobody drains, so it stops consuming the stream mid-stream | kept sending for 150 s: progress advanced, no stall, RSS flat at 35 MB, no exit |
+
+- **Why 6 s:** libsrt's peer idle timeout (5 s by default) closes a connection that
+  hears nothing from its peer, and a send on it fails. That is far tighter than the
+  30 s that RTMP needed `-rw_timeout` for, so the retry loop takes over on its own.
+- **A receiver that stays connected and stops reading** is not a hang. The sender
+  keeps sending (probably because live mode drops at the receiver instead of blocking
+  the sender; not checked), so the output looks healthy and nothing restarts it. No sender-side signal tells that
+  case apart from a working destination, as with an RTMP destination that
+  acknowledges data it never uses.
+- **A destination URL that sets `timeout=`** (or another libsrt timeout) changes
+  these numbers; the runs used no options.
+
+**Regression test:** `node scripts/test-faults.mjs srt` reproduces the first, second and
+last rows on the local stack (the silent path needs `iptables` and root, so it was only
+measured on the VM).
+
+**Not tested:** a real SRT platform, a one-way loss (packets dropped in one direction
+only), and a libsrt version other than the one built into the pinned FFmpeg.
+
+**Revisit when:** SRT outputs hang or restart late against a real destination.
 
 ## Sizing
 

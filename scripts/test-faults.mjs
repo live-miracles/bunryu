@@ -19,6 +19,10 @@
 //              for 25 s: a blip restarts nothing, a longer outage recovers by itself
 //              (the destination drops its idle connection after about 5 s, so each
 //              output reconnects once)
+//   srt        10 healthy outputs + three SRT outputs: a destination that never
+//              answers, an SRT listener that freezes mid-stream, and a receiver that
+//              stays connected but stops reading (libsrt ends the first two within
+//              seconds on its own; the third is undetectable and harmless)
 //   contention 50 healthy outputs while CPU burners saturate the host for
 //              --burn-seconds N (default 90): the watchdogs must not fire on a
 //              slow but healthy host
@@ -35,6 +39,7 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import dgram from 'node:dgram';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,6 +55,9 @@ const DEST_HEALTHY = 1;
 const DEST_FROZEN = 2;
 const DEST_BLACKHOLE = 3;
 const DEST_REFUSED = 4;
+const DEST_SRT_SILENT = 5;
+const DEST_SRT_FROZEN = 6;
+const DEST_SRT_NOTREAD = 7;
 const PORT_BASE = 31950;
 const HEALTHY_OUTPUTS = 50;
 const SMALL_HEALTHY_OUTPUTS = 10;
@@ -225,9 +233,77 @@ function startRefusedDest() {
     fs.writeFileSync(path.join(WORK, `dest-${DEST_REFUSED}.port`), String(destPort(DEST_REFUSED)));
 }
 
+const SRT_STREAMID = '?streamid=#!::r=live/srt,m=publish';
+
+// An SRS whose SRT listener is on destPort(n) (UDP); its RTMP listener is unused.
+function startDestSrsSrt(n) {
+    const conf = path.join(WORK, `dest-${n}.conf`);
+    fs.writeFileSync(
+        conf,
+        `pid ${path.join(WORK, `dest-${n}.pid`)};\nlisten ${PORT_BASE + 100 + n};\nmax_connections 100;\n` +
+            `daemon off;\nsrs_log_tank console;\nsrs_log_level warn;\n` +
+            `srt_server {\n    enabled on;\n    listen ${destPort(n)};\n    connect_timeout 4000;\n` +
+            `    peerlatency 300;\n    recvlatency 300;\n    latency 300;\n}\n` +
+            `vhost __defaultVhost__ {\n    srt {\n        enabled on;\n        srt_to_rtmp off;\n    }\n}\n`,
+    );
+    const log = fs.openSync(path.join(WORK, `dest-${n}.out`), 'w');
+    const child = spawn(path.join(REPO, 'objs/srs'), ['-c', conf], { stdio: ['ignore', log, log] });
+    cleanups.push(() => {
+        try {
+            process.kill(child.pid, 'SIGCONT');
+            child.kill('SIGKILL');
+        } catch {
+            /* already gone */
+        }
+    });
+    fs.writeFileSync(path.join(WORK, `dest-${n}.port`), String(destPort(n)));
+    return child.pid;
+}
+
+// A UDP socket that is bound and never answers: an SRT connect to it never completes.
+function startSilentSrtDest(n) {
+    const socket = dgram.createSocket('udp4');
+    socket.bind(destPort(n), '127.0.0.1');
+    cleanups.push(() => socket.close());
+    fs.writeFileSync(path.join(WORK, `dest-${n}.port`), String(destPort(n)));
+}
+
+// A libsrt receiver that stays connected but stops consuming: FFmpeg listens on the
+// port and writes to a pipe that `sleep` never reads, so it blocks once the pipe is full.
+function startNonReadingSrtDest(n) {
+    const ffmpeg = path.join(REPO, 'objs/ffmpeg');
+    const child = spawn(
+        'sh',
+        [
+            '-c',
+            `${ffmpeg} -nostdin -loglevel quiet -i "srt://127.0.0.1:${destPort(n)}?mode=listener" ` +
+                '-c copy -f mpegts - | sleep 100000',
+        ],
+        { stdio: 'ignore', detached: true },
+    );
+    // The whole pipeline is one process group; killing only the shell would leave the
+    // two ends running.
+    cleanups.push(() => {
+        try {
+            process.kill(-child.pid, 'SIGKILL');
+        } catch {
+            /* already gone */
+        }
+    });
+    fs.writeFileSync(path.join(WORK, `dest-${n}.port`), String(destPort(n)));
+}
+
 function cleanup() {
     for (const fn of cleanups.splice(0)) fn();
-    for (const n of [DEST_HEALTHY, DEST_FROZEN, DEST_BLACKHOLE, DEST_REFUSED]) {
+    for (const n of [
+        DEST_HEALTHY,
+        DEST_FROZEN,
+        DEST_BLACKHOLE,
+        DEST_REFUSED,
+        DEST_SRT_SILENT,
+        DEST_SRT_FROZEN,
+        DEST_SRT_NOTREAD,
+    ]) {
         fs.rmSync(path.join(WORK, `dest-${n}.port`), { force: true });
     }
 }
@@ -238,6 +314,7 @@ async function setup({
     frozen = false,
     blackhole = false,
     refused = false,
+    srt = false,
     healthy = HEALTHY_OUTPUTS,
 }) {
     if (!listenerPid(APP_PORT))
@@ -246,6 +323,12 @@ async function setup({
     const destPids = [startDestSrs(DEST_HEALTHY)];
     if (frozen) destPids.push(startDestSrs(DEST_FROZEN));
     if (blackhole) startBlackhole(DEST_BLACKHOLE);
+    let srtFrozenPid = null;
+    if (srt) {
+        startSilentSrtDest(DEST_SRT_SILENT);
+        srtFrozenPid = startDestSrsSrt(DEST_SRT_FROZEN);
+        startNonReadingSrtDest(DEST_SRT_NOTREAD);
+    }
     await sleep(1500);
 
     await api('POST', `/api/pipelines/${PIPELINE}/outputs/stop-all`);
@@ -276,6 +359,15 @@ async function setup({
             outputs.push({ name, url: `rtmp://192.0.2.${DEST_REFUSED}/live/${name}` });
         }
     }
+    if (srt) {
+        for (const [name, n] of [
+            ['srtSilent', DEST_SRT_SILENT],
+            ['srtFrozen', DEST_SRT_FROZEN],
+            ['srtNoRead', DEST_SRT_NOTREAD],
+        ]) {
+            outputs.push({ name, url: `srt://192.0.2.${n}:9000${SRT_STREAMID}` });
+        }
+    }
     const created = await api('POST', `/api/pipelines/${PIPELINE}/outputs/bulk`, { outputs });
     const ids = Object.fromEntries(created.map((o) => [o.name, o.id]));
     const healthyIds = created.filter((o) => o.name.startsWith('h')).map((o) => o.id);
@@ -291,7 +383,7 @@ async function setup({
     );
     check(`${healthy} healthy outputs reach running with data flowing`, !!ready);
     if (!ready) throw new Error('healthy outputs did not start; see ' + WORK + '/app.log');
-    return { ids, healthyIds, destPids, expectedFfmpeg: created.length };
+    return { ids, healthyIds, destPids, srtFrozenPid, expectedFfmpeg: created.length };
 }
 
 // What each healthy output looked like at the start, to detect any restart.
@@ -766,6 +858,114 @@ async function contention(ctx, burnSeconds) {
     );
 }
 
+// SRT destinations get no -rw_timeout: libsrt ends a dead one itself (a connect that
+// never completes after about 4 s, a peer that goes silent after its 5 s idle timeout).
+// A receiver that stays connected but stops reading cannot be told from a working one.
+async function srtFaults(ctx) {
+    const { ids, healthyIds, srtFrozenPid, expectedFfmpeg, since } = ctx;
+    const baseline = await baselineOf(healthyIds);
+    let worstHealthy = 0;
+    let maxFfmpeg = 0;
+    const observe = async () => {
+        const o = await outputsHealth();
+        worstHealthy = Math.max(worstHealthy, restartedHealthy(o, baseline));
+        maxFfmpeg = Math.max(maxFfmpeg, sample([]).ffmpegCount);
+        return o;
+    };
+    const flowing = async (id) => {
+        const o = await observe();
+        return o[id]?.status === 'running' && o[id].bitrateKbps > 0;
+    };
+
+    const ready = await waitFor(
+        'SRT outputs flowing',
+        async () => (await flowing(ids.srtFrozen)) && (await flowing(ids.srtNoRead)),
+        90_000,
+        2000,
+    );
+    check('SRT outputs to a listening destination carry data', !!ready);
+    const readyAt = Date.now();
+    const noRead = (await outputsHealth())[ids.srtNoRead];
+
+    console.log('the destination that never answers fails and is retried');
+    const exits = await waitFor(
+        'srtSilent exits',
+        async () => {
+            await observe();
+            const e = diagnosticsEvents('ffmpeg-exited', ids.srtSilent, since);
+            return e.length >= 3 ? e : null;
+        },
+        90_000,
+        2000,
+    );
+    const silentExits = exits ?? diagnosticsEvents('ffmpeg-exited', ids.srtSilent, since);
+    check(
+        'libsrt ends an SRT destination that never answers by itself, every time',
+        silentExits.length >= 3 &&
+            silentExits.every((e) => !e.watchdog && /Input\/output error/.test(e.stderrTail ?? '')),
+        `${silentExits.length} exits, longest ${Math.max(...silentExits.map((e) => e.ranMs ?? 0))} ms`,
+    );
+    const starts = diagnosticsEvents('ffmpeg-started', ids.srtSilent, since);
+    const gapsMs = starts.slice(1).map((e, i) => Date.parse(e.ts) - Date.parse(starts[i].ts));
+    check(
+        'attempts are spaced out, never a tight loop',
+        gapsMs.length >= 2 && gapsMs.every((g) => g >= 3000),
+        `gaps ${gapsMs.join(', ')} ms`,
+    );
+
+    console.log('freezing the SRT listener (SIGSTOP)');
+    const frozenAt = Date.now();
+    process.kill(srtFrozenPid, 'SIGSTOP');
+    const ended = await waitFor(
+        'srtFrozen exits',
+        async () => {
+            await observe();
+            return diagnosticsEvents('ffmpeg-exited', ids.srtFrozen, frozenAt)[0] ?? null;
+        },
+        40_000,
+        1000,
+    );
+    const endedAfterS = ended ? (Date.parse(ended.ts) - frozenAt) / 1000 : null;
+    check(
+        'a frozen SRT listener ends the output within 20 s, without a watchdog',
+        !!ended && endedAfterS <= 20 && !ended.watchdog,
+        ended ? `${endedAfterS.toFixed(1)} s` : 'no exit',
+    );
+    check(
+        'the failure is an I/O error from libsrt',
+        /Input\/output error/.test(ended?.stderrTail ?? ''),
+    );
+    await sleep(15_000);
+    await observe();
+    console.log('thawing the SRT listener (SIGCONT)');
+    process.kill(srtFrozenPid, 'SIGCONT');
+    const recovered = await waitFor(
+        'srtFrozen recovers',
+        () => flowing(ids.srtFrozen),
+        90_000,
+        2000,
+    );
+    check('the output recovers by itself once the listener is back', !!recovered);
+
+    // The receiver that stopped reading has been connected for a while by now; make it
+    // at least a minute so the check means something.
+    await sleep(Math.max(0, readyAt + 60_000 - Date.now()));
+    const o = await observe();
+    check(
+        'a receiver that stays connected but stops reading goes unnoticed and is not restarted',
+        o[ids.srtNoRead]?.status === 'running' &&
+            o[ids.srtNoRead].startedAtMs === noRead.startedAtMs &&
+            o[ids.srtNoRead].failures === noRead.failures,
+        `${o[ids.srtNoRead]?.status}, failures ${o[ids.srtNoRead]?.failures}`,
+    );
+    check('no healthy output restarted or stopped', worstHealthy === 0, `worst ${worstHealthy}`);
+    check(
+        'FFmpeg process count stays bounded',
+        maxFfmpeg <= expectedFfmpeg + 1,
+        `max ${maxFfmpeg} of ${expectedFfmpeg}`,
+    );
+}
+
 function slopePerHour(points) {
     // Least-squares slope of value over time, in units per hour.
     const n = points.length;
@@ -860,6 +1060,7 @@ const SCENARIOS = [
     'refused',
     'churn',
     'publisher-drop',
+    'srt',
     'contention',
 ];
 if (!SCENARIOS.includes(scenario) || !(minutes > 0) || !(burnSeconds > 0)) {
@@ -882,7 +1083,8 @@ try {
         frozen: ['freeze', 'soak'].includes(scenario),
         blackhole: ['blackhole', 'soak'].includes(scenario),
         refused: scenario === 'refused',
-        healthy: ['refused', 'churn', 'publisher-drop'].includes(scenario)
+        srt: scenario === 'srt',
+        healthy: ['refused', 'churn', 'publisher-drop', 'srt'].includes(scenario)
             ? SMALL_HEALTHY_OUTPUTS
             : HEALTHY_OUTPUTS,
     });
@@ -893,6 +1095,7 @@ try {
     else if (scenario === 'refused') await refused(ctx);
     else if (scenario === 'churn') await churn(ctx);
     else if (scenario === 'publisher-drop') await publisherDrop(ctx);
+    else if (scenario === 'srt') await srtFaults(ctx);
     else await contention(ctx, burnSeconds);
 } catch (err) {
     console.error(`scenario aborted: ${err instanceof Error ? err.message : err}`);

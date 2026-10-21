@@ -32,7 +32,12 @@ after 10 s, and one that stops reading mid-stream after 30 s for RTMP (three tim
 the value) or about 10 s for RTMPS. The socket watchdog cannot see these, because
 the socket stays ESTABLISHED. The exit shows in the Error History as "Connection
 timed out" (or "Error closing file: Input/output error" for RTMPS mid-stream) and
-the retry loop takes over. SRT destinations are not covered. The measurements and
+the retry loop takes over. SRT destinations need no such option: libsrt ends a
+destination that never answers after about 4 s and one that goes silent mid-stream
+after about 6 s (its 5 s peer idle timeout), and the output retries. A receiver that
+stays connected but stops reading is not detectable and does not stall the output
+(see [the design decision](../4-reference/3-design-decisions.md#srt-destinations-need-no-output-timeout)).
+The RTMP measurements and
 why 10 s are in
 [the design decision](../4-reference/3-design-decisions.md#give-up-on-a-blocked-rtmprtmps-destination-with-an-output--rw_timeout).
 

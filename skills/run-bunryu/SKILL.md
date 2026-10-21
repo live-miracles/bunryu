@@ -72,6 +72,7 @@ node scripts/test-faults.mjs blackhole  # ... + one that accepts the TCP connect
 node scripts/test-faults.mjs refused    # 10 healthy + two outputs whose destination refuses connections
 node scripts/test-faults.mjs churn      # 10 healthy while 45 outputs are added, started, stopped, deleted
 node scripts/test-faults.mjs publisher-drop  # 10 healthy while the publisher disappears for 3 s and 25 s
+node scripts/test-faults.mjs srt         # 10 healthy + three SRT outputs: silent, frozen and non-reading destinations
 node scripts/test-faults.mjs soak --minutes 60   # freeze and blackhole, thawing and freezing every 2.5 min
 $H stop
 $H start                            # production windows, for the next one
@@ -79,7 +80,7 @@ node scripts/test-faults.mjs contention [--burn-seconds 90]   # 50 healthy while
 $H stop
 ```
 
-Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4, 3, 2, 3, N+3 and 3
+Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4, 3, 2, 3, 2, N+3 and 3
 minutes). The 50-output scenarios replace the stack's four default outputs with 50
 `h01…h50` plus the faulty ones (about 1 GB for the 52 FFmpeg processes); the others use 10.
 They start extra SRS instances as the destinations and remove them when they end.
@@ -95,6 +96,10 @@ They start extra SRS instances as the destinations and remove them when they end
   SRS has dropped each idle publish connection (about 5 s without data), so every
   output reconnects once when the input returns; the scenario only asserts that this
   is bounded and automatic.
+- `srt` runs three SRT outputs (the shim redirects `srt://192.0.2.<N>:<port>?...` like it
+  does RTMP ones): a destination that never answers and a frozen SRS listener must end by
+  themselves through libsrt's own timeouts (about 4 s and 6 s), and a receiver that stays
+  connected but stops reading must go unnoticed and unrestarted.
 - `contention` runs one busy loop per CPU and is only meaningful with the production
   windows (no `FAST_WATCHDOG`); it prints the load average. It makes the machine busy
   for the whole burn, so don't run it on a host someone is working on.

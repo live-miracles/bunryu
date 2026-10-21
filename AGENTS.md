@@ -132,7 +132,7 @@ timestamp-discontinuity flood) that does not touch a developer's own
 `npm run dev`; use it to exercise these paths and the dashboard end to end.
 `scripts/test-faults.mjs` runs fault scenarios on it with real destinations (a frozen
 one, one that never reads, one that refuses connections, output churn, a publisher
-outage, a CPU-saturated host, and a soak with 50 healthy outputs).
+outage, SRT destinations that fail, a CPU-saturated host, and a soak with 50 healthy outputs).
 `skills/run-bunryu/SKILL.md` documents both.
 
 Prefer small, reversible changes.
