@@ -97,11 +97,29 @@ function deriveOutputErrorFields(
     };
 }
 
+// Raw values already reported, so a corrupt row is logged once, not on every
+// 5 s health poll.
+const reportedCorruptHistory = new Set<string>();
+
 function parseOutputErrorHistory(raw: string | null): OutputErrorRecord[] {
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as Array<
-        Partial<OutputErrorRecord> & { ts: number; message: string }
-    >;
+    let parsed: Array<Partial<OutputErrorRecord> & { ts: number; message: string }>;
+    try {
+        const value: unknown = JSON.parse(raw);
+        if (!Array.isArray(value)) throw new Error('not an array');
+        parsed = value;
+    } catch (err) {
+        // One unreadable row must not make every output listing (watchdog,
+        // health, API) throw: treat it as no history; the next error replaces it.
+        const key = raw.slice(0, 200);
+        if (reportedCorruptHistory.size < 100 && !reportedCorruptHistory.has(key)) {
+            reportedCorruptHistory.add(key);
+            console.error(
+                `[db] unreadable output Error History, treating it as empty: ${String(err)} (${key})`,
+            );
+        }
+        return [];
+    }
     // Records written before 'kind' existed have none — they all predate this
     // feature and were all crash/watchdog errors, so default them as such.
     return trimOutputErrorHistory(

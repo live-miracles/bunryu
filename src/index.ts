@@ -30,7 +30,8 @@ import {
 import { registerVersionApi, readAppVersion } from './api/version.js';
 import { readAppConfig } from './utils/appConfig.js';
 import { createHostProbeService } from './services/hostProbes.js';
-import { createDiagnosticsLogger } from './utils/diagnostics.js';
+import { createDiagnosticsLogger, runLogged } from './utils/diagnostics.js';
+import { jsonErrorHandler } from './api/errors.js';
 import { createTranslationMixerService } from './services/translationMixer.js';
 import { createRenditionReconciler } from './services/renditions.js';
 import { enforceDestinationPolicy } from './services/destinationPolicy.js';
@@ -145,6 +146,7 @@ const hookApp = express();
 hookApp.disable('x-powered-by');
 hookApp.use(express.json());
 registerSrsHooks(hookApp, db, inputState, rejectedPublishes, diagnostics);
+hookApp.use(jsonErrorHandler);
 
 // Readiness only: the installer's SRS unit waits on this before starting.
 app.get('/api/ready', (_req, res) => {
@@ -214,6 +216,8 @@ app.use(
     }),
 );
 
+app.use(jsonErrorHandler);
+
 // The repo ships a public default passphrase for dev, and an empty one disables
 // the SRT handshake check. Neither is acceptable on a production host; say so
 // loudly (visible in journald) rather than refuse to start a live-event server.
@@ -278,12 +282,16 @@ function shutdown(signal: string): void {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[server] ${signal} received, killing media jobs`);
-    renditionReconciler.shutdown();
-    const killedOutputIds = outputService.shutdown();
-    translationMixerService.shutdown();
-    healthService.shutdown();
-    srtRelayService.shutdown();
-    previewService.shutdown();
+    // A throwing step must not leave the others (and the exit) undone: the
+    // uncaughtException handler would keep the process alive, ignoring a second signal.
+    const step = <T>(name: string, fn: () => T): T | undefined =>
+        runLogged(`shutdown-${name}`, fn, diagnostics);
+    step('renditions', () => renditionReconciler.shutdown());
+    const killedOutputIds = step('outputs', () => outputService.shutdown()) ?? [];
+    step('translation', () => translationMixerService.shutdown());
+    step('health', () => healthService.shutdown());
+    step('relay', () => srtRelayService.shutdown());
+    step('preview', () => previewService.shutdown());
     // The killed outputs' exit handlers never run before process.exit, so this
     // one record stands in for their ffmpeg-exited events.
     diagnostics.event('server-shutdown', {

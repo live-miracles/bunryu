@@ -3,6 +3,11 @@
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const BetterSqlite3 = require('better-sqlite3');
+
 const { createDb } = require('../src/db/index');
 
 // Each helper creates a fresh isolated in-memory DB
@@ -1104,4 +1109,47 @@ describe('schema version stamp', () => {
             assert.equal(userVersion(file), SCHEMA_VERSION + 1);
         });
     });
+});
+
+// ── Corrupt Error History ─────────────────────────────
+
+describe('Corrupt Error History', () => {
+    for (const [label, value] of [
+        ['not JSON', 'ffmpeg exited'],
+        ['not an array', '{"ts":1,"message":"x"}'],
+        ['null', 'null'],
+    ]) {
+        test(`one output with a last_error that is ${label} does not break listing`, () => {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-db-'));
+            const file = path.join(dir, 'test.db');
+            try {
+                const db = createDb(file);
+                const pipeline = db.createPipeline();
+                const bad = db.createOutput({
+                    pipelineId: pipeline.id,
+                    name: 'Bad',
+                    url: 'rtmp://a',
+                });
+                const good = db.createOutput({
+                    pipelineId: pipeline.id,
+                    name: 'Good',
+                    url: 'rtmp://b',
+                });
+                const raw = new BetterSqlite3(file);
+                raw.prepare('UPDATE outputs SET last_error = ? WHERE id = ?').run(value, bad.id);
+                raw.close();
+
+                const outputs = db.listOutputs();
+                assert.equal(outputs.length, 2);
+                assert.equal(outputs.find((o) => o.id === bad.id).hasErrorHistory, false);
+                assert.ok(db.getOutput(good.id));
+                assert.equal(
+                    db.listOutputIds().find((o) => o.id === bad.id).hasErrorHistory,
+                    false,
+                );
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
+    }
 });

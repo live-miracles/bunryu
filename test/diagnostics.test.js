@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { createDiagnosticsLogger } = require('../src/utils/diagnostics');
+const { createDiagnosticsLogger, runLogged } = require('../src/utils/diagnostics');
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -387,5 +387,39 @@ describe('diagnostics logger failures', () => {
         await logger.close();
         const records = readLines(path.join(dir, listDiagnosticsFiles(dir)[0]));
         assert.equal(records.length, 500);
+    });
+});
+
+describe('runLogged', () => {
+    test('returns the result of a step that succeeds', () => {
+        assert.equal(
+            runLogged('ok', () => 7),
+            7,
+        );
+    });
+
+    test('contains a throwing step and records it', () => {
+        const events = [];
+        const diagnostics = { event: (name, fields) => events.push({ name, fields }) };
+        const originalError = console.error;
+        console.error = () => {};
+        try {
+            assert.equal(
+                runLogged(
+                    'boom',
+                    () => {
+                        throw new Error('nope');
+                    },
+                    diagnostics,
+                ),
+                undefined,
+            );
+        } finally {
+            console.error = originalError;
+        }
+        assert.equal(events.length, 1);
+        assert.equal(events[0].name, 'step-failed');
+        assert.equal(events[0].fields.step, 'boom');
+        assert.match(events[0].fields.error, /nope/);
     });
 });

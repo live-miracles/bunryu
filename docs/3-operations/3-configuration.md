@@ -88,7 +88,8 @@ Other things the diagnostics record so an incident can be pieced together:
   host probes) that throws writes `<loop>-failed` on its first failure or a new
   error, and `<loop>-recovered` with the count; an error nothing else caught is
   written as `uncaught-exception` or `unhandled-rejection`. The process keeps
-  running in both cases.
+  running in both cases. A shutdown step or a staggered restart that throws is
+  written as `step-failed` (with the step name) and the rest still run.
 - **Stopped outputs are left out** of the per-minute snapshot.
 
 Writing diagnostics is best effort and never stops the control plane: if a write

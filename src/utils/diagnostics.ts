@@ -246,3 +246,21 @@ export function createLoopFailureReporter(
         },
     };
 }
+
+// Runs one step of a sequence that must not be cut short (shutdown, a batch of
+// staggered restarts): a throw is recorded as `step-failed` and the caller
+// carries on with the next step.
+export function runLogged<T>(
+    step: string,
+    fn: () => T,
+    diagnostics?: DiagnosticsLogger,
+): T | undefined {
+    try {
+        return fn();
+    } catch (err) {
+        const error = err instanceof Error ? (err.stack ?? err.message) : String(err);
+        console.error(`[server] step ${step} failed (continuing): ${error}`);
+        diagnostics?.event('step-failed', { step, error });
+        return undefined;
+    }
+}

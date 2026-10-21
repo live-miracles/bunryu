@@ -75,11 +75,16 @@ async function apiRequest<T>(
             window.location.href = '/login';
             return null;
         }
-        const data = (await res.json()) as T & { error?: string };
+        // A non-JSON body (a proxy's error page) is still a server answer: only
+        // a failure to get any response means the connection is down.
+        const data = (await res.json().catch(() => undefined)) as
+            | (T & { error?: string })
+            | undefined;
         if (!res.ok) {
-            showError((data as { error?: string })?.error || `HTTP ${res.status}`);
+            showError(data?.error || `HTTP ${res.status}`);
             return null;
         }
+        if (data === undefined) throw new Error('invalid JSON response');
         setConnectionBanner(false);
         return data;
     } catch {

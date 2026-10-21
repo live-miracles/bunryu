@@ -83,7 +83,11 @@ dashboard port cannot be bound, the app writes `server-start-failed` and exits s
 systemd restarts it, instead of running without a dashboard. A diagnostics write
 failure (disk full, directory unwritable) drops and counts events instead of
 crashing; see
-[Configuration](3-configuration.md).
+[Configuration](3-configuration.md). On SIGTERM each shutdown step runs on its own,
+so one that throws cannot stop the others or the exit. An output whose stored Error
+History cannot be read is treated as having none (logged once as `[db] unreadable
+output Error History`) instead of failing every output listing; its next error
+replaces it.
 
 **Service restarts.** The three systemd units restart a process 2 s after it exits
 (`Restart=always`, `RestartSec=2`) and set `StartLimitIntervalSec=0`. Without it,

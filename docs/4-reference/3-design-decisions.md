@@ -578,7 +578,8 @@ reaches production that a rule would have caught.
 a diagnostics event) and the process keeps running. Each background loop (health
 poll, output watchdog, host probes) also catches its own errors and logs the
 first failure and the recovery. The diagnostics writer handles its own stream
-errors.
+errors. Shutdown steps and staggered restarts run through `runLogged`, which records
+a throw as `step-failed` and carries on. Requests answer errors in JSON.
 
 **Why:**
 - **Exiting kills every output.** The FFmpeg processes exit by SIGPIPE when the
@@ -587,13 +588,22 @@ errors.
   restart would not bring them back for several seconds.
 - **The loops are independent.** A throw in the health poll leaves the output
   processes and their watchdog untouched. The next tick starts from fresh state.
+- **Surviving an error must not leave the process half-stopped.** A throw inside the
+  SIGTERM handler would be swallowed by the same handler and a second SIGTERM is
+  ignored, so the process would never exit. Each shutdown step is isolated.
+- **One bad row must stay one bad row.** An unparsable `outputs.last_error` made
+  every `listOutputs()` throw (watchdog, health, API). It now reads as empty history.
+- **A server error must not look like a lost connection.** Express's default 500 is
+  HTML; the dashboard failed to parse it and showed the connection banner. Errors are
+  JSON and the dashboard shows the status of a non-JSON answer.
 
 **Evidence:** before this, nothing listened for errors on the diagnostics
 `WriteStream`, so a full disk would have crashed the app, and so would an
 unwritable diagnostics directory at startup. The health poll and host-probe loops
 had `try`/`finally` with no `catch`, the same pattern the ffprobe fix (see the
 ESLint entry above) removed. Regression tests cover a write-stream error, an
-unwritable directory and a throwing health poll.
+unwritable directory, a throwing health poll, a corrupt Error History row, `runLogged`
+and the JSON error handler.
 
 **Revisit when:** an incident shows the process kept running in a broken state
 after an uncaught error. Then exit on `uncaughtException` and rely on systemd.

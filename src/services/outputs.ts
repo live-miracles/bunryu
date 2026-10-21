@@ -15,7 +15,11 @@ import {
 import { red, yellow, green } from '../utils/ansiColor.js';
 import type { Db, Output } from '../types.js';
 import type { InputState } from './inputState.js';
-import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
+import {
+    createLoopFailureReporter,
+    runLogged,
+    type DiagnosticsLogger,
+} from '../utils/diagnostics.js';
 import {
     encodeRecipe,
     isRenditionOutput,
@@ -1749,7 +1753,15 @@ export function createOutputService(
                 // A reader goes down with its shared encode (see restart()).
                 if (renditionOf.has(output.id)) continue;
                 if ((startTimes.get(output.id) ?? Infinity) >= startedBeforeMs) continue;
-                setTimeout(() => service.restart(output.id, why), scheduled * RESTART_STAGGER_MS);
+                setTimeout(
+                    () =>
+                        runLogged(
+                            `restart-${output.id}`,
+                            () => service.restart(output.id, why),
+                            diagnostics,
+                        ),
+                    scheduled * RESTART_STAGGER_MS,
+                );
                 scheduled++;
             }
             return scheduled;
