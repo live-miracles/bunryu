@@ -435,6 +435,55 @@ default does not verify).
 platform (raise the value), or FFmpeg is upgraded (the regression test checks the
 mechanism).
 
+### Don't add an `ss -ti` ack-progress check; `-rw_timeout` is the knob
+
+**Decision (October 2026):** the socket watchdog keeps reading only the socket state
+from `ss -tanp`. It does not read `ss -ti` to notice a connection that stays
+ESTABLISHED but stops being acknowledged. How fast a blocked RTMP destination is
+given up on is set by `-rw_timeout` (see the entry above).
+
+**Measured** on the production VM (Ubuntu 22.04, FFmpeg n7.1.4) with a 4.2 Mbps copy
+push of a looped clip to a destination SRS on a private loopback port, with the
+output's `-rw_timeout 10000000`. The fault started at t=20 s; "ack stall" is the time
+`bytes_acked` has not advanced while data is queued. The silent drop was one
+`iptables` DROP rule on the destination port.
+
+| Fault | First ack stall of 3 s | 10 s | Exit by FFmpeg |
+|-------|------------------------|------|----------------|
+| Silent drop (nothing delivered) | +3.2 s | n/a | +34.6 s |
+| Frozen receiver (SRS `SIGSTOP`, zero window) | +9.8 s | +16.9 s | +40.1 s |
+| 8% of packets dropped, still working | never | never | never |
+| 30% of packets dropped, still working | +22.0 s | never (max 6.1 s) | never |
+
+**Why not:**
+- **The gain is about 25 s on a rare failure.** A rule of "10 s without ack progress"
+  would end a dead connection at about +10 s instead of +35 s. That is more aggressive
+  than the 30 s of blocked writes the `-rw_timeout` decision accepts, so it would
+  restart sooner on a platform that merely pauses reading. A threshold that respects
+  that decision (about 25 s) gains 10-15 s.
+- **The same trade-off is already one constant.** `-rw_timeout 5000000` gives up
+  after about 15.6 s on mid-stream RTMP (measured above), with no new code.
+- **It cannot see the other cases.** A destination that never answers has an empty
+  send queue, and SRT destinations are UDP.
+- **The signals overlap.** The 30% loss run stalled acks for 6.1 s while the stream
+  kept flowing, and the frozen receiver and a lossy path are not cleanly separable
+  from the ack counters alone.
+- **Cost:** multi-line `ss -ti` parsing across up to 500 sockets and per-socket ack
+  state in the highest-risk loop.
+
+**Seen in the same runs:** after about 4.6 s the destination SRS closed its side
+(probably its idle-publisher timeout; not checked), leaving the output's socket in `CLOSE-WAIT` with
+1.78 MB queued, which the existing socket watchdog already acts on.
+
+**Not tested:** a real platform ingest. Everything above ran on loopback, so how
+long YouTube or Facebook pause reading before they resume is unknown.
+
+**Revisit when:** a silently dead connection costs more than the current give-up
+time in a real incident, or outputs need to give up in under 15 s without the
+false restarts that a shorter `-rw_timeout` risks. The untested gap is SRT
+destinations, which neither `-rw_timeout` nor `ss` covers; only the 45 s progress
+watchdog does.
+
 ## Sizing
 
 ### Sizing guidance is a measured table, not a calculator
