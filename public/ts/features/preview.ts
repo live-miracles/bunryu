@@ -1,3 +1,12 @@
+import {
+    CLIP_DB,
+    LEVEL_FFT_SIZE,
+    LEVEL_INTERVAL_MS,
+    METER_FLOOR_DB,
+    METER_FRAME_MS,
+    peakDb,
+    releaseLevel,
+} from '../core/audio-meter.js';
 import { escapeHtml } from '../core/utils.js';
 import type { PipelineView } from '../types.js';
 
@@ -16,11 +25,8 @@ let previewPipelineId: string | null = null;
 let previewHlsUrl: string | null = null;
 let hlsInstance: HlsLike | null = null;
 
-// ── Audio meter (exact constants and drawing from live-gallery) ───────────────
+// ── Audio meter (peak meter ported from live-gallery) ─────────────────────────
 
-const BUFF_SIZE = 64;
-const SMOOTHING_TIME = 0.8;
-const RMS_GAIN = 2.0;
 const METER_BAR_PX = 5;
 const CLIP_HOLD_MS = 2000;
 
@@ -39,7 +45,16 @@ interface MeterState {
     /** Master volume gate — set to 0 (muted) or 1 (unmuted). */
     masterGain: GainNode;
     ro: ResizeObserver;
+    /** Reused read buffers, one per channel. */
+    buffers: Float32Array[];
+    /** Peak of the latest read per channel, in dBFS. */
+    latest: number[];
+    /** What is drawn: jumps up with `latest`, falls at the release rate. */
+    shown: number[];
     clipHoldUntil: number[];
+    lastReadAt: number;
+    lastFrameAt: number;
+    dirty: boolean;
     rafId: number;
 }
 
@@ -80,14 +95,6 @@ function getAudioGraph(video: HTMLVideoElement): AudioGraph | null {
     }
 }
 
-function calculateDb(analyser: AnalyserNode): number {
-    const data = new Float32Array(analyser.fftSize);
-    analyser.getFloatTimeDomainData(data);
-    const sum = data.reduce((acc, s) => acc + s * s, 0);
-    const rms = Math.sqrt(sum / data.length) * RMS_GAIN;
-    return 20 * Math.log10(rms + 1e-10);
-}
-
 function drawMeterChannel(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -106,34 +113,51 @@ function drawMeterChannel(
     }
 }
 
-function meterLoop(): void {
-    if (!meterState) return;
+function meterLoop(now: number): void {
+    const state = meterState;
+    if (!state) return;
+    state.rafId = requestAnimationFrame(meterLoop);
+    const elapsed = now - state.lastFrameAt;
+    if (elapsed < METER_FRAME_MS) return;
+    state.lastFrameAt = now;
+
+    const { analysers, buffers, latest, shown, clipHoldUntil } = state;
+    if (now - state.lastReadAt >= LEVEL_INTERVAL_MS) {
+        state.lastReadAt = now;
+        for (let i = 0; i < analysers.length; i++) {
+            analysers[i].getFloatTimeDomainData(buffers[i] as Float32Array<ArrayBuffer>);
+            latest[i] = peakDb(buffers[i]);
+            shown[i] = Math.max(shown[i], latest[i]);
+            if (latest[i] >= CLIP_DB) clipHoldUntil[i] = now + CLIP_HOLD_MS;
+        }
+        state.dirty = true;
+    }
+    for (let i = 0; i < analysers.length; i++) {
+        const next = releaseLevel(shown[i], latest[i], elapsed);
+        if (next !== shown[i]) {
+            shown[i] = next;
+            state.dirty = true;
+        }
+    }
+    // A clip tile that has just expired needs one more redraw to disappear.
+    if (clipHoldUntil.some((until) => until > now - METER_FRAME_MS)) state.dirty = true;
+    if (!state.dirty) return;
+    state.dirty = false;
+
     const canvas = document.getElementById('preview-meter') as HTMLCanvasElement | null;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) {
-        meterState.rafId = requestAnimationFrame(meterLoop);
-        return;
-    }
-
-    const { analysers, clipHoldUntil } = meterState;
+    if (!canvas || !ctx) return;
     const { width, height } = canvas;
-    const now = performance.now();
     ctx.clearRect(0, 0, width, height);
-
+    const holdH = Math.max(2, Math.round(height * 0.03));
     for (let i = 0; i < analysers.length; i++) {
-        const db = calculateDb(analysers[i]);
         const x = i * METER_BAR_PX;
-        drawMeterChannel(ctx, x, db, height);
-
-        if (db >= -1) clipHoldUntil[i] = now + CLIP_HOLD_MS;
+        drawMeterChannel(ctx, x, shown[i], height);
         if (clipHoldUntil[i] > now) {
-            const holdH = Math.max(2, Math.round(height * 0.03));
             ctx.fillStyle = '#ff0000';
             ctx.fillRect(x, 0, METER_BAR_PX, holdH);
         }
     }
-
-    meterState.rafId = requestAnimationFrame(meterLoop);
 }
 
 function setupMeter(video: HTMLVideoElement, numAudioChannels: number): void {
@@ -156,8 +180,7 @@ function setupMeter(video: HTMLVideoElement, numAudioChannels: number): void {
     const analysers: AnalyserNode[] = [];
     for (let i = 0; i < numAudioChannels; i++) {
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = BUFF_SIZE * 2;
-        analyser.smoothingTimeConstant = SMOOTHING_TIME;
+        analyser.fftSize = LEVEL_FFT_SIZE;
         splitter.connect(analyser, i);
         analysers.push(analyser);
     }
@@ -184,7 +207,13 @@ function setupMeter(video: HTMLVideoElement, numAudioChannels: number): void {
         analysers,
         masterGain,
         ro,
+        buffers: analysers.map(() => new Float32Array(LEVEL_FFT_SIZE)),
+        latest: new Array(numAudioChannels).fill(METER_FLOOR_DB),
+        shown: new Array(numAudioChannels).fill(METER_FLOOR_DB),
         clipHoldUntil: new Array(numAudioChannels).fill(0),
+        lastReadAt: 0,
+        lastFrameAt: 0,
+        dirty: true,
         rafId: requestAnimationFrame(meterLoop),
     };
 }

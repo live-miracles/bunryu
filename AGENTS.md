@@ -224,6 +224,8 @@ only for a new module.
   `features/shared-encodes.ts` renders the Shared encodes card.
   `core/media-spec.ts` formats the one-line video/audio descriptions the Overview
   and the pipeline panel's input stats share.
+  `core/audio-meter.ts` has the preview meter's level maths (peak dBFS, release
+  fall-off), ported from live-gallery.
   `core/hints.ts` maps known FFmpeg errors, warnings and alert codes to the
   one-line "Hint:" advice under them.
 - `test/*.test.js` unit tests and `test/integration/` API tests (`npm test`).
