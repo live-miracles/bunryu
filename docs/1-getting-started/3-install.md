@@ -113,5 +113,5 @@ Ingest is further locked down by SRS HTTP hooks handled by the app:
 `on_publish` rejects unknown stream keys, and `on_play` rejects any play not
 from loopback (only the app's own FFmpeg ever pulls streams), so the public
 ports are ingest-only. See
-[Security](../3-operations/1-security.md#why-fail2ban-is-not-used) for why rejected attempts are logged
+[Design decisions](../4-reference/3-design-decisions.md#dont-ban-abusive-ingest-clients-with-fail2ban) for why rejected attempts are logged
 but not converted into firewall bans.

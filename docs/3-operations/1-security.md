@@ -77,7 +77,7 @@ they're hardened at the SRS/relay layer instead:
   generic scanner noise.
 - Rejected publish/play attempts are logged with the attempted stream name
   (repeated rejections of the same key are throttled to one line a minute),
-  but this app does not install fail2ban; see [Why fail2ban is not used](#why-fail2ban-is-not-used).
+  but this app does not install fail2ban; see [Don't ban abusive ingest clients with fail2ban](../4-reference/3-design-decisions.md#dont-ban-abusive-ingest-clients-with-fail2ban).
 - Rejected publishes also appear in the dashboard under the pipeline list
   ("Rejected publish attempts", kept for 5 minutes): one row per `keyNN` label,
   plus one aggregate "Unrecognized" row per protocol for empty or non-key
@@ -101,42 +101,3 @@ To reset a forgotten password, set `dashboard_password` in `/etc/bunryu/bunryu.j
 sudo bash /opt/bunryu/scripts/server-reset-password.sh
 ```
 This clears the stored password and restarts the service, which re-seeds it from `dashboard_password` in `/etc/bunryu/bunryu.json`. The script refuses to run when that field is empty, so a reset never falls back to `admin`.
-
-## Why fail2ban is not used
-
-This repo intentionally does not install or manage fail2ban. Earlier versions
-used it as a narrow RTMP/app-hook protection, but it added root-owned config,
-sudo helper scripts, dashboard whitelist/status UI, and extra test surface while
-leaving the most important SRT gap uncovered.
-
-Neither SRT listener logs a bad-passphrase rejection in a form fail2ban could
-act on:
-
-- SRS's own SRT server (port `10080`) rejects handshakes that fail its
-  `passphrase` check — either the peer declares no encryption at all, or
-  declares it but `SRTO_ENFORCEDENCRYPTION` fails the key exchange. Either
-  way, the rejection happens *inside* the SRT handshake, before
-  `srt_accept()` returns, so SRS's own log (`ERROR:UNSECURE` / "Password
-  required or unexpected") never records the peer's IP.
-- `goryu`'s listener (port `10081`) used to log a matchable
-  `[srt-relay] rejected connection (bad passphrase) from <HOST>` line from
-  its own `srt_accept()` KMSTATE check, and a dedicated `goryu`
-  fail2ban jail watched it. As of `goryu` v2.1.0 that line is no
-  longer logged, so a jail would have nothing left to match.
-
-The app still logs rejected `on_publish` and `on_play` attempts (publish
-rejections are throttled per key, so a jail would see fewer lines), which would be
-enough for a fail2ban jail covering repeated bad RTMP stream-key attempts from
-the same IP. That protection is intentionally not included because it is only a
-partial defense: it does not cover SRT bad passphrases, does little against
-distributed attackers, and is not a replacement for a proper edge/firewall
-deployment for high-risk events.
-
-This is not believed to be a practical brute-force risk: the configured
-passphrase is a long random string, and each guess requires a live SRT handshake
-round trip, so online guessing is computationally infeasible regardless of
-banning. The real effect is possible log/CPU noise from a misconfigured device
-or scanner retrying indefinitely. For small events, keep the deployment simple
-and rely on strong stream keys, a strong SRT passphrase, and the non-default RTMP
-port. For larger or higher-risk events, keep the origin private and put a
-media-aware ingest edge or provider firewall/DDoS layer in front of it.

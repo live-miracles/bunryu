@@ -654,6 +654,52 @@ restarting every output on every new publisher (the rejected approach above); a
 type, or probes after a reconnect prove unreliable enough to report a change that did
 not happen.
 
+## Ingest protection
+
+### Don't ban abusive ingest clients with fail2ban
+
+**Decision:** the repo does not install or manage fail2ban. The app logs rejected
+`on_publish` and `on_play` attempts (publish rejections throttled per key), and
+that is where the built-in protection stops.
+
+**Why:**
+- **It was tried and removed.** Earlier versions used fail2ban as a narrow
+  RTMP/app-hook protection. It added root-owned config, sudo helper scripts, a
+  dashboard whitelist/status UI and extra test surface, and still left the most
+  important gap, SRT, uncovered.
+- **Neither SRT listener logs a bad-passphrase rejection in a form fail2ban could
+  act on:**
+  - SRS's SRT server (port `10080`) rejects a handshake that fails its
+    `passphrase` check, either because the peer declares no encryption or because
+    `SRTO_ENFORCEDENCRYPTION` fails the key exchange. The rejection happens
+    inside the SRT handshake, before `srt_accept()` returns, so SRS's own log
+    (`ERROR:UNSECURE` / "Password required or unexpected") never records the
+    peer's IP.
+  - `goryu`'s listener (port `10081`) used to log a matchable
+    `[srt-relay] rejected connection (bad passphrase) from <HOST>` line from its
+    own `srt_accept()` KMSTATE check, and a dedicated jail watched it. As of
+    `goryu` v2.1.0 that line is no longer logged, so a jail would have nothing to
+    match.
+- **The part that can be matched is only a partial defense.** The logged
+  rejected-publish lines would be enough for a jail on repeated bad RTMP
+  stream-key attempts from one IP. That does not cover SRT bad passphrases, does
+  little against distributed attackers, and is no substitute for an edge or
+  firewall deployment at a high-risk event.
+- **Brute force is not a practical risk.** The passphrase is a long random
+  string and each guess needs a live SRT handshake round trip, so online guessing
+  is computationally infeasible whether or not anyone is banned. The real effect
+  is log and CPU noise from a misconfigured device or scanner that retries
+  forever.
+
+**What to do instead:** for small events rely on strong stream keys, a strong SRT
+passphrase and the non-default RTMP port (`21935`). For larger or higher-risk
+events keep the origin private and put a media-aware ingest edge or a provider
+firewall/DDoS layer in front of it.
+
+**Revisit when:** SRS or `goryu` logs a rejected SRT peer's IP in a matchable
+form, or an incident shows repeated bad-key or bad-passphrase attempts causing
+real load.
+
 ## Install and secrets
 
 ### The initial dashboard password is supplied, never generated or printed; the app config lives in `/etc/bunryu`
