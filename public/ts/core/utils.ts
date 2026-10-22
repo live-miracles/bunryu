@@ -78,7 +78,7 @@ export function formatBytes(bytes: number): string {
 }
 
 // Shared formatter for millisecond durations (RTT, negotiated latency,
-// receive/send buffer occupancy, host probe latency): the dashboard's number rule.
+// receive/send buffer occupancy): the dashboard's number rule.
 // What the fmt* helpers show for a value the source did not report.
 export const NO_VALUE = '—';
 

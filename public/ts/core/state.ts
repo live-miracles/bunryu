@@ -2,7 +2,6 @@ import type {
     PipelineView,
     ConfigData,
     HealthData,
-    HostProbeOverview,
     SystemMetrics,
     MetricSample,
     StreamKey,
@@ -17,13 +16,11 @@ export interface AppState {
     pipelines: PipelineView[];
     metrics: Partial<SystemMetrics>;
     metricsHistory: MetricSample[];
-    hostProbes: Partial<HostProbeOverview>;
     streamKeys: StreamKey[];
     // Recent publish/play attempts SRS refused (from the on_publish/on_play hooks).
     rejectedPublishes: RejectedPublish[];
     rejectedOmitted: number;
     chartOffsetMs: number;
-    hostChartOffsetMs: number;
     // Overview table filter: 'active' hides rows that are offline/stopped,
     // 'problems' hides rows that are neither warning nor error, so a failing
     // input/output is findable at a glance at the 50-input / 500-output scale.
@@ -43,12 +40,10 @@ export const state: AppState = {
     pipelines: [],
     metrics: {},
     metricsHistory: [],
-    hostProbes: {},
     streamKeys: [],
     rejectedPublishes: [],
     rejectedOmitted: 0,
     chartOffsetMs: 0,
-    hostChartOffsetMs: 0,
     overviewFilter: 'all',
     inputSearch: '',
     outputSearch: '',

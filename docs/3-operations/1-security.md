@@ -36,14 +36,13 @@ Hardening that is on by default:
   `SSL_CERT_DIR` and `LD_LIBRARY_PATH`. The app's own variables, such as
   `BUNRYU_DASHBOARD_PASSWORD`, stay out of the `/proc/<pid>/environ` of every
   FFmpeg process.
-- **Output destinations and host probes:** the server will not connect to
+- **Output destinations:** the server will not connect to
   link-local/unspecified addresses (cloud metadata such as `169.254.169.254`), and
   loopback only on the app's own RTMP/SRT ports (pipeline-to-pipeline restreams).
   Hosts are resolved the way FFmpeg resolves them, so `2130706433` or `0x7f.1` are
   treated as loopback. Private LAN ranges and SRT `mode=listener` outputs are
   deliberately allowed. Outputs saved before the check existed are re-checked at
-  startup and stopped, with the reason shown in the dashboard. Host probes never
-  probe loopback. DNS that changes between the check and FFmpeg's own lookup
+  startup and stopped, with the reason shown in the dashboard. DNS that changes between the check and FFmpeg's own lookup
   cannot be ruled out.
 - **The `internal` RTMP app is reserved for shared encodes.** Outputs cannot
   target it (any host spelling that resolves to this machine, with a path under

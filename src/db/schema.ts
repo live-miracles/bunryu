@@ -75,15 +75,6 @@ export function setupDatabaseSchema(db: Database.Database): void {
     ).run();
 
     db.prepare(
-        `CREATE TABLE IF NOT EXISTS host_probe_targets (
-            slot  INTEGER PRIMARY KEY,
-            label TEXT NOT NULL,
-            host  TEXT NOT NULL,
-            port  INTEGER NOT NULL
-        )`,
-    ).run();
-
-    db.prepare(
         `CREATE TABLE IF NOT EXISTS pipeline_logs (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             pipeline_id INTEGER NOT NULL,

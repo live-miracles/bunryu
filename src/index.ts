@@ -30,7 +30,6 @@ import {
 } from './api/auth.js';
 import { registerVersionApi, readAppVersion } from './api/version.js';
 import { readAppConfig } from './utils/appConfig.js';
-import { createHostProbeService } from './services/hostProbes.js';
 import { createDiagnosticsLogger, runLogged } from './utils/diagnostics.js';
 import { checkFfmpeg } from './utils/ffmpegCheck.js';
 import { jsonErrorHandler } from './api/errors.js';
@@ -124,7 +123,6 @@ const rejectedPublishes = createRejectedPublishes();
 const outputService = createOutputService(db, inputState, diagnostics);
 const srtRelayService = createSrtRelayService(diagnostics);
 const previewService = createPreviewService(db, inputState);
-const hostProbeService = createHostProbeService(db);
 const translationMixerService = createTranslationMixerService(
     db,
     inputState,
@@ -169,7 +167,6 @@ registerSettingsApi(app, db);
 registerVersionApi(app);
 registerMetricsApi(app, srtRelayService);
 healthService.registerRoutes(app);
-hostProbeService.registerRoutes(app);
 registerSrsLogsApi(app, healthService.getSrsEvents);
 registerRejectedPublishesApi(app, rejectedPublishes);
 
@@ -270,7 +267,6 @@ async function main(): Promise<void> {
     translationMixerService.start();
     renditionReconciler.start();
     healthService.start();
-    hostProbeService.start();
 
     // Hooks first: /api/ready (what SRS waits for) must not answer before the
     // hook listener can. A hook-port failure is fatal on purpose — without it SRS

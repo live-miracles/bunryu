@@ -743,6 +743,44 @@ is on top during events); push notifications.
 **Revisit when:** operators mute it because it beeps too often, or a problem worth a
 beep reaches the dashboard only as a warning.
 
+### Don't probe platform hosts from the server
+
+**Decision (October 2026):** the host connectivity probes were removed: a dashboard
+tab that opened a TCP connection every 5 s from the server to up to 10 configured
+`host:port` targets (for example a platform's RTMP ingest) and charted the latency.
+Destination failures are diagnosed from the outputs themselves.
+
+**Why:**
+- **It left no evidence.** The samples were kept only in memory (6 h) and never
+  written to the diagnostics, the journal or the pipeline log, so a service restart
+  erased them and nothing could be read back after an incident. Only someone with the
+  tab open at the time saw them.
+- **It raised no alert.** Nothing in the health poll, the alerts or the beeps used
+  the result, so it could not warn during a live event.
+- **The outputs already say the same.** A destination that refuses or times out
+  shows in that output's Error History (FFmpeg's stderr tail and exit reason), in the
+  socket watchdog's findings and in its retry state, per output and with a
+  timestamp. The probe added only "is the platform down or just this output?", and
+  only for someone who looked.
+- **It has not helped.** The one incident it could have explained was a live event
+  where a platform's RTMP ingest was unreachable, and no fail-report cites it. General
+  network problems are watched by a separate monitor (Ping Monitor), which does not
+  cover the path from this VM to the platforms.
+- **Cost:** a service and loop, a settings form, a dashboard tab and chart, two API
+  routes, a database table and several hundred lines of tests, for a view that has not been useful.
+
+**Existing databases:** the `host_probe_targets` table is no longer created, but one
+that already exists stays in an old database, unused. `SCHEMA_VERSION` was not
+bumped, because nothing in the old schema is incompatible and a bump would make
+every existing install wipe its pipelines and outputs.
+
+**Not measured:** how often operators opened the tab.
+
+**Revisit when:** an incident shows that "the platform was unreachable from the VM"
+could not be told from the output's own error. Then log one TCP connect check to
+that destination in the output's existing failure event, which needs no
+configuration, loop, table or UI.
+
 ## Tooling
 
 ### ESLint checks promise handling; Prettier stays the formatter
@@ -776,7 +814,7 @@ reaches production that a rule would have caught.
 
 **Decision:** `uncaughtException` and `unhandledRejection` are logged (journal and
 a diagnostics event) and the process keeps running. Each background loop (health
-poll, output watchdog, host probes) also catches its own errors and logs the
+poll, output watchdog) also catches its own errors and logs the
 first failure and the recovery. The diagnostics writer handles its own stream
 errors. Shutdown steps and staggered restarts run through `runLogged`, which records
 a throw as `step-failed` and carries on. Requests answer errors in JSON.
@@ -799,7 +837,8 @@ a throw as `step-failed` and carries on. Requests answer errors in JSON.
 
 **Evidence:** before this, nothing listened for errors on the diagnostics
 `WriteStream`, so a full disk would have crashed the app, and so would an
-unwritable diagnostics directory at startup. The health poll and host-probe loops
+unwritable diagnostics directory at startup. The health poll and the host-probe loop
+(since removed, see [Don't probe platform hosts from the server](#dont-probe-platform-hosts-from-the-server))
 had `try`/`finally` with no `catch`, the same pattern the ffprobe fix (see the
 ESLint entry above) removed. Regression tests cover a write-stream error, an
 unwritable directory, a throwing health poll, a corrupt Error History row, `runLogged`

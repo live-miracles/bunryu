@@ -1,41 +1,9 @@
 import type { Express } from 'express';
 import { isValidPublicHost, parseName } from '../utils/inputLimits.js';
-import type { Db, HostProbeTarget } from '../types.js';
-import { checkProbeAddress, resolveAddresses } from '../utils/destination.js';
+import type { Db } from '../types.js';
 
-const MAX_HOST_PROBE_TARGETS = 10;
 const MAX_PIPELINE_GROUPS = 50;
 const MAX_PIPELINE_GROUP_NAME_LENGTH = 80;
-
-function normalizeHostProbeTargets(value: unknown): HostProbeTarget[] | null {
-    // Reject (not silently treat as "clear everything"): this used to double
-    // as an implicit no-op default back when it was one optional field among
-    // several on a combined /api/settings payload, but on this endpoint's own
-    // dedicated route a missing/malformed field is almost certainly a client
-    // bug, not intent to wipe every configured target. Send an explicit empty
-    // array to actually clear them.
-    if (!Array.isArray(value)) return null;
-
-    const targets: HostProbeTarget[] = [];
-    for (const item of value) {
-        if (!item || typeof item !== 'object') return null;
-        const row = item as Record<string, unknown>;
-        const slot = Number(row.slot);
-        const label = typeof row.label === 'string' ? row.label.trim() : '';
-        const host = typeof row.host === 'string' ? row.host.trim() : '';
-        const port = Number(row.port);
-
-        if (!Number.isInteger(slot) || slot < 1 || slot > MAX_HOST_PROBE_TARGETS) return null;
-        if (!label || !host) return null;
-        if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
-
-        targets.push({ slot, label, host, port });
-    }
-
-    if (targets.length > MAX_HOST_PROBE_TARGETS) return null;
-    if (new Set(targets.map((target) => target.slot)).size !== targets.length) return null;
-    return targets.sort((a, b) => a.slot - b.slot);
-}
 
 // Custom pipeline/output display order: [{id: <pipelineId>, outs: [<outputId>, ...]}].
 // This is a pure UI concern — the backend only stores and returns it verbatim;
@@ -107,25 +75,6 @@ export function registerSettingsApi(app: Express, db: Db): void {
             serverName: name,
             publicHost: publicHost ?? db.getSetting('publicHost') ?? '',
         });
-    });
-
-    app.post('/api/settings/host-probes', async (req, res) => {
-        const hostProbeTargets = normalizeHostProbeTargets(req.body?.hostProbeTargets);
-        if (hostProbeTargets === null) {
-            return res.status(400).json({ error: 'Invalid host probe target configuration' });
-        }
-        // The probe re-checks the resolved address on every connect; rejecting
-        // here too just gives the operator the reason at save time.
-        for (const target of hostProbeTargets) {
-            for (const address of await resolveAddresses(target.host)) {
-                const reason = checkProbeAddress(address);
-                if (reason) return res.status(400).json({ error: `${target.label}: ${reason}` });
-            }
-        }
-
-        db.replaceHostProbeTargets(hostProbeTargets);
-
-        return res.json({ hostProbeTargets });
     });
 
     app.post('/api/settings/layout-order', (req, res) => {

@@ -3,9 +3,8 @@ import net from 'net';
 import { readSrsConfigValues } from './srsConfig.js';
 import { RENDITION_APP } from './renditions.js';
 
-// The server connects to whatever host an operator types into an output URL or a
-// host probe, so a stolen session (or a typo) could aim it at things only the
-// server can reach. Private LAN ranges stay allowed — pushing to a venue
+// The server connects to whatever host an operator types into an output URL, so a
+// stolen session (or a typo) could aim it at things only the server can reach. Private LAN ranges stay allowed — pushing to a venue
 // encoder or a local media server is a real use — but the dangerous ones are
 // not: link-local (cloud metadata at 169.254.169.254), the unspecified address
 // (connects to this host), and loopback except for the app's own RTMP/SRT
@@ -101,11 +100,4 @@ export async function isInternalAppDestination(url: string): Promise<boolean> {
     if (!m || !(m[2] ?? '').startsWith(`/${RENDITION_APP}/`)) return false;
     const addresses = await resolveAddresses(m[1]);
     return addresses.some((address) => classifyAddress(address) === 'loopback');
-}
-
-// For TCP reachability probes: nothing local, nothing link-local.
-export function checkProbeAddress(address: string): string | null {
-    return classifyAddress(address) === 'other'
-        ? null
-        : `address ${address} is a loopback, link-local or unspecified address that is not probed`;
 }

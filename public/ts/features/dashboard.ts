@@ -2,7 +2,6 @@ import {
     getConfig,
     getHealth,
     getRejectedPublishes,
-    getHostProbes,
     getSystemMetrics,
     getMetricsHistory,
     isServerUnreachable,
@@ -15,10 +14,6 @@ import { noteDashboardSnapshot } from './sound-alerts.js';
 
 let refreshInFlight: Promise<void> | null = null;
 let refreshQueued = false;
-
-export function invalidateHostProbes(): void {
-    state.hostProbes = {};
-}
 
 export async function refreshDashboard(): Promise<void> {
     if (refreshInFlight) {
@@ -78,16 +73,7 @@ function resyncConfigIfChanged(healthRev: number | undefined): void {
 
 export async function refreshAfterMutation(): Promise<void> {
     invalidateConfig();
-    invalidateHostProbes();
     await refreshDashboard();
-}
-
-export async function refreshHostProbes(hours = 6): Promise<void> {
-    const hostProbesResult = await getHostProbes(hours);
-    if (hostProbesResult) {
-        state.hostProbes = hostProbesResult;
-    }
-    renderPipelines();
 }
 
 async function fetchAndRender(): Promise<void> {

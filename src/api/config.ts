@@ -55,7 +55,6 @@ export function registerConfigApi(app: Express, db: Db): void {
             configRev: db.getConfigRev(),
             pipelines,
             outputs: db.listOutputs(),
-            hostProbeTargets: db.listHostProbeTargets(),
             groups: db.listPipelineGroups(),
             encodings: Object.keys(ENCODINGS),
             streamKeys: db.listStreamKeys(),

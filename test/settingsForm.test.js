@@ -44,7 +44,7 @@ describe('settings forms do not fail silently', () => {
             'error-alert': fakeElement(),
         };
         elements['error-alert'].classList.add('hidden');
-        rows = { '[data-host-probe-row]': [], '[data-pipeline-group-row]': [] };
+        rows = { '[data-pipeline-group-row]': [] };
         selectors = {};
         global.document = {
             getElementById: (id) => elements[id] ?? null,
@@ -77,33 +77,6 @@ describe('settings forms do not fail silently', () => {
         assert.ok(hasError(elements['settings-server-name-input']));
         assert.equal(toast(), 'Server name is required.');
         assert.ok(!elements['error-alert'].classList.contains('hidden'));
-        assert.ok(!savedAnything());
-    });
-
-    test('a host probe missing its name or host, or with a bad port, is marked and explained', async () => {
-        const { submitHostProbesForm } = require('../public/ts/features/editor');
-        const probe = (label, host, port) => {
-            const els = {
-                label: fakeElement(label),
-                host: fakeElement(host),
-                port: fakeElement(port),
-            };
-            rows['[data-host-probe-row]'] = [fakeElement('', { hostProbeRow: '1' })];
-            for (const [field, el] of Object.entries(els)) {
-                selectors[`[data-host-probe-slot="1"][data-host-probe-field="${field}"]`] = el;
-            }
-            return els;
-        };
-
-        const missing = probe('', 'a.example.com', '1935');
-        await submitHostProbesForm();
-        assert.ok(hasError(missing.label));
-        assert.equal(toast(), 'Host probe needs a name.');
-
-        const bad = probe('YouTube', '', '70000');
-        await submitHostProbesForm();
-        assert.ok(hasError(bad.host) && hasError(bad.port));
-        assert.equal(toast(), 'Host probe needs a host, a port from 1 to 65535.');
         assert.ok(!savedAnything());
     });
 

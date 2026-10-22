@@ -47,7 +47,6 @@ import {
     searchBoxHtml,
 } from '../core/overview-filter.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
-import { renderHostConnectionsOverview } from './host-connections-view.js';
 import {
     formatUptime,
     inputStatusMessage,
@@ -1783,23 +1782,11 @@ function renderPipelineInfo(selectedId: string | null): void {
     const col = document.getElementById('pipe-info-col');
     const outsCol = document.getElementById('outs-col');
     const overviewCol = document.getElementById('overview-col');
-    const hostsCol = document.getElementById('hosts-col');
     const logsCol = document.getElementById('srs-logs-col');
     const settingsCol = document.getElementById('settings-col');
     const view = getUrlParam('view');
-    const inHostView = view === 'hosts';
     const inLogsView = view === 'logs';
     const inSettingsView = view === 'settings';
-    if (inHostView) {
-        col?.classList.add('hidden');
-        outsCol?.classList.add('hidden');
-        overviewCol?.classList.add('hidden');
-        logsCol?.classList.add('hidden');
-        settingsCol?.classList.add('hidden');
-        hostsCol?.classList.remove('hidden');
-        renderHostConnectionsOverview();
-        return;
-    }
 
     // Logs/Settings content is populated once on navigation (see
     // dashboard-entry.ts), not on every poll — re-rendering here would wipe out
@@ -1808,7 +1795,6 @@ function renderPipelineInfo(selectedId: string | null): void {
         col?.classList.add('hidden');
         outsCol?.classList.add('hidden');
         overviewCol?.classList.add('hidden');
-        hostsCol?.classList.add('hidden');
         settingsCol?.classList.add('hidden');
         logsCol?.classList.remove('hidden');
         return;
@@ -1818,7 +1804,6 @@ function renderPipelineInfo(selectedId: string | null): void {
         col?.classList.add('hidden');
         outsCol?.classList.add('hidden');
         overviewCol?.classList.add('hidden');
-        hostsCol?.classList.add('hidden');
         logsCol?.classList.add('hidden');
         settingsCol?.classList.remove('hidden');
         return;
@@ -1828,7 +1813,6 @@ function renderPipelineInfo(selectedId: string | null): void {
         col?.classList.add('hidden');
         outsCol?.classList.add('hidden');
         overviewCol?.classList.remove('hidden');
-        hostsCol?.classList.add('hidden');
         logsCol?.classList.add('hidden');
         settingsCol?.classList.add('hidden');
         renderOverview();
@@ -1836,7 +1820,6 @@ function renderPipelineInfo(selectedId: string | null): void {
     }
 
     overviewCol?.classList.add('hidden');
-    hostsCol?.classList.add('hidden');
     logsCol?.classList.add('hidden');
     settingsCol?.classList.add('hidden');
 
@@ -2159,8 +2142,6 @@ export function renderMetrics(): void {
 export function renderPipelines(): void {
     const selectedId = getUrlParam('p');
     const view = getUrlParam('view');
-    const hostsBtn = document.getElementById('host-connections-nav-btn');
-    hostsBtn?.classList.toggle('btn-active', view === 'hosts');
     const logsBtn = document.getElementById('srs-logs-nav-btn');
     logsBtn?.classList.toggle('btn-active', view === 'logs');
     const settingsBtn = document.getElementById('settings-nav-btn');

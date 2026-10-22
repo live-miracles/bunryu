@@ -1,15 +1,12 @@
 import { getUrlParam, setUrlParam, copyText } from '../core/utils.js';
 import { state } from '../core/state.js';
-import { refreshDashboard, refreshHostProbes } from './dashboard.js';
+import { refreshDashboard } from './dashboard.js';
 import { initSoundAlerts } from './sound-alerts.js';
 import {
     openSettings,
-    addHostProbeRow,
-    removeHostProbeRow,
     addPipelineGroupRow,
     removePipelineGroupRow,
     submitGeneralSettingsForm,
-    submitHostProbesForm,
     submitPipelineGroupsForm,
     submitPasswordForm,
     logoutUser,
@@ -38,14 +35,10 @@ declare global {
     interface Window {
         openSrsLogsBtn: () => Promise<void>;
         refreshSrsLogsBtn: () => Promise<void>;
-        openHostConnectionsBtn: () => Promise<void>;
         openSettingsBtn: () => Promise<void>;
-        addHostProbeRowBtn: () => void;
-        removeHostProbeRowBtn: (slot: number) => void;
         addPipelineGroupRowBtn: () => void;
         removePipelineGroupRowBtn: (rowKey: string) => void;
         settingsGeneralFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
-        settingsHostProbesFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         settingsPipelineGroupsFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         settingsPasswordFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         logoutBtn: () => Promise<void>;
@@ -74,7 +67,6 @@ declare global {
         previewMuteBtn: () => void;
         previewReloadBtn: () => void;
         previewMaximizeBtn: () => void;
-        refreshHostConnectionsBtn: () => Promise<void>;
         showProblemsOverviewBtn: () => void;
     }
 }
@@ -91,7 +83,7 @@ window.showProblemsOverviewBtn = () => {
 const stackedLayout = window.matchMedia('(max-width: 1023px)');
 function showContentPanel(): void {
     if (!stackedLayout.matches) return;
-    const panel = ['pipe-info-col', 'overview-col', 'hosts-col', 'srs-logs-col', 'settings-col']
+    const panel = ['pipe-info-col', 'overview-col', 'srs-logs-col', 'settings-col']
         .map((id) => document.getElementById(id))
         .find((el) => el && !el.classList.contains('hidden'));
     panel?.scrollIntoView({ block: 'start' });
@@ -108,16 +100,6 @@ window.openSrsLogsBtn = async () => {
 window.refreshSrsLogsBtn = async () => {
     await showSrsLogs();
 };
-window.openHostConnectionsBtn = async () => {
-    void import('./preview.js').then(({ stopCurrentPreview }) => stopCurrentPreview());
-    setUrlParam('p', null);
-    setUrlParam('view', 'hosts');
-    await refreshDashboard();
-    showContentPanel();
-};
-window.refreshHostConnectionsBtn = async () => {
-    await refreshHostProbes();
-};
 window.openSettingsBtn = async () => {
     void import('./preview.js').then(({ stopCurrentPreview }) => stopCurrentPreview());
     setUrlParam('p', null);
@@ -126,12 +108,9 @@ window.openSettingsBtn = async () => {
     openSettings();
     showContentPanel();
 };
-window.addHostProbeRowBtn = () => addHostProbeRow();
-window.removeHostProbeRowBtn = (slot) => removeHostProbeRow(slot);
 window.addPipelineGroupRowBtn = () => addPipelineGroupRow();
 window.removePipelineGroupRowBtn = (rowKey) => removePipelineGroupRow(rowKey);
 window.settingsGeneralFormBtn = (btn) => submitGeneralSettingsForm(btn);
-window.settingsHostProbesFormBtn = (btn) => submitHostProbesForm(btn);
 window.settingsPipelineGroupsFormBtn = (btn) => submitPipelineGroupsForm(btn);
 window.settingsPasswordFormBtn = (btn) => submitPasswordForm(btn);
 window.logoutBtn = () => logoutUser();

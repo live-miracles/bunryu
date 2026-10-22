@@ -154,7 +154,6 @@ describe('Config API integration', () => {
         assert.equal(res.status, 200);
         assert.deepEqual(res.body.pipelines, []);
         assert.deepEqual(res.body.outputs, []);
-        assert.deepEqual(res.body.hostProbeTargets, []);
         assert.deepEqual(res.body.groups, []);
         assert.equal(res.body.serverName, 'Bunryu');
         assert.equal(res.body.publicHost, '');

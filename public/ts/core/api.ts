@@ -2,7 +2,6 @@ import type {
     ConfigData,
     HealthData,
     RejectedPublishesData,
-    HostProbeOverview,
     PipelineLog,
     OutputPayload,
     OutputErrorRecord,
@@ -100,8 +99,6 @@ export const getConfig = () => apiRequest<ConfigData>('/api/config');
 export const getHealth = () => apiRequest<HealthData>('/api/health');
 export const getRejectedPublishes = () =>
     apiRequest<RejectedPublishesData>('/api/rejected-publishes');
-export const getHostProbes = (hours = 24) =>
-    apiRequest<HostProbeOverview>(`/api/host-probes?hours=${hours}`);
 export const getSystemMetrics = () => apiRequest<SystemMetrics>('/api/metrics/system');
 export const getMetricsHistory = (after?: number) =>
     apiRequest<MetricSample[]>(
@@ -117,12 +114,6 @@ export const updateGeneralSettings = (name: string, publicHost: string) =>
     apiRequest<{ serverName: string; publicHost: string }>('/api/settings/general', {
         method: 'POST',
         body: { name, publicHost },
-    });
-
-export const updateHostProbes = (hostProbeTargets: ConfigData['hostProbeTargets']) =>
-    apiRequest<{ hostProbeTargets: ConfigData['hostProbeTargets'] }>('/api/settings/host-probes', {
-        method: 'POST',
-        body: { hostProbeTargets },
     });
 
 export const updateLayoutOrder = (order: LayoutOrderEntry[]) =>

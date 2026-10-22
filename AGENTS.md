@@ -209,7 +209,7 @@ only for a new module.
   readiness/protocol and builds the pull URL outputs read.
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `translationMixer.ts`
   (translation output mixer), `preview.ts` (HLS previews with a keepalive TTL),
-  `rejectedPublishes.ts`, `hostProbes.ts`.
+  `rejectedPublishes.ts`.
 - `src/api/*` - REST routes; `errors.ts` is the JSON error handler (also on the hook app). `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments and the minimal environment every

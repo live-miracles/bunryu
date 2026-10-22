@@ -86,8 +86,8 @@ Other things the diagnostics record so an incident can be pieced together:
   The number not logged goes on the next line, or, if the attempts stopped, on a
   summary line once the minute is over (written on the next hook call or
   dashboard refresh).
-- **Control-plane errors:** a background loop (health poll, output watchdog,
-  host probes) that throws writes `<loop>-failed` on its first failure or a new
+- **Control-plane errors:** a background loop (health poll, output watchdog)
+  that throws writes `<loop>-failed` on its first failure or a new
   error, and `<loop>-recovered` with the count; an error nothing else caught is
   written as `uncaught-exception` or `unhandled-rejection`. The process keeps
   running in both cases. A shutdown step or a staggered restart that throws is

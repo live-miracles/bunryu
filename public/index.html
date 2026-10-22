@@ -23,21 +23,6 @@
       <div class="flex flex-1 items-center gap-3">
         <button class="btn btn-ghost px-2 text-xl font-bold" id="server-name-display" onclick="selectPipeline(null)">Bunryu</button>
         <button
-          id="host-connections-nav-btn"
-          class="btn btn-square btn-sm btn-ghost opacity-70"
-          type="button"
-          onclick="openHostConnectionsBtn()"
-          title="Host Connections"
-          aria-label="Host Connections">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8 16a4 4 0 1 1 0-8" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16 8a4 4 0 1 1 0 8" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 12h.01" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8h.01" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16h.01" />
-          </svg>
-        </button>
-        <button
           id="srs-logs-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"
           onclick="openSrsLogsBtn()"
@@ -995,7 +980,6 @@
 
       <!-- Overview: all pipelines table (spans middle + right columns) -->
       <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="overview-col"></div>
-      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="hosts-col"></div>
 
       <!-- Server Logs (spans middle + right columns) -->
       <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="srs-logs-col">
@@ -1293,43 +1277,6 @@
                 </svg>
               </span>
               <button type="button" class="btn btn-sm btn-accent" onclick="settingsPipelineGroupsFormBtn(this)">Save</button>
-            </div>
-          </div>
-
-          <div class="space-y-2">
-            <div class="flex items-center justify-between pt-1">
-              <span class="fieldset-legend">Host Connectivity Probes</span>
-              <button id="settings-add-host-probe-btn" type="button" class="btn btn-xs btn-ghost" onclick="addHostProbeRowBtn()">+ Add host</button>
-            </div>
-            <div class="border-base-content/10 overflow-x-auto rounded-lg border">
-              <table class="table-sm table">
-                <thead>
-                  <tr>
-                    <th>Label</th>
-                    <th>Domain / IP</th>
-                    <th class="w-28">Port</th>
-                    <th class="w-16"></th>
-                  </tr>
-                </thead>
-                <tbody id="settings-host-probe-rows"></tbody>
-              </table>
-            </div>
-            <div class="flex items-center justify-end gap-2">
-              <span id="settings-host-probes-save-success" class="text-primary hidden" aria-hidden="true">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <button type="button" class="btn btn-sm btn-accent" onclick="settingsHostProbesFormBtn(this)">Save</button>
             </div>
           </div>
 

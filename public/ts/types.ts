@@ -25,36 +25,6 @@ export interface PipelineGroup {
     position: number;
 }
 
-export interface HostProbeTarget {
-    slot: number;
-    label: string;
-    host: string;
-    port: number;
-}
-
-export interface HostProbeSample {
-    ts: number;
-    ok: boolean;
-    latencyMs: number | null;
-    error: string | null;
-    resolvedAddress: string | null;
-}
-
-export interface HostProbeOverviewTarget {
-    target: HostProbeTarget;
-    latestSample: HostProbeSample | null;
-    historySampleCount: number;
-    historyFailureCount: number;
-    averageLatencyMs: number | null;
-    history: HostProbeSample[];
-}
-
-export interface HostProbeOverview {
-    generatedAt: string;
-    intervalMs: number;
-    targets: HostProbeOverviewTarget[];
-}
-
 export interface Output {
     id: string;
     pipelineId: string;
@@ -397,7 +367,6 @@ export interface ConfigData {
     configRev: number;
     pipelines: Pipeline[];
     outputs: Output[];
-    hostProbeTargets: HostProbeTarget[];
     groups: PipelineGroup[];
     encodings: string[];
     streamKeys: StreamKey[];

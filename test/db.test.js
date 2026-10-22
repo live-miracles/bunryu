@@ -817,59 +817,6 @@ describe('Sessions', () => {
     });
 });
 
-// ── Host probe targets ────────────────────────────────
-
-describe('Host probe targets', () => {
-    test('listHostProbeTargets is empty by default', () => {
-        assert.deepEqual(makeDb().listHostProbeTargets(), []);
-    });
-
-    test('replaceHostProbeTargets inserts new targets', () => {
-        const db = makeDb();
-        db.replaceHostProbeTargets([
-            { slot: 1, label: 'YouTube', host: 'a.rtmp.youtube.com', port: 1935 },
-            { slot: 2, label: 'Facebook', host: 'live-api-s.facebook.com', port: 443 },
-        ]);
-        assert.equal(db.listHostProbeTargets().length, 2);
-    });
-
-    test('replaceHostProbeTargets updates an existing slot in place', () => {
-        const db = makeDb();
-        db.replaceHostProbeTargets([{ slot: 1, label: 'Old', host: 'old.example.com', port: 1 }]);
-        db.replaceHostProbeTargets([{ slot: 1, label: 'New', host: 'new.example.com', port: 2 }]);
-        const targets = db.listHostProbeTargets();
-        assert.equal(targets.length, 1);
-        assert.equal(targets[0].label, 'New');
-        assert.equal(targets[0].host, 'new.example.com');
-    });
-
-    test('replaceHostProbeTargets drops slots missing from the new list', () => {
-        const db = makeDb();
-        db.replaceHostProbeTargets([
-            { slot: 1, label: 'A', host: 'a.example.com', port: 1 },
-            { slot: 2, label: 'B', host: 'b.example.com', port: 2 },
-        ]);
-        db.replaceHostProbeTargets([{ slot: 1, label: 'A', host: 'a.example.com', port: 1 }]);
-        const targets = db.listHostProbeTargets();
-        assert.equal(targets.length, 1);
-        assert.equal(targets[0].slot, 1);
-    });
-
-    test('replaceHostProbeTargets with an empty array clears all targets', () => {
-        const db = makeDb();
-        db.replaceHostProbeTargets([{ slot: 1, label: 'A', host: 'a.example.com', port: 1 }]);
-        db.replaceHostProbeTargets([]);
-        assert.deepEqual(db.listHostProbeTargets(), []);
-    });
-
-    test('replaceHostProbeTargets bumps the config revision', () => {
-        const db = makeDb();
-        const rev = db.getConfigRev();
-        db.replaceHostProbeTargets([{ slot: 1, label: 'A', host: 'a.example.com', port: 1 }]);
-        assert.ok(db.getConfigRev() > rev);
-    });
-});
-
 // ── Pipeline groups ────────────────────────────────────
 
 describe('Pipeline groups', () => {

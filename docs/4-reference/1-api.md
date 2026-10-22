@@ -19,7 +19,6 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | GET | `/api/metrics/history` | System metric samples every 5 s for the last 2 hours; `?after=<ms>` returns only newer samples |
 | GET | `/api/metrics/system` | Host CPU, RAM, disk and network stats (RAM used is total minus `MemAvailable`, so reclaimable page cache does not count) |
 | GET | `/api/srs-logs` | Recent SRS up/down events and log tails for SRS, the dashboard, and the relay |
-| GET | `/api/host-probes` | Host reachability probe targets and their samples, `?hours=` up to 6 (default 6) |
 | GET | `/api/ready` | Unauthenticated readiness check used by systemd before starting SRS |
 | POST | `/api/pipelines` | Create pipeline (auto-names and assigns stream key) |
 | GET | `/api/pipelines/:id` | Pipeline details including relay health and bonded-input activity |
@@ -43,7 +42,6 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | GET | `/api/pipelines/:id/outputs/:outId/errors` | Output Error History (also for a shared encode) |
 | DELETE | `/api/pipelines/:id/outputs/:outId/errors` | Clear the Error History (also for a shared encode) |
 | POST | `/api/settings/general` | Update the server name and public host `{ name, publicHost? }` |
-| POST | `/api/settings/host-probes` | Replace the host probe targets `{ hostProbeTargets: [{ slot, label, host, port }] }`; a target resolving to a blocked address is refused with 400 |
 | POST | `/api/settings/layout-order` | Save the dashboard's pipeline and output order `{ order: [{ id, outs: [outputId] }] }` |
 | POST | `/api/settings/pipeline-groups` | Replace the sidebar pipeline groups `{ groups: [{ id?, name }] }` |
 | POST | `/api/settings/regenerate-stream-keys` | Regenerate all stream keys |

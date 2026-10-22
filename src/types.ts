@@ -52,29 +52,6 @@ export interface TranslationInput {
     restoreDurationMs?: number;
 }
 
-export interface HostProbeTarget {
-    slot: number;
-    label: string;
-    host: string;
-    port: number;
-}
-
-export interface HostProbeSample {
-    ts: number;
-    ok: boolean;
-    latencyMs: number | null;
-    error: string | null;
-    resolvedAddress: string | null;
-}
-
-export interface HostProbeSummary {
-    target: HostProbeTarget;
-    latestSample: HostProbeSample | null;
-    historySampleCount: number;
-    historyFailureCount: number;
-    averageLatencyMs: number | null;
-}
-
 export interface PipelineLog {
     id: number;
     pipelineId: number;
@@ -125,8 +102,6 @@ export interface Db {
 
     getSetting(key: string): string | null;
     setSetting(key: string, value: string): void;
-    listHostProbeTargets(): HostProbeTarget[];
-    replaceHostProbeTargets(targets: HostProbeTarget[]): void;
 
     listStreamKeys(): StreamKey[];
     regenerateStreamKeys(): StreamKey[];

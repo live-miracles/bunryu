@@ -100,16 +100,6 @@ describe('checkOutputDestination', () => {
     });
 });
 
-describe('checkProbeAddress', () => {
-    test('probes nothing local, link-local or unspecified', () => {
-        assert.match(destination.checkProbeAddress('127.0.0.1'), /not probed/);
-        assert.match(destination.checkProbeAddress('169.254.169.254'), /not probed/);
-        assert.match(destination.checkProbeAddress('0.0.0.0'), /not probed/);
-        assert.equal(destination.checkProbeAddress('8.8.8.8'), null);
-        assert.equal(destination.checkProbeAddress('10.0.0.1'), null);
-    });
-});
-
 describe('enforceDestinationPolicy', () => {
     test('stops and annotates only outputs whose destination is forbidden', async () => {
         const state = new Map();
