@@ -140,6 +140,23 @@ timestamps, enhanced RTMP) and behavior on bad networks, which only show up in
 real use. A new server carries every input at once, so its bugs reach every
 stream.
 
+**Growing `goryu` into that server was considered (October 2026)** to drop SRS,
+have one fewer process and remove the loopback SRT hop on bonded inputs. It was
+rejected:
+- **It moves code in-house rather than removing it.** Goryu would grow from about
+  2,000 to an estimated 9,000 to 12,000 lines of C: SRT fan-out, an RTMP server,
+  publish authorization, kick and stream stats. The control plane would barely
+  shrink, because it still needs the same stream registry, stats, hooks and kick
+  from goryu instead of SRS.
+- **SRS's code can't be lifted into goryu.** The RTMP stack, AMF0, handshake,
+  FLV and SRT connection code in SRS 8.0 is about 13,000 lines of C++ built on
+  SRS's own classes and its state-threads coroutines. Goryu is C with a thread per
+  session, so reusing it means a rewrite or a fork of SRS.
+- **The hop it removes isn't where bonded inputs fail.** goryu to SRS is loopback;
+  bonded inputs fail on the public legs. The hop costs about 200 ms (see
+  [Outputs pull from SRS, not from the relay](#outputs-pull-from-srs-not-from-the-relay)),
+  which doesn't matter for the platform outputs Bunryu serves.
+
 **Tradeoffs:** every output is an FFmpeg process, so a copy output costs about 65 to
 90 MB of RAM, where a MediaMTX forwarding hub used about 10x less (and about 1.5x more
 CPU; see [One FFmpeg process per output](#one-ffmpeg-process-per-output)). That is
