@@ -1995,6 +1995,25 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 return `MemTotal: 1024000 kB\nMemAvailable: ${state.availableKb} kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n`;
             }
             if (file === '/proc/77/status') return 'Name:\tffmpeg\nVmRSS:\t 99000 kB\n';
+            if (file === '/proc/pressure/cpu') {
+                return 'some avg10=0.88 avg60=0.38 avg300=0.22 total=123\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n';
+            }
+            if (file === '/proc/net/snmp') {
+                return (
+                    'Tcp: ActiveOpens\nTcp: 1\n' +
+                    'Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors\n' +
+                    `Udp: 100 0 ${state.rcvbufErrors ?? 5} 50 ${state.rcvbufErrors ?? 5} 0\n`
+                );
+            }
+            // 0x2760 is 10080, the default SRT port; 0x1388 (5000) is not an ingest port.
+            if (file === '/proc/net/udp') {
+                return (
+                    '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops\n' +
+                    '  12: 00000000:2760 00000000:0000 07 00000000:0000A000 00:00000000 00000000  1000 0 1 2 0000000000000000 7\n' +
+                    '  13: 00000000:1388 00000000:0000 07 00000000:00000000 00:00000000 00000000  1000 0 2 2 0000000000000000 9\n'
+                );
+            }
+            if (file === '/proc/net/udp6') return '  sl  local_address\n';
             return realReadFileSync(file, ...rest);
         });
         t.mock.method(fs, 'readdirSync', (dir, ...rest) =>
@@ -2094,7 +2113,48 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             totalBytes: 1024000 * 1024,
             availableBytes: 400_000 * 1024,
             swapUsedBytes: 0,
+            cpuPressure: { some10: 0.88, some60: 0.38 },
+            udp: {
+                rcvbufErrors: 5,
+                sockets: [{ port: 10080, rxQueueBytes: 40960, drops: 7 }],
+                rcvbufErrorsDelta: null,
+            },
         });
+
+        service.shutdown();
+    });
+
+    test('health-snapshot reports how many datagrams the kernel dropped since the previous snapshot', async (t) => {
+        const state = { availableKb: 400_000, rcvbufErrors: 5 };
+        mockHostMemory(t, state);
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [streamFixture()] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const diagnostics = makeDiagnosticsSpy();
+        const service = createHealthService(
+            makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            diagnostics,
+        );
+        const deltas = () =>
+            diagnostics.events
+                .filter((e) => e.event === 'health-snapshot')
+                .map((e) => e.host.udp.rcvbufErrorsDelta);
+
+        t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+        service.start();
+        await sleep(20);
+        state.rcvbufErrors = 12;
+        for (let i = 0; i < 12; i++) await tickPoll(t); // one minute: the next snapshot
+        state.rcvbufErrors = 3; // a counter that went backwards (reset) is not a negative drop
+        for (let i = 0; i < 12; i++) await tickPoll(t);
+
+        assert.deepEqual(deltas(), [null, 7, 0]);
 
         service.shutdown();
     });

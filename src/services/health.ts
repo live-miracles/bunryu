@@ -22,7 +22,13 @@ import type {
 } from './srtRelay.js';
 import { inputPullUrl, type InputProtocol, type InputState } from './inputState.js';
 import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
-import { readHostMemory, topProcessesByRss } from '../utils/procStats.js';
+import {
+    readCpuPressure,
+    readHostMemory,
+    readUdpStats,
+    topProcessesByRss,
+} from '../utils/procStats.js';
+import { readRelayConfig } from '../utils/relayConfig.js';
 import {
     allowLegLogLine,
     createLegLogState,
@@ -353,6 +359,7 @@ export function createHealthService(
     // configured), which would otherwise fire a spurious down event on every boot.
     let prevRelayFailed = false;
     let lastDiagnosticsSnapshotAt = 0;
+    let lastRcvbufErrors: number | null = null;
 
     function pushSrsEvent(source: 'srs' | 'relay', type: 'up' | 'down', message: string): void {
         srsEvents.push({ ts: Date.now(), source, type, message });
@@ -1618,6 +1625,26 @@ export function createHealthService(
             }
             const mem = process.memoryUsage();
             const host = readHostMemory();
+            // Kernel-side evidence for the SRT ingest sockets (the UDP buffer ceiling
+            // decision in the design docs): a rising rcvbufErrorsDelta or any socket
+            // drops means datagrams were lost before SRT saw them.
+            const ingestPorts: number[] = [];
+            for (const readPort of [
+                () => readSrsConfigValues().srtPort,
+                () => readRelayConfig().input_port,
+            ]) {
+                try {
+                    ingestPorts.push(readPort());
+                } catch {
+                    /* config unreadable: that port is skipped */
+                }
+            }
+            const udp = readUdpStats(ingestPorts);
+            const rcvbufErrorsDelta =
+                udp.rcvbufErrors != null && lastRcvbufErrors != null
+                    ? Math.max(0, udp.rcvbufErrors - lastRcvbufErrors)
+                    : null;
+            lastRcvbufErrors = udp.rcvbufErrors;
             const usage = getProcessUsage?.();
             diagnostics.event('health-snapshot', {
                 srsReachable,
@@ -1649,6 +1676,8 @@ export function createHealthService(
                     totalBytes: host?.totalBytes ?? null,
                     availableBytes: host?.availableBytes ?? null,
                     swapUsedBytes: host?.swapUsedBytes ?? null,
+                    cpuPressure: readCpuPressure(),
+                    udp: { ...udp, rcvbufErrorsDelta },
                 },
                 pipelines: pipelineDiagnostics,
             });
