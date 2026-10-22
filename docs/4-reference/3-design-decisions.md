@@ -769,10 +769,11 @@ Destination failures are diagnosed from the outputs themselves.
 - **Cost:** a service and loop, a settings form, a dashboard tab and chart, two API
   routes, a database table and several hundred lines of tests, for a view that has not been useful.
 
-**Existing databases:** the `host_probe_targets` table is no longer created, but one
-that already exists stays in an old database, unused. `SCHEMA_VERSION` was not
-bumped, because nothing in the old schema is incompatible and a bump would make
-every existing install wipe its pipelines and outputs.
+**Existing databases:** the table is dropped from the schema and `SCHEMA_VERSION` is
+bumped to 2, so an install with a version-1 database is asked to wipe it on the next
+install, like any schema change (see
+[Database schema version](../3-operations/3-configuration.md#database-schema-version)).
+The pipelines and outputs have to be created again from the `.bak` copy.
 
 **Not measured:** how often operators opened the tab.
 

@@ -131,7 +131,7 @@ it ask, in a terminal, "Wipe it and start with an empty database? [Y/n]": Enter 
 `n`, `-y` or no terminal stops the install (`WIPE_DB=y` wipes without asking). A
 `db.sqlite.<timestamp>.bak` copy is kept to re-create pipelines from. A database with the
 current version is kept without any prompt. A database from before the stamp existed is
-accepted and stamped, since its schema is version 1.
+accepted and stamped, since it differs from the current schema only by an unused table.
 
 Relay ports and status polling are read from `goryu.json`, located beside `srs_config_path`.
 

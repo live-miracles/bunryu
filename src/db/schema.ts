@@ -3,8 +3,9 @@ import type Database from 'better-sqlite3';
 // Bump when a table or column changes. There are no migrations: a database
 // stamped with another version is refused at startup (see DatabaseSchemaError)
 // and has to be recreated. Databases from before the stamp existed carry user
-// version 0 and have the version-1 schema, so they are accepted and stamped.
-export const SCHEMA_VERSION = 1;
+// version 0 and differ from version 2 only by an unused table, so they are
+// accepted and stamped.
+export const SCHEMA_VERSION = 2;
 
 export class DatabaseSchemaError extends Error {}
 
