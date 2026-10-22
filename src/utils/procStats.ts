@@ -60,6 +60,85 @@ export function readUdpBufferCeilings(): UdpBufferCeilings {
     return { rmemMaxBytes: read('rmem_max'), wmemMaxBytes: read('wmem_max') };
 }
 
+export interface CpuPressure {
+    // Percent of the last 10 s / 60 s in which at least one runnable task waited for
+    // a CPU (PSI "some"). Reads near zero on a healthy host and rises when
+    // something such as an encode starves the others, which steal time alone misses.
+    some10: number;
+    some60: number;
+}
+
+// null when the kernel has no PSI (older kernels, some containers).
+export function readCpuPressure(): CpuPressure | null {
+    try {
+        const line = fs
+            .readFileSync('/proc/pressure/cpu', 'utf8')
+            .split('\n')
+            .find((l) => l.startsWith('some '));
+        const avg10 = /\bavg10=([\d.]+)/.exec(line ?? '');
+        const avg60 = /\bavg60=([\d.]+)/.exec(line ?? '');
+        if (!avg10 || !avg60) return null;
+        return { some10: Number(avg10[1]), some60: Number(avg60[1]) };
+    } catch {
+        return null;
+    }
+}
+
+export interface UdpSocketStats {
+    port: number;
+    // Bytes waiting in the socket's kernel receive queue and datagrams the kernel
+    // dropped because it was full (cumulative since the socket was created).
+    rxQueueBytes: number;
+    drops: number;
+}
+
+export interface UdpStats {
+    // Host-wide datagrams dropped for a full receive buffer (cumulative); null if
+    // /proc/net/snmp is unreadable.
+    rcvbufErrors: number | null;
+    sockets: UdpSocketStats[];
+}
+
+// The kernel's UDP counters, for the listed local ports (the SRT ingest sockets).
+// Each of /proc/net/udp and /proc/net/udp6 has one line per socket:
+//   sl local_address rem_address st tx_queue:rx_queue tr:tm->when retrnsmt uid
+//   timeout inode ref pointer drops
+export function readUdpStats(ports: number[]): UdpStats {
+    let rcvbufErrors: number | null = null;
+    try {
+        const lines = fs.readFileSync('/proc/net/snmp', 'utf8').split('\n');
+        const header = lines.findIndex((l) => l.startsWith('Udp:'));
+        const names = lines[header]?.split(/\s+/);
+        const values = lines[header + 1]?.split(/\s+/);
+        const at = names?.indexOf('RcvbufErrors') ?? -1;
+        if (at > 0 && values?.[0] === 'Udp:' && Number.isFinite(Number(values[at]))) {
+            rcvbufErrors = Number(values[at]);
+        }
+    } catch {
+        /* leave null */
+    }
+    const wanted = new Set(ports);
+    const sockets: UdpSocketStats[] = [];
+    for (const file of ['/proc/net/udp', '/proc/net/udp6']) {
+        let text: string;
+        try {
+            text = fs.readFileSync(file, 'utf8');
+        } catch {
+            continue;
+        }
+        for (const line of text.split('\n').slice(1)) {
+            const f = line.trim().split(/\s+/);
+            if (f.length < 13) continue;
+            const port = parseInt(f[1].slice(f[1].lastIndexOf(':') + 1), 16);
+            const rxQueue = parseInt(f[4].split(':')[1] ?? '', 16);
+            const drops = parseInt(f[12], 10);
+            if (!wanted.has(port) || !Number.isFinite(rxQueue) || !Number.isFinite(drops)) continue;
+            sockets.push({ port, rxQueueBytes: rxQueue, drops });
+        }
+    }
+    return { rcvbufErrors, sockets };
+}
+
 export interface ProcessRss {
     pid: number;
     name: string;

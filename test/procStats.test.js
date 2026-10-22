@@ -8,6 +8,8 @@ const {
     readProcRssBytes,
     readHostMemory,
     readUdpBufferCeilings,
+    readCpuPressure,
+    readUdpStats,
     topProcessesByRss,
     findPidsByExecutable,
     createProcCpuTracker,
@@ -289,6 +291,77 @@ describe('readUdpBufferCeilings', () => {
             return 'garbage\n';
         });
         assert.deepEqual(readUdpBufferCeilings(), { rmemMaxBytes: null, wmemMaxBytes: null });
+    });
+});
+
+describe('readCpuPressure', () => {
+    test('reads the some line of /proc/pressure/cpu', (t) => {
+        t.mock.method(
+            fs,
+            'readFileSync',
+            () =>
+                'some avg10=0.88 avg60=0.38 avg300=0.22 total=2203264628\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n',
+        );
+        assert.deepEqual(readCpuPressure(), { some10: 0.88, some60: 0.38 });
+    });
+
+    test('returns null without PSI or on an unexpected format', (t) => {
+        t.mock.method(fs, 'readFileSync', () => {
+            throw new Error('ENOENT');
+        });
+        assert.equal(readCpuPressure(), null);
+        t.mock.restoreAll();
+        t.mock.method(fs, 'readFileSync', () => 'full avg10=0.00 avg60=0.00\n');
+        assert.equal(readCpuPressure(), null);
+    });
+});
+
+describe('readUdpStats', () => {
+    const header =
+        '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops\n';
+    const files =
+        (overrides = {}) =>
+        (file) => {
+            const content = {
+                '/proc/net/snmp':
+                    'Ip: Forwarding\nIp: 1\n' +
+                    'Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors\n' +
+                    'Udp: 487216052 2936784 17093 209838627 17093 0 0\n',
+                '/proc/net/udp':
+                    header +
+                    '  12: 00000000:2760 00000000:0000 07 00000000:0000A000 00:00000000 00000000  1000 0 1 2 0000000000000000 7\n' +
+                    '  13: 0100007F:1388 00000000:0000 07 00000000:00000000 00:00000000 00000000  1000 0 2 2 0000000000000000 9\n',
+                '/proc/net/udp6':
+                    header +
+                    '  14: 00000000000000000000000000000000:2761 00000000000000000000000000000000:0000 07 00000000:00000010 00:00000000 00000000  1000 0 3 2 0000000000000000 2\n',
+                ...overrides,
+            }[file];
+            if (content === undefined) throw new Error(`ENOENT ${file}`);
+            return content;
+        };
+
+    test('reads the host-wide drop counter and the queue and drops of the listed ports on IPv4 and IPv6', (t) => {
+        t.mock.method(fs, 'readFileSync', files());
+        assert.deepEqual(readUdpStats([10080, 10081]), {
+            rcvbufErrors: 17093,
+            sockets: [
+                { port: 10080, rxQueueBytes: 40960, drops: 7 },
+                { port: 10081, rxQueueBytes: 16, drops: 2 },
+            ],
+        });
+    });
+
+    test('ignores sockets on other ports and survives unreadable files', (t) => {
+        t.mock.method(fs, 'readFileSync', files({ '/proc/net/snmp': undefined }));
+        assert.deepEqual(readUdpStats([5000]), {
+            rcvbufErrors: null,
+            sockets: [{ port: 5000, rxQueueBytes: 0, drops: 9 }],
+        });
+        t.mock.restoreAll();
+        t.mock.method(fs, 'readFileSync', () => {
+            throw new Error('EACCES');
+        });
+        assert.deepEqual(readUdpStats([10080]), { rcvbufErrors: null, sockets: [] });
     });
 });
 

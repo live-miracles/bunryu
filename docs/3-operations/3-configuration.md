@@ -67,7 +67,12 @@ incident can be investigated after the live one-hour chart window has passed.
 The snapshots also record resource usage: per-output FFmpeg RSS/CPU and memory
 limit (translation mixers included), CPU and RSS for the Node control plane
 (plus its V8 heap), SRS and the SRT relay (the same samples the dashboard
-shows, up to ~10 s old), and host total/available memory and swap. Separately,
+shows, up to ~10 s old), host total/available memory and swap, host CPU pressure
+(`cpuPressure`: the share of the last 10 s and 60 s in which a runnable task waited for a CPU,
+from `/proc/pressure/cpu`, null where the kernel has none) and the kernel's UDP counters
+(`udp`: datagrams dropped host-wide for a full receive buffer, how many since the previous
+snapshot, and the receive queue and drops of the SRS and relay SRT ingest sockets).
+Separately,
 `host-memory-low` (available memory under 15% of total) and
 `host-memory-recovered` (back above 20%) events are logged on transition, the
 former with the five largest processes by RSS.
