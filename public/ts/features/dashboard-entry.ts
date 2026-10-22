@@ -1,6 +1,7 @@
 import { getUrlParam, setUrlParam, copyText } from '../core/utils.js';
 import { state } from '../core/state.js';
 import { refreshDashboard, refreshHostProbes } from './dashboard.js';
+import { initSoundAlerts } from './sound-alerts.js';
 import {
     openSettings,
     addHostProbeRow,
@@ -243,6 +244,8 @@ window.previewReloadBtn = () => {
 window.previewMaximizeBtn = () => {
     void import('./preview.js').then(({ togglePreviewMaximize }) => togglePreviewMaximize());
 };
+
+initSoundAlerts();
 
 // A page load can start directly on ?view=settings or ?view=logs (bookmark,
 // reload). Those views are otherwise only populated when the user clicks the

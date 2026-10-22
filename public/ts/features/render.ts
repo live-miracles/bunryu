@@ -17,7 +17,7 @@ import {
     STATUS_COLOR_ERROR,
     STATUS_COLOR_OFF,
 } from '../core/utils.js';
-import { state } from '../core/state.js';
+import { healthNowMs, state } from '../core/state.js';
 import { rejectedVia, rejectedWhy } from '../core/rejected.js';
 import type {
     AudioInfo,
@@ -790,17 +790,6 @@ function getBondingIndicator(
                 ? null
                 : `${pipeline.srtBonding.input.bonded ? 'Bonded SRT input' : 'SRT input via relay'} active and forwarding to downstream output`,
     };
-}
-
-// Anchored to the health snapshot's own generatedAt (server clock) rather than
-// the browser's Date.now(). Comparing a server-issued timestamp against the
-// client's wall clock makes staleness detection sensitive to client/server
-// clock skew — a client clock running fast enough looks permanently "stalled"
-// even when the relay is flowing normally.
-function healthNowMs(): number {
-    const generatedAt = state.health.generatedAt;
-    const parsed = generatedAt ? new Date(generatedAt).getTime() : NaN;
-    return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
 function relayHasRecentInputFlow(pipeline: PipelineView): boolean {

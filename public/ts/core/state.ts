@@ -54,3 +54,14 @@ export const state: AppState = {
     outputSearch: '',
     collapsedGroupIds: new Set(),
 };
+
+// "Now" on the server's clock: the health snapshot's own generatedAt rather than
+// the browser's Date.now(). Comparing a server-issued timestamp against the
+// client's wall clock makes staleness detection sensitive to client/server
+// clock skew — a client clock running fast enough looks permanently "stalled"
+// even when the relay is flowing normally.
+export function healthNowMs(): number {
+    const generatedAt = state.health.generatedAt;
+    const parsed = generatedAt ? new Date(generatedAt).getTime() : NaN;
+    return Number.isFinite(parsed) ? parsed : Date.now();
+}

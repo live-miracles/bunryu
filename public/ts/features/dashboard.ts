@@ -11,6 +11,7 @@ import { parsePipelines } from '../core/pipeline.js';
 import { state } from '../core/state.js';
 import { renderPipelines, renderMetrics } from './render.js';
 import { getUrlParam } from '../core/utils.js';
+import { noteDashboardSnapshot } from './sound-alerts.js';
 
 let refreshInFlight: Promise<void> | null = null;
 let refreshQueued = false;
@@ -155,6 +156,16 @@ async function fetchAndRender(): Promise<void> {
     state.pipelines = parsePipelines(state.config, state.health);
     renderPipelines();
     renderMetrics();
+    // Only once both config and health have loaded: a snapshot missing either
+    // would set an empty baseline, and the next poll would beep for every
+    // problem already on screen.
+    if (!state.config.pipelines || !state.health.generatedAt) return;
+    noteDashboardSnapshot({
+        serverUnreachable: isServerUnreachable(),
+        srsReachable: state.health.srsReachable,
+        relayDown: !!state.health.srtRelay && state.health.srtRelay.status !== 'running',
+        pipelines: state.pipelines,
+    });
 }
 
 const POLL_MS = 5000;

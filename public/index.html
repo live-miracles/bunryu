@@ -57,6 +57,18 @@
             <path d="M12 7v5l4 2" />
           </svg>
         </button>
+        <div class="group flex items-center" id="alert-sound-control">
+          <button id="alert-sound-btn" class="btn btn-square btn-sm btn-ghost opacity-70" title="Alert beeps" aria-label="Alert beeps"></button>
+          <input
+            id="alert-volume"
+            class="range range-xs w-0 opacity-0 transition-all duration-150 group-focus-within:mx-1 group-focus-within:w-20 group-focus-within:opacity-100 group-hover:mx-1 group-hover:w-20 group-hover:opacity-100"
+            type="range"
+            min="0"
+            max="500"
+            step="10"
+            value="100"
+            aria-label="Alert volume" />
+        </div>
         <button
           id="settings-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"

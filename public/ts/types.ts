@@ -149,6 +149,8 @@ export interface OutputStatus {
     bitrateKbps: number | null;
     startedAtMs: number | null;
     failures: number;
+    // When the pending retry after a failure is due (server clock), else null.
+    nextRetryAtMs: number | null;
     warningReason: string | null;
     // When the warning in warningReason began (ms since epoch).
     warningSinceMs: number | null;
@@ -453,6 +455,8 @@ export interface OutputView extends Output {
     bitrateKbps: number | null;
     startedAtMs: number | null;
     failures: number;
+    // When the pending retry after a failure is due (server clock), else null.
+    nextRetryAtMs: number | null;
     warningReason: string | null;
     // When the warning in warningReason began (ms since epoch).
     warningSinceMs: number | null;

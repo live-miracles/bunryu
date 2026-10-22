@@ -158,6 +158,7 @@ export function parsePipelines(
                 bitrateKbps: oh?.bitrateKbps ?? null,
                 startedAtMs: oh?.startedAtMs ?? null,
                 failures: oh?.failures ?? 0,
+                nextRetryAtMs: oh?.nextRetryAtMs ?? null,
                 warningReason: oh?.warningReason ?? null,
                 warningSinceMs: oh?.warningSinceMs ?? null,
                 lastError: err?.message ?? null,

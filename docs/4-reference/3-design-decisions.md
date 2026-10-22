@@ -707,6 +707,42 @@ refresh (focus, text and caret survive it).
 **Revisit when:** operators ask to search by destination host or status, or the output
 limit rises.
 
+### Alert sound beeps for new problems only, in the browser
+
+**Decision:** the dashboard beeps once a second for 5 s when a problem appears that was
+not there at the previous 5 s poll:
+- the server, SRS or the SRT relay becoming unreachable;
+- an error-level pipeline alert;
+- an input going offline while its outputs are meant to run;
+- an output crashing or being restarted by a watchdog.
+
+A problem that lasts stays silent. The bell in the navbar mutes it, and its slider sets
+the volume (0–500%); both are kept per browser. The beep and control are ported from
+live-gallery's alert beeps, so both tools sound alike.
+
+**Why:**
+
+- **Beeping while a problem lasts gets the sound muted.** A destination that is down
+  for an hour retries every 16 s. A crash within 60 s of the same output's previous
+  one counts as the same episode (the server's `STABLE_RUN_MS`), so a failing output
+  beeps when it starts failing, not on every retry. Tested on the test stack: an output
+  to a destination refusing connections beeped once and stayed silent through its next
+  five attempts.
+- **The first poll after opening the page only records what is already wrong**, so a
+  reload does not beep for problems already on screen.
+- **In the browser, not the server.** The dashboard is on a visible screen during
+  events, so its sound reaches the operator without push permissions, Do Not Disturb or
+  a phone. The 5 s poll already carries everything needed, so the server is unchanged.
+- **Warnings do not beep** (timestamp floods, high memory, falling behind, SRT loss):
+  they are frequent and usually recover on their own.
+
+**Not adopted:** a "silence for N minutes" button (mute is simpler, and the operator
+decides when to unmute); keeping a background tab's polling unthrottled (the dashboard
+is on top during events); push notifications.
+
+**Revisit when:** operators mute it because it beeps too often, or a problem worth a
+beep reaches the dashboard only as a warning.
+
 ## Tooling
 
 ### ESLint checks promise handling; Prettier stays the formatter

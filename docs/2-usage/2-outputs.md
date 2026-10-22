@@ -149,7 +149,9 @@ are affected, with the reason. The search box on each table's heading line filte
 name as you type; an output matches on its own name or its pipeline's. The heading badge
 shows how many rows are left ("20 of 500").
 
-The output card shows status, uptime, bitrate, CPU and memory. Problems appear on
+The output card shows status, uptime, bitrate, CPU and memory. An output that failed
+shows its failed attempts since it was last started and, while it waits to try again,
+when the next attempt is due ("retry in 8 s"). Problems appear on
 the card as warnings, each with the time it began ("since 09:18"), and every crash, watchdog restart and finished warning
 episode is kept in the output's **Error History** with the FFmpeg stderr tail.
 The History button is red while the latest record is a crash or watchdog restart;
@@ -164,3 +166,16 @@ The pipeline alerts show their hint as a muted line. An error it has no advice f
 shown as is.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.
+
+### Alert sound
+
+The dashboard beeps for 5 s when something goes wrong that needs attention: an output
+crashes or is restarted by a watchdog, an input goes offline while its outputs are
+running, a pipeline raises an error alert, or the server, SRS or the SRT relay becomes
+unreachable. It beeps when the problem appears, not while it lasts, and an output that
+keeps failing beeps only when it starts failing. Warnings do not beep.
+
+The bell in the navbar mutes and unmutes the beeps; hover it for the volume slider.
+Both settings are kept in the browser. Browsers play sound only after the page has been
+clicked once, so the bell turns yellow until then: click anywhere on the dashboard after
+opening it. See [the design decision](../4-reference/3-design-decisions.md#alert-sound-beeps-for-new-problems-only-in-the-browser).

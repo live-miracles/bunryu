@@ -7,7 +7,7 @@ import {
     STATUS_COLOR_OFF,
     STATUS_COLOR_WARN,
 } from '../core/utils.js';
-import { state } from '../core/state.js';
+import { healthNowMs, state } from '../core/state.js';
 import type { InputHealth, OutputView } from '../types.js';
 import {
     ICON_HISTORY,
@@ -196,12 +196,23 @@ export function renderOutputCard(
         output.failures > 0
             ? `<span class="badge badge-sm badge-error gap-1 shrink-0" title="${output.failures} retr${output.failures === 1 ? 'y' : 'ies'}">${ICON_ITERATION_CW}${output.failures}</span>`
             : '';
+    // When the next retry is due, as of this health snapshot (the poll is every
+    // 5 s, so it counts down in steps). Absent while the output waits for its input.
+    const retryInSec =
+        output.nextRetryAtMs === null
+            ? null
+            : Math.max(0, Math.ceil((output.nextRetryAtMs - healthNowMs()) / 1000));
+    const retryInHtml =
+        retryInSec === null
+            ? ''
+            : `<span class="text-xs text-error shrink-0 opacity-80">${retryInSec > 0 ? `retry in ${retryInSec} s` : 'retrying now'}</span>`;
     // A stopped output only has a lastError when it was stopped after repeated
     // failed attempts (the server clears it when the output starts again).
     const lastErrorHtml = lastErrorLine
         ? `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
                 ${retryBadge}
                 <span class="text-xs text-error shrink-0">${lastErrorTs}</span>
+                ${retryInHtml}
                 <span class="text-xs text-error truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>${hintHtml(errorHint(lastErrorLine))}
            </div>`
         : '';

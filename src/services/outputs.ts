@@ -142,6 +142,8 @@ interface OutputStats {
     bitrateKbps: number | null;
     startedAtMs: number | null;
     failures: number;
+    // When the pending retry after a failure is due (ms since epoch), else null.
+    nextRetryAtMs: number | null;
     warningReason: string | null;
     // When the warning in warningReason began (ms since epoch), else null.
     warningSinceMs: number | null;
@@ -331,6 +333,9 @@ export function createOutputService(
             quickFailures: number;
             lastFailure: string | null;
             timer: NodeJS.Timeout | null;
+            // When the pending retry after a failure is due (not set for a
+            // re-check while the input is down), shown on the output card.
+            retryAtMs: number | null;
             // Which start problems the current episode (since the last spawn)
             // already put in the Error History, so a start that keeps failing
             // adds one record, not one per attempt.
@@ -390,6 +395,7 @@ export function createOutputService(
             bitrateKbps: p?.lastBitrateKbps ?? null,
             startedAtMs: startTimes.get(outputId) ?? null,
             failures: retryState.get(outputId)?.failures ?? 0,
+            nextRetryAtMs: retryState.get(outputId)?.retryAtMs ?? null,
             warningReason: warning?.reason ?? null,
             warningSinceMs: warning?.sinceMs ?? null,
             memoryUsageBytes: usage?.rssBytes ?? null,
@@ -534,6 +540,7 @@ export function createOutputService(
                 quickFailures: 0,
                 lastFailure: null,
                 timer: null,
+                retryAtMs: null,
                 startFailureNoted: false,
                 backstopNoted: false,
             });
@@ -627,6 +634,7 @@ export function createOutputService(
             delayMs,
         });
         scheduleTryStart(output.id, delayMs);
+        r.retryAtMs = Date.now() + delayMs;
     }
 
     // Schedule a tryStart without counting a failure — used when the input/SRS is
@@ -638,8 +646,10 @@ export function createOutputService(
     function scheduleTryStart(outputId: string, delayMs: number): void {
         const r = getRetry(outputId);
         if (r.timer) clearTimeout(r.timer);
+        r.retryAtMs = null;
         r.timer = setTimeout(() => {
             r.timer = null;
+            r.retryAtMs = null;
             void tryStart(outputId);
         }, delayMs);
         r.timer.unref?.();
@@ -1781,6 +1791,7 @@ export function createOutputService(
                 }
                 const r = getRetry(output.id);
                 r.failures = 0;
+                r.retryAtMs = null;
                 if (r.timer) clearTimeout(r.timer);
                 r.timer = setTimeout(
                     () => {

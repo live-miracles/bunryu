@@ -740,6 +740,42 @@ describe('output stop/start race', () => {
         service.shutdown();
     });
 
+    test('getStats reports when the next retry is due, and nothing once it ran or was stopped', async (t) => {
+        const procs = [];
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
+        );
+        t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+        const settle = () => new Promise((resolve) => setImmediate(resolve));
+        const db = makeDb();
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        assert.equal(service.getStats('out1').nextRetryAtMs, null);
+
+        procs.at(-1).emit('close', 1, null);
+        assert.equal(service.getStats('out1').nextRetryAtMs, 1_000_000 + 1000);
+
+        t.mock.timers.tick(1000);
+        await settle();
+        assert.equal(procs.length, 2, 'the retry spawned');
+        assert.equal(service.getStats('out1').nextRetryAtMs, null);
+
+        procs.at(-1).emit('close', 1, null);
+        assert.equal(service.getStats('out1').nextRetryAtMs, 1_001_000 + 2000);
+        db.getOutput('out1').desiredState = 'stopped';
+        service.stop('out1');
+        assert.equal(service.getStats('out1').nextRetryAtMs, null);
+
+        service.shutdown();
+    });
+
     test('the retry delay starts over after a run that stayed up', async (t) => {
         const procs = [];
         const diagnostics = makeDiagnosticsSpy();
@@ -1408,6 +1444,7 @@ describe('output service control surface', () => {
             bitrateKbps: null,
             startedAtMs: null,
             failures: 0,
+            nextRetryAtMs: null,
             warningReason: null,
             warningSinceMs: null,
             memoryUsageBytes: null,
