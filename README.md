@@ -45,7 +45,7 @@ A live event can't be restarted. Bunryu assumes something will go wrong (a desti
 - **Evidence:** per-output Error History, rotated diagnostics, and [incident write-ups](fail-reports/README.md) of real failures and their fixes.
 - **Small and boring:** no media code of our own. SRS, libsrt and FFmpeg do the media work, and the control plane is about 11,000 lines of TypeScript; it costs some efficiency ([why](docs/1-getting-started/5-comparison.md#design-approach)).
 
-These paths are exercised with fault-injection scenarios (a frozen destination, one that never reads, one that refuses connections, output churn, a publisher outage, a CPU-saturated host and a soak with 50 healthy outputs). No software can promise that nothing fails: see [Known issues](docs/3-operations/5-known-issues.md) and the [supported capacity](docs/1-getting-started/1-introduction.md#capacity-and-limits) for what Bunryu does not cover.
+These paths are exercised with fault-injection scenarios (a frozen destination, one that never reads, one that refuses connections, output churn, a publisher outage, an SRS crash, a CPU-saturated host and a soak with 50 healthy outputs). No software can promise that nothing fails: see [Known issues](docs/3-operations/5-known-issues.md) and the [supported capacity](docs/1-getting-started/1-introduction.md#capacity-and-limits) for what Bunryu does not cover.
 
 ## Quick start
 

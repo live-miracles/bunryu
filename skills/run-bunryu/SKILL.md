@@ -73,6 +73,7 @@ node scripts/test-faults.mjs blackhole  # ... + one that accepts the TCP connect
 node scripts/test-faults.mjs refused    # 10 healthy + two outputs whose destination refuses connections
 node scripts/test-faults.mjs churn      # 10 healthy while 45 outputs are added, started, stopped, deleted
 node scripts/test-faults.mjs publisher-drop  # 10 healthy while the publisher disappears for 3 s and 25 s
+node scripts/test-faults.mjs srs-crash  # 10 healthy while SRS is SIGKILLed and restarted after 2 s and after 40 s
 node scripts/test-faults.mjs srt         # 10 healthy + three SRT outputs: silent, frozen and non-reading destinations
 node scripts/test-faults.mjs soak --minutes 60   # freeze and blackhole, thawing and freezing every 2.5 min
 $H stop
@@ -81,7 +82,7 @@ node scripts/test-faults.mjs contention [--burn-seconds 90]   # 50 healthy while
 $H stop
 ```
 
-Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4, 3, 2, 3, 2, N+3 and 3
+Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4, 3, 2, 3, 4, 2, N+3 and 3
 minutes). The 50-output scenarios replace the stack's four default outputs with 50
 `h01…h50` plus the faulty ones (about 1 GB for the 52 FFmpeg processes); the others use 10.
 They start extra SRS instances as the destinations and remove them when they end.
@@ -97,6 +98,15 @@ They start extra SRS instances as the destinations and remove them when they end
   SRS has dropped each idle publish connection (about 5 s without data), so every
   output reconnects once when the input returns; the scenario only asserts that this
   is bounded and automatic.
+- `srs-crash` kills SRS with SIGKILL and plays systemd's `Restart=always` itself (the
+  stack has no supervisor), restarting it after 2 s and after 40 s together with the
+  publisher, as an encoder would reconnect. It asserts that the control plane keeps
+  answering `/api/health`, that the long outage is logged as `srs-transition` down and
+  up, that every output carries data again by itself, that FFmpeg starts stay under 3
+  per output (measured: about 2 per output after 2 s, 1 after 40 s, because an output
+  that loses SRS waits for the input to be ready) and that the process count, memory
+  and file handles return to normal. goryu is not part of the stack, so a relay crash
+  is not covered.
 - `srt` runs three SRT outputs (the shim redirects `srt://192.0.2.<N>:<port>?...` like it
   does RTMP ones): a destination that never answers and a frozen SRS listener must end by
   themselves through libsrt's own timeouts (about 4 s and 6 s), and a receiver that stays

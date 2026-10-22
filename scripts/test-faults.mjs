@@ -19,6 +19,10 @@
 //              for 25 s: a blip restarts nothing, a longer outage recovers by itself
 //              (the destination drops its idle connection after about 5 s, so each
 //              output reconnects once)
+//   srs-crash  10 healthy outputs while SRS is killed (SIGKILL) and comes back after
+//              2 s and after 40 s, the way systemd's Restart=always would restart it
+//              (the encoder reconnects too): the control plane stays up, notices and
+//              logs it, and every output recovers by itself without a restart storm
 //   srt        10 healthy outputs + three SRT outputs: a destination that never
 //              answers, an SRT listener that freezes mid-stream, and a receiver that
 //              stays connected but stops reading (libsrt ends the first two within
@@ -62,6 +66,8 @@ const PORT_BASE = 31950;
 const HEALTHY_OUTPUTS = 50;
 const SMALL_HEALTHY_OUTPUTS = 10;
 const PIPELINE = 1;
+// The stack's own SRS (scripts/test-stack.sh).
+const SRS_RTMP_PORT = 31935;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const results = [];
@@ -795,6 +801,120 @@ function isPublisherAlive() {
     }
 }
 
+// The stack's SRS, started the way scripts/test-stack.sh starts it. The stack has no
+// supervisor, so the scenario plays systemd's Restart=always.
+function startStackSrs() {
+    const log = fs.openSync(path.join(WORK, 'srs.out'), 'a');
+    const child = spawn(path.join(REPO, 'objs/srs'), ['-c', path.join(WORK, 'srs.conf')], {
+        cwd: WORK,
+        stdio: ['ignore', log, log],
+        detached: true,
+    });
+    child.unref();
+    return child.pid;
+}
+
+async function srsCrash(ctx) {
+    const { healthyIds } = ctx;
+    // The harness must leave the stack's SRS and publisher running whatever happens.
+    cleanups.push(() => {
+        try {
+            if (!listenerPid(SRS_RTMP_PORT)) {
+                startStackSrs();
+                execFileSync('sleep', ['3']);
+            }
+            if (!isPublisherAlive()) startPublisher();
+        } catch {
+            /* best effort */
+        }
+    });
+    const notFlowing = async () => {
+        const o = await outputsHealth();
+        return healthyIds.filter((id) => !(o[id]?.status === 'running' && o[id].bitrateKbps > 0));
+    };
+    const inputLive = async () => (await api('GET', '/api/health')).pipelines[PIPELINE]?.input.live;
+
+    for (const { downSeconds, longOutage } of [
+        { downSeconds: 2, longOutage: false },
+        { downSeconds: 40, longOutage: true },
+    ]) {
+        const appPid = listenerPid(APP_PORT);
+        const before = sample([]);
+        const since = Date.now();
+        console.log(`SRS is killed (SIGKILL) and restarted after ${downSeconds} s`);
+        process.kill(listenerPid(SRS_RTMP_PORT), 'SIGKILL');
+
+        // The control plane has to keep answering while SRS is gone.
+        let healthErrors = 0;
+        let sawDown = false;
+        const downUntil = Date.now() + downSeconds * 1000;
+        while (Date.now() < downUntil) {
+            try {
+                if (!(await api('GET', '/api/health')).srsReachable) sawDown = true;
+            } catch {
+                healthErrors++;
+            }
+            await sleep(1000);
+        }
+        startStackSrs();
+        await waitFor('SRS listening', () => listenerPid(SRS_RTMP_PORT), 30_000, 500);
+        // The encoder reconnects: the stack's publisher exits with its connection.
+        if (isPublisherAlive()) stopPublisher('SIGKILL');
+        startPublisher();
+
+        const live = await waitFor('input live again', inputLive, 60_000, 1000);
+        const back = await waitFor(
+            'outputs flowing again',
+            async () => (await notFlowing()).length === 0,
+            120_000,
+            2000,
+        );
+        await sleep(10_000);
+        const after = sample([]);
+        const starts = diagnosticsEvents('ffmpeg-started', undefined, since).length;
+        const label = `${downSeconds} s SRS outage`;
+        check(
+            `the control plane keeps answering during a ${label}`,
+            listenerPid(APP_PORT) === appPid && healthErrors === 0,
+            `${healthErrors} failed health requests`,
+        );
+        if (longOutage) {
+            const transitions = diagnosticsEvents('srs-transition', undefined, since).map(
+                (e) => e.to,
+            );
+            check(
+                `SRS going down and coming back is noticed and logged`,
+                sawDown && transitions.includes('down') && transitions.includes('up'),
+                `health saw it down: ${sawDown}, srs-transition: ${transitions.join(', ') || 'none'}`,
+            );
+        }
+        check(`the input is live again after a ${label}`, !!live);
+        check(
+            `all outputs carry data again after a ${label}`,
+            !!back,
+            back ? '' : `not flowing: ${(await notFlowing()).join(', ')}`,
+        );
+        // Measured: an output that loses SRS waits for the input to be ready again, so
+        // a 40 s outage costs about one start per output, a 2 s one about two.
+        console.log(`INFO  ${starts} FFmpeg starts for ${healthyIds.length} outputs`);
+        check(
+            `recovery from a ${label} starts at most 3 FFmpeg per output`,
+            starts <= healthyIds.length * 3,
+            `${starts} starts`,
+        );
+        check(
+            `FFmpeg count returns to one per output after a ${label}`,
+            after.ffmpegCount === healthyIds.length,
+            `${after.ffmpegCount}`,
+        );
+        check(
+            `control plane memory and file handles stay flat after a ${label}`,
+            after.appRssMb - before.appRssMb < 40 && after.appFds - before.appFds < 20,
+            `RSS ${before.appRssMb} -> ${after.appRssMb} MB, fds ${before.appFds} -> ${after.appFds}`,
+        );
+    }
+}
+
 async function contention(ctx, burnSeconds) {
     const { healthyIds, expectedFfmpeg } = ctx;
     let stallMs = '?';
@@ -1060,6 +1180,7 @@ const SCENARIOS = [
     'refused',
     'churn',
     'publisher-drop',
+    'srs-crash',
     'srt',
     'contention',
 ];
@@ -1084,7 +1205,7 @@ try {
         blackhole: ['blackhole', 'soak'].includes(scenario),
         refused: scenario === 'refused',
         srt: scenario === 'srt',
-        healthy: ['refused', 'churn', 'publisher-drop', 'srt'].includes(scenario)
+        healthy: ['refused', 'churn', 'publisher-drop', 'srs-crash', 'srt'].includes(scenario)
             ? SMALL_HEALTHY_OUTPUTS
             : HEALTHY_OUTPUTS,
     });
@@ -1095,6 +1216,7 @@ try {
     else if (scenario === 'refused') await refused(ctx);
     else if (scenario === 'churn') await churn(ctx);
     else if (scenario === 'publisher-drop') await publisherDrop(ctx);
+    else if (scenario === 'srs-crash') await srsCrash(ctx);
     else if (scenario === 'srt') await srtFaults(ctx);
     else await contention(ctx, burnSeconds);
 } catch (err) {
