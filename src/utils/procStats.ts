@@ -41,6 +41,25 @@ export function readHostMemory(): HostMemory | null {
     }
 }
 
+export interface UdpBufferCeilings {
+    // The kernel silently caps a socket's requested buffer at these (see the
+    // UDP buffer ceiling section of the configuration docs); null if unreadable.
+    rmemMaxBytes: number | null;
+    wmemMaxBytes: number | null;
+}
+
+export function readUdpBufferCeilings(): UdpBufferCeilings {
+    const read = (name: string): number | null => {
+        try {
+            const value = parseInt(fs.readFileSync(`/proc/sys/net/core/${name}`, 'utf8'), 10);
+            return Number.isFinite(value) ? value : null;
+        } catch {
+            return null;
+        }
+    };
+    return { rmemMaxBytes: read('rmem_max'), wmemMaxBytes: read('wmem_max') };
+}
+
 export interface ProcessRss {
     pid: number;
     name: string;

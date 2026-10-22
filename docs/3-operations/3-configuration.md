@@ -74,7 +74,9 @@ former with the five largest processes by RSS.
 
 Other things the diagnostics record so an incident can be pieced together:
 
-- **Restarts:** `server-started` (version, pid, a random `instanceId` per start),
+- **Restarts:** `server-started` (version, pid, a random `instanceId` per start, the
+  kernel release, and the `net.core.rmem_max`/`wmem_max` ceilings the process started
+  under, so a kernel change or an unapplied sysctl file shows up between two starts),
   `server-shutdown` (signal, uptime, the outputs it killed — their own
   `ffmpeg-exited` events are not written during a shutdown) and
   `server-start-failed` (for example the dashboard port already in use).
@@ -120,6 +122,7 @@ The installer writes `/etc/sysctl.d/90-bunryu.conf`, which raises
 for a 12 MB UDP buffer per socket and the kernel caps the request at that
 ceiling; sockets that ask for nothing keep the default size. The services read it
 when they create their sockets, so a change needs a restart of SRS and goryu.
+The ceilings the control plane started under are in its `server-started` diagnostics event.
 The ingest sockets are the ones to check: `sudo ss -uanmp` shows each socket's
 buffer as `rb` (24576000 for SRS on 10080 and goryu on 10081) and its drops as
 `d`, and `nstat -az UdpRcvbufErrors` counts drops host-wide. In Docker the

@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const {
     readProcRssBytes,
     readHostMemory,
+    readUdpBufferCeilings,
     topProcessesByRss,
     findPidsByExecutable,
     createProcCpuTracker,
@@ -268,6 +269,26 @@ describe('createProcCpuTracker', () => {
         t.mock.method(fs, 'readFileSync', () => '1 (ffmpeg) S 1 1 1 0 -1 0 0 0 0 0 x y');
         const tracker = createProcCpuTracker();
         assert.equal(tracker.sample('out1', 1), null);
+    });
+});
+
+describe('readUdpBufferCeilings', () => {
+    test('reads rmem_max and wmem_max', (t) => {
+        t.mock.method(fs, 'readFileSync', (file) =>
+            String(file).endsWith('/rmem_max') ? '16777216\n' : '212992\n',
+        );
+        assert.deepEqual(readUdpBufferCeilings(), {
+            rmemMaxBytes: 16777216,
+            wmemMaxBytes: 212992,
+        });
+    });
+
+    test('reports null for a value that is unreadable or not a number', (t) => {
+        t.mock.method(fs, 'readFileSync', (file) => {
+            if (String(file).endsWith('/rmem_max')) throw new Error('ENOENT');
+            return 'garbage\n';
+        });
+        assert.deepEqual(readUdpBufferCeilings(), { rmemMaxBytes: null, wmemMaxBytes: null });
     });
 });
 

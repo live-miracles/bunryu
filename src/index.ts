@@ -3,6 +3,7 @@ import './utils/startupGate.js';
 import crypto from 'crypto';
 import express from 'express';
 import compression from 'compression';
+import os from 'os';
 import path from 'path';
 import { createDb } from './db/index.js';
 import { DatabaseSchemaError } from './db/schema.js';
@@ -28,6 +29,7 @@ import {
     checkIsAuthenticated,
 } from './api/auth.js';
 import { registerVersionApi, readAppVersion } from './api/version.js';
+import { readUdpBufferCeilings } from './utils/procStats.js';
 import { readAppConfig } from './utils/appConfig.js';
 import { EXIT_NEEDS_OPERATOR } from './utils/configCheck.js';
 import { createDiagnosticsLogger, runLogged } from './utils/diagnostics.js';
@@ -95,6 +97,11 @@ diagnostics.event('server-started', {
     version: readAppVersion(),
     pid: process.pid,
     node: process.version,
+    // Host facts an incident may hinge on: a kernel change shows up as a new
+    // value between two starts, and the ceilings show whether the installer's
+    // sysctl file was applied (SRT sockets ask for 12 MB).
+    kernel: os.release(),
+    ...readUdpBufferCeilings(),
 });
 
 // One misbehaving timer, request or callback must not take every output down
