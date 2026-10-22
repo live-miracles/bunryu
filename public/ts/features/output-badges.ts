@@ -7,6 +7,11 @@ import type { OutputView } from '../types.js';
 
 const METRIC_WARN_PERCENT = 70;
 const METRIC_ERROR_PERCENT = 90;
+// Speed (x realtime) outside this band goes into the badge text; inside it only the
+// tooltip shows it. Below is the falling-behind signal (the server warns at 0.9); above
+// is a backlog draining after a stall or a fast clock, informative rather than a fault.
+const SPEED_BADGE_LOW = 0.95;
+const SPEED_BADGE_HIGH = 1.05;
 
 export const ICON_HISTORY = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3 2"/></svg>`;
 export const ICON_PLAY = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>`;
@@ -35,7 +40,8 @@ function formatOutputMemory(output: OutputView): string | null {
     return formatBytes(output.memoryUsageBytes);
 }
 
-// "bitrate | CPU | RSS" badge of a running output; empty when nothing is known.
+// "bitrate | CPU | RSS" badge of a running output (plus the speed when it is off
+// realtime); empty when nothing is known.
 export function outputMetricsBadge(output: OutputView): string {
     if (
         output.status !== 'running' ||
@@ -52,10 +58,17 @@ export function outputMetricsBadge(output: OutputView): string {
             : memPercent !== null && memPercent >= METRIC_WARN_PERCENT
               ? 'badge-warning'
               : '';
+    const speed = output.speed ?? null;
+    const slow = speed !== null && speed < SPEED_BADGE_LOW;
+    const offRealtime = speed !== null && (slow || speed > SPEED_BADGE_HIGH);
     const parts = [
         output.bitrateKbps !== null ? formatBitrate(output.bitrateKbps) : null,
         output.cpuPercent !== null ? formatCpuPercent(output.cpuPercent) : null,
         output.memoryUsageBytes !== null ? formatOutputMemory(output) : null,
+        offRealtime ? `${speed.toFixed(2)}x` : null,
     ].filter((value): value is string => value !== null);
-    return `<span class="badge badge-sm whitespace-nowrap ${memCls}" title="Bitrate / ffmpeg CPU (% of one core) / ffmpeg RSS">${parts.join(' | ')}</span>`;
+    const cls = memCls || (slow ? 'badge-warning' : '');
+    const speedTitle =
+        speed === null ? '' : ` / speed ${speed.toFixed(2)}x realtime (last 30 s window)`;
+    return `<span class="badge badge-sm whitespace-nowrap ${cls}" title="Bitrate / ffmpeg CPU (% of one core) / ffmpeg RSS${speedTitle}">${parts.join(' | ')}</span>`;
 }

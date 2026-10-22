@@ -129,6 +129,9 @@ export interface OutputStatus {
     memoryUsageBytes: number | null;
     memoryLimitBytes: number | null;
     cpuPercent: number | null;
+    // Media seconds produced per wall second over the last 30 s window (1 is
+    // realtime), else null (not measured yet, e.g. in the first 60 s after a start).
+    speed: number | null;
     // Only non-null for audioEncoding === 'translation' outputs.
     translation: TranslationOutputHealth | null;
     // Shared encodes (renditions): 'rendition' for the server-managed row, the
@@ -435,6 +438,7 @@ export interface OutputView extends Output {
     memoryUsageBytes: number | null;
     memoryLimitBytes: number | null;
     cpuPercent: number | null;
+    speed: number | null;
     // Named distinctly from the inherited `translation` config field (Output.translation).
     translationHealth: TranslationOutputHealth | null;
     // The shared encode this output is reading right now (health), else null.

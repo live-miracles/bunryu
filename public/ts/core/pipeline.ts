@@ -167,6 +167,7 @@ export function parsePipelines(
                 memoryUsageBytes: oh?.memoryUsageBytes ?? null,
                 memoryLimitBytes: oh?.memoryLimitBytes ?? null,
                 cpuPercent: oh?.cpuPercent ?? null,
+                speed: oh?.speed ?? null,
                 translationHealth: oh?.translation ?? null,
                 renditionId: oh?.renditionId ?? null,
                 ready: oh?.ready ?? null,

@@ -150,6 +150,10 @@ interface OutputStats {
     memoryUsageBytes: number | null;
     memoryLimitBytes: number | null;
     cpuPercent: number | null;
+    // Media seconds produced per wall second over the last finished speed window
+    // (1 is realtime), else null: not measured yet, progress paused, or not
+    // reported by this service.
+    speed: number | null;
     lastOutTimeUs: number | null;
     lastTotalSizeBytes: number | null;
     progressAgeMs: number | null;
@@ -199,6 +203,10 @@ interface OutputProgress {
     fastMediaSinceMs: number | null;
     mediaClockWarning: string | null;
     speedWindow: { wallMs: number; outTimeUs: number } | null;
+    // The first window after a start is not reported: FFmpeg reads its probe data
+    // faster than realtime, so it would read high on every start.
+    speedSettled: boolean;
+    lastSpeed: number | null;
     slowWindows: number;
     fallingBehindWarning: string | null;
     lastTimestampWarningAtMs: number | null;
@@ -401,6 +409,12 @@ export function createOutputService(
             memoryUsageBytes: usage?.rssBytes ?? null,
             memoryLimitBytes: usage?.limitBytes ?? null,
             cpuPercent: cpuUsage.get(outputId) ?? null,
+            // Stale once progress has paused for as long as a gap resets the window.
+            speed:
+                p?.lastOutTimeWallMs != null &&
+                Date.now() - p.lastOutTimeWallMs <= SPEED_GAP_RESET_MS
+                    ? p.lastSpeed
+                    : null,
             lastOutTimeUs: p?.lastOutTimeMs ?? null,
             lastTotalSizeBytes: p?.lastTotalSize ?? null,
             progressAgeMs: p ? Date.now() - p.lastProgressAtMs : null,
@@ -508,6 +522,8 @@ export function createOutputService(
             fastMediaSinceMs: null,
             mediaClockWarning: null,
             speedWindow: null,
+            speedSettled: false,
+            lastSpeed: null,
             slowWindows: 0,
             fallingBehindWarning: null,
             lastTimestampWarningAtMs: existing?.lastTimestampWarningAtMs ?? null,
@@ -702,6 +718,7 @@ export function createOutputService(
     function trackSpeed(outputId: string, p: OutputProgress, now: number, outTimeUs: number): void {
         if (p.lastOutTimeWallMs !== null && now - p.lastOutTimeWallMs > SPEED_GAP_RESET_MS) {
             p.speedWindow = null;
+            p.lastSpeed = null;
             p.slowWindows = 0;
             p.fallingBehindWarning = null;
             warningEnded(outputId, 'falling-behind', 'progress paused');
@@ -714,6 +731,8 @@ export function createOutputService(
         if (wallMs < SPEED_WINDOW_MS) return;
         const speed = (outTimeUs - p.speedWindow.outTimeUs) / 1000 / wallMs;
         p.speedWindow = { wallMs: now, outTimeUs };
+        if (p.speedSettled) p.lastSpeed = speed;
+        else p.speedSettled = true;
         if (speed >= SPEED_WARN_BELOW) {
             p.slowWindows = 0;
             p.fallingBehindWarning = null;
@@ -1466,6 +1485,8 @@ export function createOutputService(
             fastMediaSinceMs: null,
             mediaClockWarning: null,
             speedWindow: null,
+            speedSettled: false,
+            lastSpeed: null,
             slowWindows: 0,
             fallingBehindWarning: null,
             lastTimestampWarningAtMs: null,

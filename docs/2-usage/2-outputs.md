@@ -149,7 +149,12 @@ are affected, with the reason. The search box on each table's heading line filte
 name as you type; an output matches on its own name or its pipeline's. The heading badge
 shows how many rows are left ("20 of 500").
 
-The output card shows status, uptime, bitrate, CPU and memory. An output that failed
+The output card shows status, uptime, bitrate, CPU and memory. When the output's speed
+(media produced per second of wall time, 1.00x is realtime, measured over 30 s windows)
+is below 0.95x the badge adds it in yellow ("0.88x"); above 1.05x it adds it in the
+normal color, which is usually a backlog draining after a stall. In between, and
+always, the badge's tooltip shows it. The speed is not shown for the first minute after a
+start. An output that failed
 shows its failed attempts since it was last started and, while it waits to try again,
 when the next attempt is due ("retry in 8 s"). Problems appear on
 the card as warnings, each with the time it began ("since 09:18"), and every crash, watchdog restart and finished warning

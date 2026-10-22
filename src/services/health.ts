@@ -128,6 +128,7 @@ interface OutputHealth {
     memoryUsageBytes: number | null;
     memoryLimitBytes: number | null;
     cpuPercent: number | null;
+    speed: number | null;
     lastOutTimeUs: number | null;
     lastTotalSizeBytes: number | null;
     progressAgeMs: number | null;
@@ -1557,6 +1558,7 @@ export function createHealthService(
                                     memoryUsageBytes: output.memoryUsageBytes,
                                     memoryLimitBytes: output.memoryLimitBytes,
                                     cpuPercent: output.cpuPercent,
+                                    speed: output.speed,
                                     role: output.role,
                                     renditionId: output.renditionId,
                                     ready: output.ready,

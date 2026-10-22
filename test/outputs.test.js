@@ -1335,6 +1335,35 @@ describe('output service control surface', () => {
             service.shutdown();
         });
 
+        test('reports the speed of each finished window, skipping the first after a start', async (t) => {
+            const { service, progress } = await setup(t);
+            assert.equal(service.getStats('out1').speed, null);
+
+            // First 30 s window (probe data reads fast after a start): not reported.
+            for (let i = 0; i < 30; i++) await progress(1000, 2_000_000);
+            assert.equal(service.getStats('out1').speed, null);
+
+            for (let i = 0; i < 30; i++) await progress(1000, 500_000);
+            assert.equal(service.getStats('out1').speed, 0.5);
+
+            // Above realtime (a backlog draining) is reported as well.
+            for (let i = 0; i < 30; i++) await progress(1000, 1_200_000);
+            assert.equal(service.getStats('out1').speed, 1.2);
+            service.shutdown();
+        });
+
+        test('the speed is dropped once progress pauses', async (t) => {
+            const { service, progress, clock } = await setup(t);
+            for (let i = 0; i < 61; i++) await progress(1000, 1_000_000);
+            assert.equal(service.getStats('out1').speed, 1);
+
+            clock.now += 11_000;
+            assert.equal(service.getStats('out1').speed, null);
+            await progress(0, 1_000_000);
+            assert.equal(service.getStats('out1').speed, null, 'the window restarted');
+            service.shutdown();
+        });
+
         test('one slow window (a brief input hiccup) does not warn', async (t) => {
             const { service, progress } = await setup(t);
 
@@ -1450,6 +1479,7 @@ describe('output service control surface', () => {
             memoryUsageBytes: null,
             memoryLimitBytes: null,
             cpuPercent: null,
+            speed: null,
             lastOutTimeUs: null,
             lastTotalSizeBytes: null,
             progressAgeMs: null,
