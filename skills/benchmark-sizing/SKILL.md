@@ -58,8 +58,12 @@ and prints a `RESULT {json}` line:
 | `hub_srs_cores`, `sink_srs_cores` | the SRS the outputs pull from and the one they push to |
 | `host_util_pct` | whole-host CPU during the window |
 | `min_speed` | slowest output's FFmpeg speed; below about 0.97 it fell behind real time |
+| `udp_rcvbuf_errors`, `hub_srt_drops` | UDP datagrams the kernel dropped during the window, host-wide and on the hub's SRT socket; `null` if `/proc/net/snmp` was unreadable |
 
-A `min_speed` of `null` means no progress data arrived: discard that case. The run
+A `min_speed` of `null` means no progress data arrived: discard that case. A nonzero
+`udp_rcvbuf_errors` or `hub_srt_drops` means the host lost datagrams during the window,
+so a low `min_speed` or a lost output in that case may be the host, not the output: rerun
+it on a quiet host (the host-wide counter also counts other processes' sockets). The run
 ends with `DONE`, or `ABORTED <reason>` if the guard fired.
 
 ## On a remote VM

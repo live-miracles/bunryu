@@ -138,6 +138,29 @@ def host_busy():
     return sum(v), v[3] + v[4]
 
 
+def udp_drops():
+    # Kernel UDP receive drops: the host-wide RcvbufErrors counter and the drops of
+    # the hub's SRT listener (local port SRT). Either one moving during the window
+    # means datagrams were lost before SRT or SRS read them, which can stall the
+    # pulls and shows up in the case as a low min_speed or a lost output.
+    err = None
+    try:
+        rows = [line.split() for line in open('/proc/net/snmp') if line.startswith('Udp:')]
+        err = int(rows[1][rows[0].index('RcvbufErrors')])
+    except Exception:
+        pass
+    hub = 0
+    for name in ('/proc/net/udp', '/proc/net/udp6'):
+        try:
+            for line in list(open(name))[1:]:
+                f = line.split()
+                if len(f) >= 13 and int(f[1].rsplit(':', 1)[1], 16) == SRT:
+                    hub += int(f[12])
+        except Exception:
+            pass
+    return err, hub
+
+
 def src_path(name):
     # sources are cached per frame rate; the 30 fps ones keep their original names
     suffix = '' if cfg['fps'] == 30 else '_%dfps' % cfg['fps']
@@ -232,10 +255,12 @@ def run_case(case, hub_pid, sink_pid):
     guard()
     t0 = {p.pid: ticks(p.pid) for p in procs if p.poll() is None}
     h0, s0, hb0 = ticks(hub_pid), ticks(sink_pid), host_busy()
+    u0 = udp_drops()
     time.sleep(run / 2)
     guard()
     time.sleep(run / 2)
     hb1 = host_busy()
+    u1 = udp_drops()
     alive = [p for p in procs if p.poll() is None]
     cpu = [(ticks(p.pid) - t0[p.pid]) / CLK / run for p in alive if p.pid in t0]
     rss = [status_mb(p.pid, 'VmRSS') for p in alive]
@@ -260,6 +285,9 @@ def run_case(case, hub_pid, sink_pid):
         'host_util_pct': round(100.0 * (dt - di) / dt, 1),
         # null means no progress data arrived: do not trust that case
         'min_speed': min(speeds) if speeds else None,
+        # nonzero: datagrams were dropped on this host during the window; null: unreadable
+        'udp_rcvbuf_errors': u1[0] - u0[0] if u0[0] is not None and u1[0] is not None else None,
+        'hub_srt_drops': u1[1] - u0[1],
     }
     for p in procs:
         p.kill()
