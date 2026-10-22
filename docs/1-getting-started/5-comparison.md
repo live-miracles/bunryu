@@ -6,13 +6,48 @@ better pick. Facts about other projects come from their own READMEs and
 documentation, checked in October 2026 against Bunryu 3.0, Restreamer 2.12, SRS 6.0
 and MediaMTX 1.21; check their sites for what they offer today.
 
+## Why Bunryu exists
+
+We needed one server for dozens of live inputs and hundreds of outputs, and looked at
+what already existed before writing anything. This is how that went. The code facts
+(libraries, versions, commit counts) were checked in October 2026; what we saw in our
+own trials is marked as that, and none of it is a benchmark.
+
+- **Restreamer was the first candidate, and we considered using it.** Two things ruled
+  it out:
+  - Its built-in SRT server is datarhei's own Go implementation,
+    [gosrt](https://github.com/datarhei/gosrt) (v0.6.0 in Core's `go.mod`), not
+    Haivision's libsrt. On a flaky network we saw heavy pixelation in streams passing
+    through it that did not appear through libsrt under the same conditions. That was an
+    observation in a trial, not a measurement, and we kept no recording.
+  - In our trial the interface did not suit many outputs. Adding an output took many
+    clicks, the output list grew long, and each output's bitrate and health were not
+    shown beside it, so an output with a problem, or one that had restarted, was hard to
+    find. Its UI repository (`restreamer-ui`) has had one commit since January 2025 and
+    its last release is v1.13.0 (June 2024); the Core engine underneath is more active.
+- **MediaMTX has no management UI**: it is configured by file and control API. Its SRT
+  is gosrt as well (v0.12.0), so we expected the same weakness. What we measured was its
+  SRT-to-RTMP conversion (see [below](#mediamtx)), not its SRT ingest on its own.
+- **SRS uses libsrt**, which is mature and widely deployed, and that decided it. Its own
+  console is minimal and its forwarding is static, so around it we built a dashboard and
+  a manager that runs one FFmpeg per destination, so any output starts and stops without
+  touching the others.
+- **Hosted services** such as Restream.io work, but at our number of outputs we judged
+  them too expensive to depend on.
+- We found no other open-source restreaming server that combined libsrt, a dashboard and
+  outputs that change while the stream runs.
+
+The result is SRS, libsrt and FFmpeg with about 20,000 lines of TypeScript on top, which
+manage many inputs and outputs from one place.
+
 ## Design approach
 
 Bunryu has no media code of its own. SRS accepts RTMP and SRT, libsrt carries SRT
 (inside SRS and in [Goryu](https://github.com/live-miracles/goryu)), and FFmpeg does
 everything to the stream after that: the outputs, previews, probing and audio
 processing. What Bunryu adds is a control plane of about 11,000 lines of TypeScript
-(38 files, four runtime dependencies) and Goryu, about 2,000 lines of C over libsrt.
+(38 files, four runtime dependencies), a dashboard of about 8,600 more, and Goryu,
+about 2,000 lines of C over libsrt.
 
 This is deliberate. Timestamps, codec quirks and damaged input are where media
 software fails, and FFmpeg and libsrt have long production use on exactly that. In
@@ -35,6 +70,7 @@ and we chose it over writing our own.
 | Forward to many destinations | RTMP, RTMPS and SRT, one FFmpeg process per output     | RTMP, SRT and other protocols through its UI                | `forward` entries in its config file       | The `forward` feature, set per path in its config file |
 | Dashboard and API           | Dashboard and REST API                                 | Web UI and Swagger-documented REST API                      | HTTP API and config files                  | Control API and config file                            |
 | Bonded SRT ingest           | Yes, through [Goryu](https://github.com/live-miracles/goryu) | Not documented                                        | No ([ossrs/srs#4771](https://github.com/ossrs/srs/issues/4771)) | Not found in its docs or code                          |
+| SRT library | libsrt (Haivision), through SRS, FFmpeg and Goryu | gosrt (datarhei's Go implementation) in its built-in SRT server | libsrt | gosrt |
 | Recovery                    | Per-output watchdogs, bounded retries, Error History   | Core documents error detection and recovery for its processes | Not compared                         | Not compared                                       |
 | Translation audio mixing    | Yes (beta): ducking, delay and restore                 | Can mux a separate audio channel                            | No                                         | No                                                     |
 | Viewer-facing playback      | Dashboard preview only                                 | Built-in player and publication page                        | HLS, WebRTC and more                       | WebRTC, HLS, RTSP and more                             |
@@ -51,8 +87,10 @@ and we chose it over writing our own.
   through long events, where per-output recovery, an Error History with FFmpeg's
   last output, bonded SRT ingest or translation mixing matter.
 
-Both are FFmpeg based. We have not compared how they behave when a destination
-fails, so we make no claim about it.
+Its built-in SRT server uses gosrt, not libsrt, and in our trial its interface did not
+suit many outputs ([why we did not use it](#why-bunryu-exists)). Both are FFmpeg
+based. We have not compared how they behave when a destination fails, so we make no
+claim about it.
 
 ## SRS
 
@@ -80,6 +118,8 @@ input.
   more CPU than FFmpeg, and FFmpeg would still be needed for transcodes, SRT
   destinations and translation mixes
   ([details](../4-reference/3-design-decisions.md#one-ffmpeg-process-per-output)).
+- Its SRT is gosrt, like Restreamer's built-in server, not libsrt. We measured its
+  conversion, not its SRT ingest on its own.
 - Pick MediaMTX for protocol conversion, WebRTC or RTSP, recording, running on
   Windows or macOS, or a single small binary. It is not a restreaming manager, so
   you set up and watch each forward yourself.

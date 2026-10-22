@@ -106,6 +106,29 @@ frame count, two audio tracks, MP2/AC-3, HEVC, timestamp wrap.
   - after long outages it passed on more out-of-order timestamps (9 against 1);
   - it logged nothing about the holes.
 
+### Don't build on datarhei Restreamer
+
+**Decision:** Restreamer was tried first and was not adopted as the base.
+
+**Why:**
+- **Its SRT server is gosrt, not libsrt.** Restreamer's Core uses datarhei's own Go
+  implementation ([gosrt](https://github.com/datarhei/gosrt), v0.6.0 in its `go.mod`).
+  On a flaky network we saw heavy pixelation in streams passing through it that did not
+  appear through libsrt under the same conditions. This was an observation in a trial;
+  it was not measured and no recording was kept. The MediaMTX entry above is the
+  measured counterpart.
+- **The interface did not suit many outputs.** Adding an output took many clicks, the
+  output list grew long, and each output's bitrate and health were not shown beside it,
+  so an output with a problem or one that had restarted was hard to find. A judgement
+  from a trial, not a benchmark.
+- **Upkeep (checked October 2026):** the UI repository (`restreamer-ui`) has had one
+  commit since January 2025 and its last release is v1.13.0 (June 2024). Core is more
+  active, with 19 commits in the same period.
+
+**Revisit when:** its SRT server moves to libsrt, or a controlled test (packet loss and
+delay on the same stream through both) shows gosrt matching libsrt, and its overview
+shows each output's bitrate, health and restarts at 50 inputs and 500 outputs.
+
 ### Don't build our own media server
 
 **Decision:** no in-house RTMP/SRT server, and no adoption of new projects as the
