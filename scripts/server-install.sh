@@ -316,6 +316,9 @@ if [[ "$SRS_SRT_PASSPHRASE" == "$PUBLIC_DEFAULT_SRT_PASSPHRASE" || "$RELAY_SRT_P
     echo "SRT passphrase: replaced the public default with a generated secret"
 fi
 cp "$APP_DIR/srs.conf" "$CONF_DIR/srs.conf"
+# goryu.json is replaced from the repository on every update. Bunryu does not use goryu's
+# optional "output_passphrase" (SRS on this host shares the one passphrase), so a key added
+# to the deployed file by hand would be dropped here; it would need an installer setting.
 cp "$APP_DIR/goryu.json" "$CONF_DIR/goryu.json"
 echo "Config: refreshed $CONF_DIR/srs.conf from repository"
 echo "Config: refreshed $CONF_DIR/goryu.json from repository"
