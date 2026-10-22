@@ -2,8 +2,8 @@
 
 How Bunryu differs from the tools people usually consider for the same job. It is
 written for choosing a tool, not for ranking them: each has a case where it is the
-better pick. Facts about other projects come from their own READMEs and
-documentation, checked in October 2026 against Bunryu 3.0, Restreamer 2.12, SRS 6.0
+better pick. Facts about other projects come from their own READMEs, documentation
+and, where noted, source code, checked in October 2026 against Bunryu 3.0, Restreamer 2.12, SRS 6.0
 and MediaMTX 1.21; check their sites for what they offer today.
 
 ## Why Bunryu exists
@@ -71,7 +71,7 @@ and we chose it over writing our own.
 | Dashboard and API           | Dashboard and REST API                                 | Web UI and Swagger-documented REST API                      | HTTP API and config files                  | Control API and config file                            |
 | Bonded SRT ingest           | Yes, through [Goryu](https://github.com/live-miracles/goryu) | Not documented                                        | No ([ossrs/srs#4771](https://github.com/ossrs/srs/issues/4771)) | Not found in its docs or code                          |
 | SRT library | libsrt (Haivision), through SRS, FFmpeg and Goryu | gosrt (datarhei's Go implementation) in its built-in SRT server | libsrt | gosrt |
-| Recovery                    | Per-output watchdogs, bounded retries, Error History   | Core documents error detection and recovery for its processes | Not compared                         | Not compared                                       |
+| Recovery                    | Per-output watchdogs, bounded retries, Error History   | Restart after a fixed delay, progress stall timeout, optional CPU and memory limits | Not compared                         | Not compared                                       |
 | Translation audio mixing    | Yes (beta): ducking, delay and restore                 | Can mux a separate audio channel                            | No                                         | No                                                     |
 | Viewer-facing playback      | Dashboard preview only                                 | Built-in player and publication page                        | HLS, WebRTC and more                       | WebRTC, HLS, RTSP and more                             |
 | Where it runs               | Linux x86_64 (ARM only emulated, for development)      | Docker on AMD64, ARMv7 and ARM64                            | Linux and macOS on many CPU types          | Linux, Windows and macOS, one binary                   |
@@ -88,9 +88,24 @@ and we chose it over writing our own.
   last output, bonded SRT ingest or translation mixing matter.
 
 Its built-in SRT server uses gosrt, not libsrt, and in our trial its interface did not
-suit many outputs ([why we did not use it](#why-bunryu-exists)). Both are FFmpeg
-based. We have not compared how they behave when a destination fails, so we make no
-claim about it.
+suit many outputs ([why we did not use it](#why-bunryu-exists)).
+
+Both run one FFmpeg process per output, but Bunryu does more to keep outputs running
+and to explain their failures. This comes from reading Core's process supervisor
+(`process/process.go`, October 2026), not from a side-by-side test:
+
+- **Retries.** Core restarts a failed process after a fixed delay. Bunryu backs off
+  from 1 s to 16 s with jitter, so outputs to a platform that blipped do not all
+  reconnect in the same second, and an output whose input is down waits without
+  spawning FFmpeg.
+- **Stalls.** Core kills a process whose FFmpeg progress stops. Bunryu does the same,
+  and also restarts an output whose destination socket is half closed while FFmpeg
+  still reports progress, a case seen on YouTube.
+- **Limits.** Core can kill a process above a CPU or memory limit. Bunryu enforces
+  memory only: a CPU limit would kill encodes that are merely busy on a loaded host.
+- **Evidence.** Both keep FFmpeg's last output per run. Bunryu also keeps an Error
+  History per output and writes timestamped diagnostics for every start, exit,
+  restart and watchdog action, and groups FFmpeg's repeated timestamp warnings.
 
 ## SRS
 
