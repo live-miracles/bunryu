@@ -1547,6 +1547,187 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
+    describe('bonded leg history', () => {
+        // The relay drops a failed leg from legs[] instead of reporting it broken, so the pipeline
+        // log and the diagnostics are where an operator can see which link went and when.
+        const legsOf = (...ips) =>
+            makeBondingStatus({ input: { legs: ips.map((ip) => makeLeg({ ip })) } });
+        const legLines = (db) => db.logs.filter((l) => l.event === 'legs').map((l) => l.message);
+
+        async function startService(t, status, { db = null, withDate = false } = {}) {
+            const stream = streamFixture();
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({ code: 0, streams: [stream] });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            const relay = makeFakeSrtRelayMutable(status);
+            const diagnostics = makeDiagnosticsSpy();
+            const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+            const fakeDb = db ?? makeFakeDb([pipeline]);
+            const service = createHealthService(
+                fakeDb,
+                makeFakeOutputService(),
+                relay,
+                makeFakeInputState(),
+                diagnostics,
+            );
+            t.mock.timers.enable({ apis: withDate ? ['setInterval', 'Date'] : ['setInterval'] });
+            service.start();
+            await sleep(20);
+            return { relay, diagnostics, db: fakeDb, service };
+        }
+
+        test('logs the starting legs, then each leg that is lost or joins, with addresses', async (t) => {
+            const { relay, diagnostics, db, service } = await startService(
+                t,
+                legsOf('203.0.113.10', '203.0.113.11'),
+            );
+            assert.deepEqual(legLines(db), [
+                'Bonded input connected with 2 legs: 203.0.113.10:10081, 203.0.113.11:10081',
+            ]);
+
+            await tickPoll(t); // nothing changed: nothing logged
+            assert.equal(legLines(db).length, 1);
+
+            relay.setStatus(legsOf('203.0.113.10'));
+            await tickPoll(t);
+            relay.setStatus(legsOf('203.0.113.10', '203.0.113.12'));
+            await tickPoll(t);
+
+            assert.deepEqual(legLines(db).slice(1), [
+                'Bonded legs went from 2 to 1: lost 203.0.113.11:10081 (now: 203.0.113.10:10081)',
+                'Bonded legs went from 1 to 2: joined 203.0.113.12:10081 (now: 203.0.113.10:10081, 203.0.113.12:10081)',
+            ]);
+            const events = diagnostics.events.filter((e) => e.event === 'bonded-legs-changed');
+            assert.equal(events.length, 3);
+            assert.deepEqual(
+                events.map((e) => [e.pipelineId, e.from, e.to, e.joined, e.left]),
+                [
+                    [1, 0, 2, ['203.0.113.10:10081', '203.0.113.11:10081'], []],
+                    [1, 2, 1, [], ['203.0.113.11:10081']],
+                    [1, 1, 2, ['203.0.113.12:10081'], []],
+                ],
+            );
+            service.shutdown();
+        });
+
+        test('a leg that returns from a new port is logged as lost and joined', async (t) => {
+            const withPort = (port) =>
+                makeBondingStatus({
+                    input: {
+                        legs: [
+                            makeLeg({ ip: '203.0.113.10', port: 10081 }),
+                            makeLeg({ ip: '198.51.100.7', port }),
+                        ],
+                    },
+                });
+            const { relay, db, service } = await startService(t, withPort(49152));
+            relay.setStatus(withPort(50001));
+            await tickPoll(t);
+            assert.equal(
+                legLines(db)[1],
+                'Bonded legs changed (still 2): lost 198.51.100.7:49152; joined 198.51.100.7:50001 (now: 203.0.113.10:10081, 198.51.100.7:50001)',
+            );
+            service.shutdown();
+        });
+
+        test('does not call the legs lost when the whole input goes away and comes back', async (t) => {
+            const { relay, diagnostics, db, service } = await startService(
+                t,
+                legsOf('203.0.113.10', '203.0.113.11'),
+            );
+            relay.setStatus(makeBondingStatus({ inputActive: false, input: { legs: [] } }));
+            await tickPoll(t);
+            assert.equal(
+                legLines(db).length,
+                1,
+                'an input going away is logged as offline, not as lost legs',
+            );
+
+            relay.setStatus(legsOf('203.0.113.10'));
+            await tickPoll(t);
+            assert.deepEqual(legLines(db).slice(1), [
+                'Bonded input connected with 1 leg: 203.0.113.10:10081',
+            ]);
+            assert.equal(
+                diagnostics.events.filter((e) => e.event === 'bonded-legs-changed').length,
+                2,
+            );
+            service.shutdown();
+        });
+
+        test('logs nothing for a plain SRT input', async (t) => {
+            const plain = (ip) =>
+                makeBondingStatus({
+                    input: { bonded: false, legs: [makeLeg({ ip, port: 49152 })] },
+                });
+            const { relay, diagnostics, db, service } = await startService(
+                t,
+                plain('198.51.100.7'),
+            );
+            relay.setStatus(plain('198.51.100.8'));
+            await tickPoll(t);
+            assert.deepEqual(legLines(db), []);
+            assert.equal(
+                diagnostics.events.some((e) => e.event === 'bonded-legs-changed'),
+                false,
+            );
+            service.shutdown();
+        });
+
+        test('keeps a flapping leg out of the pipeline log but every change in the diagnostics', async (t) => {
+            const { relay, diagnostics, db, service } = await startService(
+                t,
+                legsOf('203.0.113.10', '203.0.113.11'),
+                { withDate: true },
+            );
+            // 8 changes, one per poll: the leg goes down, comes back, and so on.
+            for (let i = 0; i < 8; i++) {
+                relay.setStatus(
+                    i % 2 === 0 ? legsOf('203.0.113.10') : legsOf('203.0.113.10', '203.0.113.11'),
+                );
+                await tickPoll(t);
+            }
+            const changes = diagnostics.events.filter((e) => e.event === 'bonded-legs-changed');
+            assert.equal(changes.length, 9, 'the starting legs plus all 8 changes');
+            assert.equal(
+                legLines(db).length,
+                4,
+                'only 4 lines fit in a minute, the start included',
+            );
+
+            // The burst ends; once its minute is over the hidden changes are counted once.
+            for (let i = 0; i < 13; i++) await tickPoll(t);
+            const lines = legLines(db);
+            assert.equal(lines.length, 5);
+            assert.equal(
+                lines[4],
+                '5 more bonded leg changes in the last minute not shown here (all are in the diagnostics log)',
+            );
+            for (let i = 0; i < 13; i++) await tickPoll(t);
+            assert.equal(legLines(db).length, 5, 'the summary is written once');
+            service.shutdown();
+        });
+
+        test('keeps recording to the diagnostics when the pipeline log cannot be written', async (t) => {
+            const db = makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]);
+            const { relay, diagnostics, service } = await startService(
+                t,
+                legsOf('203.0.113.10', '203.0.113.11'),
+                { db },
+            );
+            db.appendLogThrows = true;
+            relay.setStatus(legsOf('203.0.113.10'));
+            await tickPoll(t);
+            const events = diagnostics.events.filter((e) => e.event === 'bonded-legs-changed');
+            assert.equal(events.length, 2);
+            assert.deepEqual(events[1].left, ['203.0.113.11:10081']);
+            service.shutdown();
+        });
+    });
+
     test('describes a plain relay input as an SRT input, not a bonded leg', async (t) => {
         const stream = streamFixture();
         t.mock.method(globalThis, 'fetch', async (url) => {

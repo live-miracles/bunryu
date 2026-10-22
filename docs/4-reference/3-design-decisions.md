@@ -218,6 +218,19 @@ raised a warning, so a three-leg group that lost one showed nothing.
 **Why a count and not the leg's address:** cellular legs change IP often, so a leg that
 comes back on a new address would stay "lost" if tracked by address.
 
+**The history does name addresses.** The alert counts legs, but the pipeline log and
+the diagnostics record which link changed, because "which one" is what an operator
+needs after the fact: `Bonded legs went from 2 to 1: lost 198.51.100.7:49152 (now: ...)`
+in the pipeline log, and a `bonded-legs-changed` diagnostics event with the legs
+before and after. A leg that returns from a new port is logged as one lost and one
+joined; that is accurate, and it does not touch the alert. The pipeline log keeps only
+100 entries, so a link that flaps would push the online/offline history out of it: it
+gets 4 lines a minute and one "N more changes not shown" line afterwards, while every
+change still goes to the diagnostics (one per 5 s poll at most). A bonded input that
+disconnects resets the remembered legs, so reconnecting is "connected with N legs", not
+a run of lost legs. The relay logs the same changes itself with one-second timing
+(`Bonded leg joined|left` in its journal); this view is the 5 s sample of it.
+
 **Cost, and when to revisit:** an encoder deliberately run with fewer legs keeps the
 warning until the input reconnects. Revisit if the relay starts reporting lost legs
 itself.

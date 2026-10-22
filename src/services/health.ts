@@ -24,6 +24,14 @@ import { inputPullUrl, type InputProtocol, type InputState } from './inputState.
 import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
 import { readHostMemory, topProcessesByRss } from '../utils/procStats.js';
 import {
+    allowLegLogLine,
+    createLegLogState,
+    describeLegChange,
+    suppressedLegLinesMessage,
+    takeSuppressedLegLines,
+    type LegLogState,
+} from '../utils/legLog.js';
+import {
     isProbeUsable,
     probeError,
     runFfprobe,
@@ -495,6 +503,40 @@ export function createHealthService(
     // so a lost leg shows only as a smaller count than the group has had. Keyed by
     // pipeline; reset when the input goes away.
     const legGroups = new Map<number, { expected: number; shortSinceMs: number | null }>();
+    // Which legs (ip:port) a bonded input had at the last poll, for the pipeline log and
+    // the diagnostics. Keyed by pipeline; reset when the input goes away. See utils/legLog.ts.
+    const legLogs = new Map<number, LegLogState>();
+    const noteLegChanges = (
+        pipelineId: number,
+        legs: { ip: string; port: number }[],
+        now: number,
+    ): void => {
+        const keys = legs.map((leg) => `${leg.ip}:${leg.port}`);
+        const state = legLogs.get(pipelineId);
+        const change = describeLegChange(state?.keys ?? null, keys);
+        const current = state ?? createLegLogState(keys, now);
+        current.keys = keys;
+        legLogs.set(pipelineId, current);
+        const appendLine = (event: string, message: string): void => {
+            try {
+                db.appendPipelineLog(pipelineId, event, message);
+            } catch {
+                /* non-critical */
+            }
+        };
+        const hidden = takeSuppressedLegLines(current, now);
+        if (hidden > 0) appendLine('legs', suppressedLegLinesMessage(hidden));
+        if (!change) return;
+        diagnostics?.event('bonded-legs-changed', {
+            pipelineId,
+            from: change.from,
+            to: change.to,
+            joined: change.joined,
+            left: change.left,
+            legs: keys,
+        });
+        if (allowLegLogLine(current, now)) appendLine('legs', change.message);
+    };
     const ffprobeResults = new Map<number, ProbeStatus>();
     const ffprobeTimers = new Map<number, NodeJS.Timeout>();
     const ffprobeInFlight = new Set<number>();
@@ -813,6 +855,9 @@ export function createHealthService(
         }
         for (const pipelineId of legGroups.keys()) {
             if (!activePipelineIds.has(pipelineId)) legGroups.delete(pipelineId);
+        }
+        for (const pipelineId of legLogs.keys()) {
+            if (!activePipelineIds.has(pipelineId)) legLogs.delete(pipelineId);
         }
         for (const pipelineId of ffprobeResults.keys()) {
             if (!activePipelineIds.has(pipelineId)) clearFfprobeState(pipelineId);
@@ -1208,6 +1253,7 @@ export function createHealthService(
                 if (relayInput.legs.length < group.expected) group.shortSinceMs ??= now;
                 else group.shortSinceMs = null;
                 legGroups.set(pipeline.id, group);
+                noteLegChanges(pipeline.id, relayInput.legs, now);
                 expectedLegs = group.expected;
                 if (group.shortSinceMs !== null) {
                     const down = group.expected - relayInput.legs.length;
@@ -1220,6 +1266,7 @@ export function createHealthService(
                 }
             } else {
                 legGroups.delete(pipeline.id);
+                legLogs.delete(pipeline.id);
             }
             const previousLegs = legPacketSamples.get(pipeline.id) ?? new Map();
             const currentLegs = new Map<
