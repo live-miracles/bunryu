@@ -21,6 +21,7 @@ fs.writeFileSync(
     JSON.stringify({ port: 8080, database_path: './db.sqlite', srs_config_path: './srs.conf' }),
 );
 fs.writeFileSync(path.join(tempDir, 'srs.conf'), 'listen 1935;\n');
+fs.writeFileSync(path.join(tempDir, 'goryu.json'), '{}');
 
 const { parseTcpSocketSnapshot } = require('../src/services/outputSockets');
 const { classifyAddress } = require('../src/utils/destination');

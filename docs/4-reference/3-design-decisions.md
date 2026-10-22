@@ -160,7 +160,7 @@ rejected:
 **Tradeoffs:** every output is an FFmpeg process, so a copy output costs about 65 to
 90 MB of RAM, where a MediaMTX forwarding hub used about 10x less (and about 1.5x more
 CPU; see [One FFmpeg process per output](#one-ffmpeg-process-per-output)). That is
-acceptable at the supported 500 outputs. In return the control plane stays small
+acceptable at the tested 500 outputs. In return the control plane stays small
 (about 11,000 lines of TypeScript) and FFmpeg and libsrt handle the damaged-input
 cases.
 
@@ -359,8 +359,7 @@ outputs pull that stream in copy mode.
   edit to another.
 - **The internal app is reserved:** users cannot create, edit, start, stop or
   delete renditions or point an output at the app; SRS's publish hook accepts it
-  only over RTMP from loopback for a running rendition row. Renditions do not count
-  toward the 500-output cap.
+  only over RTMP from loopback for a running rendition row.
 - **Readiness is local** (process running and data written), not the 5 s health
   poll. When a rendition exits on its own its readers are restarted and wait for it;
   each gets an Error History record naming the cause. After 15 s with no running
@@ -651,6 +650,41 @@ They exclude previews and translation mixers.
 - People keep asking for an interactive tool: a spreadsheet linked from the page is
   the cheapest next step before a dashboard feature.
 
+### No hard cap on inputs or outputs; the stream key count is a setting
+
+**Decision:** the server refuses neither a pipeline nor an output because of a
+count. The 50 inputs and 500 outputs in the
+[introduction](../1-getting-started/1-introduction.md#capacity-and-limits) are the
+tested envelope, as a recommendation. The number of stream keys is
+`stream_key_count` in `bunryu.json` (default 100), and since each pipeline uses one
+key it is the most inputs there can be.
+
+**Why:**
+- **The machine is the limit, and the operator knows it.** Whether 500 outputs fit
+  depends on bitrate, protocol and audio re-encodes (about 4 vCPUs per 100 copy
+  outputs at 8 Mbps, see [Sizing a server](../1-getting-started/4-sizing.md)). A fixed
+  number is too high for a small VM and needlessly low for a large one.
+- **A cap refuses work during an event.** The old output limit (500, enforced in the
+  database layer) answered the 501st with `409`, and the bulk create refused a
+  request of more than 500 outputs, on a server that might have had room.
+- **The stream keys needed a number anyway.** 99 keys were generated whatever the
+  deployment; a setting lets a small server have fewer and a large one more, and it
+  adds no API field or dashboard control.
+
+**Behavior:** on startup the missing keys up to the count are generated. Lowering
+the count removes the keys above it that no pipeline uses; a key a pipeline already
+uses stays, and new pipelines only get keys within the count. A value that is not a
+whole number from 1 to 10,000 falls back to 100: the upper bound only stops a typo
+from generating a million keys at startup. A request body is still limited to 1 MB,
+which bounds a bulk create.
+
+**Costs:** nothing stops an operator from adding more than the host can run. The
+protection against that is the sizing guidance and the output and host-memory
+watchdogs, not a refusal.
+
+**Revisit when:** a deployment overloads itself with outputs added in good faith, and
+a warning in the dashboard (rather than a refusal) would have helped.
+
 ## Dashboard
 
 ### Installable as an app with a manifest only, no service worker
@@ -900,8 +934,9 @@ lower the threshold), or operators want to see the speed continuously.
 
 ### Failures that need an operator exit with status 78, which systemd does not restart
 
-**Decision (October 2026):** a database stamped with another schema version makes
-the app print why and exit with status 78 (`EX_CONFIG`). `bunryu.service` sets
+**Decision (October 2026):** a database stamped with another schema version, or a
+missing or invalid config file (`bunryu.json`, `srs.conf`, `goryu.json`), makes the
+app print why and exit with status 78 (`EX_CONFIG`). `bunryu.service` sets
 `RestartPreventExitStatus=78`, so it stays failed instead of restarting.
 
 **Why:** the units set `StartLimitIntervalSec=0` so a crashing service always comes
@@ -920,6 +955,27 @@ treats 78 the same way: it does not restart the app, does not start SRS or the r
 and keeps the container up (unhealthy, with the message in `docker logs`) rather than
 exiting into the restart policy, which would repeat the message.
 
+**Config files.** The three files are read once at startup and kept until the next
+restart, so a wrong one has to be found at that moment, before any module uses it.
+Before this, a broken `bunryu.json` crashed and restarted every 2 s forever, a
+missing `srs.conf` left the dashboard half working (`/api/config` answered 500), and
+a missing or malformed `goryu.json` silently fell back to the defaults: an empty
+passphrase and the default relay ports, with nothing in the log. Only a missing file
+or invalid JSON exits 78, because the next attempt would fail the same way. Any
+other read error, such as an I/O error, crashes the process and is restarted after 2 s,
+so a transient fault cannot leave the server down. Checked on the built app: each of
+the three files missing, and an invalid `bunryu.json`, exits 78 with a timestamped
+message naming the file.
+
+The judgment call is `goryu.json`: it only affects bonded SRT, yet a typo in it
+now stops RTMP and plain SRT too, because SRS and the relay require the app.
+Accepted because the files change only between events, when a restart shows the
+error at once, and one rule for the three files is simpler than a fallback that
+hides the fault. The call to read the files has to be the first import of
+`src/index.ts` (`startupGate.ts`): tsx and bundlers hoist imports above other
+statements, and one run found the check running after a module that had already
+read `bunryu.json` and crashed with exit 1.
+
 **Not adopted:**
 - A migration path, which AGENTS.md rules out; the schema version only turns a
   confusing failure into a clear one.
@@ -932,7 +988,9 @@ exiting into the restart policy, which would repeat the message.
   answer. The prompt defaults to yes because declining only ends the install, but
   only a person at a terminal can accept it.
 
-**Revisit when:** a second failure class needs the same treatment.
+**Revisit when:** a mistyped `goryu.json` takes down ingest that did not need the relay
+(the fallback, with an error logged once, would be the alternative), or another failure
+class needs the same treatment.
 
 ### Keep a fixed 2 s systemd restart delay, with no back-off
 

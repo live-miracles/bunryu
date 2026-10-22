@@ -1,8 +1,7 @@
 import BetterSqlite3 from 'better-sqlite3';
 import crypto from 'crypto';
 import { setupDatabaseSchema } from './schema.js';
-import { readAppConfig } from '../utils/appConfig.js';
-import { isRenditionUrl } from '../utils/renditions.js';
+import { DEFAULT_STREAM_KEY_COUNT, readAppConfig } from '../utils/appConfig.js';
 import type {
     Pipeline,
     PipelineGroup,
@@ -22,18 +21,6 @@ const PIPELINE_SELECT = `
     LEFT JOIN stream_keys sk ON sk.id = p.stream_key_id
 `;
 
-const STREAM_KEY_SLOTS = 99;
-// Supported ceiling for output forwards (capacity table in
-// docs/1-getting-started/1-introduction.md). Enforced on
-// every create path; existing rows above it are left alone, only new ones fail.
-export const MAX_OUTPUTS = 500;
-
-export class OutputLimitError extends Error {
-    constructor() {
-        super(`Output limit reached: at most ${MAX_OUTPUTS} outputs are supported`);
-        this.name = 'OutputLimitError';
-    }
-}
 const PIPELINE_LOG_CAP = 100;
 const LOG_RETENTION_LIMIT = 100;
 const OUTPUT_ERROR_HISTORY_LIMIT = 10;
@@ -172,7 +159,7 @@ function rowToStreamKey(row: Record<string, unknown>): StreamKey {
     return { id: row.id as number, slot: row.slot as number, key: row.key as string };
 }
 
-export function createDb(dbPath?: string): Db {
+export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_COUNT): Db {
     const resolvedPath = dbPath ?? readAppConfig().databasePath;
     const sqlite = new BetterSqlite3(resolvedPath);
     // WAL mode not enabled: better-sqlite3 is synchronous with a single connection, so all
@@ -184,14 +171,23 @@ export function createDb(dbPath?: string): Db {
         throw err;
     }
 
-    // Seed stream key slots 1–99 if missing
-    for (let slot = 1; slot <= STREAM_KEY_SLOTS; slot++) {
-        const existing = sqlite.prepare('SELECT id FROM stream_keys WHERE slot = ?').get(slot);
-        if (!existing) {
+    // Seed stream key slots 1..streamKeyCount if missing. Lowering the count later
+    // removes the unassigned keys above it; a key a pipeline still uses stays.
+    sqlite.transaction(() => {
+        sqlite
+            .prepare(
+                `DELETE FROM stream_keys WHERE slot > ?
+                 AND id NOT IN (SELECT stream_key_id FROM pipelines WHERE stream_key_id IS NOT NULL)`,
+            )
+            .run(streamKeyCount);
+        const hasSlot = sqlite.prepare('SELECT id FROM stream_keys WHERE slot = ?');
+        const insertKey = sqlite.prepare('INSERT INTO stream_keys (slot, key) VALUES (?, ?)');
+        for (let slot = 1; slot <= streamKeyCount; slot++) {
+            if (hasSlot.get(slot)) continue;
             const key = `key${String(slot).padStart(2, '0')}_${crypto.randomBytes(16).toString('hex')}`;
-            sqlite.prepare('INSERT INTO stream_keys (slot, key) VALUES (?, ?)').run(slot, key);
+            insertKey.run(slot, key);
         }
-    }
+    })();
 
     // Read prepared statements — load entire tables, combine in JS.
     // The dataset is small (~30 pipelines / 300+ outputs) so full-table reads
@@ -350,22 +346,6 @@ export function createDb(dbPath?: string): Db {
         return id;
     }
 
-    // The cap is user-facing, so shared-encode (rendition) rows are left out of the
-    // count and never refused: they are bounded by the number of distinct recipes
-    // per pipeline, and the system creates them on the user's behalf. They are
-    // recognised by their loopback internal-app URL (see isRenditionUrl); user
-    // outputs cannot be created with such a URL (api/outputs.ts).
-    function assertOutputCapacity(adding: { url: string }[]): void {
-        const addingUser = adding.filter((o) => !isRenditionUrl(o.url)).length;
-        if (addingUser === 0) return;
-        const { n } = sqlite
-            .prepare(
-                "SELECT COUNT(*) AS n FROM outputs WHERE url NOT LIKE 'rtmp://127.0.0.1:%/internal/r%'",
-            )
-            .get() as { n: number };
-        if (n + addingUser > MAX_OUTPUTS) throw new OutputLimitError();
-    }
-
     // Insert one output row without bumping the config revision — callers bump
     // once per logical write (single create or a whole bulk batch).
     function insertOutput({
@@ -477,11 +457,11 @@ export function createDb(dbPath?: string): Db {
             const keyRow = sqlite
                 .prepare(
                     `SELECT sk.id FROM stream_keys sk
-                     WHERE sk.slot IS NOT NULL
+                     WHERE sk.slot IS NOT NULL AND sk.slot <= ?
                      AND sk.id NOT IN (SELECT stream_key_id FROM pipelines WHERE stream_key_id IS NOT NULL)
                      ORDER BY sk.slot LIMIT 1`,
                 )
-                .get() as { id: number } | undefined;
+                .get(streamKeyCount) as { id: number } | undefined;
             if (!keyRow) throw new Error('No unassigned stream keys available');
             sqlite
                 .prepare('INSERT INTO pipelines (id, name, stream_key_id) VALUES (?, ?, ?)')
@@ -538,7 +518,6 @@ export function createDb(dbPath?: string): Db {
         },
 
         createOutput(params): Output {
-            assertOutputCapacity([params]);
             const id = insertOutput(params);
             bumpConfigRev();
             return getOutputById(id)!;
@@ -550,7 +529,6 @@ export function createDb(dbPath?: string): Db {
         createOutputs(paramsList): Output[] {
             const ids: string[] = [];
             sqlite.transaction(() => {
-                assertOutputCapacity(paramsList);
                 for (const params of paramsList) {
                     ids.push(insertOutput(params));
                 }

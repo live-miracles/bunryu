@@ -490,7 +490,11 @@ describe('SRT relay service', () => {
             );
         };
 
-        const service = createSrtRelayService();
+        // The relay config is cached on first read, so load a fresh copy.
+        for (const mod of ['../src/utils/relayConfig', '../src/services/srtRelay']) {
+            delete require.cache[require.resolve(mod)];
+        }
+        const service = require('../src/services/srtRelay').createSrtRelayService();
         cleanup.push(async () => service.shutdown());
         service.start();
 

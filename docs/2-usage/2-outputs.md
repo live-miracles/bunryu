@@ -88,7 +88,7 @@ left, starts it with the first running output, and stops it 15 seconds after the
 last one stops (so stopping and restarting an output, or editing one, does not
 restart the encode that its other outputs use). You cannot create, edit, delete, start or stop one,
 and you cannot point an output at the server's internal `internal` RTMP app. They
-do not count toward the 500-output limit.
+are not counted among your outputs.
 
 **In the dashboard.** The pipeline's side column has a **Shared encodes** card
 with one row per encode, laid out like an output card: status, a restart button

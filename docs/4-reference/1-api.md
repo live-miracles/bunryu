@@ -91,7 +91,6 @@ ordinary output row owned by the server, so the API exposes it as one:
 - **You cannot create outputs in the `internal` app.** Create, bulk create and
   update refuse a destination that resolves to this host with a path under
   `/internal/` (`400`, "the internal app is reserved for shared encodes").
-- **It does not count toward the 500-output cap**, which is for your outputs.
 - **Output stats carry extra fields** (`GET /api/health`, per output): `role`
   (`"rendition"` for a shared encode, else `"output"`), `renditionId` (the shared
   encode a running shared output is pulling, else `null`), and, for a shared

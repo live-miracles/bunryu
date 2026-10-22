@@ -150,6 +150,23 @@ describe('readAppConfig: dashboard_password', () => {
     });
 });
 
+describe('readAppConfig: stream_key_count', () => {
+    test('defaults to 100 when absent', () => {
+        assert.equal(loadAppConfig({})().streamKeyCount, 100);
+    });
+
+    test('is used as given', () => {
+        assert.equal(loadAppConfig({ stream_key_count: 250 })().streamKeyCount, 250);
+        assert.equal(loadAppConfig({ stream_key_count: 10000 })().streamKeyCount, 10000);
+    });
+
+    for (const bad of [0, -5, 10001, 12.5, NaN, '100', null, true, [100]]) {
+        test(`rejects ${JSON.stringify(bad)} and falls back to 100`, () => {
+            assert.equal(loadAppConfig({ stream_key_count: bad })().streamKeyCount, 100);
+        });
+    }
+});
+
 describe('readAppConfig: port validation (asPort)', () => {
     for (const bad of [0, -1, 65536, 8080.5, NaN, Infinity, '8080', null, true, [8080]]) {
         test(`rejects ${JSON.stringify(bad)} and falls back to the default 8080`, () => {

@@ -41,10 +41,11 @@ One container runs
 all three processes under a small supervisor (`docker/entrypoint.sh`) that
 keeps the native startup order: SRS starts only after `/api/ready` answers,
 each process is restarted 2 s after it exits, and every start and exit is
-logged with its status. The exception is a database of another schema version:
-the control plane exits with status 78, the supervisor logs it and starts nothing
-else, and the container stays up but unhealthy until `/data/db.sqlite` is removed and
-it is restarted.
+logged with its status. The exception is a failure only an operator can fix, a
+database of another schema version or a missing or invalid `bunryu.json`, `srs.conf` or
+`goryu.json`: the control plane exits with status 78, the supervisor logs it and starts
+nothing else, and the container stays up but unhealthy until the cause is fixed (remove
+`/data/db.sqlite` for the database) and it is restarted.
 
 ```bash
 docker compose up -d                       # build and start (compose.yaml)

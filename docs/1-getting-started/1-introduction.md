@@ -34,13 +34,15 @@ watchdogs that supervise them.
 ## Capacity and limits
 
 The server is built and operated for the envelope below. It has **not** been
-tested or designed for anything beyond it — treat these as the supported ceiling,
-not a target to exceed.
+tested or designed for anything beyond it. These are recommendations, not
+enforced: Bunryu does not refuse an output or a pipeline because of a count, so
+size the machine for your load ([Sizing a server](4-sizing.md)) and treat these as
+the tested ceiling, not a target to exceed.
 
-| Limit | Supported ceiling |
-|-------|-------------------|
-| Inputs (pipelines) | up to **50** |
-| Outputs (forwards) | up to **500** total — enforced: creating a 501st returns `409` (shared encodes are not counted) |
+| Recommended ceiling | Tested up to |
+|---------------------|--------------|
+| Inputs (pipelines) | up to **50**. The most the server accepts is its number of stream keys, **100** by default ([`stream_key_count`](../3-operations/3-configuration.md)) |
+| Outputs (forwards) | up to **500** in total (shared encodes are not counted) |
 | Distinct custom (transcoding) encodes | only **a few** at a time — see below |
 | Parallel dashboard clients | up to **~10** |
 
@@ -92,4 +94,4 @@ Not designed for:
 - Transcoding ladders or large numbers of encoded outputs.
 - Serving viewers directly (it forwards to platforms and CDNs).
 - Recording and VOD.
-- More than about 50 inputs or 500 outputs on one server.
+- More than about 50 inputs or 500 outputs on one server (not enforced, but untested).

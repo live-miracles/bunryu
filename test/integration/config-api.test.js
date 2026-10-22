@@ -158,7 +158,7 @@ describe('Config API integration', () => {
         assert.equal(res.body.serverName, 'Bunryu');
         assert.equal(res.body.publicHost, '');
         assert.deepEqual(res.body.layoutOrder, []);
-        assert.equal(res.body.streamKeys.length, 99);
+        assert.equal(res.body.streamKeys.length, 100);
         assert.ok(Array.isArray(res.body.encodings) && res.body.encodings.includes('copy'));
     });
 

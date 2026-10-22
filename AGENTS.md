@@ -30,14 +30,16 @@ restore timing.
 
 ## Intended capacity
 
-These are the supported operating ceilings described in
+These are the recommended operating ceilings described in
 `docs/1-getting-started/1-introduction.md`,
-not targets to exceed:
+not targets to exceed. None is enforced in code: the operator sizes the host, and
+only the stream key count (`stream_key_count` in `bunryu.json`, default 100) bounds
+the number of inputs:
 
 | Resource | Intended maximum |
 |---|---:|
 | Input pipelines | 50 |
-| Output forwards | 500 total (enforced in the database layer; shared encodes are not counted) |
+| Output forwards | 500 total (shared encodes are not counted) |
 | Distinct concurrent custom/transcoding encodes | A few at a time |
 | Concurrent dashboard clients | Approximately 10 |
 
@@ -51,7 +53,7 @@ Host CPU, memory, network capacity, and the number of FFmpeg processes are
 expected to become limiting factors before the API or dashboard at the upper
 end of the supported envelope.
 
-Do not increase these limits or add resource-intensive defaults without
+Do not raise these figures or add resource-intensive defaults without
 considering the effect on all active pipelines, copy outputs, the dashboard,
 and the control plane.
 
@@ -215,7 +217,8 @@ only for a new module.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments and the minimal environment every
   FFmpeg/ffprobe child gets (`ffmpegEnv`); `ffmpegCheck.ts` is the startup check of the
   build's protocols, encoders and filters; `appConfig.ts` reads
-  `bunryu.json` (watchdog defaults; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `diagnostics.ts` is the rotated JSONL
+  `bunryu.json` (watchdog defaults; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `configCheck.ts` / `startupGate.ts` read
+  the three config files first thing at startup and exit 78 if one is missing or invalid; `diagnostics.ts` is the rotated JSONL
   writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
   read SRS and relay config.
 - `src/db/` - SQLite schema and access (output Error History lives in

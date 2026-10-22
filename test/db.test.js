@@ -13,23 +13,62 @@ const { createDb } = require('../src/db/index');
 // Each helper creates a fresh isolated in-memory DB
 const makeDb = () => createDb(':memory:');
 
+function withDbFile(fn) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-db-keys-'));
+    try {
+        fn(path.join(dir, 'test.db'));
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
 // ── Stream keys ───────────────────────────────────────
 
 describe('Stream keys', () => {
-    test('seeds exactly 99 slots on init', () => {
-        assert.equal(makeDb().listStreamKeys().length, 99);
+    test('seeds 100 slots on init by default', () => {
+        assert.equal(makeDb().listStreamKeys().length, 100);
     });
 
     test('all keys match expected format', () => {
         for (const k of makeDb().listStreamKeys()) {
-            assert.match(k.key, /^key\d{2}_[a-f0-9]{32}$/);
+            assert.match(k.key, /^key\d{2,}_[a-f0-9]{32}$/);
         }
     });
 
-    test('keys are ordered by slot 1–99', () => {
+    test('keys are ordered by slot 1–100', () => {
         const keys = makeDb().listStreamKeys();
         assert.equal(keys[0].slot, 1);
-        assert.equal(keys[98].slot, 99);
+        assert.equal(keys[99].slot, 100);
+        assert.match(keys[99].key, /^key100_/);
+    });
+
+    test('the count is a parameter', () => {
+        assert.equal(createDb(':memory:', 7).listStreamKeys().length, 7);
+        assert.equal(createDb(':memory:', 250).listStreamKeys().length, 250);
+    });
+
+    test('a larger count on restart adds keys and keeps the existing ones', () => {
+        withDbFile((file) => {
+            const first = createDb(file, 3);
+            const before = first.listStreamKeys();
+            const after = createDb(file, 5).listStreamKeys();
+            assert.equal(after.length, 5);
+            assert.deepEqual(after.slice(0, 3), before);
+        });
+    });
+
+    test('a smaller count on restart removes unassigned keys above it and keeps assigned ones', () => {
+        withDbFile((file) => {
+            const first = createDb(file, 5);
+            for (let i = 0; i < 4; i++) first.createPipeline();
+            const second = createDb(file, 2);
+            assert.deepEqual(
+                second.listStreamKeys().map((k) => k.slot),
+                [1, 2, 3, 4],
+            );
+            // New pipelines only get keys within the count: 1 and 2 are taken.
+            assert.throws(() => second.createPipeline(), /No unassigned stream keys/);
+        });
     });
 });
 
@@ -87,13 +126,13 @@ describe('Pipeline CRUD', () => {
         const db = makeDb();
         const p1 = db.createPipeline();
         db.deletePipeline(p1.id);
-        // Fill all 99 slots — should succeed since one key was freed
-        for (let i = 0; i < 99; i++) db.createPipeline();
+        // Fill all 100 slots — should succeed since one key was freed
+        for (let i = 0; i < 100; i++) db.createPipeline();
     });
 
-    test('createPipeline throws when all 99 keys are assigned', () => {
+    test('createPipeline throws when all 100 keys are assigned', () => {
         const db = makeDb();
-        for (let i = 0; i < 99; i++) db.createPipeline();
+        for (let i = 0; i < 100; i++) db.createPipeline();
         assert.throws(() => db.createPipeline(), /No unassigned stream keys/);
     });
 
@@ -303,12 +342,12 @@ describe('regenerateStreamKeys', () => {
         const db = makeDb();
         const before = db.listStreamKeys();
         const after = db.regenerateStreamKeys();
-        assert.equal(after.length, 99);
-        for (let i = 0; i < 99; i++) {
+        assert.equal(after.length, 100);
+        for (let i = 0; i < 100; i++) {
             assert.equal(after[i].slot, before[i].slot);
             assert.equal(after[i].id, before[i].id);
             assert.notEqual(after[i].key, before[i].key);
-            assert.match(after[i].key, /^key\d{2}_[a-f0-9]{32}$/);
+            assert.match(after[i].key, /^key\d{2,}_[a-f0-9]{32}$/);
         }
     });
 
@@ -949,46 +988,6 @@ describe('Config revision', () => {
         db.appendPipelineLog(p.id, 'online', 'connected');
 
         assert.equal(db.getConfigRev(), rev);
-    });
-});
-
-describe('Output capacity and renditions', () => {
-    const RENDITION = (n) => `rtmp://127.0.0.1:1935/internal/r1_720p_a${n}`;
-
-    test('rendition rows do not count toward the 500-output cap', () => {
-        const db = makeDb();
-        const p = db.createPipeline();
-        db.createOutputs(
-            Array.from({ length: 500 }, (_, i) => ({
-                pipelineId: p.id,
-                name: `o${i}`,
-                url: `rtmp://h/live/k${i}`,
-            })),
-        );
-
-        db.createOutput({ pipelineId: p.id, name: 'r', url: RENDITION(0) });
-
-        assert.equal(db.listOutputs().length, 501);
-        assert.throws(
-            () => db.createOutput({ pipelineId: p.id, name: 'x', url: 'rtmp://h/x' }),
-            /Output limit reached/,
-        );
-    });
-
-    test('existing rendition rows free their share of the cap', () => {
-        const db = makeDb();
-        const p = db.createPipeline();
-        for (let i = 0; i < 5; i++) {
-            db.createOutput({ pipelineId: p.id, name: 'r', url: RENDITION(i) });
-        }
-        db.createOutputs(
-            Array.from({ length: 500 }, (_, i) => ({
-                pipelineId: p.id,
-                name: `o${i}`,
-                url: `rtmp://h/live/k${i}`,
-            })),
-        );
-        assert.equal(db.listOutputs().length, 505);
     });
 });
 

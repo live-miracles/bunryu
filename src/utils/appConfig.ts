@@ -16,6 +16,9 @@ export interface AppConfig {
     // Seeds the dashboard password hash on first boot only (when the database
     // has none yet); changing it later has no effect on an existing database.
     dashboardPassword: string;
+    // Stream keys generated for the pipelines to publish with; one pipeline
+    // uses one key, so this is also the most inputs the server can have.
+    streamKeyCount: number;
     outputWatchdog: OutputWatchdogConfig;
 }
 
@@ -42,6 +45,7 @@ interface RawAppConfig {
     ffmpeg_path?: unknown;
     ffprobe_path?: unknown;
     dashboard_password?: unknown;
+    stream_key_count?: unknown;
     output_watchdog?: unknown;
 }
 
@@ -83,6 +87,9 @@ const DEFAULT_RAW_CONFIG = {
     ffmpeg_path: 'ffmpeg',
     ffprobe_path: 'ffprobe',
 } as const;
+export const DEFAULT_STREAM_KEY_COUNT = 100;
+// A typo such as 1000000 would otherwise generate a million keys at startup.
+const MAX_STREAM_KEY_COUNT = 10_000;
 
 let cachedConfig: AppConfig | null = null;
 
@@ -95,6 +102,15 @@ function asPort(value: unknown, fallback: number): number {
 function asPassword(fromEnv: string | undefined, fromFile: unknown): string {
     if (fromEnv) return fromEnv;
     return typeof fromFile === 'string' ? fromFile : '';
+}
+
+function asStreamKeyCount(value: unknown): number {
+    return typeof value === 'number' &&
+        Number.isInteger(value) &&
+        value > 0 &&
+        value <= MAX_STREAM_KEY_COUNT
+        ? value
+        : DEFAULT_STREAM_KEY_COUNT;
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -231,6 +247,7 @@ export function readAppConfig(): AppConfig {
             process.env.BUNRYU_DASHBOARD_PASSWORD,
             raw.dashboard_password,
         ),
+        streamKeyCount: asStreamKeyCount(raw.stream_key_count),
         outputWatchdog: readWatchdogConfig(raw.output_watchdog),
     };
     return cachedConfig;

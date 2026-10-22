@@ -1,5 +1,4 @@
-import { installLogTimestamps } from './utils/logTimestamps.js';
-installLogTimestamps();
+import './utils/startupGate.js';
 
 import crypto from 'crypto';
 import express from 'express';
@@ -30,6 +29,7 @@ import {
 } from './api/auth.js';
 import { registerVersionApi, readAppVersion } from './api/version.js';
 import { readAppConfig } from './utils/appConfig.js';
+import { EXIT_NEEDS_OPERATOR } from './utils/configCheck.js';
 import { createDiagnosticsLogger, runLogged } from './utils/diagnostics.js';
 import { checkFfmpeg } from './utils/ffmpegCheck.js';
 import { jsonErrorHandler } from './api/errors.js';
@@ -53,8 +53,8 @@ app.use((_req, res, next) => {
     next();
 });
 
-// gzip responses. The /api/config and /api/health JSON for 50 inputs / 500
-// outputs is large and re-fetched by every dashboard client on the 5s poll;
+// gzip responses. The /api/config and /api/health JSON for dozens of inputs and
+// hundreds of outputs is large and re-fetched by every dashboard client on the 5s poll;
 // JSON compresses very well, so this cuts response size and bandwidth sharply.
 app.use(
     compression({
@@ -67,17 +67,12 @@ app.use(
         },
     }),
 );
-// Room for a 500-output bulk create with long destination URLs.
+// Room for a bulk create of hundreds of outputs with long destination URLs.
 app.use(express.json({ limit: '1mb' }));
-
-// EX_CONFIG: bunryu.service has RestartPreventExitStatus=78, so a failure that
-// needs an operator (a database of another schema version) leaves the unit
-// failed with its message instead of restarting every 2 s forever.
-const EXIT_NEEDS_OPERATOR = 78;
 
 function openDatabase(): Db {
     try {
-        return createDb();
+        return createDb(undefined, readAppConfig().streamKeyCount);
     } catch (err) {
         if (err instanceof DatabaseSchemaError) {
             console.error(`[server] ${err.message}`);

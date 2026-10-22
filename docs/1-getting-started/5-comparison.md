@@ -66,7 +66,7 @@ and we chose it over writing our own.
 
 |                             | Bunryu                                                 | datarhei Restreamer                                         | SRS alone                                  | MediaMTX                                               |
 | --------------------------- | ------------------------------------------------------ | ----------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------ |
-| What it is                  | Restreaming server for long live events, with one dashboard for up to 50 inputs and 500 outputs                | Restreaming app with a wizard UI, built on datarhei Core    | Media server (ingest and delivery)         | Media server and router for many protocols             |
+| What it is                  | Restreaming server for long live events, with one dashboard, tested with 50 inputs and 500 outputs             | Restreaming app with a wizard UI, built on datarhei Core    | Media server (ingest and delivery)         | Media server and router for many protocols             |
 | Forward to many destinations | RTMP, RTMPS and SRT, one FFmpeg process per output     | RTMP, SRT and other protocols through its UI                | `forward` entries in its config file       | The `forward` feature, set per path in its config file |
 | Dashboard and API           | Dashboard and REST API                                 | Web UI and Swagger-documented REST API                      | HTTP API and config files                  | Control API and config file                            |
 | Bonded SRT ingest           | Yes, through [Goryu](https://github.com/live-miracles/goryu) | Not documented                                        | No ([ossrs/srs#4771](https://github.com/ossrs/srs/issues/4771)) | Not found in its docs or code                          |
@@ -159,5 +159,5 @@ prices with these products.
 - You want a public page or embeddable player for viewers. Bunryu forwards streams
   to destinations; it does not serve viewers.
 - You need WebRTC, RTSP or HLS delivery, or protocol conversion as a service.
-- You need more than the supported
+- You need more than the tested
   [capacity](1-introduction.md#capacity-and-limits): 50 inputs and 500 outputs.

@@ -8,6 +8,12 @@ in the `/data` volume. The installer and the Docker entrypoint set only `port`, 
 file paths and `dashboard_password`; every other setting you add stays when you
 update.
 
+The app reads `bunryu.json`, `srs.conf` and `goryu.json` once, when it starts:
+restart the app after changing any of them. SRS and Goryu read their own file only
+at startup too. If one of the three is missing or is not valid JSON, the app prints
+which file and exits with status 78, which systemd does not restart (see
+[Reliability](4-reliability.md)).
+
 `bunryu.json`:
 
 | Field | Default | Description |
@@ -20,6 +26,7 @@ update.
 | `ffmpeg_path` | `ffmpeg` | FFmpeg binary for outputs and previews |
 | `ffprobe_path` | `ffprobe` | FFprobe binary for input media probing and validation |
 | `dashboard_password` | none (the repo's dev `bunryu.json` ships `change-me`) | Initial dashboard password, used only when the database has no password yet (first boot or after a reset). There is no default: with an empty database and no password the server does not start (exit status 78). The installer and the Docker image require one on a fresh install and never generate or print it. Stored in plain text; the installer sets the file to mode `0600` |
+| `stream_key_count` | `100` | Stream keys generated for pipelines to publish with. One pipeline uses one key, so this is also the most inputs the server accepts. A whole number from 1 to 10000; anything else gives 100. Raising it adds keys at the next start; lowering it removes the unassigned keys above it (keys a pipeline uses stay). The inputs and outputs recommended in the [introduction](../1-getting-started/1-introduction.md#capacity-and-limits) are not enforced |
 | `output_watchdog.warmup_ms` | `90000` | Warmup before stall checks, shared by the output progress watchdog and the translation-mixer watchdogs below |
 | `output_watchdog.stall_ms` | `45000` | Output progress stall window before restarting FFmpeg |
 | `output_watchdog.translator_meter_stale_ms` | `10000` | How long a translation output's translator audio meter can go quiet (including never producing a sample) before the mixer is restarted |
@@ -133,7 +140,7 @@ it ask, in a terminal, "Wipe it and start with an empty database? [Y/n]": Enter 
 current version is kept without any prompt. A database from before the stamp existed is
 accepted and stamped, since it differs from the current schema only by an unused table.
 
-Relay ports and status polling are read from `goryu.json`, located beside `srs_config_path`.
+Relay ports, status polling and the SRT passphrase are read from `goryu.json`, located beside `srs_config_path`.
 
 Installer/development overrides:
 

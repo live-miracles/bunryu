@@ -111,6 +111,12 @@ installer catches this before it restarts anything. The Docker supervisor stops 
 way: it logs the error once, starts neither SRS nor the relay, and leaves the container
 running but unhealthy until it is stopped; remove `/data/db.sqlite` and start it again.
 
+The same applies to the three config files. At startup, before anything else, the app
+reads `bunryu.json`, `srs.conf` and `goryu.json`; one that is missing or is not valid
+JSON (`srs.conf` only needs to exist) makes it print which file and exit with status 78,
+so it is fixed or restored before the next start. Any other read error (an I/O error, say) is
+not treated that way: the process crashes and is restarted after 2 s like any crash.
+
 **FFmpeg build check.** At startup the app runs the configured `ffmpeg` with
 `-protocols`, `-encoders` and `-filters`, and `ffprobe -version`, and checks for
 everything it uses: RTMP, RTMPS and SRT for both input and output, the `aac` and

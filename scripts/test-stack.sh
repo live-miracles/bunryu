@@ -8,7 +8,7 @@ REPO=$(cd "$HERE/.." && pwd)
 WORK=${WORK:-${TMPDIR:-/tmp}/bunryu-ui}
 APP_PORT=18080 HOOK_PORT=18082 RTMP_PORT=31935 API_PORT=31985 SRT_PORT=31080 CDP_PORT=9333
 B=http://127.0.0.1:$APP_PORT
-# start overwrites bunryu.json/srs.conf and deletes db.sqlite* in $WORK, so it
+# start overwrites bunryu.json/srs.conf/goryu.json and deletes db.sqlite* in $WORK, so it
 # must never point at the repo (that would wipe a developer's real config and DB).
 case "$(realpath -m "$WORK")" in
     "$REPO" | "$REPO"/*)
@@ -75,6 +75,8 @@ JSON
             -e "s/listen          127.0.0.1:1985;/listen          127.0.0.1:$API_PORT;/" \
             -e "s/listen          10080;/listen          $SRT_PORT;/" \
             -e "s#127.0.0.1:8082#127.0.0.1:$HOOK_PORT#g" "$REPO/srs.conf" > "$WORK/srs.conf"
+        # The app refuses to start without goryu.json beside srs.conf (no relay runs here).
+        cp "$REPO/goryu.json" "$WORK/goryu.json"
         # Fake output ffmpeg: destination URL as last arg => healthy copy output
         # (progress on stdout, discontinuity flood on stderr while $WORK/flood exists);
         # anything else (preview) runs the real ffmpeg. Shared encodes are real too:

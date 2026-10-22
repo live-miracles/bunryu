@@ -10,7 +10,6 @@ import type { Db, TranslationInput } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import type { HealthService } from '../services/health.js';
 import { cyan } from '../utils/ansiColor.js';
-import { MAX_OUTPUTS, OutputLimitError } from '../db/index.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
 import { isRenditionOutput } from '../utils/renditions.js';
 import { parseName } from '../utils/inputLimits.js';
@@ -148,9 +147,6 @@ export function registerOutputApi(
                 translation,
             });
         } catch (error) {
-            if (error instanceof OutputLimitError) {
-                return res.status(409).json({ error: error.message });
-            }
             console.error('[outputs] failed to create output:', error);
             return res.status(500).json({
                 error: error instanceof Error ? error.message : 'could not create output',
@@ -169,10 +165,6 @@ export function registerOutputApi(
         const rawOutputs = req.body?.outputs;
         if (!Array.isArray(rawOutputs) || rawOutputs.length === 0)
             return res.status(400).json({ error: 'outputs array is required' });
-        if (rawOutputs.length > MAX_OUTPUTS)
-            return res
-                .status(400)
-                .json({ error: `at most ${MAX_OUTPUTS} outputs can be created at once` });
 
         const validated: {
             name: string;
@@ -212,9 +204,6 @@ export function registerOutputApi(
         try {
             created = db.createOutputs(validated.map((v) => ({ pipelineId, ...v })));
         } catch (error) {
-            if (error instanceof OutputLimitError) {
-                return res.status(409).json({ error: error.message });
-            }
             console.error('[outputs] failed to create outputs:', error);
             return res.status(500).json({
                 error: error instanceof Error ? error.message : 'could not create outputs',

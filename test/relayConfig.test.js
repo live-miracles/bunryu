@@ -29,7 +29,6 @@ after(() => {
 
 const {
     normalizeRelayConfig,
-    readRelayConfig,
     renderRelayConfig,
     getRelayConfigPath,
     DEFAULT_RELAY_CONFIG,
@@ -102,15 +101,26 @@ describe('normalizeRelayConfig', () => {
 
 describe('readRelayConfig', () => {
     const relayPath = () => getRelayConfigPath();
+    // relayConfig.ts caches its first successful read at module scope, so each test
+    // re-requires it, as appConfig.test.js does.
+    function freshReadRelayConfig() {
+        delete require.cache[require.resolve('../src/utils/relayConfig')];
+        return require('../src/utils/relayConfig').readRelayConfig;
+    }
 
-    test('returns full defaults when the file does not exist', () => {
+    test('throws when the file does not exist, naming the file', () => {
         fs.rmSync(relayPath(), { force: true });
-        assert.deepEqual(readRelayConfig(), DEFAULT_RELAY_CONFIG);
+        assert.throws(() => freshReadRelayConfig()(), /Failed to read relay config .*goryu\.json/);
     });
 
-    test('returns full defaults on malformed JSON, without throwing', () => {
+    test('throws on malformed JSON', () => {
         fs.writeFileSync(relayPath(), '{ not valid json', 'utf8');
-        assert.deepEqual(readRelayConfig(), DEFAULT_RELAY_CONFIG);
+        assert.throws(() => freshReadRelayConfig()(), /Failed to read relay config/);
+    });
+
+    test('fills the defaults for fields a valid file leaves out', () => {
+        fs.writeFileSync(relayPath(), '{}', 'utf8');
+        assert.deepEqual(freshReadRelayConfig()(), DEFAULT_RELAY_CONFIG);
     });
 
     test('reads and normalizes a valid file', () => {
@@ -119,17 +129,26 @@ describe('readRelayConfig', () => {
             JSON.stringify({ input_port: 55555, passphrase: 'hunter2' }),
             'utf8',
         );
-        const cfg = readRelayConfig();
+        const cfg = freshReadRelayConfig()();
         assert.equal(cfg.input_port, 55555);
         assert.equal(cfg.passphrase, 'hunter2');
         assert.equal(cfg.output_port, DEFAULT_RELAY_CONFIG.output_port);
     });
 
-    test('is not cached — re-reads the file on every call', () => {
+    test('keeps the first successful read until the next start', () => {
         fs.writeFileSync(relayPath(), JSON.stringify({ input_port: 1111 }), 'utf8');
-        assert.equal(readRelayConfig().input_port, 1111);
+        const read = freshReadRelayConfig();
+        assert.equal(read().input_port, 1111);
         fs.writeFileSync(relayPath(), JSON.stringify({ input_port: 2222 }), 'utf8');
-        assert.equal(readRelayConfig().input_port, 2222);
+        assert.equal(read().input_port, 1111);
+    });
+
+    test('does not cache a failed read: a file that appears later is used', () => {
+        fs.rmSync(relayPath(), { force: true });
+        const read = freshReadRelayConfig();
+        assert.throws(() => read(), /Failed to read relay config/);
+        fs.writeFileSync(relayPath(), JSON.stringify({ input_port: 3333 }), 'utf8');
+        assert.equal(read().input_port, 3333);
     });
 });
 

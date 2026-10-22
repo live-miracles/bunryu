@@ -63,7 +63,7 @@ const RETENTION_MS = 5 * 60_000;
 // A refused publisher can retry every 10-40ms; walking every entry on each call
 // would be wasted work, and retention is minutes, so prune at most once a second.
 const PRUNE_INTERVAL_MS = 1000;
-// A real deployment has 99 key slots; this only guards against malformed labels.
+// A deployment has 100 key slots by default; this only guards against malformed labels.
 const MAX_ENTRIES = 200;
 // Distinct names tracked per aggregate entry; beyond this the count is "N+".
 const MAX_DISTINCT_NAMES = 100;

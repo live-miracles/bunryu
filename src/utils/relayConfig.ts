@@ -2,9 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { readAppConfig } from './appConfig.js';
 
-const CONF_PATH = readAppConfig().srsConfigPath;
-const RELAY_CONFIG_PATH = path.join(path.dirname(CONF_PATH), 'goryu.json');
-
 export interface SrtBondingRelayConfig {
     input_host: string;
     input_port: number;
@@ -33,8 +30,9 @@ function asPort(value: unknown, fallback: number): number {
         : fallback;
 }
 
+// Beside srs.conf. Computed on use so importing this module never reads bunryu.json.
 export function getRelayConfigPath(): string {
-    return RELAY_CONFIG_PATH;
+    return path.join(path.dirname(readAppConfig().srsConfigPath), 'goryu.json');
 }
 
 export function normalizeRelayConfig(raw: unknown): SrtBondingRelayConfig {
@@ -49,11 +47,23 @@ export function normalizeRelayConfig(raw: unknown): SrtBondingRelayConfig {
     };
 }
 
+let cachedConfig: SrtBondingRelayConfig | null = null;
+
+// Goryu reads its file only at startup, so the app keeps the first successful read
+// too: the values shown are the ones the running relay uses, and a file rewritten
+// on disk shows up with the next restart. A failed read throws and caches nothing;
+// the startup check (utils/configCheck.ts) turns that into an exit before the app
+// serves anything, so there is no silent fallback to the defaults.
 export function readRelayConfig(): SrtBondingRelayConfig {
+    if (cachedConfig) return cachedConfig;
+    const configPath = getRelayConfigPath();
     try {
-        return normalizeRelayConfig(JSON.parse(fs.readFileSync(RELAY_CONFIG_PATH, 'utf8')));
-    } catch {
-        return { ...DEFAULT_RELAY_CONFIG };
+        cachedConfig = normalizeRelayConfig(JSON.parse(fs.readFileSync(configPath, 'utf8')));
+        return cachedConfig;
+    } catch (err) {
+        throw new Error(`Failed to read relay config ${configPath}: ${String(err)}`, {
+            cause: err,
+        });
     }
 }
 
