@@ -11,6 +11,8 @@ const path = require('node:path');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-outputs-'));
 const originalCwd = process.cwd();
+// The options of the most recent spawn() through loadOutputService's mock.
+let lastSpawnOptions = null;
 
 after(() => {
     process.chdir(originalCwd);
@@ -138,9 +140,10 @@ function loadOutputService(t, fakeProc, options = {}) {
         'utf8',
     );
 
-    t.mock.method(childProcess, 'spawn', (_cmd, args) =>
-        typeof fakeProc === 'function' ? fakeProc(args) : fakeProc,
-    );
+    t.mock.method(childProcess, 'spawn', (_cmd, args, spawnOptions) => {
+        lastSpawnOptions = spawnOptions;
+        return typeof fakeProc === 'function' ? fakeProc(args) : fakeProc;
+    });
     // No retry jitter unless a test asks for it, so back-off steps are exact.
     t.mock.method(Math, 'random', () => options.random ?? 0);
     if (options.ssError) {
@@ -509,6 +512,39 @@ describe('output watchdog', () => {
 
         assert.equal(service.getStats('out1').warningReason, null);
         assert.deepEqual(proc.killSignals, []);
+
+        service.shutdown();
+    });
+});
+
+describe('output ffmpeg environment', () => {
+    beforeEach(() => {
+        process.chdir(tempDir);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        delete require.cache[require.resolve('../src/services/outputs')];
+        delete require.cache[require.resolve('../src/utils/appConfig')];
+    });
+
+    test('spawns ffmpeg without the app secrets in its environment', async (t) => {
+        const saved = process.env.BUNRYU_DASHBOARD_PASSWORD;
+        process.env.BUNRYU_DASHBOARD_PASSWORD = 'not-for-ffmpeg';
+        t.after(() => {
+            if (saved === undefined) delete process.env.BUNRYU_DASHBOARD_PASSWORD;
+            else process.env.BUNRYU_DASHBOARD_PASSWORD = saved;
+        });
+        const proc = new FakeFfmpeg();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const service = createOutputService(makeDb(), makeReadyInputState());
+
+        await service.start('out1');
+
+        const env = lastSpawnOptions?.env;
+        assert.ok(env, 'ffmpeg must be spawned with an explicit environment');
+        assert.equal(env.BUNRYU_DASHBOARD_PASSWORD, undefined);
+        assert.equal(env.PATH, process.env.PATH);
 
         service.shutdown();
     });

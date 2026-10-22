@@ -32,6 +32,7 @@ import { registerVersionApi, readAppVersion } from './api/version.js';
 import { readAppConfig } from './utils/appConfig.js';
 import { createHostProbeService } from './services/hostProbes.js';
 import { createDiagnosticsLogger, runLogged } from './utils/diagnostics.js';
+import { checkFfmpeg } from './utils/ffmpegCheck.js';
 import { jsonErrorHandler } from './api/errors.js';
 import { createTranslationMixerService } from './services/translationMixer.js';
 import { createRenditionReconciler } from './services/renditions.js';
@@ -237,6 +238,25 @@ function warnOnWeakSrtPassphrase(): void {
     }
 }
 
+// A missing or incomplete ffmpeg build otherwise shows up only as every output
+// failing; say so once at startup. Not fatal: ingest and the dashboard still work.
+async function reportFfmpegCheck(): Promise<void> {
+    const { ffmpegPath, ffprobePath } = readAppConfig();
+    const result = await checkFfmpeg(ffmpegPath, ffprobePath);
+    diagnostics.event('ffmpeg-check', { ffmpegPath, ffprobePath, ...result });
+    if (result.ok) {
+        console.log(
+            `[ffmpeg] ${ffmpegPath} ${result.version ?? '(unknown version)'} has every needed feature`,
+        );
+    } else if (result.error) {
+        console.error(`[ffmpeg] ${result.error}; outputs, previews and probes will fail`);
+    } else {
+        console.error(
+            `[ffmpeg] ${ffmpegPath} ${result.version ?? ''} is missing: ${result.missing.join(', ')}; outputs that need them will fail`,
+        );
+    }
+}
+
 async function main(): Promise<void> {
     // Must finish before listen(): seeds the initial password hash (only if the
     // database has none) and loads persisted sessions, which the auth middleware
@@ -245,6 +265,7 @@ async function main(): Promise<void> {
 
     void enforceDestinationPolicy(db, outputService, diagnostics);
     warnOnWeakSrtPassphrase();
+    void reportFfmpegCheck();
     srtRelayService.start();
     translationMixerService.start();
     renditionReconciler.start();

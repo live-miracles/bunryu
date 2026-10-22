@@ -111,6 +111,16 @@ installer catches this before it restarts anything. The Docker supervisor stops 
 way: it logs the error once, starts neither SRS nor the relay, and leaves the container
 running but unhealthy until it is stopped; remove `/data/db.sqlite` and start it again.
 
+**FFmpeg build check.** At startup the app runs the configured `ffmpeg` with
+`-protocols`, `-encoders` and `-filters`, and `ffprobe -version`, and checks for
+everything it uses: RTMP, RTMPS and SRT for both input and output, the `aac` and
+`libx264` encoders, and the `amix` and `azmq` filters (translation mixing). The result
+goes to the journal and to diagnostics as `ffmpeg-check`, with the version and what is
+missing. Unlike a schema mismatch this is not fatal: ingest, the dashboard and every
+output that does not need the missing piece keep working. Without the check, a missing
+or incomplete build (an OS package replacing the pinned one, or a wrong `ffmpeg_path`)
+would show up only as each affected output failing with its own error.
+
 ## Falling behind realtime
 
 An output that processes media slower than realtime falls further behind live every

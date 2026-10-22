@@ -5,6 +5,7 @@ import path from 'path';
 import type { Express } from 'express';
 import { readAppConfig } from '../utils/appConfig.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
+import { ffmpegEnv } from '../utils/ffmpeg.js';
 
 const VERSION_EXEC_TIMEOUT_MS = 3000;
 const VERSION_FETCH_TIMEOUT_MS = 2000;
@@ -104,7 +105,7 @@ export function registerVersionApi(app: Express): void {
             exec('git', ['log', '-1', '--date=format-local:%Y-%m-%d %H:%M', '--format=%cd']),
             getSrsVersion(),
             getSrtRelayVersion(),
-            exec(readAppConfig().ffmpegPath, ['-version']),
+            exec(readAppConfig().ffmpegPath, ['-version'], undefined, ffmpegEnv()),
         ]);
 
         const ffmpegLine = ffmpegOut.split('\n')[0] ?? '';

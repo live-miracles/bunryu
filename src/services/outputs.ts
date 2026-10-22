@@ -3,6 +3,7 @@ import type { ChildProcess } from 'child_process';
 import {
     INPUT_TIMEOUT_US,
     buildFfmpegArgs,
+    ffmpegEnv,
     isTranslationAudio,
     validateOutputUrl,
 } from '../utils/ffmpeg.js';
@@ -1424,7 +1425,7 @@ export function createOutputService(
         // orphaned ffmpeg processes running after the parent dies.
         const child: ChildProcess = spawn(FFMPEG_CMD, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
-            env: process.env,
+            env: ffmpegEnv(),
         });
 
         processes.set(output.id, child);

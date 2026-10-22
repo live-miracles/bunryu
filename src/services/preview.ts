@@ -3,7 +3,7 @@ import type { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { readAppConfig } from '../utils/appConfig.js';
-import { INPUT_TIMEOUT_US } from '../utils/ffmpeg.js';
+import { INPUT_TIMEOUT_US, ffmpegEnv } from '../utils/ffmpeg.js';
 import type { Db } from '../types.js';
 import type { InputState } from './inputState.js';
 import { MAX_AUDIO_TRACKS } from '../utils/inputLimits.js';
@@ -247,7 +247,7 @@ export function createPreviewService(
             ],
             {
                 stdio: ['ignore', 'ignore', 'pipe'],
-                env: process.env,
+                env: ffmpegEnv(),
             },
         );
 

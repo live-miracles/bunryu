@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import type { ChildProcess, ExecFileException } from 'child_process';
 import { type SrsStreamVideo, type SrsStreamAudio, type AudioTrackInfo } from '../utils/srs.js';
 import { readAppConfig } from '../utils/appConfig.js';
+import { ffmpegEnv } from '../utils/ffmpeg.js';
 
 const FFPROBE_CMD = readAppConfig().ffprobePath;
 const FFPROBE_TIMEOUT_MS = 15000;
@@ -81,7 +82,7 @@ export function runFfprobe(
         const child = execFile(
             FFPROBE_CMD,
             ['-v', 'error', '-print_format', 'json', '-show_streams', url],
-            { timeout: FFPROBE_TIMEOUT_MS, killSignal: 'SIGKILL' },
+            { timeout: FFPROBE_TIMEOUT_MS, killSignal: 'SIGKILL', env: ffmpegEnv() },
             (err, stdout, stderr) => {
                 if (err) {
                     fail(err.killed ? 'timeout' : 'exit', err, String(stderr ?? ''));

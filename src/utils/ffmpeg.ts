@@ -69,6 +69,29 @@ function buildAudioMapArgs(audioTrack: string): string[] {
     return args;
 }
 
+// The environment every FFmpeg/ffprobe child gets: only what it can use, never
+// the app's own (BUNRYU_DASHBOARD_PASSWORD would otherwise sit in
+// /proc/<pid>/environ of every output). SSL_CERT_* lets RTMPS find a CA bundle
+// if TLS verification is ever turned on; LD_LIBRARY_PATH keeps a dynamically
+// linked ffmpeg working.
+const FFMPEG_ENV_KEYS = [
+    'PATH',
+    'LANG',
+    'LC_ALL',
+    'TZ',
+    'SSL_CERT_FILE',
+    'SSL_CERT_DIR',
+    'LD_LIBRARY_PATH',
+];
+
+export function ffmpegEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+    const result: NodeJS.ProcessEnv = {};
+    for (const key of FFMPEG_ENV_KEYS) {
+        if (env[key] !== undefined) result[key] = env[key];
+    }
+    return result;
+}
+
 // Abort the pull if no input data is read for this long (microseconds, ffmpeg's
 // -rw_timeout unit). SRS holds publisher-less pulls open indefinitely, so without
 // this an output whose input never returns (or sits on a stale half-open socket)

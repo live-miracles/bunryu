@@ -212,7 +212,9 @@ only for a new module.
   `rejectedPublishes.ts`, `hostProbes.ts`.
 - `src/api/*` - REST routes; `errors.ts` is the JSON error handler (also on the hook app). `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.
-- `src/utils/ffmpeg.ts` builds FFmpeg arguments; `appConfig.ts` reads
+- `src/utils/ffmpeg.ts` builds FFmpeg arguments and the minimal environment every
+  FFmpeg/ffprobe child gets (`ffmpegEnv`); `ffmpegCheck.ts` is the startup check of the
+  build's protocols, encoders and filters; `appConfig.ts` reads
   `bunryu.json` (watchdog defaults; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `diagnostics.ts` is the rotated JSONL
   writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
   read SRS and relay config.
