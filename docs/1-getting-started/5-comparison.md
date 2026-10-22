@@ -32,8 +32,8 @@ own trials is marked as that, and none of it is a benchmark.
   console is minimal and its forwarding is static, so around it we built a dashboard and
   a manager that runs one FFmpeg per destination, so any output starts and stops without
   touching the others.
-- **Hosted services** such as Restream.io work, but at our number of outputs we judged
-  them too expensive to depend on.
+- **Paid products** such as Wowza, and hosted services such as Restream.io, work, but
+  at our number of inputs and outputs we judged the cost too high to depend on.
 - We found no other open-source restreaming server that combined libsrt, a dashboard and
   outputs that change while the stream runs.
 
@@ -124,13 +124,15 @@ input.
   Windows or macOS, or a single small binary. It is not a restreaming manager, so
   you set up and watch each forward yourself.
 
-## Hosted multistreaming services
+## Paid products and hosted services
 
-A hosted service means no server to run. Bunryu is for teams that want to run the
-server themselves: on their own infrastructure, with their own destinations and
-logs, with capacity set by their own hardware. It does not remove the
-work of operating a server; see [sizing](4-sizing.md) and
-[reliability](../3-operations/4-reliability.md).
+A paid product such as Wowza, or a hosted service such as Restream.io, means less to
+build or no server to run, and comes with support. Bunryu is for teams that want to run
+the server themselves: on their own infrastructure, with their own destinations and
+logs, with capacity set by their own hardware. It does not remove the work of operating
+a server; see [sizing](4-sizing.md) and
+[reliability](../3-operations/4-reliability.md). We have not compared features or
+prices with these products.
 
 ## When not to use Bunryu
 
