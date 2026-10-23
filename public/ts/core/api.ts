@@ -231,7 +231,7 @@ export const regenerateStreamKeys = () =>
     });
 
 export const resetSrtPassphrase = () =>
-    apiRequest<{ srtPassphrase: string }>('/api/settings/reset-srt-passphrase', {
+    apiRequest<{ ok: boolean }>('/api/settings/reset-srt-passphrase', {
         method: 'POST',
     });
 

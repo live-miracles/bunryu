@@ -289,12 +289,8 @@ export async function resetSrtPassphraseBtn(btn?: HTMLButtonElement): Promise<vo
     await withBusy(btn, async () => {
         const result = await api.resetSrtPassphrase();
         if (!result) return;
-        const copy = await confirmDialog({
-            title: 'SRT passphrase reset',
-            message: `New passphrase: ${result.srtPassphrase}\n\nIt applies after the server or container restarts. The dashboard shows it again after that.`,
-            confirmLabel: 'Copy passphrase',
-        });
-        if (copy) await copyText(result.srtPassphrase);
+        document.getElementById('reset-srt-passphrase-done')?.classList.remove('hidden');
+        document.getElementById('reset-srt-passphrase-hint')?.classList.add('hidden');
     });
 }
 

@@ -1249,6 +1249,9 @@
               <p id="reset-srt-passphrase-hint" class="text-xs opacity-70">
                 A new one applies after the server or container restarts, and it can only be reset while nothing is live or running.
               </p>
+              <p id="reset-srt-passphrase-done" class="text-primary hidden text-xs">
+                SRT passphrase reset. Reboot the server (or restart the container) to apply it, then update the SRT URL in every encoder.
+              </p>
             </div>
             <button id="reset-srt-passphrase-btn" type="button" class="btn btn-sm btn-warning shrink-0" onclick="resetSrtPassphraseBtn(this)">
               Reset

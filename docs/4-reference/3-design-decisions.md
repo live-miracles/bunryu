@@ -1316,8 +1316,8 @@ used for real deployments and `docker secret` support matters.
 ### The SRT passphrase is reset from Settings by rewriting both files; the app does not restart SRS or Goryu
 
 **Decision (October 2026):** Settings has a **Reset** button, like the stream-key
-one, that writes a new random passphrase to `srs.conf` and `goryu.json` and shows
-it once. It is refused (`409`) while an input is live or an output is not stopped.
+one, that writes a new random passphrase to `srs.conf` and `goryu.json` and says
+the restart is needed. It is refused (`409`) while an input is live or an output is not stopped.
 It changes files only: SRS and Goryu pick the value up at their next start, which
 the operator causes by rebooting the server or restarting the container.
 
@@ -1337,8 +1337,11 @@ the operator causes by rebooting the server or restarting the container.
   `/etc/bunryu` writable for the service user, so no unit change was needed.
 - **The dashboard keeps the old value until the restart.** The app caches both files
   at startup, so the publish URLs match what SRS and Goryu enforce rather than a file
-  they have not read yet. The new value is shown once in the reset dialog, and the
-  dashboard shows it after the restart.
+  they have not read yet. An open dashboard picks the new value up by itself after the
+  restart, because the app's config revision starts from the clock on every start.
+- **The new value is not shown or returned.** It could not be used before the restart
+  anyway, so showing it would only put the secret on screen and in a response. The
+  dashboard's copy buttons give it after the restart.
 
 **Not adopted:**
 - **Restarting SRS and Goryu from the app:** see above. Resets are not needed

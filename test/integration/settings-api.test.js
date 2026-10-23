@@ -441,7 +441,9 @@ describe('Settings API integration', () => {
             const res = await harness.request('POST', '/api/settings/reset-srt-passphrase');
 
             assert.equal(res.status, 200);
-            const { srtPassphrase } = res.body;
+            // The new value never leaves the server in the response; it is in the files.
+            assert.deepEqual(res.body, { ok: true });
+            const srtPassphrase = JSON.parse(fs.readFileSync(RELAY_CONF_PATH, 'utf8')).passphrase;
             assert.match(srtPassphrase, /^[A-Za-z0-9]{32}$/);
             assert.ok(
                 fs

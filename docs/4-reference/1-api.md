@@ -45,7 +45,7 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | POST | `/api/settings/layout-order` | Save the dashboard's pipeline and output order `{ order: [{ id, outs: [outputId] }] }` |
 | POST | `/api/settings/pipeline-groups` | Replace the sidebar pipeline groups `{ groups: [{ id?, name }] }` |
 | POST | `/api/settings/regenerate-stream-keys` | Regenerate all stream keys |
-| POST | `/api/settings/reset-srt-passphrase` | Write a new random SRT passphrase to `srs.conf` and `goryu.json` and return it `{ srtPassphrase }`. `409` while an input is live or an output is not stopped; `500` if a file can't be edited (nothing is left changed). SRS and Goryu enforce it after they restart, and the app shows it after its own restart |
+| POST | `/api/settings/reset-srt-passphrase` | Write a new random SRT passphrase to `srs.conf` and `goryu.json` and answer `{ ok: true }` (the value is not returned). `409` while an input is live or an output is not stopped; `500` if a file can't be edited (nothing is left changed). SRS and Goryu enforce it after they restart, and the app shows it after its own restart |
 | POST | `/api/auth/login` | Login `{ password }` — sets session cookie |
 | POST | `/api/auth/logout` | Logout — clears session cookie |
 | POST | `/api/auth/change-password` | Change password `{ currentPassword, newPassword }` |

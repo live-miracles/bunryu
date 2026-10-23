@@ -143,7 +143,7 @@ export function registerSettingsApi(
                 '[settings] SRT passphrase reset in srs.conf and goryu.json; it applies after SRS and Goryu restart',
             );
             diagnostics.event('srt-passphrase-reset', { pendingRestart: true });
-            return res.json({ srtPassphrase });
+            return res.json({ ok: true });
         } catch (err) {
             console.error('[settings] SRT passphrase reset failed:', err);
             diagnostics.event('srt-passphrase-reset-failed', { error: String(err) });
