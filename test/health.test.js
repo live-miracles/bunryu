@@ -1553,6 +1553,55 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
+    describe('a main/backup group', () => {
+        // In a backup group the standby leg is idle by design while the main leg runs.
+        const legsWith = (...states) =>
+            makeBondingStatus({
+                input: {
+                    legs: states.map((state, i) =>
+                        makeLeg({ ip: `203.0.113.${10 + i}`, state, recvUniquePacketsTotal: 500 }),
+                    ),
+                },
+            });
+
+        async function legHealths(t, status) {
+            const stream = streamFixture();
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({ code: 0, streams: [stream] });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            const service = createHealthService(
+                makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+                makeFakeOutputService(),
+                makeFakeSrtRelayMutable(status),
+                makeFakeInputState(),
+                makeDiagnosticsSpy(),
+            );
+            const app = express();
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval'] });
+            service.start();
+            await sleep(20);
+            const snapshot = await getSnapshot(app);
+            service.shutdown();
+            return snapshot.pipelines['1'].srtBonding.input.legs.map((leg) => leg.health);
+        }
+
+        test('does not warn about a standby leg while another leg carries the stream', async (t) => {
+            assert.deepEqual(await legHealths(t, legsWith('running', 'idle')), ['ok', 'ok']);
+        });
+
+        test('still warns about an idle leg when nothing is running', async (t) => {
+            assert.deepEqual(await legHealths(t, legsWith('idle', 'idle')), ['warn', 'warn']);
+        });
+
+        test('still warns about a leg that is pending', async (t) => {
+            assert.deepEqual(await legHealths(t, legsWith('running', 'pending')), ['ok', 'warn']);
+        });
+    });
+
     describe('bonded leg history', () => {
         // The relay drops a failed leg from legs[] instead of reporting it broken, so the pipeline
         // log and the diagnostics are where an operator can see which link went and when.

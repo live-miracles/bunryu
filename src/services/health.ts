@@ -1475,9 +1475,11 @@ export function createHealthService(
             const linkNoun = relayInput.bonded ? 'Leg' : 'Connection';
             const linkAlertPrefix = (transportKey: string): string =>
                 relayInput.bonded ? `Bonded leg ${transportKey}` : `SRT input from ${transportKey}`;
+            const runningLegs = relayInput.legs.filter((leg) => leg.state === 'running').length;
             for (const leg of relayInput.legs) {
                 const key = leg.ip;
                 const transportKey = `${leg.ip}:${leg.port}`;
+                const otherLegRunning = runningLegs > (leg.state === 'running' ? 1 : 0);
                 const packets = leg.recvUniquePacketsTotal ?? leg.recvPacketsTotal;
                 const previousLeg = previousLegs.get(key);
                 const noFlowSinceMs =
@@ -1501,6 +1503,9 @@ export function createHealthService(
                 if (leg.state === 'unknown') {
                     health = 'error';
                     reason = `${linkNoun} state is ${leg.state}.`;
+                } else if (leg.state === 'idle' && otherLegRunning) {
+                    // The standby of a main/backup group: idle by design while the main
+                    // leg carries the stream, and it takes over if that leg fails.
                 } else if (leg.state === 'pending' || leg.state === 'idle') {
                     health = 'warn';
                     reason = `${linkNoun} is ${leg.state}.`;
