@@ -289,8 +289,7 @@ export async function resetSrtPassphraseBtn(btn?: HTMLButtonElement): Promise<vo
     await withBusy(btn, async () => {
         const result = await api.resetSrtPassphrase();
         if (!result) return;
-        document.getElementById('reset-srt-passphrase-done')?.classList.remove('hidden');
-        document.getElementById('reset-srt-passphrase-hint')?.classList.add('hidden');
+        await refreshAfterMutation();
     });
 }
 

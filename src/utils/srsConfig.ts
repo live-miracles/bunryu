@@ -44,6 +44,13 @@ function topLevelOnly(conf: string): string {
     return conf.replace(/\b[a-zA-Z_][\w-]*\s*\{[\s\S]*?\}/g, '');
 }
 
+// The passphrase srs.conf holds right now, read fresh from disk (readSrsConfigValues
+// keeps the one SRS started with). Throws if the file can't be read.
+export function readSrsPassphraseOnDisk(): string | null {
+    const conf = stripComments(fs.readFileSync(readAppConfig().srsConfigPath, 'utf8'));
+    return parseDirective(parseBlock(conf, 'srt_server'), 'passphrase') || null;
+}
+
 export function readSrsConfigValues(): SrsConfigValues {
     if (cachedValues) return cachedValues;
 

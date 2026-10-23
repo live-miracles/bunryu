@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { readAppConfig } from './appConfig.js';
-import { getRelayConfigPath } from './relayConfig.js';
+import { getRelayConfigPath, readRelayConfig, readRelayPassphraseOnDisk } from './relayConfig.js';
+import { readSrsConfigValues, readSrsPassphraseOnDisk } from './srsConfig.js';
 
 const PASSPHRASE_LENGTH = 32;
 const ALPHANUMERIC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -85,5 +86,21 @@ export function writeSrtPassphrase(passphrase: string): void {
             );
         }
         throw err;
+    }
+}
+
+// True when a file now holds a different passphrase than the app read at startup, i.e.
+// a reset is waiting for SRS and Goryu to restart (the app restarts with them, which
+// clears it). Never throws: a file that can't be read is logged and reported as not
+// pending, so /api/config keeps working.
+export function srtPassphrasePending(): boolean {
+    try {
+        return (
+            readSrsPassphraseOnDisk() !== readSrsConfigValues().srtPassphrase ||
+            readRelayPassphraseOnDisk() !== readRelayConfig().passphrase
+        );
+    } catch (err) {
+        console.warn('[settings] could not check for a pending SRT passphrase reset:', err);
+        return false;
     }
 }

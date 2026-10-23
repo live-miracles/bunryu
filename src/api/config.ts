@@ -4,6 +4,7 @@ import { rtmpPublishUrl, srtPublishUrl } from '../utils/srs.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
 import type { Db } from '../types.js';
 import { readRelayConfig } from '../utils/relayConfig.js';
+import { srtPassphrasePending } from '../utils/srtPassphrase.js';
 
 // Defensive parse for a value the UI wrote via /api/settings/layout-order —
 // never throws, since a blank/corrupt value should just mean "no custom
@@ -60,6 +61,8 @@ export function registerConfigApi(app: Express, db: Db): void {
             streamKeys: db.listStreamKeys(),
             serverName: db.getSetting('serverName') ?? 'Bunryu',
             srtPassphrase,
+            // A reset is written to the files but SRS and Goryu run the old one until they restart.
+            srtPassphrasePending: srtPassphrasePending(),
             publicHost,
             layoutOrder: parseLayoutOrder(db.getSetting('layoutOrder')),
         });

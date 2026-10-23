@@ -377,6 +377,8 @@ export interface ConfigData {
     streamKeys: StreamKey[];
     serverName: string;
     srtPassphrase: string | null;
+    // A passphrase reset is waiting for the server or container to restart.
+    srtPassphrasePending: boolean;
     publicHost: string;
     layoutOrder: LayoutOrderEntry[];
 }

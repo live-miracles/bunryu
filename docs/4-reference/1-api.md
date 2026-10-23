@@ -12,7 +12,7 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/config` | Pipelines, outputs, encodings, stream keys, server name |
+| GET | `/api/config` | Pipelines, outputs, encodings, stream keys, server name. `srtPassphrasePending` is `true` while a reset passphrase is waiting for the restart |
 | GET | `/api/health` | Live input/output status snapshot (refreshed every 5s). An output has `warningReason` and `warningSinceMs` (when that warning began), and `nextRetryAtMs`, when its pending retry after a failure is due (else `null`); each pipeline alert has `sinceMs`, the time its current episode started, which stays the same while the alert lasts. An alert is one episode until it has been absent for six polls (~30 s). `hostAlerts` lists the open host resource alerts (`cpu`, `memory`, `disk`) |
 | GET | `/api/rejected-publishes` | Recent publish attempts rejected for a key with no pipeline (label only, never the secret) |
 | GET | `/api/version` | App, SRS, relay, FFmpeg and Node versions, git commit, OS, kernel and CPU model (cached after the first request) |

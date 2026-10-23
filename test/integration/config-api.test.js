@@ -203,6 +203,24 @@ describe('Config API integration', () => {
         assert.equal(res.body.srtPassphrase, 'relay-secret-pass');
     });
 
+    test('srtPassphrasePending turns true once a file holds another passphrase than the one read at startup', async () => {
+        const { get } = loadHarness();
+        const first = await get();
+        assert.equal(first.body.srtPassphrasePending, false);
+
+        const srsConf = path.join(tempDir, 'srs.conf');
+        const original = fs.readFileSync(srsConf, 'utf8');
+        fs.writeFileSync(srsConf, original.replace('srs-secret-pass', 'reset-pass-1234'));
+        try {
+            const res = await get();
+            assert.equal(res.body.srtPassphrasePending, true);
+            // Still the value SRS and Goryu run with until they restart.
+            assert.equal(res.body.srtPassphrase, 'relay-secret-pass');
+        } finally {
+            fs.writeFileSync(srsConf, original);
+        }
+    });
+
     test('configRev increments as the db is mutated', async () => {
         const { db, get } = loadHarness();
         const before = await get();

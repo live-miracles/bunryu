@@ -31,6 +31,7 @@ const {
     replaceSrsPassphrase,
     replaceRelayPassphrase,
     writeSrtPassphrase,
+    srtPassphrasePending,
 } = require('../src/utils/srtPassphrase');
 
 const SRS_CONF = `listen 1935;
@@ -157,5 +158,35 @@ describe('writeSrtPassphrase', () => {
             fs.readdirSync(tempDir).filter((f) => f.endsWith('.tmp')),
             [],
         );
+    });
+});
+
+describe('srtPassphrasePending', () => {
+    // The first call caches the passphrases on disk, like the app does at startup.
+    test('is false until a file differs from what the app read at startup, and again once they match', () => {
+        writeConfigs();
+        assert.equal(srtPassphrasePending(), false);
+
+        writeSrtPassphrase('NewPassphrase1234');
+        assert.equal(srtPassphrasePending(), true);
+
+        writeConfigs();
+        assert.equal(srtPassphrasePending(), false);
+    });
+
+    test('is true when only one of the two files changed', () => {
+        writeConfigs(SRS_CONF.replace('old-passphrase-value', 'other-passphrase-1'), RELAY_JSON);
+        assert.equal(srtPassphrasePending(), true);
+        writeConfigs(SRS_CONF, RELAY_JSON.replace('old-passphrase-value', 'other-passphrase-1'));
+        assert.equal(srtPassphrasePending(), true);
+    });
+
+    test('reports false, with a warning, when a file cannot be read', (t) => {
+        const warn = t.mock.method(console, 'warn', () => {});
+        writeConfigs();
+        fs.rmSync(path.join(tempDir, 'goryu.json'));
+        assert.equal(srtPassphrasePending(), false);
+        assert.equal(warn.mock.callCount(), 1);
+        writeConfigs();
     });
 });

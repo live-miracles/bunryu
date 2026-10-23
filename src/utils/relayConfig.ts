@@ -67,6 +67,13 @@ export function readRelayConfig(): SrtBondingRelayConfig {
     }
 }
 
+// The passphrase goryu.json holds right now, read fresh from disk (readRelayConfig
+// keeps the one Goryu started with). Throws if the file can't be read.
+export function readRelayPassphraseOnDisk(): string {
+    return normalizeRelayConfig(JSON.parse(fs.readFileSync(getRelayConfigPath(), 'utf8')))
+        .passphrase;
+}
+
 export function renderRelayConfig(config: SrtBondingRelayConfig): string {
     return JSON.stringify(config, null, 4).concat('\n');
 }

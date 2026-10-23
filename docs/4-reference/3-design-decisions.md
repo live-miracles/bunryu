@@ -1316,8 +1316,8 @@ used for real deployments and `docker secret` support matters.
 ### The SRT passphrase is reset from Settings by rewriting both files; the app does not restart SRS or Goryu
 
 **Decision (October 2026):** Settings has a **Reset** button, like the stream-key
-one, that writes a new random passphrase to `srs.conf` and `goryu.json` and says
-the restart is needed. It is refused (`409`) while an input is live or an output is not stopped.
+one, that writes a new random passphrase to `srs.conf` and `goryu.json` and shows a
+banner until the restart. It is refused (`409`) while an input is live or an output is not stopped.
 It changes files only: SRS and Goryu pick the value up at their next start, which
 the operator causes by rebooting the server or restarting the container.
 
@@ -1339,6 +1339,13 @@ the operator causes by rebooting the server or restarting the container.
   at startup, so the publish URLs match what SRS and Goryu enforce rather than a file
   they have not read yet. An open dashboard picks the new value up by itself after the
   restart, because the app's config revision starts from the clock on every start.
+- **The restart reminder is a banner, derived from the files.** A note on the Settings
+  page was gone after a reload and invisible from every other view, and the restart is
+  the step that matters. `/api/config` compares the passphrases now in the files with
+  those read at startup (`srtPassphrasePending`), so the banner survives reloads, shows
+  on every open dashboard and clears by itself when the app starts again. It stores no
+  flag that could go stale. If only the app restarts, SRS keeps the old value and the
+  banner still clears, which is why it says to restart the server or container.
 - **The new value is not shown or returned.** It could not be used before the restart
   anyway, so showing it would only put the secret on screen and in a response. The
   dashboard's copy buttons give it after the restart.
@@ -1361,8 +1368,10 @@ disagree until the second does too.
 **Checked on the isolated test stack:** a reset with a live input and four running
 outputs returned `409` and left both files byte-identical; after stopping them it
 returned `200`, both files held the same 32-character value and no temp file
-remained, the API still showed the old value, and the log and diagnostics recorded
-`srt-passphrase-reset` without the value.
+remained, the API still showed the old value with `srtPassphrasePending` changed from
+`false` to `true`, the banner showed on the Overview, and the log and diagnostics
+recorded `srt-passphrase-reset` without the value. That the flag clears after a restart
+follows from the comparison, which unit tests cover; it was not run through a restart.
 
 ### The Docker image is x86_64 only; ARM hosts run it emulated, for development
 
