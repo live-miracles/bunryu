@@ -17,7 +17,7 @@ import {
     STATUS_COLOR_ERROR,
     STATUS_COLOR_OFF,
 } from '../core/utils.js';
-import { healthNowMs, state } from '../core/state.js';
+import { healthNowMs, saveCollapsedGroups, state } from '../core/state.js';
 import { rejectedVia, rejectedWhy } from '../core/rejected.js';
 import type {
     AudioInfo,
@@ -1011,6 +1011,7 @@ function renderPipelineList(): void {
             const groupId = Number(toggle.dataset.groupId);
             if (state.collapsedGroupIds.has(groupId)) state.collapsedGroupIds.delete(groupId);
             else state.collapsedGroupIds.add(groupId);
+            saveCollapsedGroups();
             renderPipelineList();
             return;
         }
@@ -1134,11 +1135,10 @@ const ICON_CHEVRON_DOWN = `<svg xmlns="http://www.w3.org/2000/svg" width="14" he
 // its member pipelines, the output half is the same good/warn/error/off
 // aggregation a single pipeline row already applies to its own outputs, just
 // combined across every member's outputs. Collapsed, the header shows that
-// swatch plus ok/warn/error counts of member pipelines (each pipeline's own
-// overall status is the worse of its input status and its output aggregate)
-// — the whole point of collapsing is keeping health visible without
-// expanding. Expanded, the header shows just the name since the member rows
-// underneath already show their own status individually.
+// swatch plus ok/warn/error counts of the members' outputs, the same counts a
+// pipeline row shows for its own — the whole point of collapsing is keeping
+// health visible without expanding. Expanded, the header shows just the name
+// since the member rows underneath already show their own status individually.
 function renderGroupHeader(
     group: PipelineGroup,
     members: PipelineView[],
@@ -1148,30 +1148,14 @@ function renderGroupHeader(
     let outGood = 0;
     let outWarn = 0;
     let outFailed = 0;
-    let memberOk = 0;
-    let memberWarn = 0;
-    let memberError = 0;
     for (const p of members) {
-        const pInSt = inputStatus(p.input);
-        inSt = worstStatus(inSt, pInSt);
-        let pOutGood = 0;
-        let pOutWarn = 0;
-        let pOutFailed = 0;
+        inSt = worstStatus(inSt, inputStatus(p.input));
         for (const o of p.outs) {
             const st = outStatus(o, p.input);
-            if (st === 'good') pOutGood++;
-            else if (st === 'warn') pOutWarn++;
-            else if (st === 'error') pOutFailed++;
+            if (st === 'good') outGood++;
+            else if (st === 'warn') outWarn++;
+            else if (st === 'error') outFailed++;
         }
-        outGood += pOutGood;
-        outWarn += pOutWarn;
-        outFailed += pOutFailed;
-        const pOutSt: OutStatus =
-            pOutFailed > 0 ? 'error' : pOutWarn > 0 ? 'warn' : pOutGood > 0 ? 'good' : 'off';
-        const overall = worstStatus(pInSt, pOutSt);
-        if (overall === 'error') memberError++;
-        else if (overall === 'warn') memberWarn++;
-        else if (overall === 'good') memberOk++;
     }
     const outSt: OutStatus =
         outFailed > 0 ? 'error' : outWarn > 0 ? 'warn' : outGood > 0 ? 'good' : 'off';
@@ -1180,9 +1164,9 @@ function renderGroupHeader(
 
     const summary = collapsed
         ? `<div class="rounded-box h-5 w-5 shrink-0" style="background:linear-gradient(90deg,${inColor},${inColor} 45%,#242933 45%,#242933 55%,${outColor} 55%)"></div>
-           ${statusBadge(memberOk, 'badge-success')}
-           ${statusBadge(memberWarn, 'badge-warning')}
-           ${statusBadge(memberError, 'badge-error')}`
+           ${statusBadge(outGood, 'badge-success')}
+           ${statusBadge(outWarn, 'badge-warning')}
+           ${statusBadge(outFailed, 'badge-error')}`
         : '';
 
     return `<li data-group-id="${group.id}">

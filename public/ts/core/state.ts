@@ -29,9 +29,30 @@ export interface AppState {
     inputSearch: string;
     outputSearch: string;
     // Which pipeline groups are collapsed in the left-column list. Per-browser
-    // only — intentionally not persisted server-side, so it resets on reload
-    // and doesn't sync across viewers.
+    // only (localStorage, see saveCollapsedGroups) — intentionally not stored
+    // server-side, so it doesn't sync across viewers.
     collapsedGroupIds: Set<number>;
+}
+
+const COLLAPSED_GROUPS_KEY = 'bunryu.collapsedGroups';
+
+// Group ids are never reused, so an id left behind by a deleted group is harmless.
+function loadCollapsedGroups(): Set<number> {
+    try {
+        const saved: unknown = JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) ?? '[]');
+        if (Array.isArray(saved)) return new Set(saved.filter(Number.isInteger));
+    } catch {
+        // Storage blocked or a corrupt value: start with every group expanded.
+    }
+    return new Set();
+}
+
+export function saveCollapsedGroups(): void {
+    try {
+        localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...state.collapsedGroupIds]));
+    } catch {
+        // Storage blocked: the collapsed groups last until the page is reloaded.
+    }
 }
 
 export const state: AppState = {
@@ -47,7 +68,7 @@ export const state: AppState = {
     overviewFilter: 'all',
     inputSearch: '',
     outputSearch: '',
-    collapsedGroupIds: new Set(),
+    collapsedGroupIds: loadCollapsedGroups(),
 };
 
 // "Now" on the server's clock: the health snapshot's own generatedAt rather than
