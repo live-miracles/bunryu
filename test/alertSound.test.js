@@ -32,6 +32,7 @@ function snapshot(overrides = {}) {
         serverUnreachable: false,
         srsReachable: true,
         relayDown: false,
+        hostAlerts: [],
         pipelines: [pipeline()],
         ...overrides,
     };
@@ -48,6 +49,29 @@ function run(...snapshots) {
 }
 
 describe('newAttention', () => {
+    test('a host memory or disk alert beeps once when it opens, not while it stays open', () => {
+        const low = snapshot({ hostAlerts: ['disk'] });
+        assert.deepEqual(run(snapshot(), low, low, snapshot(), low), [
+            [],
+            ['host:disk'],
+            [],
+            [],
+            ['host:disk'],
+        ]);
+        assert.deepEqual(run(snapshot(), snapshot({ hostAlerts: ['memory', 'disk'] })), [
+            [],
+            ['host:memory', 'host:disk'],
+        ]);
+    });
+
+    test('a host alert already open at the first snapshot only sets the baseline', () => {
+        assert.deepEqual(run(snapshot({ hostAlerts: ['memory'] })), [[]]);
+    });
+
+    test('a CPU host alert does not beep', () => {
+        assert.deepEqual(run(snapshot(), snapshot({ hostAlerts: ['cpu'] })), [[], []]);
+    });
+
     test('the first snapshot only sets the baseline, whatever is wrong in it', () => {
         const broken = snapshot({
             srsReachable: false,

@@ -238,8 +238,8 @@ export interface SrtBondingStatus {
 
 export interface SrsLogEvent {
     ts: number;
-    source: 'srs' | 'relay';
-    type: 'up' | 'down';
+    source: 'srs' | 'relay' | 'host';
+    type: 'problem' | 'recovered';
     message: string;
 }
 
@@ -344,6 +344,8 @@ export interface HealthData {
     generatedAt: string;
     srsReachable: boolean;
     srtRelay: SrtRelayStatus;
+    // Host resource alerts open right now: 'cpu' | 'memory' | 'disk'.
+    hostAlerts?: string[];
     configRev: number;
     pipelines: Record<string, PipelineHealth>;
 }

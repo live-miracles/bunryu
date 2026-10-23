@@ -652,7 +652,7 @@ describe('SRS play hook integration', () => {
 describe('SRS logs API integration', () => {
     function createLogsHarness(t, { execError, execOutput = '' } = {}) {
         const app = express();
-        const events = [{ source: 'srs', type: 'up', message: 'test event', ts: 1 }];
+        const events = [{ source: 'srs', type: 'recovered', message: 'test event', ts: 1 }];
         t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
             queueMicrotask(() => cb(execError ?? null, execOutput, ''));
         });

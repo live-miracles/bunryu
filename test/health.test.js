@@ -284,6 +284,12 @@ function makeFakeSrtRelay() {
     };
 }
 
+// The SRS/relay rows of the Server events table, without any host resource rows a
+// real /proc reading on the machine running the tests could add.
+function srsServiceEvents(service) {
+    return service.getSrsEvents().filter((e) => e.source !== 'host');
+}
+
 function makeDiagnosticsSpy() {
     const events = [];
     return {
@@ -471,10 +477,10 @@ describe('createHealthService poll orchestration', () => {
 
         const snapshot = await getSnapshot(app);
         assert.equal(snapshot.srsReachable, false);
-        const events = service.getSrsEvents();
+        const events = srsServiceEvents(service);
         assert.equal(events.length, 1);
         assert.equal(events[0].source, 'srs');
-        assert.equal(events[0].type, 'down');
+        assert.equal(events[0].type, 'problem');
         assert.match(events[0].message, /ECONNREFUSED/);
 
         service.shutdown();
@@ -530,7 +536,7 @@ describe('createHealthService poll orchestration', () => {
         await sleep(20);
         const snap1 = await getSnapshot(app);
         assert.equal(snap1.srsReachable, false);
-        assert.equal(service.getSrsEvents().length, 1);
+        assert.equal(srsServiceEvents(service).length, 1);
 
         service.shutdown();
     });
@@ -612,16 +618,16 @@ describe('createHealthService poll orchestration', () => {
         service.start();
         await sleep(20);
         assert.equal((await getSnapshot(app)).srsReachable, false);
-        assert.equal(service.getSrsEvents().length, 1);
+        assert.equal(srsServiceEvents(service).length, 1);
 
         failing = false;
         t.mock.timers.tick(5000);
         await sleep(20);
 
         assert.equal((await getSnapshot(app)).srsReachable, true);
-        const events = service.getSrsEvents();
+        const events = srsServiceEvents(service);
         assert.equal(events.length, 2);
-        assert.equal(events[1].type, 'up');
+        assert.equal(events[1].type, 'recovered');
 
         service.shutdown();
     });
@@ -1996,7 +2002,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             }
             if (file === '/proc/77/status') return 'Name:\tffmpeg\nVmRSS:\t 99000 kB\n';
             if (file === '/proc/pressure/cpu') {
-                return 'some avg10=0.88 avg60=0.38 avg300=0.22 total=123\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n';
+                return `some avg10=${state.cpuSome10 ?? 0.88} avg60=0.38 avg300=0.22 total=123\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n`;
             }
             if (file === '/proc/net/snmp') {
                 return (
@@ -2018,6 +2024,20 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         });
         t.mock.method(fs, 'readdirSync', (dir, ...rest) =>
             dir === '/proc' ? ['77'] : realReaddirSync(dir, ...rest),
+        );
+        // Disk: state.diskFreeRatio of a 1000-block filesystem, for both the data
+        // directory (tempDir here) and '/', which share a device unless state.dataDevice
+        // is set.
+        const realStatSync = fs.statSync;
+        t.mock.method(fs, 'statfsSync', () => ({
+            bsize: 1024 * 1024,
+            blocks: 1000,
+            bavail: Math.round((state.diskFreeRatio ?? 0.5) * 1000),
+        }));
+        t.mock.method(fs, 'statSync', (file, ...rest) =>
+            file === '/' || file === tempDir
+                ? { dev: file === tempDir ? (state.dataDevice ?? 1) : 1 }
+                : realStatSync(file, ...rest),
         );
     }
 
@@ -2072,6 +2092,145 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
+    test('logs host-cpu-high/recovered with hysteresis and shows both in the Server events table', async (t) => {
+        const state = { availableKb: 400_000, cpuSome10: 20 };
+        mockHostMemory(t, state);
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [streamFixture()] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const diagnostics = makeDiagnosticsSpy();
+        const service = createHealthService(
+            makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            diagnostics,
+            undefined,
+            () => ({
+                node: { cpuPercent: 4, ramBytes: 1 },
+                srs: { cpuPercent: 31.5, ramBytes: 1 },
+                relay: { cpuPercent: null, ramBytes: null },
+            }),
+        );
+        const cpuEvents = () => diagnostics.events.filter((e) => e.event.startsWith('host-cpu-'));
+        const hostRows = () => service.getSrsEvents().filter((e) => e.source === 'host');
+
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+        assert.deepEqual(cpuEvents(), []);
+
+        // Five polls at 60 is 25 s of the 30 s needed (the first poll above was healthy).
+        state.cpuSome10 = 60;
+        for (let i = 0; i < 5; i++) await tickPoll(t);
+        assert.deepEqual(cpuEvents(), [], 'not sustained long enough yet');
+        await tickPoll(t);
+        assert.equal(cpuEvents().length, 1);
+        assert.equal(cpuEvents()[0].event, 'host-cpu-high');
+        assert.equal(cpuEvents()[0].pressure10, 60);
+        assert.equal(cpuEvents()[0].thresholdPercent, 50);
+        assert.deepEqual(cpuEvents()[0].topConsumers, [
+            { name: 'srs', cpuPercent: 31.5 },
+            { name: 'node', cpuPercent: 4 },
+        ]);
+        assert.equal(hostRows().length, 1);
+        assert.equal(hostRows()[0].type, 'problem');
+        assert.match(hostRows()[0].message, /^CPU saturated: pressure 60%/);
+
+        // Between the 30 and 50 lines: still open, however long it stays there.
+        state.cpuSome10 = 40;
+        for (let i = 0; i < 15; i++) await tickPoll(t);
+        assert.equal(cpuEvents().length, 1);
+
+        state.cpuSome10 = 10;
+        for (let i = 0; i < 11; i++) await tickPoll(t);
+        assert.equal(cpuEvents().length, 1, 'recovery needs 60 s below 30');
+        await tickPoll(t);
+        assert.deepEqual(
+            cpuEvents().map((e) => e.event),
+            ['host-cpu-high', 'host-cpu-recovered'],
+        );
+        assert.equal(cpuEvents()[1].peakPressure10, 60);
+        assert.equal(hostRows().length, 2);
+        assert.equal(hostRows()[1].type, 'recovered');
+
+        service.shutdown();
+    });
+
+    test('logs host-disk-low/recovered per filesystem, once for a shared device', async (t) => {
+        const state = { availableKb: 400_000, diskFreeRatio: 0.5 };
+        mockHostMemory(t, state);
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/'))
+                return jsonResponse({ code: 0, streams: [streamFixture()] });
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const diagnostics = makeDiagnosticsSpy();
+        const service = createHealthService(
+            makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            diagnostics,
+        );
+        const app = express();
+        service.registerRoutes(app);
+        const diskEvents = () => diagnostics.events.filter((e) => e.event.startsWith('host-disk-'));
+
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        service.start();
+        await sleep(20);
+        assert.deepEqual(diskEvents(), []);
+
+        const hostAlerts = async () => (await getSnapshot(app)).hostAlerts;
+        assert.deepEqual(await hostAlerts(), []);
+
+        state.diskFreeRatio = 0.08; // under 10%
+        await tickPoll(t);
+        assert.deepEqual(await hostAlerts(), ['disk'], 'the snapshot lists the open alert');
+        assert.equal(diskEvents().length, 1, 'data dir and / are one device: one event');
+        assert.equal(diskEvents()[0].event, 'host-disk-low');
+        assert.equal(diskEvents()[0].path, tempDir);
+        assert.equal(diskEvents()[0].availableMb, 80);
+        assert.equal(diskEvents()[0].totalMb, 1000);
+
+        state.diskFreeRatio = 0.12; // above the start line, below the 15% recovery line
+        await tickPoll(t);
+        assert.equal(diskEvents().length, 1, 'no flapping inside the band');
+
+        assert.deepEqual(await hostAlerts(), ['disk'], 'still open inside the band');
+
+        state.diskFreeRatio = 0.3;
+        await tickPoll(t);
+        assert.deepEqual(await hostAlerts(), []);
+        assert.deepEqual(
+            diskEvents().map((e) => e.event),
+            ['host-disk-low', 'host-disk-recovered'],
+        );
+        const rows = service.getSrsEvents().filter((e) => e.source === 'host');
+        assert.deepEqual(
+            rows.map((e) => e.type),
+            ['problem', 'recovered'],
+        );
+
+        // A separate data device is checked on its own, alongside '/'.
+        state.dataDevice = 2;
+        state.diskFreeRatio = 0.05;
+        await tickPoll(t);
+        assert.deepEqual(
+            diskEvents()
+                .slice(2)
+                .map((e) => e.path),
+            [tempDir, '/'],
+        );
+
+        service.shutdown();
+    });
+
     test('health-snapshot records node/srs/relay CPU and RSS, host memory and each output memory limit', async (t) => {
         mockHostMemory(t, { availableKb: 400_000 });
         t.mock.method(globalThis, 'fetch', async (url) => {
@@ -2113,6 +2272,11 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             totalBytes: 1024000 * 1024,
             availableBytes: 400_000 * 1024,
             swapUsedBytes: 0,
+            dataDisk: {
+                path: tempDir,
+                totalBytes: 1000 * MB,
+                availableBytes: 500 * MB,
+            },
             cpuPressure: { some10: 0.88, some60: 0.38 },
             udp: {
                 rcvbufErrors: 5,

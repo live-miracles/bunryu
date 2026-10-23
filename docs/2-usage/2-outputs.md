@@ -176,9 +176,10 @@ outputs are restarted.
 
 The dashboard beeps for 5 s when something goes wrong that needs attention: an output
 crashes or is restarted by a watchdog, an input goes offline while its outputs are
-running, a pipeline raises an error alert, or the server, SRS or the SRT relay becomes
-unreachable. It beeps when the problem appears, not while it lasts, and an output that
-keeps failing beeps only when it starts failing. Warnings do not beep.
+running, a pipeline raises an error alert, the server, SRS or the SRT relay becomes
+unreachable, or the host runs low on memory or disk space. It beeps when the problem appears, not while it lasts, and an output that
+keeps failing beeps only when it starts failing. Warnings and the host CPU alert do not
+beep; the host alerts are listed in Server Logs under Server events.
 
 The bell in the navbar mutes and unmutes the beeps; hover it for the volume slider.
 Both settings are kept in the browser. Browsers play sound only after the page has been

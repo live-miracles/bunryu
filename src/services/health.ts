@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'child_process';
 import type { Express } from 'express';
+import path from 'path';
 import {
     fetchSrsClientsForHealth,
     fetchSrsStreams,
@@ -9,6 +10,7 @@ import {
     type SrsStreamAudio,
     type AudioTrackInfo,
 } from '../utils/srs.js';
+import { readAppConfig } from '../utils/appConfig.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
 import { isTranslationAudio } from '../utils/ffmpeg.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
@@ -22,8 +24,10 @@ import type {
 } from './srtRelay.js';
 import { inputPullUrl, type InputProtocol, type InputState } from './inputState.js';
 import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
+import { createHostAlertTracker } from '../utils/hostAlerts.js';
 import {
     readCpuPressure,
+    readDiskUsage,
     readHostMemory,
     readUdpStats,
     topProcessesByRss,
@@ -89,6 +93,19 @@ const DIAGNOSTICS_SNAPSHOT_INTERVAL_MS = 60 * 1000;
 // top processes by RSS so an OOM investigation can see who was holding memory.
 const HOST_MEMORY_LOW_RATIO = 0.15;
 const HOST_MEMORY_RECOVER_RATIO = 0.2;
+// Host CPU pressure (PSI "some", 10 s average: percent of time a runnable task waited
+// for a CPU). Measured on an 8-CPU host with busy loops: 8 loops (all CPUs busy, none
+// starved) read 25-30, 10 loops 46-53 and 16 loops (2x oversubscribed) only 68-70, so
+// 90 is never reached. It must stay at 50 or more for 30 s to start an alert and below
+// 30 for 60 s to end it, so a brief encode start or a reading near the line is one episode.
+const HOST_CPU_PRESSURE_HIGH = 50;
+const HOST_CPU_PRESSURE_RECOVER = 30;
+const HOST_CPU_START_POLLS = 6;
+const HOST_CPU_END_POLLS = 12;
+// Free space of the data directory's filesystem (database, diagnostics, HLS previews)
+// and of the root filesystem (journald, SRS logs), as a fraction of its size.
+const HOST_DISK_LOW_RATIO = 0.1;
+const HOST_DISK_RECOVER_RATIO = 0.15;
 const bytesToMb = (bytes: number): number => Math.round(bytes / (1024 * 1024));
 
 // The part of a probe that running outputs depend on, as one comparable string.
@@ -210,6 +227,9 @@ export interface HealthSnapshot {
     generatedAt: string;
     srsReachable: boolean;
     srtRelay: SrtRelayStats;
+    // Host resource alerts open right now (see the host alert trackers below). The
+    // dashboard beeps when memory or disk joins the list.
+    hostAlerts: HostAlertKind[];
     // Config revision at snapshot time. Clients compare this against the rev they
     // loaded /api/config at; a mismatch means the config was edited elsewhere and
     // the client should reload. Carried on the health snapshot so it reaches every
@@ -218,10 +238,14 @@ export interface HealthSnapshot {
     pipelines: Record<string, PipelineHealth>;
 }
 
+export type HostAlertKind = 'cpu' | 'memory' | 'disk';
+
+// One line of the dashboard's Server events table: a service becoming unreachable or
+// a host resource alert starting ('problem'), and the matching recovery.
 export interface SrsEvent {
     ts: number;
-    source: 'srs' | 'relay';
-    type: 'up' | 'down';
+    source: 'srs' | 'relay' | 'host';
+    type: 'problem' | 'recovered';
     message: string;
 }
 
@@ -348,6 +372,7 @@ export function createHealthService(
         generatedAt: new Date().toISOString(),
         srsReachable: false,
         srtRelay: srtRelayService.getStats(),
+        hostAlerts: [],
         configRev: db.getConfigRev(),
         pipelines: {},
     };
@@ -361,7 +386,11 @@ export function createHealthService(
     let lastDiagnosticsSnapshotAt = 0;
     let lastRcvbufErrors: number | null = null;
 
-    function pushSrsEvent(source: 'srs' | 'relay', type: 'up' | 'down', message: string): void {
+    function pushSrsEvent(
+        source: SrsEvent['source'],
+        type: SrsEvent['type'],
+        message: string,
+    ): void {
         srsEvents.push({ ts: Date.now(), source, type, message });
         if (srsEvents.length > MAX_SRS_EVENTS) srsEvents.shift();
     }
@@ -770,39 +799,188 @@ export function createHealthService(
 
     let pollInProgress = false;
 
-    let hostMemoryLow = false;
+    // Host resource alerts (memory, CPU, disk). Each transition is a journal line, a
+    // diagnostics event and a row in the dashboard's Server events table; the table
+    // is in memory only, the diagnostics events are the durable record.
+    const hostMemoryAlert = createHostAlertTracker({
+        worse: 'lower',
+        breached: (ratio) => ratio < HOST_MEMORY_LOW_RATIO,
+        cleared: (ratio) => ratio >= HOST_MEMORY_RECOVER_RATIO,
+        startPolls: 1,
+        endPolls: 1,
+    });
+    const hostCpuAlert = createHostAlertTracker({
+        worse: 'higher',
+        breached: (pressure) => pressure >= HOST_CPU_PRESSURE_HIGH,
+        cleared: (pressure) => pressure < HOST_CPU_PRESSURE_RECOVER,
+        startPolls: HOST_CPU_START_POLLS,
+        endPolls: HOST_CPU_END_POLLS,
+    });
+    // One tracker per filesystem, keyed by its device so a data directory on the root
+    // filesystem is checked once.
+    const hostDiskAlerts = new Map<number, ReturnType<typeof createHostAlertTracker>>();
+
+    function hostEvent(
+        type: SrsEvent['type'],
+        message: string,
+        event: string,
+        fields: Record<string, unknown>,
+    ): void {
+        pushSrsEvent('host', type, message);
+        if (type === 'problem') console.warn(`[host] ${message}`);
+        else console.log(`[host] ${message}`);
+        diagnostics?.event(event, { message, ...fields });
+    }
+
+    // CPU use of the processes the server manages, largest first, from the samples
+    // already taken: the previous poll's per-output FFmpeg CPU and the usage source's
+    // node/srs/relay. Cheap, unlike scanning /proc, so it can name suspects on a start.
+    function topCpuConsumers(limit: number): { name: string; cpuPercent: number }[] {
+        const consumers: { name: string; cpuPercent: number }[] = [];
+        const usage = getProcessUsage?.();
+        for (const [name, entry] of Object.entries(usage ?? {})) {
+            if (entry.cpuPercent != null) consumers.push({ name, cpuPercent: entry.cpuPercent });
+        }
+        for (const [pipelineId, pipeline] of Object.entries(snapshot.pipelines)) {
+            for (const [outputId, output] of Object.entries(pipeline.outputs)) {
+                if (output.cpuPercent != null) {
+                    consumers.push({
+                        name: `output ${outputId} (pipeline ${pipelineId})`,
+                        cpuPercent: output.cpuPercent,
+                    });
+                }
+            }
+        }
+        return consumers.sort((a, b) => b.cpuPercent - a.cpuPercent).slice(0, limit);
+    }
+
     function checkHostMemory(): void {
         const host = readHostMemory();
         if (!host) return;
         const ratio = host.availableBytes / host.totalBytes;
-        const wasLow = hostMemoryLow;
-        if (!wasLow && ratio < HOST_MEMORY_LOW_RATIO) hostMemoryLow = true;
-        else if (wasLow && ratio >= HOST_MEMORY_RECOVER_RATIO) hostMemoryLow = false;
-        if (hostMemoryLow === wasLow) return;
+        const change = hostMemoryAlert.update(ratio);
+        if (!change) return;
+        const started = change.change === 'started';
         const fields = {
             availableMb: bytesToMb(host.availableBytes),
             totalMb: bytesToMb(host.totalBytes),
             swapUsedMb: bytesToMb(host.swapUsedBytes),
             thresholdPercent: Math.round(
-                (hostMemoryLow ? HOST_MEMORY_LOW_RATIO : HOST_MEMORY_RECOVER_RATIO) * 100,
+                (started ? HOST_MEMORY_LOW_RATIO : HOST_MEMORY_RECOVER_RATIO) * 100,
             ),
         };
-        if (hostMemoryLow) {
+        if (started) {
             const top = topProcessesByRss(5).map((p) => ({
                 pid: p.pid,
                 name: p.name,
                 rssMb: bytesToMb(p.rssBytes),
             }));
-            console.warn(
-                `[host] memory low: ${fields.availableMb}MB of ${fields.totalMb}MB available; top: ${top
+            hostEvent(
+                'problem',
+                `Memory low: ${fields.availableMb}MB of ${fields.totalMb}MB available; top: ${top
                     .map((p) => `${p.name}(${p.pid})=${p.rssMb}MB`)
                     .join(' ')}`,
+                'host-memory-low',
+                { ...fields, topProcesses: top },
             );
-            diagnostics?.event('host-memory-low', { ...fields, topProcesses: top });
         } else {
-            console.log(`[host] memory recovered: ${fields.availableMb}MB available`);
-            diagnostics?.event('host-memory-recovered', fields);
+            hostEvent(
+                'recovered',
+                `Memory recovered: ${fields.availableMb}MB available`,
+                'host-memory-recovered',
+                fields,
+            );
         }
+    }
+
+    function checkHostCpu(): void {
+        const pressure = readCpuPressure();
+        if (!pressure) return; // no PSI: no CPU alert, the snapshot records cpuPressure null
+        const change = hostCpuAlert.update(pressure.some10);
+        if (!change) return;
+        if (change.change === 'started') {
+            const top = topCpuConsumers(5);
+            hostEvent(
+                'problem',
+                `CPU saturated: pressure ${pressure.some10}% (10 s) for ${(HOST_CPU_START_POLLS * POLL_INTERVAL_MS) / 1000}s; top: ${
+                    top.map((c) => `${c.name}=${c.cpuPercent}%`).join(' ') || 'unknown'
+                }`,
+                'host-cpu-high',
+                {
+                    pressure10: pressure.some10,
+                    pressure60: pressure.some60,
+                    thresholdPercent: HOST_CPU_PRESSURE_HIGH,
+                    topConsumers: top,
+                },
+            );
+        } else {
+            hostEvent(
+                'recovered',
+                `CPU recovered: pressure ${pressure.some10}% (10 s), peak ${change.worst}% over ${Math.round((change.polls * POLL_INTERVAL_MS) / 1000)}s`,
+                'host-cpu-recovered',
+                {
+                    pressure10: pressure.some10,
+                    pressure60: pressure.some60,
+                    peakPressure10: change.worst,
+                    durationMs: change.polls * POLL_INTERVAL_MS,
+                    thresholdPercent: HOST_CPU_PRESSURE_RECOVER,
+                },
+            );
+        }
+    }
+
+    function checkHostDisk(): void {
+        const dataDir = path.dirname(readAppConfig().databasePath);
+        const seen = new Set<number>();
+        for (const dir of [dataDir, '/']) {
+            const disk = readDiskUsage(dir);
+            if (!disk || seen.has(disk.device)) continue;
+            seen.add(disk.device);
+            let tracker = hostDiskAlerts.get(disk.device);
+            if (!tracker) {
+                tracker = createHostAlertTracker({
+                    worse: 'lower',
+                    breached: (ratio) => ratio < HOST_DISK_LOW_RATIO,
+                    cleared: (ratio) => ratio >= HOST_DISK_RECOVER_RATIO,
+                    startPolls: 1,
+                    endPolls: 1,
+                });
+                hostDiskAlerts.set(disk.device, tracker);
+            }
+            const change = tracker.update(disk.availableBytes / disk.totalBytes);
+            if (!change) continue;
+            const started = change.change === 'started';
+            const fields = {
+                path: dir,
+                availableMb: bytesToMb(disk.availableBytes),
+                totalMb: bytesToMb(disk.totalBytes),
+                thresholdPercent: Math.round(
+                    (started ? HOST_DISK_LOW_RATIO : HOST_DISK_RECOVER_RATIO) * 100,
+                ),
+            };
+            hostEvent(
+                started ? 'problem' : 'recovered',
+                started
+                    ? `Disk space low on ${dir}: ${fields.availableMb}MB of ${fields.totalMb}MB free`
+                    : `Disk space recovered on ${dir}: ${fields.availableMb}MB free`,
+                started ? 'host-disk-low' : 'host-disk-recovered',
+                fields,
+            );
+        }
+    }
+
+    function openHostAlerts(): HostAlertKind[] {
+        const open: HostAlertKind[] = [];
+        if (hostCpuAlert.active) open.push('cpu');
+        if (hostMemoryAlert.active) open.push('memory');
+        if ([...hostDiskAlerts.values()].some((tracker) => tracker.active)) open.push('disk');
+        return open;
+    }
+
+    function checkHostResources(): void {
+        checkHostMemory();
+        checkHostCpu();
+        checkHostDisk();
     }
 
     const pollFailures = createLoopFailureReporter('health-poll', diagnostics);
@@ -904,7 +1082,7 @@ export function createHealthService(
             if (prevSrsReachable !== false) {
                 const reason = streamsResult.reason;
                 const msg = `Unreachable: ${reason instanceof Error ? reason.message : String(reason)}`;
-                pushSrsEvent('srs', 'down', msg);
+                pushSrsEvent('srs', 'problem', msg);
                 console.warn(`[srs] ${msg}`);
                 diagnostics?.event('srs-transition', { from: 'up', to: 'down', message: msg });
             }
@@ -913,7 +1091,7 @@ export function createHealthService(
             clients = clientsResult.value;
         }
         if (srsReachable && prevSrsReachable === false) {
-            pushSrsEvent('srs', 'up', 'Reachable again');
+            pushSrsEvent('srs', 'recovered', 'Reachable again');
             console.log('[srs] reachable again');
             diagnostics?.event('srs-transition', { from: 'down', to: 'up' });
         }
@@ -924,16 +1102,16 @@ export function createHealthService(
         const relayFailed = relayStats.status === 'failed';
         if (relayFailed && !prevRelayFailed) {
             const msg = `Unreachable: ${relayStats.lastError ?? 'unknown error'}`;
-            pushSrsEvent('relay', 'down', msg);
+            pushSrsEvent('relay', 'problem', msg);
             console.warn(`[relay] ${msg}`);
             diagnostics?.event('relay-transition', { from: 'running', to: 'failed', message: msg });
         } else if (!relayFailed && prevRelayFailed && relayStats.status === 'running') {
-            pushSrsEvent('relay', 'up', 'Reachable again');
+            pushSrsEvent('relay', 'recovered', 'Reachable again');
             console.log('[relay] reachable again');
             diagnostics?.event('relay-transition', { from: 'failed', to: 'running' });
         }
         prevRelayFailed = relayFailed;
-        checkHostMemory();
+        checkHostResources();
 
         const liveByPath = new Map<string, SrsStream>();
         for (const s of streams) {
@@ -1536,6 +1714,7 @@ export function createHealthService(
             generatedAt: new Date().toISOString(),
             srsReachable,
             srtRelay: relayStats,
+            hostAlerts: openHostAlerts(),
             configRev: db.getConfigRev(),
             pipelines: pipelinesHealth,
         };
@@ -1625,6 +1804,8 @@ export function createHealthService(
             }
             const mem = process.memoryUsage();
             const host = readHostMemory();
+            const dataDir = path.dirname(readAppConfig().databasePath);
+            const dataDisk = readDiskUsage(dataDir);
             // Kernel-side evidence for the SRT ingest sockets (the UDP buffer ceiling
             // decision in the design docs): a rising rcvbufErrorsDelta or any socket
             // drops means datagrams were lost before SRT saw them.
@@ -1676,6 +1857,13 @@ export function createHealthService(
                     totalBytes: host?.totalBytes ?? null,
                     availableBytes: host?.availableBytes ?? null,
                     swapUsedBytes: host?.swapUsedBytes ?? null,
+                    dataDisk: dataDisk
+                        ? {
+                              path: dataDir,
+                              totalBytes: dataDisk.totalBytes,
+                              availableBytes: dataDisk.availableBytes,
+                          }
+                        : null,
                     cpuPressure: readCpuPressure(),
                     udp: { ...udp, rcvbufErrorsDelta },
                 },

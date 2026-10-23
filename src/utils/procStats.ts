@@ -41,6 +41,31 @@ export function readHostMemory(): HostMemory | null {
     }
 }
 
+export interface DiskUsage {
+    // Identifies the filesystem, so two paths on one mount are checked once.
+    device: number;
+    totalBytes: number;
+    // Space a non-root process can still use (statfs bavail), not the larger "free"
+    // that includes the root-reserved blocks.
+    availableBytes: number;
+}
+
+// null when the path or its filesystem can't be read.
+export function readDiskUsage(dir: string): DiskUsage | null {
+    try {
+        const stat = fs.statfsSync(dir);
+        const totalBytes = stat.blocks * stat.bsize;
+        if (!(totalBytes > 0)) return null; // pseudo filesystems report 0 blocks
+        return {
+            device: fs.statSync(dir).dev,
+            totalBytes,
+            availableBytes: stat.bavail * stat.bsize,
+        };
+    } catch {
+        return null;
+    }
+}
+
 export interface UdpBufferCeilings {
     // The kernel silently caps a socket's requested buffer at these (see the
     // UDP buffer ceiling section of the configuration docs); null if unreadable.

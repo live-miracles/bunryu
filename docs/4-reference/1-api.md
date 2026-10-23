@@ -13,12 +13,12 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/config` | Pipelines, outputs, encodings, stream keys, server name |
-| GET | `/api/health` | Live input/output status snapshot (refreshed every 5s). An output has `warningReason` and `warningSinceMs` (when that warning began), and `nextRetryAtMs`, when its pending retry after a failure is due (else `null`); each pipeline alert has `sinceMs`, the time its current episode started, which stays the same while the alert lasts. An alert is one episode until it has been absent for six polls (~30 s) |
+| GET | `/api/health` | Live input/output status snapshot (refreshed every 5s). An output has `warningReason` and `warningSinceMs` (when that warning began), and `nextRetryAtMs`, when its pending retry after a failure is due (else `null`); each pipeline alert has `sinceMs`, the time its current episode started, which stays the same while the alert lasts. An alert is one episode until it has been absent for six polls (~30 s). `hostAlerts` lists the open host resource alerts (`cpu`, `memory`, `disk`) |
 | GET | `/api/rejected-publishes` | Recent publish attempts rejected for a key with no pipeline (label only, never the secret) |
 | GET | `/api/version` | App, SRS, relay, FFmpeg and Node versions, git commit, OS, kernel and CPU model (cached after the first request) |
 | GET | `/api/metrics/history` | System metric samples every 5 s for the last 2 hours; `?after=<ms>` returns only newer samples |
 | GET | `/api/metrics/system` | Host CPU, RAM, disk and network stats (RAM used is total minus `MemAvailable`, so reclaimable page cache does not count) |
-| GET | `/api/srs-logs` | Recent SRS up/down events and log tails for SRS, the dashboard, and the relay |
+| GET | `/api/srs-logs` | Recent Server events (SRS and Goryu becoming unreachable or recovering, host CPU, memory and disk alerts: `{ ts, source: srs\|relay\|host, type: problem\|recovered, message }`) and log tails for SRS, the dashboard, and the relay |
 | GET | `/api/ready` | Unauthenticated readiness check used by systemd before starting SRS |
 | POST | `/api/pipelines` | Create pipeline (auto-names and assigns stream key) |
 | GET | `/api/pipelines/:id` | Pipeline details including relay health and bonded-input activity |

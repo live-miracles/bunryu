@@ -762,6 +762,7 @@ limit rises.
 not there at the previous 5 s poll:
 - the server, SRS or the SRT relay becoming unreachable;
 - an error-level pipeline alert;
+- the host running low on memory or disk space (the host alerts in `hostAlerts`);
 - an input going offline while its outputs are meant to run;
 - an output crashing or being restarted by a watchdog.
 
@@ -782,15 +783,21 @@ live-gallery's alert beeps, so both tools sound alike.
 - **In the browser, not the server.** The dashboard is on a visible screen during
   events, so its sound reaches the operator without push permissions, Do Not Disturb or
   a phone. The 5 s poll already carries everything needed, so the server is unchanged.
-- **Warnings do not beep** (timestamp floods, high memory, falling behind, SRT loss):
-  they are frequent and usually recover on their own.
+- **Warnings do not beep** (timestamp floods, falling behind, SRT loss): they are
+  frequent and usually recover on their own.
+- **Host memory and disk beep, host CPU does not.** Low memory ends with the kernel
+  killing FFmpeg or SRS, and a full disk breaks the database, diagnostics and journal,
+  and neither clears on its own. The CPU alert's thresholds come from a desktop
+  measurement, not production (see [Host resource alerts](#host-resource-alerts-cpu-pressure-memory-and-disk)),
+  so a beep on a healthy event would get the bell muted. It still shows in Server events.
 
 **Not adopted:** a "silence for N minutes" button (mute is simpler, and the operator
 decides when to unmute); keeping a background tab's polling unthrottled (the dashboard
 is on top during events); push notifications.
 
-**Revisit when:** operators mute it because it beeps too often, or a problem worth a
-beep reaches the dashboard only as a warning.
+**Revisit when:** operators mute it because it beeps too often, a problem worth a
+beep reaches the dashboard only as a warning, or the CPU alert has fired only on real
+trouble in production (then add `cpu` to the beeping host alerts).
 
 ### Don't probe platform hosts from the server
 
@@ -946,6 +953,57 @@ warning text carries the number).
 
 **Revisit when:** the warning fires on healthy outputs (then widen the window or
 lower the threshold), or operators want to see the speed continuously.
+
+### Host resource alerts: CPU pressure, memory and disk
+
+**Decision (October 2026):** the health poll raises an alert, with a separate end
+threshold, when host CPU pressure, available memory or free disk space crosses a
+line. It is reported (journal, diagnostics events, the dashboard's Server events
+table) and nothing is acted on. The numbers are in
+[Reliability](../3-operations/4-reliability.md#host-resource-alerts).
+
+**Why:**
+- Before this only memory had an alert. A CPU-starved host (the sizing page shows a
+  `1080p` encode of a 4K input not keeping up on 4 vCPUs) makes outputs fall behind
+  and SRT ingest drop packets, and the operator saw only each symptom per pipeline.
+- Start and end thresholds differ, and the CPU alert also needs the reading to hold
+  for 30 s (start) and 60 s (end), so a reading that hovers near the line is one
+  episode, not a stream of them. The same idea ends a pipeline alert after six quiet polls.
+
+**CPU uses pressure (PSI), not utilisation:** an encode is meant to use the CPUs (a
+`720p` encode takes about 2 vCPUs), so a host sized for its encodes is near fully busy
+while healthy and a utilisation alert would fire in normal use. Pressure stays near
+zero until something waits for a CPU. It also means no fallback: a kernel without `/proc/pressure/cpu` gets no CPU
+alert, rather than a utilisation guess that would fire on healthy encodes.
+
+**Evidence for the thresholds (8-CPU development host, busy loops, `some avg10`):**
+
+| Busy loops | Load | Pressure after 45 s |
+|---|---|---|
+| 8 | 1.0x | 25-30% |
+| 10 | 1.25x | 46-53% |
+| 16 | 2.0x | 68-70% |
+
+A first draft used 90 to start and 85 to end; that never fires, since pressure stays
+near 70 even with the host twice oversubscribed, and a threshold of 70 would stay
+silent at about 1.5x oversubscription, where the sizing page has a `1080p` encode of a
+4K input no longer keeping up (about 55-60% by interpolating the table). 50 is about
+1.25x oversubscription, and 30 sits just above the reading of a fully busy but
+unstarved host, so its noise does not hold an alert open. These come from a desktop with background load, not from the
+production VM.
+
+**Disk:** the filesystem of the database directory (database, diagnostics, HLS
+previews) and the root filesystem (journald, SRS logs), alert under 10% free and end
+at 15%. Diagnostics are size-capped and previews stop when idle, so this catches the
+journal, logs or database growing, or another tenant of the disk.
+
+**Not adopted:** acting on the alert (stopping outputs, shedding load), which could
+take down streams on a reading that may be harmless; a dashboard banner or beep,
+until the table proves useful (the beep is for pipeline problems).
+
+**Revisit when:** a production incident shows the CPU thresholds firing late or on
+healthy load (compare `host.cpuPressure` in the `health-snapshot` with the alert
+times), or operators need these in front of them rather than in Server Logs.
 
 ### Failures that need an operator exit with status 78, which systemd does not restart
 

@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const {
     readProcRssBytes,
     readHostMemory,
+    readDiskUsage,
     readUdpBufferCeilings,
     readCpuPressure,
     readUdpStats,
@@ -392,6 +393,27 @@ describe('readHostMemory', () => {
             throw new Error('ENOENT');
         });
         assert.equal(readHostMemory(), null);
+    });
+});
+
+describe('readDiskUsage', () => {
+    test('reports total and available bytes of the filesystem holding the path', (t) => {
+        t.mock.method(fs, 'statfsSync', () => ({ bsize: 4096, blocks: 1000, bavail: 250 }));
+        t.mock.method(fs, 'statSync', () => ({ dev: 42 }));
+        assert.deepEqual(readDiskUsage('/var/lib/bunryu'), {
+            device: 42,
+            totalBytes: 4096 * 1000,
+            availableBytes: 4096 * 250,
+        });
+    });
+
+    test('returns null for a missing path or a filesystem with no blocks', (t) => {
+        t.mock.method(fs, 'statfsSync', () => {
+            throw new Error('ENOENT');
+        });
+        assert.equal(readDiskUsage('/nope'), null);
+        t.mock.method(fs, 'statfsSync', () => ({ bsize: 4096, blocks: 0, bavail: 0 }));
+        assert.equal(readDiskUsage('/proc'), null);
     });
 });
 

@@ -127,6 +127,40 @@ output that does not need the missing piece keep working. Without the check, a m
 or incomplete build (an OS package replacing the pinned one, or a wrong `ffmpeg_path`)
 would show up only as each affected output failing with its own error.
 
+## Host resource alerts
+
+The health poll (every 5 s) watches the host itself, because an overloaded or full host
+degrades every pipeline at once and no single output's error explains it. Each alert
+has a start and an end threshold that differ, so a reading hovering near the line is
+one episode, and each start and end is written three ways: a journal line
+(`[host] ...`), a diagnostics event with the numbers, and a row in the **Server events**
+table of the dashboard's Server Logs view (the last 200 rows, kept in memory, so the
+diagnostics are the record that survives a restart).
+
+| Alert | Starts when | Ends when | Events |
+|---|---|---|---|
+| CPU | CPU pressure (10 s average) is 50% or more for 30 s | below 30% for 60 s | `host-cpu-high`, `host-cpu-recovered` |
+| Memory | available memory under 15% of total | back at 20% | `host-memory-low`, `host-memory-recovered` |
+| Disk | free space under 10% of the filesystem | back at 15% | `host-disk-low`, `host-disk-recovered` |
+
+- **CPU pressure** is the share of the last 10 s in which a runnable task waited for a
+  CPU (`/proc/pressure/cpu`, "some"). It measures starvation, not busyness: a host that
+  runs its encodes at 100% with nothing waiting reads low, which is healthy. The start
+  event names the busiest managed processes (SRS, the control plane, the outputs'
+  FFmpeg); the end event has the peak and how long it lasted. On a kernel without PSI
+  there is no CPU alert.
+- **Memory** is `MemAvailable` (free plus reclaimable cache). The start event names the
+  five largest processes by RSS.
+- **Disk** checks the filesystem holding the database (which also holds the
+  diagnostics and HLS previews) and the root filesystem (journald, SRS logs), once
+  each when they are the same one. The event carries the path, so it says which filled.
+
+The open alerts are listed in `/api/health` as `hostAlerts`, and the dashboard beeps
+once when the memory or disk alert opens (not CPU, whose thresholds are not yet proven
+on production, so a beep on a healthy event would get the sound muted). They are
+reporting only: nothing is stopped or restarted for them. Why these
+thresholds: [Host resource alerts](../4-reference/3-design-decisions.md#host-resource-alerts-cpu-pressure-memory-and-disk).
+
 ## Falling behind realtime
 
 An output that processes media slower than realtime falls further behind live every

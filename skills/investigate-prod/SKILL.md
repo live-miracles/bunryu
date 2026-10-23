@@ -85,7 +85,8 @@ dependents-restarted;
 `input-publisher-transition`, `srs-transition`, `relay-transition`,
 `relay-input-transition`, `bonded-leg-transition`, `bonded-legs-changed` (the legs
 before/after, which joined and which left), `media-probe-failed` /
-`-recovered`, `host-memory-low` / `-recovered`, `translation-mixer-*`, and a
+`-recovered`, `host-memory-low` / `-recovered`, `host-cpu-high` / `-recovered`,
+`host-disk-low` / `-recovered`, `translation-mixer-*`, and a
 `health-snapshot` once a minute (SRT counters, per-output RSS/CPU/bitrate, host
 memory). This list can drift: `grep -rhoE "event\('[a-z-]+'" src` is the truth.
 

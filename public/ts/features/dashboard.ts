@@ -150,6 +150,7 @@ async function fetchAndRender(): Promise<void> {
         serverUnreachable: isServerUnreachable(),
         srsReachable: state.health.srsReachable,
         relayDown: !!state.health.srtRelay && state.health.srtRelay.status !== 'running',
+        hostAlerts: state.health.hostAlerts ?? [],
         pipelines: state.pipelines,
     });
 }

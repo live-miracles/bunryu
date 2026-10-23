@@ -18,6 +18,8 @@ export interface AttentionSnapshot {
     serverUnreachable: boolean;
     srsReachable: boolean | undefined;
     relayDown: boolean;
+    // Host resource alerts open right now ('cpu' | 'memory' | 'disk').
+    hostAlerts: string[];
     pipelines: PipelineView[];
 }
 
@@ -28,14 +30,22 @@ export interface AttentionState {
     lastCrashAt: Map<string, number>;
 }
 
+// Host alerts that beep. CPU does not: its thresholds are untested on production, and
+// a beep on a healthy event gets the sound muted. It still shows in Server events.
+const BEEPING_HOST_ALERTS = new Set(['memory', 'disk']);
+
 // Conditions that need an operator while they last: the server or SRS is
-// unreachable, the SRT relay is down, a pipeline has an error-level alert, or an
-// input is offline while its outputs are meant to be running.
+// unreachable, the SRT relay is down, the host is low on memory or disk space, a
+// pipeline has an error-level alert, or an input is offline while its outputs are
+// meant to be running.
 export function attentionConditions(snapshot: AttentionSnapshot): Set<string> {
     const conditions = new Set<string>();
     if (snapshot.serverUnreachable) conditions.add('server-unreachable');
     if (snapshot.srsReachable === false) conditions.add('srs-unreachable');
     if (snapshot.relayDown) conditions.add('relay-down');
+    for (const alert of snapshot.hostAlerts) {
+        if (BEEPING_HOST_ALERTS.has(alert)) conditions.add(`host:${alert}`);
+    }
     for (const pipeline of snapshot.pipelines) {
         for (const alert of pipeline.alerts) {
             if (alert.severity === 'error') conditions.add(`alert:${pipeline.id}:${alert.code}`);

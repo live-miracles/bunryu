@@ -12,7 +12,14 @@ import {
 } from '../core/utils.js';
 import { refreshAfterMutation } from './dashboard.js';
 import { noteSharedEncodeRestart } from './shared-encodes.js';
-import type { StreamKey, AudioTrackInfo, PipelineGroup, ServerLogTail, Output } from '../types.js';
+import type {
+    StreamKey,
+    AudioTrackInfo,
+    PipelineGroup,
+    ServerLogTail,
+    SrsLogEvent,
+    Output,
+} from '../types.js';
 import { buildSrtOutputUrl, isSrtHostRequired, type SrtOutputSettings } from '../core/srt.js';
 export { renderSrtBondingDetailsInline, showSrtBondingDetails } from './srt-bonding-details.js';
 
@@ -1491,12 +1498,13 @@ export async function showSrsLogs(): Promise<void> {
         html += renderTerminal(label, elId, data[key]);
     }
 
-    const CONNECTIVITY_SOURCE_LABEL: Record<'srs' | 'relay', string> = {
+    const EVENT_SOURCE_LABEL: Record<SrsLogEvent['source'], string> = {
         srs: 'SRS',
         relay: 'Goryu',
+        host: 'Host',
     };
 
-    html += '<p class="text-xs font-semibold uppercase opacity-50 mt-4 mb-2">Connectivity</p>';
+    html += '<p class="text-xs font-semibold uppercase opacity-50 mt-4 mb-2">Server events</p>';
     if (data.events.length === 0) {
         html += '<p class="text-sm opacity-50 mb-4">No events recorded yet.</p>';
     } else {
@@ -1507,8 +1515,8 @@ export async function showSrsLogs(): Promise<void> {
                 .map(
                     (e) =>
                         `<div class="flex items-center gap-3 border-b border-base-200 py-1.5 last:border-0">
-                            <span class="badge badge-xs leading-none shrink-0 uppercase ${e.type === 'up' ? 'badge-success' : 'badge-error'}">${e.type}</span>
-                            <span class="badge badge-xs badge-outline shrink-0">${CONNECTIVITY_SOURCE_LABEL[e.source]}</span>
+                            <span class="badge badge-xs leading-none shrink-0 uppercase ${e.type === 'recovered' ? 'badge-success' : 'badge-error'}">${e.type}</span>
+                            <span class="badge badge-xs badge-outline shrink-0">${EVENT_SOURCE_LABEL[e.source]}</span>
                             <span class="opacity-70 shrink-0">${formatLocalDateTime(e.ts)}</span>
                             <span class="opacity-80">${escapeHtml(e.message)}</span>
                         </div>`,

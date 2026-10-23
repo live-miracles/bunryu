@@ -72,10 +72,11 @@ shows, up to ~10 s old), host total/available memory and swap, host CPU pressure
 from `/proc/pressure/cpu`, null where the kernel has none) and the kernel's UDP counters
 (`udp`: datagrams dropped host-wide for a full receive buffer, how many since the previous
 snapshot, and the receive queue and drops of the SRS and relay SRT ingest sockets).
-Separately,
-`host-memory-low` (available memory under 15% of total) and
-`host-memory-recovered` (back above 20%) events are logged on transition, the
-former with the five largest processes by RSS.
+The snapshot also records the free space of the filesystem holding the database
+(`dataDisk`). Separately, the host resource alerts are logged on transition (see
+[Host resource alerts](4-reliability.md#host-resource-alerts)): `host-memory-low` /
+`host-memory-recovered`, `host-cpu-high` / `host-cpu-recovered` and
+`host-disk-low` / `host-disk-recovered`.
 
 Other things the diagnostics record so an incident can be pieced together:
 
