@@ -20,12 +20,12 @@ generated at install time; see [SRS and SRT relay config](../1-getting-started/3
 Prefer SRT when the encoder supports it: it has fixed, predictable latency,
 survives lossy networks better than RTMP, and keeps every audio track. Use
 bonded SRT for encoders that send the same stream over several network links
-(for example cellular bonding units); the
-[`goryu`](https://github.com/live-miracles/goryu)
+(for example cellular bonding units); the SRT relay
+([Goryu](https://github.com/live-miracles/goryu))
 merges the links before SRS sees the stream.
 
-The bonded port also accepts an ordinary single-link SRT connection: use the
-bonded URL without `grouptype=broadcast`. The dashboard then shows it as an
+The relay port also accepts an ordinary single-link SRT connection: use the
+relay URL without `grouptype=broadcast`. The dashboard then shows it as an
 "SRT input via relay" with the encoder's IP, instead of a bonded group. This is
 optional. Plain SRT sent straight to port 10080 avoids the relay's extra hop
 (about 200 ms) and keeps the stream independent of the relay process; see

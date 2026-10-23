@@ -54,7 +54,7 @@ function renderMediaProbeNotice(input: InputHealth): string {
 
 function renderDirectSrtNotice(relayPort: number | undefined): string {
     const port = relayPort ? ` (port ${relayPort})` : '';
-    return `<p class="text-xs opacity-50 mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the bonding input${port} to get them.</p>`;
+    return `<p class="text-xs opacity-50 mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the SRT relay input${port} to get them.</p>`;
 }
 
 export function renderInputStats(input: InputHealth, deps: InputStatsDeps): string {

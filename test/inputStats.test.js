@@ -113,14 +113,14 @@ describe('renderInputStats', () => {
         assert.ok(!/127\.0\.0\.1/.test(html));
     });
 
-    test('tells a direct SRT input that it has no loss stats, naming the bonding port', () => {
+    test('tells a direct SRT input that it has no loss stats, naming the relay port', () => {
         const html = renderInputStats(input({}), {
             ...deps(900),
             directSrt: true,
             relayPort: 10081,
         });
         assert.match(html, /Sent straight to SRS: no packet loss or retransmit stats/);
-        assert.match(html, /bonding input \(port 10081\)/);
+        assert.match(html, /SRT relay input \(port 10081\)/);
     });
 
     test('shows no direct-SRT hint otherwise', () => {

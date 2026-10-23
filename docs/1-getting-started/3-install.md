@@ -77,7 +77,7 @@ Default ports from `srs.conf` and `goryu.json`:
 |------|----------|---------|
 | 21935 | TCP | RTMP input (non-default port to avoid 1935 scanner noise) |
 | 10080 | UDP | SRT input (passphrase required) |
-| 10081 | UDP | SRT bonding input, also accepts plain SRT (passphrase required) |
+| 10081 | UDP | SRT relay input (bonded or plain SRT, passphrase required) |
 | 8080 | TCP | Dashboard + API |
 
 Do **not** expose 8080 if the dashboard is served through a tunnel, or 8081 (relay

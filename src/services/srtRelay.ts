@@ -1,8 +1,8 @@
 import { readRelayConfig } from '../utils/relayConfig.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 
-const SRT_BONDING_POLL_MS = 5000;
-const SRT_BONDING_FETCH_TIMEOUT_MS = 2000;
+const SRT_RELAY_POLL_MS = 5000;
+const SRT_RELAY_FETCH_TIMEOUT_MS = 2000;
 
 export interface SrtRelayStats {
     status: 'running' | 'stopping' | 'stopped' | 'failed';
@@ -391,7 +391,7 @@ export function createSrtRelayService(diagnostics?: DiagnosticsLogger): SrtRelay
                 const relayConfig = readRelayConfig();
                 const statusUrl = `http://127.0.0.1:${relayConfig.status_port}/status`;
                 const res = await fetch(statusUrl, {
-                    signal: AbortSignal.timeout(SRT_BONDING_FETCH_TIMEOUT_MS),
+                    signal: AbortSignal.timeout(SRT_RELAY_FETCH_TIMEOUT_MS),
                     headers: { Connection: 'close' },
                 });
                 if (!res.ok) throw new Error(`Relay status HTTP ${res.status}`);
@@ -478,7 +478,7 @@ export function createSrtRelayService(diagnostics?: DiagnosticsLogger): SrtRelay
 
     function start(): void {
         void refresh();
-        pollTimer = setInterval(() => void refresh(), SRT_BONDING_POLL_MS);
+        pollTimer = setInterval(() => void refresh(), SRT_RELAY_POLL_MS);
         pollTimer.unref?.();
     }
 

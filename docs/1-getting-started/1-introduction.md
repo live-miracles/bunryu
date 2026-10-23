@@ -14,7 +14,7 @@ and every failure leaves enough evidence to explain it afterwards.
 ```
 OBS / ffmpeg  ──RTMP────────►  SRS (21935)  ──FFmpeg──►  YouTube / Facebook / ...
               ──SRT─────────►  SRS (10080)  ──FFmpeg──►  rtmp:// or srt://
-              ──SRT bonding─►  goryu (10081) ──► SRS
+              ──SRT relay───►  goryu (10081) ──► SRS
 ```
 
 | Component | Description |

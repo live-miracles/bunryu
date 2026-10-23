@@ -432,7 +432,7 @@ function fmtRawCount(n: number | null | undefined): string {
 // the latest polled state.pipelines snapshot without reopening the dialog.
 function renderSrtStatsSections(pipelineId: string): string {
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
-    if (!pipeline) return '<p class="opacity-50 text-sm">No SRT bonding data.</p>';
+    if (!pipeline) return '<p class="opacity-50 text-sm">No SRT relay data.</p>';
 
     const { input, output } = pipeline.srtBonding;
 
@@ -533,9 +533,9 @@ function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement
     if (!contentEl) return;
 
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
-    if (titleEl) titleEl.textContent = `SRT Bonding Details — ${pipeline?.name ?? pipelineId}`;
+    if (titleEl) titleEl.textContent = `SRT Relay Details — ${pipeline?.name ?? pipelineId}`;
     if (!pipeline) {
-        contentEl.innerHTML = '<p class="opacity-50 text-sm">No SRT bonding data.</p>';
+        contentEl.innerHTML = '<p class="opacity-50 text-sm">No SRT relay data.</p>';
         return;
     }
 

@@ -66,7 +66,7 @@ USER bunryu
 WORKDIR /data
 VOLUME /data
 ENV NODE_ENV=production
-# Dashboard/API, RTMP input, SRT input, SRT bonding input.
+# Dashboard/API, RTMP input, SRT input, SRT relay input.
 EXPOSE 8080/tcp 21935/tcp 10080/udp 10081/udp
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8080/api/ready || exit 1
