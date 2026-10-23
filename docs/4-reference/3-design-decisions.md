@@ -201,6 +201,52 @@ warnings.
 - It would add ~200 ms of latency and a second process every SRT input depends on;
   a relay restart would drop all SRT inputs instead of only the bonded ones.
 
+### Link stats for a direct SRT input are not read from SRS's log
+
+**Decision:** not implemented. A direct SRT input (port 10080) has no loss, retransmit
+or drop stats or alerts, and its card says to use the SRT relay port for them. The
+only source in SRS 6.0 is its log, which would need `srs_log_level trace`, and that
+is too risky for the journal.
+
+**What was tried:** SRS logs `<- SRT_CPB Transport Stats # pktRecv, pktRcvLoss,
+pktRcvRetrans, pktRcvDrop` for each SRT publisher. A prototype followed
+`journalctl -u srs.service -f -g ...`, matched the line's `[cid]` to `publish.cid`
+(also the hook's `client_id`; verified on SRS 6.0-r2) and fed the input card and the
+relay's `srt-packet-loss`, `srt-retransmissions` and `srt-packets-dropped` alerts. It
+worked end to end, including a reader that could not affect a stream (bounded buffers,
+a malformed line only counted, a dead `journalctl` restarted with backoff).
+
+**Why it was dropped:**
+- **Needs `trace`.** At `srs_log_level warn`, the setting since 2026-06-14, there are
+  no such lines (0 in 60 s with an SRT input connected). The setting came with the log
+  rotation commit and records no reason; log volume is the likely one.
+- **Steady state is acceptable** (measured on the test stack with one input and four
+  outputs, the rest from SRS's source). About 4 lines/s (~40-60 MB/day) at idle, mostly
+  SRS logging each of the app's own API polls (about 5 lines per request). SRS's
+  periodic lines are limited to about one per stage per 10 s however many clients
+  share the stage, so 50 inputs and 500 outputs should not change it. That was not
+  run at that scale.
+- **Failure storms are the problem.** Per rejected publish, `warn` logs about 3
+  `WARN`/`ERROR` lines for RTMP and 2.4 for SRT; `trace` adds about 16 and 8. The
+  app already throttles rejected publishers that retry every 10-40 ms (seen in
+  production), which at trace would be 400-1600 extra lines/s. The journal cap is
+  1 GB, so a storm could push out the history of an earlier incident within hours.
+  journald's default rate limit (about 333 lines/s per service) would drop lines, the
+  warnings and errors among them.
+- **No safe mitigation verified.** A journald `LogFilterPatterns` rule could drop
+  the `INFO` lines and keep warnings, errors and the stats lines, but it needs
+  systemd 253 or newer (Debian 12 has 252), and a test with a user unit did not filter
+  anything; a system unit could not be tested without root. Docker would also need
+  `warn` pinned: it has no journal and `docker logs` is not rotated by default.
+- **Little gained.** Counters only (no RTT, bandwidth or latency), one sample per input
+  about every 10 s times the number of SRT inputs (50 inputs: ~8 min), and a stalled
+  connection logs nothing.
+
+**Revisit when:** SRS 8 with per-client SRT stats in its API (ossrs/srs#4769, PR #4770)
+is deployed: read the API, which needs no log level. Or when a journald filter is
+verified on the production OS, if a stats line is wanted sooner. Meanwhile an operator
+who needs link stats for an input sends it through the relay port.
+
 ### A lost bonded leg is found by counting legs, because the relay drops it instead of reporting `broken`
 
 **Decision:** the health poll remembers the most legs a bonded input has had since it
@@ -230,6 +276,14 @@ change still goes to the diagnostics (one per 5 s poll at most). A bonded input 
 disconnects resets the remembered legs, so reconnecting is "connected with N legs", not
 a run of lost legs. The relay logs the same changes itself with one-second timing
 (`Bonded leg joined|left` in its journal); this view is the 5 s sample of it.
+
+**An idle leg is not a fault while another leg runs.** In a main/backup group the relay
+reports the standby leg as `idle` (carrying nothing) and the main leg as `running`; when
+the main leg fails the standby becomes `running` (checked 2026-10-22 against the relay with
+a 4 Mbps stream: main 4.4 Mbps, standby 0.000 Mbps, and no gap when the main leg was
+closed). The leg health used to mark every idle leg as a warning, which turned a healthy
+backup group's pipeline status to warn permanently. An idle leg is now a warning only when
+no other leg is running, and `pending` still is one.
 
 **Cost, and when to revisit:** an encoder deliberately run with fewer legs keeps the
 warning until the input reconnects. Revisit if the relay starts reporting lost legs
