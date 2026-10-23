@@ -1135,8 +1135,8 @@ const ICON_CHEVRON_DOWN = `<svg xmlns="http://www.w3.org/2000/svg" width="14" he
 // its member pipelines, the output half is the same good/warn/error/off
 // aggregation a single pipeline row already applies to its own outputs, just
 // combined across every member's outputs. Collapsed, the header shows that
-// swatch plus ok/warn/error counts of the members' outputs, the same counts a
-// pipeline row shows for its own — the whole point of collapsing is keeping
+// swatch plus ok/warn/error/off counts of the members' outputs, the same counts
+// a pipeline row shows for its own — the whole point of collapsing is keeping
 // health visible without expanding. Expanded, the header shows just the name
 // since the member rows underneath already show their own status individually.
 function renderGroupHeader(
@@ -1148,6 +1148,7 @@ function renderGroupHeader(
     let outGood = 0;
     let outWarn = 0;
     let outFailed = 0;
+    let outOff = 0;
     for (const p of members) {
         inSt = worstStatus(inSt, inputStatus(p.input));
         for (const o of p.outs) {
@@ -1155,6 +1156,7 @@ function renderGroupHeader(
             if (st === 'good') outGood++;
             else if (st === 'warn') outWarn++;
             else if (st === 'error') outFailed++;
+            else if (st === 'off') outOff++;
         }
     }
     const outSt: OutStatus =
@@ -1166,7 +1168,8 @@ function renderGroupHeader(
         ? `<div class="rounded-box h-5 w-5 shrink-0" style="background:linear-gradient(90deg,${inColor},${inColor} 45%,#242933 45%,#242933 55%,${outColor} 55%)"></div>
            ${statusBadge(outGood, 'badge-success')}
            ${statusBadge(outWarn, 'badge-warning')}
-           ${statusBadge(outFailed, 'badge-error')}`
+           ${statusBadge(outFailed, 'badge-error')}
+           ${statusBadge(outOff, 'badge-ghost')}`
         : '';
 
     return `<li data-group-id="${group.id}">
