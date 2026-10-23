@@ -226,13 +226,17 @@ a malformed line only counted, a dead `journalctl` restarted with backoff).
   periodic lines are limited to about one per stage per 10 s however many clients
   share the stage, so 50 inputs and 500 outputs should not change it. That was not
   run at that scale.
-- **Failure storms are the problem.** Per rejected publish, `warn` logs about 3
-  `WARN`/`ERROR` lines for RTMP and 2.4 for SRT; `trace` adds about 16 and 8. The
-  app already throttles rejected publishers that retry every 10-40 ms (seen in
-  production), which at trace would be 400-1600 extra lines/s. The journal cap is
-  1 GB, so a storm could push out the history of an earlier incident within hours.
-  journald's default rate limit (about 333 lines/s per service) would drop lines, the
-  warnings and errors among them.
+- **Failure storms are the problem.** Measured per rejected publish on the test
+  stack (10 attempts each): `warn` already logs 9 lines (1.4 KB) for RTMP and 5.7
+  (1.2 KB) for SRT; `trace` logs 30 (4.3 KB) and 19 (2.8 KB), about 3 times as much.
+  The app already throttles rejected publishers that retry every 10-40 ms (seen in
+  production; that rate is from a code comment, not measured here), i.e. 25-100
+  attempts/s. Either mode can then reach journald's default rate limit (about 333
+  lines/s per service, which the installer does not change), after which it drops
+  lines, warnings and errors included, and can fill the 1 GB journal in about 6 hours
+  and push out the history of an earlier incident. `warn` reaches that limit at about
+  37 attempts/s, `trace` at about 11, and below it `trace` fills the journal about 3
+  times faster.
 - **No safe mitigation verified.** A journald `LogFilterPatterns` rule could drop
   the `INFO` lines and keep warnings, errors and the stats lines, but it needs
   systemd 253 or newer (Debian 12 has 252), and a test with a user unit did not filter
