@@ -218,7 +218,7 @@ only for a new module.
   FFmpeg/ffprobe child gets (`ffmpegEnv`); `ffmpegCheck.ts` is the startup check of the
   build's protocols, encoders and filters; `appConfig.ts` reads
   `bunryu.json` (watchdog defaults; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `configCheck.ts` / `startupGate.ts` read
-  the three config files first thing at startup and exit 78 if one is missing or invalid; `diagnostics.ts` is the rotated JSONL
+  the three config files first thing at startup and exit 78 if one is missing or invalid; `srtPassphrase.ts` generates a new SRT passphrase and writes it to `srs.conf` and `goryu.json` (Settings reset); `diagnostics.ts` is the rotated JSONL
   writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
   read SRS and relay config.
 - `src/db/` - SQLite schema and access (output Error History lives in

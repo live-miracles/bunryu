@@ -288,9 +288,9 @@ step "8/9 Config and data"
 # (when these files don't exist yet at $CONF_DIR) generate a per-server secret
 # and write it to both. On reinstall, each file's currently-deployed
 # passphrase is read before it gets overwritten below and simply written
-# back — no comparisons, no syncing between the two files. Change or disable
-# it (empty disables the check) by editing both files by hand and restarting
-# the services.
+# back — no comparisons, no syncing between the two files. Settings has a reset
+# button that rewrites both; to set your own or disable it (empty disables the
+# check), edit both files by hand and restart the services.
 NEW_SRT_PASSPHRASE="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
 if [[ -f "$CONF_DIR/srs.conf" ]]; then
     SRS_SRT_PASSPHRASE="$(sed -n 's/^[[:space:]]*passphrase[[:space:]]\{1,\}\(.*\);[[:space:]]*$/\1/p' "$CONF_DIR/srs.conf" | head -1)"

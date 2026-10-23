@@ -1,6 +1,10 @@
 import type { Express } from 'express';
 import { isValidPublicHost, parseName } from '../utils/inputLimits.js';
 import type { Db } from '../types.js';
+import type { InputState } from '../services/inputState.js';
+import type { OutputService } from '../services/outputs.js';
+import type { DiagnosticsLogger } from '../utils/diagnostics.js';
+import { generateSrtPassphrase, writeSrtPassphrase } from '../utils/srtPassphrase.js';
 
 const MAX_PIPELINE_GROUPS = 50;
 const MAX_PIPELINE_GROUP_NAME_LENGTH = 80;
@@ -54,7 +58,13 @@ function normalizePipelineGroups(value: unknown): { id?: number; name: string }[
     return groups;
 }
 
-export function registerSettingsApi(app: Express, db: Db): void {
+export function registerSettingsApi(
+    app: Express,
+    db: Db,
+    inputState: InputState,
+    outputService: OutputService,
+    diagnostics: DiagnosticsLogger,
+): void {
     app.post('/api/settings/general', (req, res) => {
         const parsedName = parseName(req.body?.name);
         if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
@@ -106,5 +116,40 @@ export function registerSettingsApi(app: Express, db: Db): void {
         }
         const streamKeys = db.regenerateStreamKeys();
         return res.json({ streamKeys });
+    });
+
+    // Rewrites the passphrase in srs.conf and goryu.json only: SRS and Goryu read
+    // them at startup, so the new value is enforced after both restart (a reboot or
+    // container restart), and the app keeps showing the value they run with until
+    // then. The app never signals either service. Refused while anything is live or
+    // running so that a restart done soon after cannot cut a stream unannounced.
+    app.post('/api/settings/reset-srt-passphrase', (_req, res) => {
+        const liveInputs = db.listPipelines().filter((p) => inputState.isLive(p.id)).length;
+        const activeOutputs = db
+            .listOutputs()
+            .filter((o) => outputService.getStats(o.id).status !== 'stopped').length;
+        if (liveInputs > 0 || activeOutputs > 0) {
+            return res.status(409).json({
+                error:
+                    'Cannot reset the SRT passphrase while inputs are live or outputs are running ' +
+                    `(${liveInputs} live input(s), ${activeOutputs} active output(s))`,
+            });
+        }
+
+        try {
+            const srtPassphrase = generateSrtPassphrase();
+            writeSrtPassphrase(srtPassphrase);
+            console.log(
+                '[settings] SRT passphrase reset in srs.conf and goryu.json; it applies after SRS and Goryu restart',
+            );
+            diagnostics.event('srt-passphrase-reset', { pendingRestart: true });
+            return res.json({ srtPassphrase });
+        } catch (err) {
+            console.error('[settings] SRT passphrase reset failed:', err);
+            diagnostics.event('srt-passphrase-reset-failed', { error: String(err) });
+            return res
+                .status(500)
+                .json({ error: `Could not reset the SRT passphrase: ${String(err)}` });
+        }
     });
 }

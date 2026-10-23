@@ -1303,6 +1303,54 @@ environment after the first start.
 **Revisit when:** a second secret needs the same handling, or the Docker image is
 used for real deployments and `docker secret` support matters.
 
+### The SRT passphrase is reset from Settings by rewriting both files; the app does not restart SRS or Goryu
+
+**Decision (October 2026):** Settings has a **Reset** button, like the stream-key
+one, that writes a new random passphrase to `srs.conf` and `goryu.json` and shows
+it once. It is refused (`409`) while an input is live or an output is not stopped.
+It changes files only: SRS and Goryu pick the value up at their next start, which
+the operator causes by rebooting the server or restarting the container.
+
+**Why:**
+- **Restarting from the app is the riskier code.** It would mean signalling SRS and
+  Goryu, waiting for both to answer with a new PID and handling one not returning:
+  about 150 to 250 lines of new process supervision, in the area this project
+  treats as high-risk, for something done between events a few times a year.
+- **The reset happens between events anyway.** With no stream running, a reboot
+  straight afterwards restarts SRS, Goryu and the app together, so the three agree
+  again and nothing needs to be signalled.
+- **The two files are written together or not at all.** Both new contents are built
+  first, so a file the app cannot parse changes nothing. Each is written to a temp
+  file in its own directory and renamed, and `srs.conf` is put back if the second
+  rename fails, so a crash or full disk cannot leave SRS and Goryu with different
+  passphrases (bonded SRT would stop working). The installer already makes
+  `/etc/bunryu` writable for the service user, so no unit change was needed.
+- **The dashboard keeps the old value until the restart.** The app caches both files
+  at startup, so the publish URLs match what SRS and Goryu enforce rather than a file
+  they have not read yet. The new value is shown once in the reset dialog, and the
+  dashboard shows it after the restart.
+
+**Not adopted:**
+- **Restarting SRS and Goryu from the app:** see above. Resets are not needed
+  during an event today.
+- **Clearing the cache so the dashboard shows the new value at once:** the direct
+  and bonded URLs would then show a passphrase nothing enforces yet, and a stray
+  SRS crash or watchdog restart would silently apply it in the middle of an event.
+
+**Tradeoffs:** a reset that is not followed by a restart leaves the new value armed
+on disk: any unplanned restart of SRS or Goryu applies it, and every encoder with the
+old URL then fails at the SRT handshake. The dialog and the Settings text say to
+restart straight away. If only one of the two services restarts, it and the other
+disagree until the second does too.
+
+**Revisit when:** a reset is needed while streams are running.
+
+**Checked on the isolated test stack:** a reset with a live input and four running
+outputs returned `409` and left both files byte-identical; after stopping them it
+returned `200`, both files held the same 32-character value and no temp file
+remained, the API still showed the old value, and the log and diagnostics recorded
+`srt-passphrase-reset` without the value.
+
 ### The Docker image is x86_64 only; ARM hosts run it emulated, for development
 
 **Decision (October 2026):** no native arm64 image. Production is Linux x86_64, and

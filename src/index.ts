@@ -165,7 +165,7 @@ registerConfigApi(app, db);
 registerPipelineApi(app, db, outputService, previewService, srtRelayService);
 registerOutputApi(app, db, outputService, healthService);
 registerPreviewApi(app, previewService);
-registerSettingsApi(app, db);
+registerSettingsApi(app, db, inputState, outputService, diagnostics);
 registerVersionApi(app);
 registerMetricsApi(app, srtRelayService);
 healthService.registerRoutes(app);

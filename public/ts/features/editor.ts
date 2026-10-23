@@ -11,6 +11,7 @@ import {
     formatLocalDateTime,
 } from '../core/utils.js';
 import { refreshAfterMutation } from './dashboard.js';
+import { renderSrtPassphraseReset } from './render.js';
 import { noteSharedEncodeRestart } from './shared-encodes.js';
 import type {
     StreamKey,
@@ -176,6 +177,7 @@ export function openSettings(): void {
     const regenHint = document.getElementById('regen-stream-keys-hint') as HTMLElement;
     regenBtn.disabled = hasPipelines;
     regenHint.classList.toggle('hidden', !hasPipelines);
+    renderSrtPassphraseReset();
     void api.getVersion().then((v) => {
         if (!v) return;
         (document.getElementById('v-app') as HTMLElement).textContent = `v${v.app}`;
@@ -272,6 +274,27 @@ export async function regenerateStreamKeysBtn(btn?: HTMLButtonElement): Promise<
     await withBusy(btn, async () => {
         const result = await api.regenerateStreamKeys();
         if (result) await refreshAfterMutation();
+    });
+}
+
+export async function resetSrtPassphraseBtn(btn?: HTMLButtonElement): Promise<void> {
+    const confirmed = await confirmDialog({
+        title: 'Reset the SRT passphrase?',
+        message:
+            'A new random passphrase is written to the SRS and Goryu config files. It applies only after both restart, so reboot the server (or restart the container) afterwards, then update the SRT URL in every encoder. Until then the dashboard and the services keep the old one.',
+        confirmLabel: 'Reset',
+        danger: true,
+    });
+    if (!confirmed) return;
+    await withBusy(btn, async () => {
+        const result = await api.resetSrtPassphrase();
+        if (!result) return;
+        const copy = await confirmDialog({
+            title: 'SRT passphrase reset',
+            message: `New passphrase: ${result.srtPassphrase}\n\nIt applies after the server or container restarts. The dashboard shows it again after that.`,
+            confirmLabel: 'Copy passphrase',
+        });
+        if (copy) await copyText(result.srtPassphrase);
     });
 }
 

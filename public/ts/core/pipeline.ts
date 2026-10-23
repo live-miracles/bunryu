@@ -206,3 +206,20 @@ export function parsePipelines(
         };
     });
 }
+
+// Why the SRT passphrase cannot be reset right now, or null when it can. Mirrors the
+// server's refusal (an input live, an output not stopped) from the polled health, which
+// can be a few seconds old: the server's check stays the one that counts.
+export function srtPassphraseResetBlock(health: Partial<HealthData>): string | null {
+    const pipelines = Object.values(health.pipelines ?? {});
+    const live = pipelines.filter((p) => p.input?.live).length;
+    const active = pipelines.reduce(
+        (n, p) => n + Object.values(p.outputs ?? {}).filter((o) => o.status !== 'stopped').length,
+        0,
+    );
+    if (live === 0 && active === 0) return null;
+    const parts = [];
+    if (live > 0) parts.push(`${live} input${live === 1 ? '' : 's'} live`);
+    if (active > 0) parts.push(`${active} output${active === 1 ? '' : 's'} not stopped`);
+    return `${parts.join(', ')}. Stop them before resetting.`;
+}

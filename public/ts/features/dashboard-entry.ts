@@ -11,6 +11,7 @@ import {
     submitPasswordForm,
     logoutUser,
     regenerateStreamKeysBtn,
+    resetSrtPassphraseBtn,
     createPipeline,
     openEditPipeline,
     submitPipelineForm,
@@ -43,6 +44,7 @@ declare global {
         settingsPasswordFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         logoutBtn: () => Promise<void>;
         regenerateStreamKeysBtn: (btn?: HTMLButtonElement) => Promise<void>;
+        resetSrtPassphraseBtn: (btn?: HTMLButtonElement) => Promise<void>;
         selectPipeline: (id: string | null) => void;
         addPipeBtn: (btn?: HTMLButtonElement) => Promise<void>;
         pipeFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
@@ -115,6 +117,7 @@ window.settingsPipelineGroupsFormBtn = (btn) => submitPipelineGroupsForm(btn);
 window.settingsPasswordFormBtn = (btn) => submitPasswordForm(btn);
 window.logoutBtn = () => logoutUser();
 window.regenerateStreamKeysBtn = (btn) => regenerateStreamKeysBtn(btn);
+window.resetSrtPassphraseBtn = (btn) => resetSrtPassphraseBtn(btn);
 
 window.selectPipeline = (id) => {
     void import('./preview.js').then(({ stopCurrentPreview }) => stopCurrentPreview());

@@ -69,7 +69,7 @@ Hardening that is on by default:
 to stay open to the raw internet so OBS/hardware encoders can reach them, so
 they're hardened at the SRS/relay layer instead:
 - SRT (`10080`, `10081`) requires a passphrase, checked at the handshake
-  before a connection is accepted at all — see
+  before a connection is accepted at all. It can be replaced from Settings; see
   [SRS and SRT relay config](../1-getting-started/3-install.md#srs-and-srt-relay-config).
 - Every publish attempt (RTMP or SRT) is checked against a per-pipeline
   stream key via SRS's `on_publish` hook; unknown keys are rejected before

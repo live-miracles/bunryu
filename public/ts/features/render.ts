@@ -38,7 +38,7 @@ import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
 import { renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import { alertHint } from '../core/hints.js';
-import { INPUT_ALERT_CODES } from '../core/pipeline.js';
+import { INPUT_ALERT_CODES, srtPassphraseResetBlock } from '../core/pipeline.js';
 import {
     affectedOutputCount,
     countLabel,
@@ -1764,6 +1764,19 @@ function renderOverview(): void {
     };
 }
 
+// Disables the SRT passphrase Reset button while the server would refuse it, and says
+// why. Runs on every poll of the settings view: it only touches this button and hint.
+export function renderSrtPassphraseReset(): void {
+    const btn = document.getElementById('reset-srt-passphrase-btn') as HTMLButtonElement | null;
+    const hint = document.getElementById('reset-srt-passphrase-hint');
+    if (!btn || !hint) return;
+    const block = srtPassphraseResetBlock(state.health);
+    btn.disabled = block !== null;
+    hint.textContent =
+        block ??
+        'A new one applies after the server or container restarts, and it can only be reset while nothing is live or running.';
+}
+
 function renderPipelineInfo(selectedId: string | null): void {
     const pipeline = selectedId ? state.pipelines.find((p) => p.id === selectedId) : null;
     const col = document.getElementById('pipe-info-col');
@@ -1793,6 +1806,7 @@ function renderPipelineInfo(selectedId: string | null): void {
         overviewCol?.classList.add('hidden');
         logsCol?.classList.add('hidden');
         settingsCol?.classList.remove('hidden');
+        renderSrtPassphraseReset();
         return;
     }
 

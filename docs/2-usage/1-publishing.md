@@ -15,7 +15,7 @@ panel does not display the URLs themselves.
 `<public-host>` is the **Public Host** set in Settings. It is empty on a new install:
 the dashboard shows a banner asking for it, and the publish URLs use `localhost` until
 you set it. The SRT passphrase is
-generated at install time; see [SRS and SRT relay config](../1-getting-started/3-install.md#srs-and-srt-relay-config).
+generated at install time and can be reset in Settings; see [SRS and SRT relay config](../1-getting-started/3-install.md#srs-and-srt-relay-config).
 
 Prefer SRT when the encoder supports it: it has fixed, predictable latency,
 survives lossy networks better than RTMP, and keeps every audio track. Use

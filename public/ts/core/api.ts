@@ -230,6 +230,11 @@ export const regenerateStreamKeys = () =>
         method: 'POST',
     });
 
+export const resetSrtPassphrase = () =>
+    apiRequest<{ srtPassphrase: string }>('/api/settings/reset-srt-passphrase', {
+        method: 'POST',
+    });
+
 export const getPipelineLogs = (pipelineId: string) =>
     apiRequest<PipelineLog[]>(`/api/pipelines/${pipelineId}/logs`);
 

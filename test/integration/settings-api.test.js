@@ -1,9 +1,31 @@
 'use strict';
 
-const { describe, test } = require('node:test');
+const { describe, test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { Readable, Writable } = require('node:stream');
+
+// The reset route rewrites srs.conf and goryu.json, so point the app config at a
+// temporary copy before any module reads it (never the repository's own files).
+const confDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-settings-api-'));
+const SRS_CONF_PATH = path.join(confDir, 'srs.conf');
+const RELAY_CONF_PATH = path.join(confDir, 'goryu.json');
+const SRS_CONF = 'srt_server {\n    listen 10080;\n    passphrase      old-passphrase-value;\n}\n';
+const RELAY_CONF = JSON.stringify({ passphrase: 'old-passphrase-value' }, null, 4) + '\n';
+fs.writeFileSync(
+    path.join(confDir, 'bunryu.json'),
+    JSON.stringify({
+        port: 8080,
+        database_path: path.join(confDir, 'db.sqlite'),
+        srs_config_path: SRS_CONF_PATH,
+        ffmpeg_path: 'ffmpeg',
+        ffprobe_path: 'ffprobe',
+    }),
+);
+process.env.BUNRYU_CONFIG = path.join(confDir, 'bunryu.json');
 
 const { createDb } = require('../../src/db/index');
 const { registerSettingsApi } = require('../../src/api/settings');
@@ -80,14 +102,30 @@ function dispatch(app, method, route, body) {
     });
 }
 
+after(() => fs.rmSync(confDir, { recursive: true, force: true }));
+
 function createHarness() {
     const app = express();
 
     const db = createDb(':memory:');
-    registerSettingsApi(app, db);
+    const liveInputs = new Set();
+    const outputStatus = new Map();
+    const events = [];
+    registerSettingsApi(
+        app,
+        db,
+        { isLive: (id) => liveInputs.has(id) },
+        { getStats: (id) => ({ status: outputStatus.get(id) ?? 'stopped' }) },
+        { event: (type, fields) => events.push({ type, ...fields }) },
+    );
+    fs.writeFileSync(SRS_CONF_PATH, SRS_CONF);
+    fs.writeFileSync(RELAY_CONF_PATH, RELAY_CONF);
 
     return {
         db,
+        liveInputs,
+        outputStatus,
+        events,
         request: (method, route, body) => dispatch(app, method, route, body),
     };
 }
@@ -389,6 +427,80 @@ describe('Settings API integration', () => {
             assert.deepEqual(harness.db.listStreamKeys(), before);
             // Sanity: the pipeline itself is unaffected too.
             assert.ok(harness.db.getPipeline(pipeline.id));
+        });
+    });
+
+    describe('POST /api/settings/reset-srt-passphrase', () => {
+        const unchanged = () => {
+            assert.equal(fs.readFileSync(SRS_CONF_PATH, 'utf8'), SRS_CONF);
+            assert.equal(fs.readFileSync(RELAY_CONF_PATH, 'utf8'), RELAY_CONF);
+        };
+
+        test('writes the same new passphrase to srs.conf and goryu.json', async () => {
+            const harness = createHarness();
+            const res = await harness.request('POST', '/api/settings/reset-srt-passphrase');
+
+            assert.equal(res.status, 200);
+            const { srtPassphrase } = res.body;
+            assert.match(srtPassphrase, /^[A-Za-z0-9]{32}$/);
+            assert.ok(
+                fs
+                    .readFileSync(SRS_CONF_PATH, 'utf8')
+                    .includes(`passphrase      ${srtPassphrase};`),
+            );
+            assert.equal(
+                JSON.parse(fs.readFileSync(RELAY_CONF_PATH, 'utf8')).passphrase,
+                srtPassphrase,
+            );
+            assert.deepEqual(harness.events, [
+                { type: 'srt-passphrase-reset', pendingRestart: true },
+            ]);
+            assert.ok(!JSON.stringify(harness.events).includes(srtPassphrase));
+        });
+
+        test('is refused while an input is live', async () => {
+            const harness = createHarness();
+            const pipeline = harness.db.createPipeline();
+            harness.liveInputs.add(pipeline.id);
+
+            const res = await harness.request('POST', '/api/settings/reset-srt-passphrase');
+
+            assert.equal(res.status, 409);
+            assert.match(res.body.error, /1 live input/);
+            unchanged();
+        });
+
+        test('is refused while an output is running or retrying, but not when all are stopped', async () => {
+            const harness = createHarness();
+            const pipeline = harness.db.createPipeline();
+            const output = harness.db.createOutput({
+                pipelineId: pipeline.id,
+                name: 'A',
+                url: 'rtmp://a',
+            });
+            for (const status of ['running', 'failed']) {
+                harness.outputStatus.set(output.id, status);
+                const res = await harness.request('POST', '/api/settings/reset-srt-passphrase');
+                assert.equal(res.status, 409, status);
+                assert.match(res.body.error, /1 active output/);
+                unchanged();
+            }
+
+            harness.outputStatus.set(output.id, 'stopped');
+            const res = await harness.request('POST', '/api/settings/reset-srt-passphrase');
+            assert.equal(res.status, 200);
+        });
+
+        test('reports a config it cannot edit as 500 and changes nothing', async () => {
+            const harness = createHarness();
+            fs.writeFileSync(SRS_CONF_PATH, 'srt_server {\n    listen 10080;\n}\n');
+
+            const res = await harness.request('POST', '/api/settings/reset-srt-passphrase');
+
+            assert.equal(res.status, 500);
+            assert.match(res.body.error, /no "passphrase" directive/);
+            assert.equal(fs.readFileSync(RELAY_CONF_PATH, 'utf8'), RELAY_CONF);
+            assert.equal(harness.events[0].type, 'srt-passphrase-reset-failed');
         });
     });
 });
