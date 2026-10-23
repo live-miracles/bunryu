@@ -96,6 +96,10 @@ Other things the diagnostics record so an incident can be pieced together:
   (duration, number of polls it was active, last message). An alert absent for
   six polls (~30 s) ends its episode, so a flickering condition is one episode. The
   dashboard shows the episode's start ("since 09:18") next to the alert.
+- **Publisher address:** `publisher-source` when a publisher connects, with the
+  encoder's address (`rtmp from <ip>`, `srt from <ip>`, `srt via relay from <ip>:<port>`);
+  the pipeline log gets the same line. A bonded input has none: its legs are logged
+  as they join and leave.
 - **Publish hooks:** `publish-allowed`, and `publish-rejected` for each rejection
   that is logged. Repeats are throttled to one journal line per minute per key.
   The number not logged goes on the next line, or, if the attempts stopped, on a

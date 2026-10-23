@@ -281,6 +281,16 @@ disconnects resets the remembered legs, so reconnecting is "connected with N leg
 a run of lost legs. The relay logs the same changes itself with one-second timing
 (`Bonded leg joined|left` in its journal); this view is the 5 s sample of it.
 
+**Plain inputs log their address too.** Each new publisher writes one pipeline-log line
+(`Publisher: rtmp from 198.51.100.4`) and a `publisher-source` diagnostics event, so the
+history says who connected, not only that someone did. SRS reports the address for RTMP
+and for SRT sent to port 10080, but an SRT input through Goryu reaches SRS over loopback
+(SRS sees 127.0.0.1), so its address is taken from the relay's `peer`
+(`srt via relay from 203.0.113.9:40123`). The relay status can lag SRS by a poll or two,
+so the line waits up to 15 s for the peer and then logs the loopback address (an encoder
+on the same host). It is one line per publisher, the same rate as the online/offline
+lines, so it needs no throttle of its own.
+
 **An idle leg is not a fault while another leg runs.** In a main/backup group the relay
 reports the standby leg as `idle` (carrying nothing) and the main leg as `running`; when
 the main leg fails the standby becomes `running` (checked 2026-10-22 against the relay with

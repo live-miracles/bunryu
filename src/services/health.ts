@@ -42,6 +42,11 @@ import {
     type LegLogState,
 } from '../utils/legLog.js';
 import {
+    describePublisherSource,
+    nextPublisherLog,
+    type PublisherLogState,
+} from '../utils/publisherLog.js';
+import {
     isProbeUsable,
     probeError,
     runFfprobe,
@@ -542,6 +547,8 @@ export function createHealthService(
     // Which legs (ip:port) a bonded input had at the last poll, for the pipeline log and
     // the diagnostics. Keyed by pipeline; reset when the input goes away. See utils/legLog.ts.
     const legLogs = new Map<number, LegLogState>();
+    // Whether the current publisher's source address has been logged. See utils/publisherLog.ts.
+    const publisherLogs = new Map<number, PublisherLogState>();
     const noteLegChanges = (
         pipelineId: number,
         legs: { ip: string; port: number }[],
@@ -1013,6 +1020,9 @@ export function createHealthService(
         }
         for (const pipelineId of inputPublisherCid.keys()) {
             if (!activePipelineIds.has(pipelineId)) inputPublisherCid.delete(pipelineId);
+        }
+        for (const pipelineId of publisherLogs.keys()) {
+            if (!activePipelineIds.has(pipelineId)) publisherLogs.delete(pipelineId);
         }
         for (const pipelineId of publisherChangedAt.keys()) {
             if (!activePipelineIds.has(pipelineId)) publisherChangedAt.delete(pipelineId);
@@ -1645,6 +1655,38 @@ export function createHealthService(
             }
             legHistory.set(pipeline.id, pipelineLegHistory);
             const publisher = s?.publish?.cid ? publisherByCid.get(s.publish.cid) : undefined;
+            {
+                const logged = nextPublisherLog(
+                    publisherLogs.get(pipeline.id),
+                    displayConnected && publisher?.id ? publisher.id : null,
+                    now,
+                    (waitedMs) =>
+                        describePublisherSource({
+                            protocol: nowSrtInput ? 'srt' : 'rtmp',
+                            ip: publisher?.ip ?? null,
+                            loopback: isLoopbackIp(publisher?.ip),
+                            relay: {
+                                active: rawBondingStatus.inputActive,
+                                bonded: relayInput.bonded,
+                                peer: relayInput.peer,
+                            },
+                            waitedMs,
+                        }),
+                );
+                if (logged.state) publisherLogs.set(pipeline.id, logged.state);
+                else publisherLogs.delete(pipeline.id);
+                if (logged.line) {
+                    try {
+                        db.appendPipelineLog(pipeline.id, 'publisher', `Publisher: ${logged.line}`);
+                    } catch {
+                        /* non-critical */
+                    }
+                    diagnostics?.event('publisher-source', {
+                        pipelineId: pipeline.id,
+                        source: logged.line,
+                    });
+                }
+            }
             const localSrtPublisherConflict = outputRows.some((output) => {
                 if (output.pipelineId === pipeline.id) return false;
                 if (output.desiredState !== 'running') return false;

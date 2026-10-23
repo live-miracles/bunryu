@@ -35,6 +35,10 @@ counters for an SRT publisher, so a stream sent straight to 10080 has no link
 statistics or loss alerts in the dashboard (its input card says so). Through the
 relay you get them, so use the bonded port when you want to watch the link.
 
+Whatever the protocol, the pipeline's log records the encoder's address each time a
+publisher connects (`Publisher: rtmp from <ip>`), which is how you tell afterwards
+which encoder was on a key. A bonded input logs its legs instead.
+
 ## Test commands
 
 These `ffmpeg` commands publish a test stream. Replace `localhost` with the
