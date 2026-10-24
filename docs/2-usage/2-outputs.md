@@ -182,6 +182,6 @@ keeps failing beeps only when it starts failing. Warnings and the host CPU alert
 beep; the host alerts are listed in Server Logs under Server events.
 
 The bell in the navbar mutes and unmutes the beeps; hover it for the volume slider.
-Both settings are kept in the browser. Browsers play sound only after the page has been
-clicked once, so the bell turns yellow until then: click anywhere on the dashboard after
-opening it. See [the design decision](../4-reference/3-design-decisions.md#alert-sound-beeps-for-new-problems-only-in-the-browser).
+Both settings are kept in the browser and shared by tabs on the same site. The dashboard
+tries to enable audio when it opens. Some browsers require a click or key press before
+they allow sound; the bell still shows your saved mute setting. See [the design decision](../4-reference/3-design-decisions.md#alert-sound-beeps-for-new-problems-only-in-the-browser).

@@ -34,11 +34,6 @@ function audible(): boolean {
     return enabled && volume > 0;
 }
 
-// Browsers play no sound until the page has been clicked or typed into.
-function soundAllowed(): boolean {
-    return navigator.userActivation?.hasBeenActive ?? true;
-}
-
 function load(): void {
     try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as {
@@ -67,15 +62,12 @@ function syncControl(): void {
     const slider = document.getElementById('alert-volume') as HTMLInputElement | null;
     if (!button || !slider) return;
     const on = audible();
-    const blocked = on && !soundAllowed();
     button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${on ? BELL : BELL_OFF}</svg>`;
-    button.classList.toggle('text-warning', blocked);
-    button.classList.toggle('opacity-70', !blocked);
-    const label = blocked
-        ? 'Alert beeps are on but the browser blocks sound until you click anywhere on the page'
-        : on
-          ? `Alert beeps at ${volume}% (click to mute)`
-          : 'Alert beeps muted (click to unmute)';
+    button.classList.remove('text-warning');
+    button.classList.toggle('opacity-70', !on);
+    const label = on
+        ? `Alert beeps at ${volume}% (click to mute)`
+        : 'Alert beeps muted (click to unmute)';
     button.title = label;
     button.setAttribute('aria-label', label);
     slider.value = String(enabled ? volume : 0);
@@ -101,6 +93,17 @@ function beep(): void {
         oscillator.stop(ctx.currentTime + 0.25);
     } catch (err) {
         console.warn('[alerts] could not play the alert beep:', err);
+    }
+}
+
+// Try autoplay on startup. Browsers that allow sound for this site can resume
+// immediately; others leave the context suspended until a user gesture.
+function tryEnableAudio(): void {
+    try {
+        audioContext ??= new AudioContext();
+        if (audioContext.state === 'suspended') void audioContext.resume().catch(() => {});
+    } catch {
+        // Audio remains available to try again on the next beep or user action.
     }
 }
 
@@ -137,6 +140,7 @@ export function noteDashboardSnapshot(snapshot: AttentionSnapshot): void {
 export function initSoundAlerts(): void {
     load();
     syncControl();
+    tryEnableAudio();
     document.getElementById('alert-sound-btn')?.addEventListener('click', () => {
         const wasAudible = audible();
         enabled = !wasAudible;
@@ -158,17 +162,4 @@ export function initSoundAlerts(): void {
         save();
         if (audible()) beep();
     });
-    // The first click or key press anywhere lets the browser play sound; the
-    // timeout reads the activation after the browser has recorded it.
-    const unlock = (): void => {
-        setTimeout(() => {
-            syncControl();
-            if (!soundAllowed()) return;
-            if (audioContext?.state === 'suspended') void audioContext.resume();
-            document.removeEventListener('pointerdown', unlock, true);
-            document.removeEventListener('keydown', unlock, true);
-        }, 0);
-    };
-    document.addEventListener('pointerdown', unlock, true);
-    document.addEventListener('keydown', unlock, true);
 }

@@ -10,12 +10,16 @@ panel does not display the URLs themselves.
 |----------|------|-----------|
 | RTMP | 21935/tcp | `rtmp://<public-host>:21935/live/<stream-key>` |
 | SRT | 10080/udp | `srt://<public-host>:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
+| SRT via relay | 10081/udp | `srt://<public-host>:10081?mode=caller&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
 | Bonded SRT | 10081/udp | `srt://<public-host>:10081?mode=caller&grouptype=broadcast&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
 
 `<public-host>` is the **Public Host** set in Settings. It is empty on a new install:
 the dashboard shows a banner asking for it, and the publish URLs use `localhost` until
 you set it. The SRT passphrase is
 generated at install time and can be reset in Settings; see [SRS and SRT relay config](../1-getting-started/3-install.md#srs-and-srt-relay-config).
+The repository's default passphrase is for development; an installed server replaces it
+with a generated secret. Copy the current passphrase from the dashboard rather than
+assuming the default.
 
 Prefer SRT when the encoder supports it: it has fixed, predictable latency,
 survives lossy networks better than RTMP, and keeps every audio track. Use
@@ -34,6 +38,9 @@ The trade-off is visibility: SRS does not expose packet loss, retransmit or drop
 counters for an SRT publisher, so a stream sent straight to 10080 has no link
 statistics or loss alerts in the dashboard (its input card says so). Through the
 relay you get them, so use the bonded port when you want to watch the link.
+The pipeline's SRT Relay card keeps a compact summary visible; select **Detailed stats**
+to open a dialog sized to its input, per-leg, output and graph content, within the
+screen width. It refreshes live statistics with the dashboard's regular poll.
 
 Whatever the protocol, the pipeline's log records the encoder's address each time a
 publisher connects (`Publisher: rtmp from <ip>`), which is how you tell afterwards
@@ -90,6 +97,16 @@ ffmpeg -re -stream_loop -1 -i video.mp4 \
   -c:v libx264 -preset veryfast -b:v 2500k -x264-params "repeat-headers=1" \
   -c:a aac -b:a 128k \
   -f mpegts 'srt://localhost:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16'
+```
+
+For a normal single-link SRT connection through the relay, use port 10081 without
+`grouptype=broadcast`:
+
+```bash
+ffmpeg -re -stream_loop -1 -i video.mp4 \
+  -c:v libx264 -preset veryfast -b:v 2500k -x264-params "repeat-headers=1" \
+  -c:a aac -b:a 128k \
+  -f mpegts 'srt://localhost:10081?mode=caller&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16'
 ```
 
 SRT with multiple audio tracks (for example one per language):

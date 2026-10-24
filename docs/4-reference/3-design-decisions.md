@@ -835,7 +835,9 @@ not there at the previous 5 s poll:
 - an output crashing or being restarted by a watchdog.
 
 A problem that lasts stays silent. The bell in the navbar mutes it, and its slider sets
-the volume (0–500%); both are kept per browser. The beep and control are ported from
+the volume (0–500%); both are kept in browser local storage and shared by tabs on the
+same site. The page tries to resume audio on startup; if browser autoplay policy blocks
+it, the bell still reflects the saved mute setting. The beep and control are ported from
 live-gallery's alert beeps, so both tools sound alike.
 
 **Why:**

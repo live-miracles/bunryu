@@ -340,7 +340,7 @@ async function loadLegHistory(pipelineId: string, showLoading = true): Promise<v
 }
 
 function renderLegHistorySection(): string {
-    return `<div id="srt-leg-history-section" class="mt-1">
+    return `<div id="srt-leg-history-section" class="mx-auto mt-1 w-full max-w-5xl">
         <div class="mb-2 flex items-center justify-center gap-2 px-1">
             <div class="flex items-center gap-1">
                 <button id="srt-leg-history-back" type="button" class="btn btn-xs btn-ghost">&#8592; 10 min</button>
@@ -415,10 +415,10 @@ export function srtDetailRow(label: string, value: string): string {
 // A section whose statistics were all unreported is left out with its title.
 export function srtDetailSection(title: string, rowsHtml: string): string {
     if (!rowsHtml) return '';
-    return `<div class="mb-4">
+    return `<section class="border-base-content/10 bg-base-100/50 min-w-0 rounded-lg border p-2">
         <div class="text-xs font-semibold uppercase opacity-50 mb-1">${escapeHtml(title)}</div>
         <div class="text-xs">${rowsHtml}</div>
-    </div>`;
+    </section>`;
 }
 
 function fmtRawCount(n: number | null | undefined): string {
@@ -524,7 +524,7 @@ function renderSrtStatsSections(pipelineId: string): string {
                   })
                   .join('');
 
-    return srtDetailSection('Input', inputRows) + srtDetailSection('Output', outputRows) + legsHtml;
+    return `<div class="srt-stat-grid">${srtDetailSection('Input', inputRows)}${legsHtml}${srtDetailSection('Output', outputRows)}</div>`;
 }
 
 function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement | null): void {
@@ -541,7 +541,7 @@ function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement
 
     contentEl.innerHTML =
         renderLegHistorySection() +
-        `<div data-srt-stats-body>${renderSrtStatsSections(pipelineId)}</div>`;
+        `<div class="font-sans" data-srt-stats-body>${renderSrtStatsSections(pipelineId)}</div>`;
     document.getElementById('srt-leg-history-back')?.addEventListener('click', () => {
         legHistoryOffsets.set(
             pipelineId,
@@ -597,15 +597,57 @@ function hideLogsModalClearErrors(): void {
 
 export function showSrtBondingDetails(pipelineId: string): void {
     const modal = document.getElementById('logs-modal') as HTMLDialogElement | null;
-    const refreshBtn = document.getElementById('logs-modal-refresh');
     if (!modal) return;
     hideLogsModalClearErrors();
 
+    modal.classList.add('srt-details-modal');
+    modal.dataset.srtPipelineId = pipelineId;
     renderSrtBondingDetailsContent(pipelineId);
-    if (refreshBtn) {
-        refreshBtn.classList.remove('hidden');
-        refreshBtn.classList.add('inline-flex');
-        refreshBtn.onclick = () => renderSrtBondingDetailsContent(pipelineId);
-    }
+    fitSrtDetailsDialog(modal);
     modal.showModal();
+}
+
+export function refreshSrtBondingDetailsModal(pipelineId: string): void {
+    const modal = document.getElementById('logs-modal') as HTMLDialogElement | null;
+    if (!modal?.open || modal.dataset.srtPipelineId !== pipelineId) return;
+    const statsBody = modal.querySelector('[data-srt-stats-body]');
+    if (statsBody) statsBody.innerHTML = renderSrtStatsSections(pipelineId);
+    fitSrtDetailsDialog(modal);
+}
+
+function fitSrtDetailsDialog(modal: HTMLDialogElement): void {
+    const box = modal.querySelector('.modal-box') as HTMLElement | null;
+    const grid = modal.querySelector('.srt-stat-grid') as HTMLElement | null;
+    if (!box || !grid) return;
+
+    const boxStyle = getComputedStyle(box);
+    const horizontalPadding =
+        Number.parseFloat(boxStyle.paddingLeft) + Number.parseFloat(boxStyle.paddingRight);
+    const maxWidth = window.innerWidth * 0.96;
+    const availableContentWidth = Math.max(1, maxWidth - horizontalPadding);
+    const gap = Number.parseFloat(getComputedStyle(grid).columnGap) || 8;
+    const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const maxColumnWidth = 22 * rem;
+    const itemCount = Math.max(1, grid.children.length);
+    const columns = Math.max(
+        1,
+        Math.min(itemCount, Math.floor((availableContentWidth + gap) / (maxColumnWidth + gap))),
+    );
+    const columnWidth = Math.min(
+        maxColumnWidth,
+        (availableContentWidth - gap * (columns - 1)) / columns,
+    );
+    const gridWidth = columnWidth * columns + gap * (columns - 1);
+
+    box.style.width = `${gridWidth + horizontalPadding}px`;
+    box.style.maxWidth = `${maxWidth}px`;
+    grid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, ${columnWidth}px))`;
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('resize', () => {
+        const modal = document.getElementById('logs-modal') as HTMLDialogElement | null;
+        if (modal?.open && modal.classList.contains('srt-details-modal'))
+            fitSrtDetailsDialog(modal);
+    });
 }

@@ -1270,7 +1270,7 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
     const titleEl = document.getElementById('logs-modal-title');
     const contentEl = document.getElementById('logs-modal-content');
     if (!modal || !contentEl) return;
-    hideLogsModalRefresh();
+    resetLogsModalLayout(modal);
     hideLogsModalClearErrors();
 
     const pipelineName = state.pipelines.find((p) => p.id === pipelineId)?.name ?? pipelineId;
@@ -1360,8 +1360,7 @@ export async function showOutputError(pipelineId: string, outId: string): Promis
     const contentEl = document.getElementById('logs-modal-content');
     const clearBtn = document.getElementById('logs-modal-clear-errors') as HTMLButtonElement | null;
     if (!modal || !contentEl) return;
-    hideLogsModalRefresh();
-
+    resetLogsModalLayout(modal);
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
     // A shared encode is an output row too, but lives apart from `outs`.
     const output = [...(pipeline?.outs ?? []), ...(pipeline?.renditions ?? [])].find(
@@ -1396,7 +1395,7 @@ export function showRelayError(pipelineId: string): void {
     const titleEl = document.getElementById('logs-modal-title');
     const contentEl = document.getElementById('logs-modal-content');
     if (!modal || !contentEl) return;
-    hideLogsModalRefresh();
+    resetLogsModalLayout(modal);
     hideLogsModalClearErrors();
 
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
@@ -1419,12 +1418,11 @@ export function showRelayError(pipelineId: string): void {
     modal.showModal();
 }
 
-function hideLogsModalRefresh(): void {
-    const refreshBtn = document.getElementById('logs-modal-refresh');
-    if (!refreshBtn) return;
-    refreshBtn.classList.add('hidden');
-    refreshBtn.classList.remove('inline-flex');
-    refreshBtn.onclick = null;
+function resetLogsModalLayout(modal: HTMLDialogElement): void {
+    modal.classList.remove('srt-details-modal');
+    const box = modal.querySelector('.modal-box') as HTMLElement | null;
+    box?.style.removeProperty('width');
+    box?.style.removeProperty('max-width');
 }
 
 function hideLogsModalClearErrors(): void {

@@ -23,6 +23,20 @@
       <div class="flex flex-1 items-center gap-3">
         <button class="btn btn-ghost px-2 text-xl font-bold" id="server-name-display" onclick="selectPipeline(null)">Bunryu</button>
         <button
+          id="settings-nav-btn"
+          class="btn btn-square btn-sm btn-ghost opacity-70"
+          onclick="openSettingsBtn()"
+          title="Settings"
+          aria-label="Settings">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
+          </svg>
+        </button>
+        <button
           id="srs-logs-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"
           onclick="openSrsLogsBtn()"
@@ -40,32 +54,6 @@
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
             <path d="M12 7v5l4 2" />
-          </svg>
-        </button>
-        <div class="group flex items-center" id="alert-sound-control">
-          <button id="alert-sound-btn" class="btn btn-square btn-sm btn-ghost opacity-70" title="Alert beeps" aria-label="Alert beeps"></button>
-          <input
-            id="alert-volume"
-            class="range range-xs w-0 opacity-0 transition-all duration-150 group-focus-within:mx-1 group-focus-within:w-20 group-focus-within:opacity-100 group-hover:mx-1 group-hover:w-20 group-hover:opacity-100"
-            type="range"
-            min="0"
-            max="500"
-            step="10"
-            value="100"
-            aria-label="Alert volume" />
-        </div>
-        <button
-          id="settings-nav-btn"
-          class="btn btn-square btn-sm btn-ghost opacity-70"
-          onclick="openSettingsBtn()"
-          title="Settings"
-          aria-label="Settings">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
           </svg>
         </button>
         <a
@@ -88,6 +76,18 @@
               d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
           </svg>
         </a>
+        <div class="group flex items-center" id="alert-sound-control">
+          <button id="alert-sound-btn" class="btn btn-square btn-sm btn-ghost opacity-70" title="Alert beeps" aria-label="Alert beeps"></button>
+          <input
+            id="alert-volume"
+            class="range range-xs w-0 opacity-0 transition-all duration-150 group-focus-within:mx-1 group-focus-within:w-20 group-focus-within:opacity-100 group-hover:mx-1 group-hover:w-20 group-hover:opacity-100"
+            type="range"
+            min="0"
+            max="500"
+            step="10"
+            value="100"
+            aria-label="Alert volume" />
+        </div>
         <div id="saving-badge" class="hidden items-center gap-2 text-sm opacity-60">
           <span class="loading loading-infinity loading-xs"></span>
           Saving
@@ -326,17 +326,6 @@
       <div class="modal-box flex h-[90vh] w-full max-w-[1400px] flex-col">
         <div class="flex shrink-0 items-center justify-between gap-2">
           <h2 class="text-xl font-bold" id="logs-modal-title">Output Logs</h2>
-          <button
-            id="logs-modal-refresh"
-            type="button"
-            class="btn btn-sm btn-ghost btn-square hidden items-center justify-center leading-none"
-            title="Refresh stats"
-            aria-label="Refresh stats">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="block h-4 w-4 shrink-0 fill-current" aria-hidden="true">
-              <path
-                d="M10 3a7 7 0 0 1 6.56 4.57.75.75 0 1 1-1.4.53A5.5 5.5 0 1 0 14.5 13H12a.75.75 0 0 1 0-1.5h4.25A.75.75 0 0 1 17 12.25v4.25a.75.75 0 0 1-1.5 0v-1.77A7 7 0 1 1 10 3Z" />
-            </svg>
-          </button>
         </div>
         <div id="logs-modal-content" class="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto font-mono text-xs"></div>
         <div class="modal-action shrink-0">
@@ -681,7 +670,12 @@
             </div>
           </div>
           <code class="hidden" id="srt-bonding-url"></code>
-          <div class="mt-1" id="srt-bonding-stats"></div>
+          <div class="mt-1 flex flex-wrap items-center gap-2">
+            <div class="min-w-0 flex-1" id="srt-bonding-stats"></div>
+            <button id="srt-bonding-details-toggle" class="btn btn-xs btn-ghost btn-outline hidden shrink-0" type="button" aria-haspopup="dialog">
+              Detailed stats
+            </button>
+          </div>
           <div class="mt-2" id="srt-bonding-legs"></div>
           <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
             <div class="flex min-w-0 items-center gap-2">

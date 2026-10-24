@@ -1901,9 +1901,17 @@ function renderPipelineInfo(selectedId: string | null): void {
             ? `&passphrase=${encodeURIComponent(state.config.srtPassphrase)}&pbkeylen=16`
             : '');
     const bondingGraphs = document.getElementById('srt-bonding-graphs');
-    const bondingStatsCard = document.getElementById('srt-bonding-stats-card');
+    const bondingDetailsToggle = document.getElementById(
+        'srt-bonding-details-toggle',
+    ) as HTMLButtonElement | null;
     bondingGraphs?.classList.toggle('hidden', !showSrtInputGraphs);
-    bondingStatsCard?.classList.toggle('hidden', !hasActiveBondingConnection);
+    bondingDetailsToggle?.classList.toggle('hidden', !hasActiveBondingConnection);
+    if (bondingDetailsToggle) {
+        bondingDetailsToggle.onclick = () =>
+            void import('../features/srt-bonding-details.js').then((ed) =>
+                ed.showSrtBondingDetails(pipeline.id),
+            );
+    }
     bondingCard?.classList.remove('opacity-60');
     if (bondingDot && bondingDotFill) {
         const indicator = getBondingIndicator(pipeline, relayProcessRunning);
@@ -1974,6 +1982,7 @@ function renderPipelineInfo(selectedId: string | null): void {
     }
 
     void import('../features/srt-bonding-details.js').then((ed) => {
+        ed.refreshSrtBondingDetailsModal(pipeline.id);
         if (showSrtInputGraphs) {
             ed.renderSrtBondingDetailsInline(pipeline.id);
         } else {
