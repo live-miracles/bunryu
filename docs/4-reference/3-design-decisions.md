@@ -594,12 +594,31 @@ a brief gap in the input would restart outputs and eat their 5-attempt budget. T
 10 minutes exist for publisher-less pulls (see the entry on blocked destinations
 above); the watchdogs end a stuck open after about 45-50 s anyway.
 
-**Not done:** restarting the shared encode after repeated failed reads, which is what
-fixed this by hand. It is a change to the watchdogs and needs fault tests; the
-cause is still unknown.
+**Not done (a possible feature):** restarting the shared encode automatically after
+repeated failed reads, which is what fixed this by hand and would have cut 25 minutes
+to about 2. It is held back because the cause is unknown and the fix has been seen
+to work once. If it is built, the design to start from:
 
-**Revisit when:** the new records show the cause (then fix it, or restart the shared
-encode automatically if SRS is at fault), or it happens again.
+- **Act only when all of these hold:** the reader wrote nothing and failed twice in
+  a row; its shared encode is running and has written data; no other reader of that
+  encode is producing data (restarting would cut a healthy output); SRS lists the
+  stream as publishing and has sent nothing to that reader (this separates a broken
+  path from a destination problem such as a DNS hang, which looks the same from
+  outside).
+- **Bound it:** at most one automatic restart per shared encode per 10 minutes, with
+  a diagnostics event and a History record on every affected output.
+- **Copy the manual recovery, not a quick restart:** stop the failing readers and the
+  shared encode, wait about 20 s, start the encode and let the readers follow. The
+  manual fix included a gap with no readers; if SRS keeps its stream object alive
+  while a reader keeps reconnecting, a plain restart of the encode could leave the
+  fault in place.
+- **Test the mechanics only:** the fault cannot be reproduced on the test stack, so
+  fault tests can cover the conditions, the bound, the sequence and that a healthy
+  sibling blocks it, not whether it cures the fault.
+
+**Revisit when:** the fault happens again and the new History records (SRS stream
+state, shared encode state) show where the bad state is. Build the restart then if it
+is in SRS or the encode, and fix it at the source if it is something else.
 
 ### Don't add an `ss -ti` ack-progress check; `-rw_timeout` is the knob
 
