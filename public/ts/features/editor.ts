@@ -1290,10 +1290,10 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
         .map(
             (
                 l,
-            ) => `<div class="flex items-center gap-3 border-b border-base-200 py-1.5 last:border-0">
+            ) => `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-base-200 py-1.5 last:border-0">
                 <span class="badge badge-xs leading-none ${l.event === 'online' ? 'badge-success' : 'badge-neutral'} shrink-0 uppercase">${l.event}</span>
                 <span class="text-xs opacity-70 shrink-0">${formatLocalDateTime(l.ts)}</span>
-                <span class="text-xs opacity-80">${l.message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+                <span class="min-w-0 basis-full break-words text-xs opacity-80 sm:basis-auto">${l.message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
             </div>`,
         )
         .join('');
@@ -1305,7 +1305,7 @@ function renderOutputErrorHistory(
     history: import('../types.js').OutputErrorRecord[],
 ): void {
     if (history.length === 0) {
-        contentEl.innerHTML = '<p class="opacity-50 text-sm">No error recorded.</p>';
+        contentEl.innerHTML = '<p class="opacity-50 text-sm">No history recorded yet.</p>';
         return;
     }
 
@@ -1349,9 +1349,9 @@ function renderOutputErrorHistory(
                   ? 'text-warning opacity-80'
                   : 'opacity-60';
             const body = entry.message
-                ? `<pre class="text-xs ${textClass} whitespace-pre-wrap break-all overflow-x-auto">${escapeHtml(entry.message)}</pre>`
+                ? `<pre class="text-xs ${textClass} whitespace-pre-wrap [overflow-wrap:anywhere]">${escapeHtml(entry.message)}</pre>`
                 : '';
-            return `<div class="${idx === 0 ? '' : 'mt-4 pt-4 border-t border-base-200'}">
+            return `<div class="${idx === 0 ? '' : 'mt-3 pt-3 border-t border-base-200 sm:mt-4 sm:pt-4'}">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="badge badge-xs ${badgeClass} uppercase">${badgeLabel}</span>
                     <span class="text-xs opacity-50">${ts}</span>
@@ -1374,7 +1374,7 @@ export async function showOutputError(pipelineId: string, outId: string): Promis
     const output = [...(pipeline?.outs ?? []), ...(pipeline?.renditions ?? [])].find(
         (o) => o.id === outId,
     );
-    if (titleEl) titleEl.textContent = `Error History - ${output?.name ?? outId}`;
+    if (titleEl) titleEl.textContent = `History — ${output?.name ?? outId}`;
     contentEl.textContent = 'Loading…';
     modal.showModal();
 

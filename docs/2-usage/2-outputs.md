@@ -95,14 +95,13 @@ with one row per encode, laid out like an output card: status, a restart button
 (after a confirmation; its outputs reconnect), the encoding as badges (the video
 encoding unless it is `copy`, and the audio track as `T1`, `T2`, …, where `T1` is
 track 0), how many outputs use it and how many are reading it now ("2 outs · 1
-read"), uptime, bitrate, CPU, memory, the failure count and **History** (its Error
-History), followed by the last error. While an output's encode is not up, the
+read"), uptime, bitrate, CPU, memory, the failure count and **History**, followed by the last error. While an output's encode is not up, the
 output shows a warning ("Waiting for Shared encode …", or "Shared encode failed:
 …"), not an error. The pipeline's "N readers" counts only what reads the input
 itself, not outputs that read a shared encode.
 
 **When a shared encode fails,** every output that uses it is restarted and waits
-for the encode to come back; each of them gets one Error History record "Shared
+for the encode to come back; each of them gets one History record "Shared
 encode … failed: …" naming the cause, so its card explains the reconnect. Other
 recipes, other pipelines and outputs that read the input directly are not
 affected. See [Reliability](../3-operations/4-reliability.md#shared-encodes).
@@ -158,7 +157,7 @@ start. An output that failed
 shows its failed attempts since it was last started and, while it waits to try again,
 when the next attempt is due ("retry in 8 s"). Problems appear on
 the card as warnings, each with the time it began ("since 09:18"), and every crash, watchdog restart and finished warning
-episode is kept in the output's **Error History** with the FFmpeg stderr tail,
+episode is kept in the output's **History** with the FFmpeg stderr tail,
 together with every stop and every start you make with **Start** (a "started" record).
 Both this history and the pipeline's **History** list the oldest entry first and open scrolled to the newest, like the logs.
 The History button is red while the latest record is a crash or watchdog restart;

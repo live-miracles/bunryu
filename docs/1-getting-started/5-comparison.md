@@ -71,7 +71,7 @@ and we chose it over writing our own.
 | Dashboard and API           | Dashboard and REST API                                 | Web UI and Swagger-documented REST API                      | HTTP API and config files                  | Control API and config file                            |
 | Bonded SRT ingest           | Yes, through [Goryu](https://github.com/live-miracles/goryu) | Not documented                                        | No ([ossrs/srs#4771](https://github.com/ossrs/srs/issues/4771)) | Not found in its docs or code                          |
 | SRT library | libsrt (Haivision), through SRS, FFmpeg and Goryu | gosrt (datarhei's Go implementation) in its built-in SRT server | libsrt | gosrt |
-| Recovery                    | Per-output watchdogs, bounded retries, Error History   | Restart after a fixed delay, progress stall timeout, optional CPU and memory limits | Not compared                         | Not compared                                       |
+| Recovery                    | Per-output watchdogs, bounded retries, History   | Restart after a fixed delay, progress stall timeout, optional CPU and memory limits | Not compared                         | Not compared                                       |
 | Translation audio mixing    | Yes (beta): ducking, delay and restore                 | Can mux a separate audio channel                            | No                                         | No                                                     |
 | Viewer-facing playback      | Dashboard preview only                                 | Built-in player and publication page                        | HLS, WebRTC and more                       | WebRTC, HLS, RTSP and more                             |
 | Where it runs               | Linux x86_64 (ARM only emulated, for development)      | Docker on AMD64, ARMv7 and ARM64                            | Linux and macOS on many CPU types          | Linux, Windows and macOS, one binary                   |
@@ -84,7 +84,7 @@ and we chose it over writing our own.
 - Pick Restreamer if you want a setup wizard, a built-in player or public page for
   viewers, hardware encoding (Raspberry Pi, NVIDIA, Intel), or to run on ARM.
 - Pick Bunryu for a Linux server that forwards many pipelines to many destinations
-  through long events, where per-output recovery, an Error History with FFmpeg's
+  through long events, where per-output recovery, a History with FFmpeg's
   last output, bonded SRT ingest or translation mixing matter.
 
 Its built-in SRT server uses gosrt, not libsrt, and in our trial its interface did not
@@ -103,8 +103,8 @@ and to explain their failures. This comes from reading Core's process supervisor
   still reports progress, a case seen on YouTube.
 - **Limits.** Core can kill a process above a CPU or memory limit. Bunryu enforces
   memory only: a CPU limit would kill encodes that are merely busy on a loaded host.
-- **Evidence.** Both keep FFmpeg's last output per run. Bunryu also keeps an Error
-  History per output and writes timestamped diagnostics for every start, exit,
+- **Evidence.** Both keep FFmpeg's last output per run. Bunryu also keeps a History
+  per output and writes timestamped diagnostics for every start, exit,
   restart and watchdog action, and groups FFmpeg's repeated timestamp warnings.
 
 ## SRS

@@ -26,8 +26,8 @@ Hardening that is on by default:
 - **Headers:** `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`,
   `Referrer-Policy: no-referrer`. A full CSP is not possible until the dashboard's
   inline event handlers are removed.
-- **Logs are not redacted:** journald, the diagnostics files, the output Error
-  History and the dashboard keep FFmpeg's stderr as-is, including full
+- **Logs are not redacted:** journald, the diagnostics files, the output History
+  and the dashboard keep FFmpeg's stderr as-is, including full
   destination URLs, stream keys and SRT passphrases. They are private to the
   server and its operators; redact before copying any of it into a commit or
   issue.

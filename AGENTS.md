@@ -195,8 +195,8 @@ only for a new module.
   service wiring, graceful shutdown.
 - `src/services/outputs.ts` - one FFmpeg process per output: start/stop/retry,
   stall/socket/memory watchdogs (a socket or stall restart first reads the input's
-  SRS stream into the Error History and event), timestamp-warning bursts and warning
-  episodes, output Error History writes (including a manual Start); shared-encode readiness, dependents' restart on a
+  SRS stream into the History and event), timestamp-warning bursts and warning
+  episodes, output History writes (including a manual Start); shared-encode readiness, dependents' restart on a
   rendition failure and `restart()`. `outputSockets.ts` parses `ss` for
   destination socket health.
 - `src/services/renditions.ts` - the shared-encode reconciler (1 s tick): creates
@@ -222,7 +222,7 @@ only for a new module.
   the three config files first thing at startup and exit 78 if one is missing or invalid; `srtPassphrase.ts` generates a new SRT passphrase and writes it to `srs.conf` and `goryu.json` (Settings reset); `diagnostics.ts` is the rotated JSONL
   writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
   read SRS and relay config.
-- `src/db/` - SQLite schema and access (output Error History lives in
+- `src/db/` - SQLite schema and access (output History lives in
   `outputs.last_error` as JSON).
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into

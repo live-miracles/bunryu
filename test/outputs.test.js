@@ -1031,7 +1031,7 @@ describe('output stop/start race', () => {
         service.shutdown();
     });
 
-    test('a start that fails before spawning leaves one Error History record per episode', async (t) => {
+    test('a start that fails before spawning leaves one History record per episode', async (t) => {
         const procs = [];
         const db = makeDb();
         const createOutputService = loadOutputService(
@@ -1339,7 +1339,7 @@ describe('output service control surface', () => {
         service.shutdown();
     });
 
-    test('a high-memory episode is recorded once, in the output Error History, when it clears', async (t) => {
+    test('a high-memory episode is recorded once, in the output History, when it clears', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const diagnostics = makeDiagnosticsSpy();
@@ -2238,7 +2238,7 @@ describe('output diagnostics events', () => {
             await sleep(25);
             assert.match(service.getStats('out1').warningReason, /decode_slice_header error/);
 
-            // The finished burst is recorded in the output's own Error History.
+            // The finished burst is recorded in the output's own History.
             clock.now += 31_000;
             await sleep(40);
             assert.equal(db.errorRecords.length, 1);
@@ -2284,7 +2284,7 @@ describe('output diagnostics events', () => {
             service.shutdown();
         });
 
-        test('a timestamp burst is recorded once, at its end, in the output Error History', async (t) => {
+        test('a timestamp burst is recorded once, at its end, in the output History', async (t) => {
             const clock = startWithClock(t);
             const proc = new FakeFfmpeg();
             const createOutputService = loadOutputService(t, proc, {
@@ -2310,7 +2310,7 @@ describe('output diagnostics events', () => {
             service.shutdown();
         });
 
-        test('timestamp bursts reach the output Error History at most once per interval', async (t) => {
+        test('timestamp bursts reach the output History at most once per interval', async (t) => {
             const clock = startWithClock(t);
             const proc = new FakeFfmpeg();
             const createOutputService = loadOutputService(t, proc, {
@@ -3447,7 +3447,7 @@ describe('manual start', () => {
         delete require.cache[require.resolve('../src/utils/appConfig')];
     });
 
-    test('a start by a person is recorded in the Error History and the diagnostics', async (t) => {
+    test('a start by a person is recorded in the History and the diagnostics', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const diagnostics = makeDiagnosticsSpy();

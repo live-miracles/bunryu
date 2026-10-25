@@ -101,7 +101,7 @@ function parseOutputErrorHistory(raw: string | null): OutputErrorRecord[] {
         if (reportedCorruptHistory.size < 100 && !reportedCorruptHistory.has(key)) {
             reportedCorruptHistory.add(key);
             console.error(
-                `[db] unreadable output Error History, treating it as empty: ${String(err)} (${key})`,
+                `[db] unreadable output History, treating it as empty: ${String(err)} (${key})`,
             );
         }
         return [];

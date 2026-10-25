@@ -55,7 +55,7 @@ and writing at its normal bitrate for 25 minutes while every output reading it
 (several YouTube keys) failed to get any data from it, restarted about every 50 s and
 was stopped after 5 failed attempts. Pipelines started at the same moment with the
 same settings were fine. Restarting the shared encode cleared it. The cause inside
-SRS or the encode is not established. The Error History now reads "No input data" and
+SRS or the encode is not established. The output's History now reads "No input data" and
 shows the shared encode's and SRS's state, which should show it the next time.
 Workaround: stop every output of the pipeline, wait about 20 s until its shared
 encode stops, then start them again. Details in

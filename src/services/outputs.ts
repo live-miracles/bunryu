@@ -106,7 +106,7 @@ const TIMESTAMP_MAX_KINDS = 8;
 // they persist past this grace period, and a decode-only burst shorter than
 // that is never written to History (it happens on every output start).
 const DECODE_WARNING_GRACE_MS = 10_000;
-// A finished burst is also recorded in the output's own Error History (capped,
+// A finished burst is also recorded in the output's own History (capped,
 // shared with crashes). Per output, each class of burst (timing, sustained
 // decode) is recorded at most once per interval, so a flapping input cannot
 // fill the history's warning slots with near-identical records. Diagnostics
@@ -227,12 +227,12 @@ interface SocketWarning {
 
 export interface OutputService {
     getStats(outputId: string): OutputStats;
-    // `byUser`: a person pressed Start; the Error History gets a 'started' record.
+    // `byUser`: a person pressed Start; the History gets a 'started' record.
     start(outputId: string, options?: { byUser?: boolean }): Promise<void>;
     stop(outputId: string): void;
     stopAndWait(outputId: string): Promise<void>;
     // Stops a running output and starts it again, recording the restart in its
-    // Error History as a deliberate stop (not a failure). Restarting a rendition
+    // History as a deliberate stop (not a failure). Restarting a rendition
     // also restarts the outputs pulling from it. False when it is not running.
     restart(outputId: string, why?: string): boolean;
     // The input's format changed under running outputs (an encoder reconnected with
@@ -355,7 +355,7 @@ export function createOutputService(
             // re-check while the input is down), shown on the output card.
             retryAtMs: number | null;
             // Which start problems the current episode (since the last spawn)
-            // already put in the Error History, so a start that keeps failing
+            // already put in the History, so a start that keeps failing
             // adds one record, not one per attempt.
             startFailureNoted: boolean;
             backstopNoted: boolean;
@@ -593,7 +593,7 @@ export function createOutputService(
         }
     }
 
-    // A person started the output. Written to its Error History, so a later
+    // A person started the output. Written to its History, so a later
     // failure shows who began the run and when, and to the diagnostics. Like a
     // 'stopped' record it ends an earlier crash's claim to be the current error.
     function noteUserStart(output: Output, sourceReady: boolean): void {
@@ -896,7 +896,7 @@ export function createOutputService(
     }
 
     // True (and records the claim) if this output's burst class has not been
-    // written to its Error History within the interval.
+    // written to its History within the interval.
     function claimBurstHistory(outputId: string, cls: string, now: number): boolean {
         const key = `${outputId}:${cls}`;
         const last = burstHistoryAtMs.get(key);
@@ -905,7 +905,7 @@ export function createOutputService(
         return true;
     }
 
-    // Writes one 'warning' record to the output's Error History, at most once
+    // Writes one 'warning' record to the output's History, at most once
     // per interval per output and class (see BURST_HISTORY_INTERVAL_MS).
     function recordWarningHistory(
         outputId: string,
@@ -927,7 +927,7 @@ export function createOutputService(
     // Warnings that otherwise only show on the output card (high memory,
     // unhealthy destination socket, media clock running fast) are tracked as
     // episodes: one diagnostics event when one starts, and one event plus one
-    // Error History record when it ends (it clears, or the process exits).
+    // History record when it ends (it clears, or the process exits).
     function warningStarted(outputId: string, kind: WarningKind, message: string): void {
         const key = `${outputId}:${kind}`;
         if (warningEpisodes.has(key)) return;
@@ -1272,7 +1272,7 @@ export function createOutputService(
     }
 
     // Restarts an output the watchdog found stuck. The input source is described
-    // first (bounded), so the Error History and the diagnostics say what the
+    // first (bounded), so the History and the diagnostics say what the
     // output was waiting on; the process is checked again afterwards because it
     // may have exited, been stopped or been replaced in the meantime. One restart
     // per output at a time: the watchdog tick keeps seeing the same fault until

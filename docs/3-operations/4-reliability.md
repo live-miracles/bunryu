@@ -31,7 +31,7 @@ watchdog says so: "No input data: ffmpeg has written nothing and never connected
 the destination". Before the socket or progress watchdog restarts an output, it reads
 that output's stream from SRS (waiting at most 2 s) and adds `input_source`,
 `srs_stream` (publisher, readers, bitrate, frames, codecs) and, for a shared output,
-`shared_encode` (process state, readiness, uptime, bitrate) to the Error History
+`shared_encode` (process state, readiness, uptime, bitrate) to the History
 record, and an `inputSource` object to the `ffmpeg-restart` diagnostic event. If SRS
 does not answer, the line says so and the restart goes ahead. Why:
 [the 2026-10-25 shared-encode incident](../4-reference/3-design-decisions.md#an-output-that-never-connected-is-reported-as-waiting-for-input-and-restarts-record-the-input-source).
@@ -42,7 +42,7 @@ stopped answering instead of waiting for the progress watchdog: a connect that n
 completes ends after 5 s (FFmpeg's own timeout), a destination that never answers
 after 10 s, and one that stops reading mid-stream after 30 s for RTMP (three times
 the value) or about 10 s for RTMPS. The socket watchdog cannot see these, because
-the socket stays ESTABLISHED. The exit shows in the Error History as "Connection
+the socket stays ESTABLISHED. The exit shows in the History as "Connection
 timed out" (or "Error closing file: Input/output error" for RTMPS mid-stream) and
 the retry loop takes over. SRT destinations need no such option: libsrt ends a
 destination that never answers after about 4 s and one that goes silent mid-stream
@@ -66,7 +66,7 @@ them (staggered, with an `output-restarted-by-backstop` diagnostics event). An
 output has to look that way on two checks in a row, so it does not race the
 normal staggered start when an input comes online. Normally nothing matches; it
 exists for unexpected errors, such as a start that threw. Such a start leaves
-"Start failed: <error>" in the output's Error History (shown in red), and a backstop
+"Start failed: <error>" in the output's History (shown in red), and a backstop
 start leaves "Watchdog: nothing was starting this output; starting it", each once
 until the output spawns again, so a start that keeps failing does not fill the
 history. However a start is triggered (API, retry, health poll or backstop), the
@@ -101,9 +101,9 @@ systemd restarts it, instead of running without a dashboard. A diagnostics write
 failure (disk full, directory unwritable) drops and counts events instead of
 crashing; see
 [Configuration](3-configuration.md). On SIGTERM each shutdown step runs on its own,
-so one that throws cannot stop the others or the exit. An output whose stored Error
-History cannot be read is treated as having none (logged once as `[db] unreadable
-output Error History`) instead of failing every output listing; its next error
+so one that throws cannot stop the others or the exit. An output whose stored History
+cannot be read is treated as having none (logged once as `[db] unreadable
+output History`) instead of failing every output listing; its next error
 replaces it.
 
 **Service restarts.** The three systemd units restart a process 2 s after it exits
@@ -182,7 +182,7 @@ wall time over windows of 30 s, and when two windows in a row run below 0.9x the
 shows "Output is running at 0.62x realtime and falling behind live". One good window
 clears it. It is a warning only: nothing is restarted, and it is recorded like the
 other card warnings (an `ffmpeg-warning-started` / `ffmpeg-warning-ended` pair of
-diagnostics events with `kind: falling-behind`, and an Error History record when it
+diagnostics events with `kind: falling-behind`, and a History record when it
 ends). The card shows when the warning began ("since 09:18"). The last finished
 window's speed is also in the health data (`speed`) and on the card's badge when it is
 below 0.95x or above 1.05x; the first window after a start is not reported, because
@@ -203,7 +203,7 @@ Outputs on one pipeline that need the same encode share one FFmpeg, a *shared
 encode* (see [Outputs](../2-usage/2-outputs.md#shared-encodes)). It is an ordinary
 output row, so it is supervised exactly like one: the same retry back-off
 (see [Retries](#watchdogs)), output progress, memory and socket
-watchdogs (with the memory limit of its video encoding), Error History and
+watchdogs (with the memory limit of its video encoding), History and
 diagnostics. The outputs that read it are ordinary outputs that copy from it.
 
 - **When an encode exists.** Only when at least two outputs of a pipeline are
@@ -228,7 +228,7 @@ diagnostics. The outputs that read it are ordinary outputs that copy from it.
 - **When it exits on its own** (crash, a watchdog restart, a refused publish), each
   output that reads it that is running is stopped and rescheduled through the normal
   retry path and waits for the encode; each such output, running or already
-  waiting, gets one Error History record "Shared encode … failed: …" with the exit
+  waiting, gets one History record "Shared encode … failed: …" with the exit
   status or the watchdog reason and the stderr tail, and no second crash record for
   its own stop. The diagnostics event `rendition-dependents-restarted` lists them.
   A deliberate stop does not do this: an idle stop happens only when no reader is
@@ -261,7 +261,7 @@ diagnostics. The outputs that read it are ordinary outputs that copy from it.
   reads one, `renditionId`; the once-a-minute `health-snapshot` has `role`,
   `renditionId` and `ready` per output.
 - **Recovery after a restart.** The rows live in the database, so a shared encode and
-  its Error History survive an app restart for as long as two outputs use its recipe. An
+  its History survive an app restart for as long as two outputs use its recipe. An
   encode left behind by a crashed app is killed at startup with the other orphaned
   FFmpeg processes.
 
@@ -294,8 +294,8 @@ unstable" alert, and nothing is written to the pipeline **History** (which is fo
 input and pipeline issues only), because the cause (encoder, network, relay or the
 output itself) cannot be told from the warnings alone. Each finished burst (a
 timestamp burst, or a decode-only burst of 10 s or more; stopped after 30 s of
-quiet, or ended with the ffmpeg exit) is recorded in the output's own **Error
-History** (the error button on the output) as a `warning` record with the duration,
+quiet, or ended with the ffmpeg exit) is recorded in the output's own **History**
+(the history button on the output) as a `warning` record with the duration,
 warning count and first line. Per output, each class of burst is recorded at most
 once per 10 minutes, and the diagnostics events always carry every burst. That
 history keeps the last 10 records per output, of which at most 5 may be warnings, so
@@ -307,7 +307,7 @@ once per episode: high memory usage (70 % or more of the output's limit), an
 unhealthy destination socket, and the FFmpeg media clock running fast. An episode
 logs an `ffmpeg-warning-started` diagnostics event, and when it clears (or the
 process exits) an `ffmpeg-warning-ended` event with the duration plus one `warning`
-record in the output's Error History. These share the 5 warning slots and the
+record in the output's History. These share the 5 warning slots and the
 10-minute-per-kind limit above. A warning that escalates to a watchdog restart
 therefore appears twice: the build-up as a `warning`, then the restart as a crash.
 
@@ -376,7 +376,7 @@ the new publisher is compared with the last successful one for that pipeline.
   formats cannot start a restart storm; a change inside that window is only reported.
 - Each restart is an `input-format-changed` diagnostics event (outputs restarted,
   `suppressed`), a line in the pipeline log, and a "Restarted: input format changed
-  from … to …" record in each output's Error History (a deliberate stop, not a crash).
+  from … to …" record in each output's History (a deliberate stop, not a crash).
 
 Restarting outputs automatically whenever the input restarts is **not implemented**
 because the server cannot reliably tell an encoder restart from a network

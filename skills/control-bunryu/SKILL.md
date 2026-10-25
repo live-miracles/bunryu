@@ -1,6 +1,6 @@
 ---
 name: control-bunryu
-description: Control a running Bunryu instance (local, test stack or production) through its REST API - log in, read pipeline/output state and health, create pipelines and outputs, start, stop and restart outputs, read an output's Error History. Use when the user asks to set up, change, start/stop or check streams on a running instance. NOT for server logs or deploys (use investigate-prod) and not for starting a local test stack (use run-bunryu).
+description: Control a running Bunryu instance (local, test stack or production) through its REST API - log in, read pipeline/output state and health, create pipelines and outputs, start, stop and restart outputs, read an output's History. Use when the user asks to set up, change, start/stop or check streams on a running instance. NOT for server logs or deploys (use investigate-prod) and not for starting a local test stack (use run-bunryu).
 ---
 
 # Control a Bunryu instance

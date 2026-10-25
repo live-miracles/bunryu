@@ -1055,9 +1055,9 @@ describe('schema version stamp', () => {
     });
 });
 
-// ── Corrupt Error History ─────────────────────────────
+// ── Corrupt History ─────────────────────────────
 
-describe('Corrupt Error History', () => {
+describe('Corrupt History', () => {
     for (const [label, value] of [
         ['not JSON', 'ffmpeg exited'],
         ['not an array', '{"ts":1,"message":"x"}'],

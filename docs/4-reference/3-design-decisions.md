@@ -419,7 +419,7 @@ outputs pull that stream in copy mode.
 **How it's built:**
 - **A rendition is an output row** of the same pipeline, recognised by its URL
   (`rtmp://127.0.0.1:<port>/internal/r<id>_<video>_a<audio>`). It reuses the output
-  service's supervision, watchdogs, retry back-off, Error History, stats and
+  service's supervision, watchdogs, retry back-off, History, stats and
   health unchanged. A reconciler (one tick per second) creates, removes, starts and
   idle-stops the rows.
 - **No schema change and no config option,** so the production database is not
@@ -445,7 +445,7 @@ outputs pull that stream in copy mode.
   only over RTMP from loopback for a running rendition row.
 - **Readiness is local** (process running and data written), not the 5 s health
   poll. When a rendition exits on its own its readers are restarted and wait for it;
-  each gets an Error History record naming the cause. After 15 s with no running
+  each gets a History record naming the cause. After 15 s with no running
   reader it stops, so a quick stop/start does not restart the shared encode.
 
 **Evidence** (local isolated stack, 2026-10-17, SRS 6.0-r2, FFmpeg 7.1.4, one
@@ -571,7 +571,7 @@ mechanism).
 an output that has written nothing, it reports "No input data" instead of "Destination
 socket unhealthy". Before the socket or progress watchdog restarts an output, it reads
 the output's stream from SRS (at most 2 s, `/api/v1/streams`) and, for a shared
-output, the shared encode's state, and puts both in the Error History record and the
+output, the shared encode's state, and puts both in the History record and the
 `ffmpeg-restart` diagnostic event. The input's `-rw_timeout` stays at 10 minutes.
 
 **Incident (2026-10-25, pipeline 12):** a shared encode ran and wrote at 2.4-2.5 Mbps
@@ -920,7 +920,7 @@ Destination failures are diagnosed from the outputs themselves.
 - **It raised no alert.** Nothing in the health poll, the alerts or the beeps used
   the result, so it could not warn during a live event.
 - **The outputs already say the same.** A destination that refuses or times out
-  shows in that output's Error History (FFmpeg's stderr tail and exit reason), in the
+  shows in that output's History (FFmpeg's stderr tail and exit reason), in the
   socket watchdog's findings and in its retry state, per output and with a
   timestamp. The probe added only "is the platform down or just this output?", and
   only for someone who looked.
@@ -1004,7 +1004,7 @@ unwritable diagnostics directory at startup. The health poll and the host-probe 
 (since removed, see [Don't probe platform hosts from the server](#dont-probe-platform-hosts-from-the-server))
 had `try`/`finally` with no `catch`, the same pattern the ffprobe fix (see the
 ESLint entry above) removed. Regression tests cover a write-stream error, an
-unwritable directory, a throwing health poll, a corrupt Error History row, `runLogged`
+unwritable directory, a throwing health poll, a corrupt History row, `runLogged`
 and the JSON error handler.
 
 **Revisit when:** an incident shows the process kept running in a broken state
