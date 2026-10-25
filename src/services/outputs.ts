@@ -22,6 +22,7 @@ import {
     type DiagnosticsLogger,
 } from '../utils/diagnostics.js';
 import {
+    RENDITION_APP,
     encodeRecipe,
     isRenditionOutput,
     renditionUrl,
@@ -29,9 +30,11 @@ import {
 } from '../utils/renditions.js';
 import {
     destinationSocketWarning,
+    isNoInputDataWarning,
     parseTcpSocketSnapshot,
     type TcpSocket,
 } from './outputSockets.js';
+import { fetchSrsStreams, type SrsStream } from '../utils/srs.js';
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
 // Each retry waits up to this fraction less than its step, at random: when a
@@ -81,6 +84,9 @@ const OUTPUT_WATCHDOG_INTERVAL_MS = appConfig.outputWatchdog.intervalMs;
 const OUTPUT_SOCKET_WARMUP_MS = appConfig.outputWatchdog.socketWarmupMs;
 const OUTPUT_SOCKET_GRACE_MS = appConfig.outputWatchdog.socketGraceMs;
 const SOCKET_SNAPSHOT_TIMEOUT_MS = 2000;
+// How long a watchdog restart waits for SRS to describe the stream the output was
+// reading before it restarts the output without that evidence.
+const SOURCE_STATE_TIMEOUT_MS = 2000;
 // Surface a UI warning once RSS crosses this fraction of the memory limit, well
 // before the watchdog actually restarts the process at 100% — gives an early
 // (yellow) signal that a leak may be building without waiting for the kill.
@@ -221,7 +227,8 @@ interface SocketWarning {
 
 export interface OutputService {
     getStats(outputId: string): OutputStats;
-    start(outputId: string): Promise<void>;
+    // `byUser`: a person pressed Start; the Error History gets a 'started' record.
+    start(outputId: string, options?: { byUser?: boolean }): Promise<void>;
     stop(outputId: string): void;
     stopAndWait(outputId: string): Promise<void>;
     // Stops a running output and starts it again, recording the restart in its
@@ -302,6 +309,7 @@ export function createOutputService(
     db: Db,
     inputState: InputState,
     diagnostics?: DiagnosticsLogger,
+    fetchStreams: () => Promise<SrsStream[]> = fetchSrsStreams,
 ): OutputService {
     const processes = new Map<string, ChildProcess>();
     const statuses = new Map<
@@ -323,6 +331,8 @@ export function createOutputService(
     // Open episodes of the card-only warnings (see warningStarted).
     const warningEpisodes = new Map<string, { startedAtMs: number; message: string }>();
     const watchdogKills = new Set<string>();
+    // Outputs whose watchdog restart is waiting for the input source's state.
+    const watchdogRestarting = new Set<string>();
     // Why a watchdog killed a process; explains the failure to a rendition's
     // dependents and goes on the ffmpeg-exited event.
     const watchdogReasons = new Map<string, string>();
@@ -581,6 +591,29 @@ export function createOutputService(
         } catch (err) {
             console.warn(red(`[outputs] ${outputId} could not record "${message}":`), err);
         }
+    }
+
+    // A person started the output. Written to its Error History, so a later
+    // failure shows who began the run and when, and to the diagnostics. Like a
+    // 'stopped' record it ends an earlier crash's claim to be the current error.
+    function noteUserStart(output: Output, sourceReady: boolean): void {
+        try {
+            db.setOutputLastError(
+                output.id,
+                sourceReady
+                    ? 'Started manually'
+                    : 'Started manually; waiting for its source to be ready',
+                'started',
+            );
+        } catch (err) {
+            console.warn(red(`[outputs] ${output.id} could not record the manual start:`), err);
+        }
+        logEvent('output-user-start', {
+            outputId: output.id,
+            outputName: output.name,
+            ...roleFields(output),
+            sourceReady,
+        });
     }
 
     function clearRetry(outputId: string): void {
@@ -1030,7 +1063,12 @@ export function createOutputService(
         return value == null ? 'unknown' : String(value);
     }
 
-    function buildWatchdogError(outputId: string, proc: ChildProcess, now: number): string {
+    function buildWatchdogError(
+        outputId: string,
+        proc: ChildProcess,
+        now: number,
+        sourceText: string,
+    ): string {
         const p = progress.get(outputId);
         const stalledForSec = p
             ? Math.round((now - p.lastOutputProgressAtMs) / 1000)
@@ -1046,6 +1084,7 @@ export function createOutputService(
             `last_total_size=${formatNullable(p?.lastTotalSize ?? null)}`,
             `last_out_time_us=${formatNullable(p?.lastOutTimeMs ?? null)}`,
             `last_bitrate_kbps=${formatNullable(p?.lastBitrateKbps ?? null)}`,
+            sourceText,
             stderr ? `ffmpeg stderr tail:\n${stderr}` : 'ffmpeg stderr tail: <empty>',
             `Restarting output: no ffmpeg output progress for ${stalledForSec}s`,
         ].join('\n');
@@ -1055,6 +1094,7 @@ export function createOutputService(
         outputId: string,
         proc: ChildProcess,
         reason: string,
+        sourceText: string,
     ): string {
         const p = progress.get(outputId);
         const sockets = proc.pid == null ? [] : (tcpSocketsByPid.get(proc.pid) ?? []);
@@ -1065,13 +1105,16 @@ export function createOutputService(
                       .map((s) => `  ${s.state} peer=${s.peerAddress}:${s.peerPort}`)
                       .join('\n')}`;
         return [
-            'watchdog: ffmpeg destination socket unhealthy; restarting process',
+            isNoInputDataWarning(reason)
+                ? 'watchdog: ffmpeg received no input data; restarting process'
+                : 'watchdog: ffmpeg destination socket unhealthy; restarting process',
             `pid=${proc.pid ?? 'unknown'}`,
             `socket_warning=${reason}`,
             socketSnapshot,
             `last_total_size=${formatNullable(p?.lastTotalSize ?? null)}`,
             `last_out_time_us=${formatNullable(p?.lastOutTimeMs ?? null)}`,
             `last_bitrate_kbps=${formatNullable(p?.lastBitrateKbps ?? null)}`,
+            sourceText,
             p?.stderrTail.trim()
                 ? `ffmpeg stderr tail:\n${p.stderrTail.trim()}`
                 : 'ffmpeg stderr tail: <empty>',
@@ -1130,8 +1173,160 @@ export function createOutputService(
         if (existing?.reason === reason) return existing;
         const next = { reason, badSinceMs: existing?.badSinceMs ?? now };
         socketWarnings.set(outputId, next);
-        warningStarted(outputId, 'socket', `Destination socket unhealthy: ${reason}`);
+        warningStarted(
+            outputId,
+            'socket',
+            isNoInputDataWarning(reason) ? reason : `Destination socket unhealthy: ${reason}`,
+        );
         return next;
+    }
+
+    // Many outputs can be found stuck in the same tick (a shared encode they all
+    // read went bad): they share one request to SRS instead of one each.
+    let streamsRequest: Promise<SrsStream[]> | null = null;
+    function fetchStreamsOnce(): Promise<SrsStream[]> {
+        streamsRequest ??= fetchStreams().finally(() => {
+            streamsRequest = null;
+        });
+        return streamsRequest;
+    }
+
+    // What the output was reading when the watchdog found it stuck: the stream in
+    // SRS (its publisher, readers, bitrate, codecs) and, for a shared output, the
+    // shared encode's own process. This is what tells an input that never
+    // delivered from a destination that refused data. Never throws and waits at
+    // most SOURCE_STATE_TIMEOUT_MS for SRS.
+    async function describeInputSource(
+        output: Output,
+    ): Promise<{ text: string; fields: Record<string, unknown> }> {
+        const renditionId = renditionOf.get(output.id);
+        const rendition = renditionId ? db.getOutput(renditionId) : null;
+        const app = renditionId ? RENDITION_APP : 'live';
+        const name = renditionId
+            ? (rendition?.url.slice(rendition.url.lastIndexOf('/') + 1) ?? null)
+            : (db.getPipeline(output.pipelineId)?.streamKey ?? null);
+        const fields: Record<string, unknown> = { stream: name === null ? null : `${app}/${name}` };
+        const lines = [`input_source: ${fields.stream ?? 'unknown'}`];
+
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            const streams = await Promise.race([
+                fetchStreamsOnce(),
+                new Promise<never>((_resolve, reject) => {
+                    timer = setTimeout(
+                        () => reject(new Error(`no answer in ${SOURCE_STATE_TIMEOUT_MS} ms`)),
+                        SOURCE_STATE_TIMEOUT_MS,
+                    );
+                }),
+            ]);
+            const s = streams.find((x) => x.app === app && x.name === name);
+            if (!s) {
+                fields.srs = { found: false };
+                lines.push('srs_stream: not found in SRS');
+            } else {
+                const video = s.video
+                    ? `${s.video.codec} ${s.video.width}x${s.video.height}`
+                    : null;
+                const audio = s.audio ? s.audio.codec : null;
+                fields.srs = {
+                    found: true,
+                    publishing: s.publish.active,
+                    clients: s.clients,
+                    recvKbps: s.kbps.recv_30s,
+                    sendKbps: s.kbps.send_30s,
+                    frames: s.frames,
+                    video,
+                    audio,
+                };
+                lines.push(
+                    `srs_stream: publish=${s.publish.active ? 'active' : 'none'} clients=${s.clients} recv_30s=${s.kbps.recv_30s}kbps send_30s=${s.kbps.send_30s}kbps frames=${s.frames} video=${video ?? 'none'} audio=${audio ?? 'none'}`,
+                );
+            }
+        } catch (err) {
+            const error = err instanceof Error ? err.message : String(err);
+            fields.srs = { error };
+            lines.push(`srs_stream: unavailable (${error})`);
+        } finally {
+            clearTimeout(timer);
+        }
+
+        if (renditionId) {
+            const now = Date.now();
+            const startedAtMs = startTimes.get(renditionId);
+            const rp = progress.get(renditionId);
+            const encode = {
+                id: renditionId,
+                running: processes.has(renditionId),
+                ready: isRenditionReady(renditionId),
+                uptimeSec:
+                    startedAtMs === undefined ? null : Math.round((now - startedAtMs) / 1000),
+                bitrateKbps: rp?.lastBitrateKbps ?? null,
+                progressAgeSec: rp ? Math.round((now - rp.lastOutputProgressAtMs) / 1000) : null,
+            };
+            fields.sharedEncode = encode;
+            lines.push(
+                `shared_encode ${renditionId}: ${encode.running ? 'running' : 'not running'} ready=${encode.ready} uptime=${formatNullable(encode.uptimeSec)}s bitrate=${formatNullable(encode.bitrateKbps)}kbps progress_age=${formatNullable(encode.progressAgeSec)}s`,
+            );
+        }
+        return { text: lines.join('\n'), fields };
+    }
+
+    // Restarts an output the watchdog found stuck. The input source is described
+    // first (bounded), so the Error History and the diagnostics say what the
+    // output was waiting on; the process is checked again afterwards because it
+    // may have exited, been stopped or been replaced in the meantime. One restart
+    // per output at a time: the watchdog tick keeps seeing the same fault until
+    // the kill lands.
+    function restartStuckOutput(
+        output: Output,
+        proc: ChildProcess,
+        reason: string,
+        logLine: string,
+        buildError: (sourceText: string) => string,
+        eventFields: Record<string, unknown> = {},
+    ): void {
+        const outputId = output.id;
+        if (watchdogRestarting.has(outputId)) return;
+        watchdogRestarting.add(outputId);
+        void (async () => {
+            try {
+                // The restart must not depend on the evidence: a failure to gather it
+                // is recorded in its place.
+                const source = await describeInputSource(output).catch((err: unknown) => {
+                    const error = err instanceof Error ? err.message : String(err);
+                    return {
+                        text: `input_source: unavailable (${error})`,
+                        fields: { error } as Record<string, unknown>,
+                    };
+                });
+                if (
+                    processes.get(outputId) !== proc ||
+                    watchdogKills.has(outputId) ||
+                    stopRequested.has(outputId)
+                ) {
+                    return;
+                }
+                try {
+                    db.setOutputLastError(outputId, buildError(source.text), 'crash');
+                } catch {
+                    /* non-critical; still restart the stuck process */
+                }
+                console.warn(yellow(logLine));
+                logEvent('ffmpeg-restart', {
+                    outputId,
+                    outputName: output.name,
+                    ...roleFields(output),
+                    reason,
+                    pid: proc.pid ?? null,
+                    ...eventFields,
+                    inputSource: source.fields,
+                });
+                noteWatchdogKill(outputId, reason);
+                void killProcess(outputId, proc, false);
+            } finally {
+                watchdogRestarting.delete(outputId);
+            }
+        })();
     }
 
     function maybeKillForSocketWarning(
@@ -1144,29 +1339,14 @@ export function createOutputService(
         const warning = recordSocketWarning(outputId, reason, now);
         if (now - warning.badSinceMs <= OUTPUT_SOCKET_GRACE_MS) return false;
 
-        try {
-            db.setOutputLastError(
-                outputId,
-                buildSocketWatchdogError(outputId, proc, reason),
-                'crash',
-            );
-        } catch {
-            /* non-critical; still restart the stuck process */
-        }
-        console.warn(
-            yellow(
-                `[outputs] ${outputId} (${output.name}) socket unhealthy: ${reason}, killing pid=${proc.pid}`,
-            ),
+        const why = isNoInputDataWarning(reason) ? reason : `socket unhealthy: ${reason}`;
+        restartStuckOutput(
+            output,
+            proc,
+            why,
+            `[outputs] ${outputId} (${output.name}) ${why}, killing pid=${proc.pid}`,
+            (sourceText) => buildSocketWatchdogError(outputId, proc, reason, sourceText),
         );
-        logEvent('ffmpeg-restart', {
-            outputId,
-            outputName: output.name,
-            ...roleFields(output),
-            reason: `socket unhealthy: ${reason}`,
-            pid: proc.pid ?? null,
-        });
-        noteWatchdogKill(outputId, `socket unhealthy: ${reason}`);
-        void killProcess(outputId, proc, false);
         return true;
     }
 
@@ -1214,7 +1394,7 @@ export function createOutputService(
         refreshTcpSocketSnapshot();
         for (const [outputId, p] of progress) evaluateTimestampBurst(outputId, p, now);
         for (const [outputId, proc] of processes) {
-            if (watchdogKills.has(outputId)) continue;
+            if (watchdogKills.has(outputId) || watchdogRestarting.has(outputId)) continue;
             const output = db.getOutput(outputId);
             if (!output || output.desiredState !== 'running') continue;
 
@@ -1253,6 +1433,7 @@ export function createOutputService(
                     proc.pid ?? null,
                     tcpSocketsByPid,
                     tcpSocketSnapshotUsable,
+                    (p.lastTotalSize ?? 0) > 0,
                 );
                 if (socketWarning) {
                     if (maybeKillForSocketWarning(output, proc, socketWarning, now)) continue;
@@ -1301,28 +1482,15 @@ export function createOutputService(
             if (now - startedAtMs < OUTPUT_WATCHDOG_WARMUP_MS) continue;
             if (now - p.lastOutputProgressAtMs <= OUTPUT_WATCHDOG_STALL_MS) continue;
 
-            try {
-                db.setOutputLastError(outputId, buildWatchdogError(outputId, proc, now), 'crash');
-            } catch {
-                /* non-critical; still restart the stuck process */
-            }
-            console.warn(
-                yellow(
-                    `[outputs] ${outputId} (${output.name}) stalled: no output progress for ${Math.round(
-                        (now - p.lastOutputProgressAtMs) / 1000,
-                    )}s, killing pid=${proc.pid} for retry`,
-                ),
+            const stalledSeconds = Math.round((now - p.lastOutputProgressAtMs) / 1000);
+            restartStuckOutput(
+                output,
+                proc,
+                'output progress stalled',
+                `[outputs] ${outputId} (${output.name}) stalled: no output progress for ${stalledSeconds}s, killing pid=${proc.pid} for retry`,
+                (sourceText) => buildWatchdogError(outputId, proc, Date.now(), sourceText),
+                { stalledSeconds },
             );
-            logEvent('ffmpeg-restart', {
-                outputId,
-                outputName: output.name,
-                ...roleFields(output),
-                reason: 'output progress stalled',
-                pid: proc.pid ?? null,
-                stalledSeconds: Math.round((now - p.lastOutputProgressAtMs) / 1000),
-            });
-            noteWatchdogKill(outputId, 'output progress stalled');
-            void killProcess(outputId, proc, false);
         }
     }
 
@@ -1671,7 +1839,7 @@ export function createOutputService(
         // The status check below is the cheap early exit. What guarantees a single
         // ffmpeg per output is the processes check inside startJob(), right before
         // the spawn, so it holds even if an await is added before it.
-        async start(outputId: string): Promise<void> {
+        async start(outputId: string, options?: { byUser?: boolean }): Promise<void> {
             if (startLocks.has(outputId)) return;
             if (statuses.get(outputId)?.status === 'running') return;
             const output = db.getOutput(outputId);
@@ -1679,13 +1847,17 @@ export function createOutputService(
             if (!validateOutputUrl(output.url)) throw new Error('Invalid output URL');
             // Translation outputs are published by the translation mixer
             // directly to this output URL; they do not need a second pull.
-            if (isTranslationAudio(output.audioEncoding)) return;
+            if (isTranslationAudio(output.audioEncoding)) {
+                if (options?.byUser) noteUserStart(output, true);
+                return;
+            }
             clearRetry(outputId);
             getRetry(outputId).failures = 0;
             // Input not live yet — keep the output "running" (desiredState) but
             // don't spawn a doomed ffmpeg. The recheck loop starts it once the
             // input comes online.
             const gate = sourceGate(output);
+            if (options?.byUser) noteUserStart(output, gate.ready);
             if (!gate.ready) {
                 scheduleRecheck(output, gate.recheckMs);
                 return;

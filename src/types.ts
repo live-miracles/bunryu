@@ -71,7 +71,9 @@ export interface PipelineLog {
 // anything to say. 'warning' records an FFmpeg warning burst (timestamp or
 // decode errors) on a still-running output: it is informational, never counts
 // as the current error, and has its own, smaller share of the history.
-export type OutputErrorKind = 'crash' | 'stopped' | 'warning';
+// 'started' marks a person pressing Start; like 'stopped' it supersedes an
+// earlier crash as the current error.
+export type OutputErrorKind = 'crash' | 'stopped' | 'warning' | 'started';
 
 export interface OutputErrorRecord {
     ts: number;
@@ -173,7 +175,6 @@ export interface Db {
     deleteOutput(id: string): boolean;
     deleteOutputsForPipeline(pipelineId: number): void;
     setDesiredStateForPipeline(pipelineId: number, state: 'running' | 'stopped'): void;
-    clearLastErrorsForPipeline(pipelineId: number): void;
 
     setOutputLastError(
         id: string,
@@ -181,7 +182,6 @@ export interface Db {
         kind: OutputErrorKind,
         failedAttempts?: number,
     ): void;
-    clearOutputLastError(id: string): void;
     getOutputErrorHistory(id: string): OutputErrorRecord[];
 
     appendPipelineLog(pipelineId: number, event: string, message: string): void;

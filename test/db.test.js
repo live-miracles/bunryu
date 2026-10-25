@@ -587,6 +587,28 @@ describe('Output CRUD', () => {
         assert.equal(got?.hasErrorHistory, true);
     });
 
+    test('a manual start supersedes an earlier crash as the current error', () => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        const o = db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+
+        db.setOutputLastError(o.id, 'ffmpeg crashed', 'crash');
+        db.setOutputLastError(o.id, 'Started manually', 'started');
+
+        assert.deepEqual(
+            db.getOutputErrorHistory(o.id).map((e) => [e.kind, e.message]),
+            [
+                ['crash', 'ffmpeg crashed'],
+                ['started', 'Started manually'],
+            ],
+        );
+        assert.equal(db.getOutput(o.id)?.lastError, null);
+
+        // A crash after the start is current again.
+        db.setOutputLastError(o.id, 'ffmpeg crashed again', 'crash');
+        assert.match(db.getOutput(o.id)?.lastError ?? '', /ffmpeg crashed again$/);
+    });
+
     test('a stop after repeated failed attempts stays the current error until the output starts again', () => {
         const db = makeDb();
         const p = db.createPipeline();
@@ -709,29 +731,6 @@ describe('Output CRUD', () => {
         assert.equal(db.getOutput(a.id).desiredState, 'running');
         assert.equal(db.getOutput(b.id).desiredState, 'running');
         assert.equal(db.getOutput(c.id).desiredState, 'stopped');
-    });
-
-    test('clearLastErrorsForPipeline clears every output error in that pipeline only', () => {
-        const db = makeDb();
-        const p1 = db.createPipeline();
-        const p2 = db.createPipeline();
-        const a = db.createOutput({ pipelineId: p1.id, name: 'A', url: 'rtmp://a' });
-        const b = db.createOutput({ pipelineId: p2.id, name: 'B', url: 'rtmp://b' });
-        db.setOutputLastError(a.id, 'boom', 'crash');
-        db.setOutputLastError(b.id, 'boom', 'crash');
-        db.clearLastErrorsForPipeline(p1.id);
-        assert.equal(db.getOutput(a.id).lastError, null);
-        assert.match(db.getOutput(b.id).lastError, /boom$/);
-    });
-
-    test('clearLastErrorsForPipeline does not bump the config revision', () => {
-        const db = makeDb();
-        const p = db.createPipeline();
-        const o = db.createOutput({ pipelineId: p.id, name: 'A', url: 'rtmp://a' });
-        db.setOutputLastError(o.id, 'boom', 'crash');
-        const rev = db.getConfigRev();
-        db.clearLastErrorsForPipeline(p.id);
-        assert.equal(db.getConfigRev(), rev);
     });
 
     test('recreating an output after deleting the last one reuses its seq, not a running counter', () => {
@@ -984,7 +983,6 @@ describe('Config revision', () => {
         const rev = db.getConfigRev();
 
         db.setOutputLastError(o.id, 'boom', 'crash');
-        db.clearOutputLastError(o.id);
         db.appendPipelineLog(p.id, 'online', 'connected');
 
         assert.equal(db.getConfigRev(), rev);

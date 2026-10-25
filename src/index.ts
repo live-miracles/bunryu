@@ -163,7 +163,7 @@ app.use('/api', requireAuth);
 
 registerConfigApi(app, db);
 registerPipelineApi(app, db, outputService, previewService, srtRelayService);
-registerOutputApi(app, db, outputService, healthService);
+registerOutputApi(app, db, outputService);
 registerPreviewApi(app, previewService);
 registerSettingsApi(app, db, inputState, outputService, diagnostics);
 registerVersionApi(app);

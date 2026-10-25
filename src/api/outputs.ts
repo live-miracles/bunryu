@@ -8,7 +8,6 @@ import {
 } from '../utils/ffmpeg.js';
 import type { Db, TranslationInput } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
-import type { HealthService } from '../services/health.js';
 import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
 import { isRenditionOutput } from '../utils/renditions.js';
@@ -89,12 +88,7 @@ function parseTranslation(body: unknown): TranslationInput | null | undefined | 
     };
 }
 
-export function registerOutputApi(
-    app: Express,
-    db: Db,
-    outputService: OutputService,
-    healthService: HealthService,
-): void {
+export function registerOutputApi(app: Express, db: Db, outputService: OutputService): void {
     app.post('/api/pipelines/:pipelineId/outputs', async (req, res) => {
         const pipelineId = parseInt(req.params.pipelineId);
         if (isNaN(pipelineId)) return res.status(400).json({ error: 'invalid pipelineId' });
@@ -404,18 +398,6 @@ export function registerOutputApi(
         return res.json(db.getOutputErrorHistory(outId));
     });
 
-    app.delete('/api/pipelines/:pipelineId/outputs/:outId/errors', (req, res) => {
-        const { pipelineId, outId } = req.params;
-        const output = db.getOutput(outId);
-        if (!output || output.pipelineId !== parseInt(pipelineId)) {
-            return res.status(404).json({ error: 'Output not found' });
-        }
-
-        db.clearOutputLastError(outId);
-        healthService.clearOutputErrorInSnapshot(pipelineId, outId);
-        return res.json({ ok: true });
-    });
-
     app.post('/api/pipelines/:pipelineId/outputs/:outId/start', async (req, res) => {
         const { pipelineId, outId } = req.params;
         const output = db.getOutput(outId);
@@ -427,7 +409,7 @@ export function registerOutputApi(
         console.log(cyan(`[outputs] user start requested: ${outId} (${output.name})`));
         try {
             db.setOutputDesiredState(outId, 'running');
-            await outputService.start(outId);
+            await outputService.start(outId, { byUser: true });
             const stats = outputService.getStats(outId);
             return res.json({ ok: true, status: stats });
         } catch (err) {

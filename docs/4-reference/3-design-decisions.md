@@ -565,6 +565,42 @@ default does not verify).
 platform (raise the value), or FFmpeg is upgraded (the regression test checks the
 mechanism).
 
+### An output that never connected is reported as waiting for input, and restarts record the input source
+
+**Decision (October 2026):** when the socket watchdog finds no destination socket on
+an output that has written nothing, it reports "No input data" instead of "Destination
+socket unhealthy". Before the socket or progress watchdog restarts an output, it reads
+the output's stream from SRS (at most 2 s, `/api/v1/streams`) and, for a shared
+output, the shared encode's state, and puts both in the Error History record and the
+`ffmpeg-restart` diagnostic event. The input's `-rw_timeout` stays at 10 minutes.
+
+**Incident (2026-10-25, pipeline 12):** a shared encode ran and wrote at 2.4-2.5 Mbps
+for 25 minutes (its health snapshots) while the YouTube output reading it from SRS
+failed 19 times in a row; a second key on the same pipeline failed the same way. Every
+attempt ended with an empty stderr but `Error opening input file
+rtmp://127.0.0.1:21935/internal/r12_copy_a0`, and its only socket was the one to SRS:
+it never connected to YouTube. The watchdog blamed the destination ("RTMP socket
+missing") because that is the only thing it checked. Three other pipelines started in
+the same 15 s with the same settings worked. Once the outputs were stopped and the
+shared encode idle-stopped, the next start worked. SRS ran at log level `warn` and
+logged nothing about the stream, so the state inside SRS was not recorded.
+
+**Why these changes:** the misleading wording sent the investigation to YouTube; and
+the one fact that would have told an input fault from a destination fault (what SRS
+held for the stream at that moment) was not captured.
+
+**Why not a shorter input `-rw_timeout`:** it also bounds every read while running, so
+a brief gap in the input would restart outputs and eat their 5-attempt budget. The
+10 minutes exist for publisher-less pulls (see the entry on blocked destinations
+above); the watchdogs end a stuck open after about 45-50 s anyway.
+
+**Not done:** restarting the shared encode after repeated failed reads, which is what
+fixed this by hand. It is a change to the watchdogs and needs fault tests; the
+cause is still unknown.
+
+**Revisit when:** the new records show the cause (then fix it, or restart the shared
+encode automatically if SRS is at fault), or it happens again.
+
 ### Don't add an `ss -ti` ack-progress check; `-rw_timeout` is the knob
 
 **Decision (October 2026):** the socket watchdog keeps reading only the socket state

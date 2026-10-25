@@ -40,7 +40,6 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | POST | `/api/pipelines/:id/outputs/:outId/stop` | Stop output |
 | POST | `/api/pipelines/:id/outputs/:outId/restart` | Stop a running output and start it again; works for any output including a shared encode, whose outputs reconnect with it. Returns `{ ok: true }`, or 409 when the output is not running, is a translation output, or was restarted less than 5 s ago. Recorded in its Error History as "Restarted by user" (not a failure) |
 | GET | `/api/pipelines/:id/outputs/:outId/errors` | Output Error History (also for a shared encode) |
-| DELETE | `/api/pipelines/:id/outputs/:outId/errors` | Clear the Error History (also for a shared encode) |
 | POST | `/api/settings/general` | Update the server name and public host `{ name, publicHost? }` |
 | POST | `/api/settings/layout-order` | Save the dashboard's pipeline and output order `{ order: [{ id, outs: [outputId] }] }` |
 | POST | `/api/settings/pipeline-groups` | Replace the sidebar pipeline groups `{ groups: [{ id?, name }] }` |

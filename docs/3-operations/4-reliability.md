@@ -13,7 +13,7 @@ The app runs these recovery loops:
 |----------|-------|-------------------|-------|
 | Health poll / input recovery | SRS reachability, live pipeline inputs, desired running outputs | When SRS and the pipeline input become ready, outputs whose desired state is `running` are started or restarted with staggered timing | Computed once every 5s and shared by dashboard clients. Inputs become live from SRS publisher presence; ffprobe fills in media/track metadata and retries every `FFPROBE_FAILED_REFRESH_MS` until it succeeds, then stops for that publisher. |
 | Output progress watchdog | Every running FFmpeg output process | After warmup, if the input is ready but FFmpeg `total_size` / `out_time_ms` stop advancing for the configured stall window | Protocol-agnostic backstop; covers SRT outputs and local RTMP relays |
-| Remote RTMP socket watchdog | Running outputs with a remote RTMP/RTMPS destination | After socket warmup and grace, if the destination socket is missing or remains in a closing state such as `CLOSE-WAIT` | Uses one `ss -H -tanp` snapshot per watchdog interval; a local RTMP/RTMPS destination is ignored because local input/output sockets are ambiguous |
+| Remote RTMP socket watchdog | Running outputs with a remote RTMP/RTMPS destination | After socket warmup and grace, if the destination socket is missing or remains in a closing state such as `CLOSE-WAIT` | Uses one `ss -H -tanp` snapshot per watchdog interval; a local RTMP/RTMPS destination is ignored because local input/output sockets are ambiguous. A missing socket on an output that has written nothing yet is reported as "No input data" instead (see below) |
 | Output memory watchdog | Every running FFmpeg output process, including translation mixers (checked every 5 s; a mixer over its limit is restarted with a `translation-mixer-restart` event, reason `memory limit exceeded`) | After warmup, if process RSS crosses `memory_limit_mb` (or its per-encoding override) | Reads `/proc/<pid>/status`; unconditional — a leaking process can still show advancing `total_size`/healthy sockets, so this doesn't wait on the other two. Once RSS crosses 70% of the limit the output surfaces a yellow "High memory usage" warning in the dashboard, before the watchdog actually restarts it at 100%. The limit is doubled for outputs on a 4K (≥3840px on either dimension) input — the 2x multiplier was checked against measured 4K baselines (RSS: copy with AAC audio 56 MB and 129 MB at start, `vertical_rotate` 472 MB, `720p` 608 MB, `1080p` 940 MB), so the doubled limits sit about 3x above copy and 1.9–2.1x above the encodes |
 | Shared encode reconciler | One row per recipe (video encoding + single audio selection) that at least two outputs of a pipeline are configured with | Every second: creates missing rows, removes rows no output uses, starts a shared encode with its first running output, stops it 15 s after the last one | See [Shared encodes](#shared-encodes) below. Start is only requested on the stopped-to-running edge, so it never resets the output's retry back-off; a failing start is retried at most every 30 s |
 | Translator audio meter watchdog | Running translation-mixer outputs | After the same startup warmup grace as the output progress watchdog, if the translator audio meter has gone quiet for `translator_meter_stale_ms` (including a translator that never delivered a single sample) | Watches independently of the SRS live-state poll, so a translator that connects but sends a dead/silent track is still caught. Valid translator silence is not treated as a disconnect — FFmpeg continues emitting silent meter samples in that case — so this only fires when the meter itself stops updating. Restarts the mixer so it attaches to the current translator session. |
@@ -23,6 +23,18 @@ All output watchdogs above use the same restart path: they write a detailed
 fresh process while the output's desired state remains `running`. The socket
 watchdog is advisory: if `ss` fails or times out, it does not restart anything,
 and a socket warning does not prevent the other watchdogs from acting.
+
+**No input data.** FFmpeg opens its destination only after it has read enough of its
+input. An output that has written nothing and never connected to its destination
+is therefore waiting for its input, not blocked by the destination, and the socket
+watchdog says so: "No input data: ffmpeg has written nothing and never connected to
+the destination". Before the socket or progress watchdog restarts an output, it reads
+that output's stream from SRS (waiting at most 2 s) and adds `input_source`,
+`srs_stream` (publisher, readers, bitrate, frames, codecs) and, for a shared output,
+`shared_encode` (process state, readiness, uptime, bitrate) to the Error History
+record, and an `inputSource` object to the `ffmpeg-restart` diagnostic event. If SRS
+does not answer, the line says so and the restart goes ahead. Why:
+[the 2026-10-25 shared-encode incident](../4-reference/3-design-decisions.md#an-output-that-never-connected-is-reported-as-waiting-for-input-and-restarts-record-the-input-source).
 
 **Blocked destinations.** Every RTMP/RTMPS output carries `-rw_timeout 10000000`
 (10 s) before its destination URL, so FFmpeg ends a connection to a destination that

@@ -185,9 +185,6 @@ export const restartOutput = (pipelineId: string, outId: string) =>
 export const getOutputErrorHistory = (pipelineId: string, outId: string) =>
     apiRequest<OutputErrorRecord[]>(`/api/pipelines/${pipelineId}/outputs/${outId}/errors`);
 
-export const clearOutputErrorHistory = (pipelineId: string, outId: string) =>
-    apiRequest(`/api/pipelines/${pipelineId}/outputs/${outId}/errors`, { method: 'DELETE' });
-
 export const startPreview = (pipelineId: string, audioTrackCount?: number) =>
     apiRequest<{ hlsUrl: string }>(`/api/pipelines/${pipelineId}/preview/start`, {
         method: 'POST',

@@ -158,7 +158,9 @@ start. An output that failed
 shows its failed attempts since it was last started and, while it waits to try again,
 when the next attempt is due ("retry in 8 s"). Problems appear on
 the card as warnings, each with the time it began ("since 09:18"), and every crash, watchdog restart and finished warning
-episode is kept in the output's **Error History** with the FFmpeg stderr tail.
+episode is kept in the output's **Error History** with the FFmpeg stderr tail,
+together with every stop and every start you make with **Start** (a "started" record).
+Both this history and the pipeline's **History** list the oldest entry first and open scrolled to the newest, like the logs.
 The History button is red while the latest record is a crash or watchdog restart;
 after a stop, or with only warnings, it keeps the normal color. The exception is an
 output you stop after 5 failed attempts in a row: its card keeps a red "Stopped

@@ -48,6 +48,19 @@ output) are not interrupted. See
 [Reliability](4-reliability.md#shared-encodes). Workaround: none needed; the
 history records are expected after an input outage.
 
+## A shared encode can stay up while its outputs cannot read it
+
+On 2026-10-25 a [shared encode](../2-usage/2-outputs.md#shared-encodes) kept running
+and writing at its normal bitrate for 25 minutes while every output reading it
+(several YouTube keys) failed to get any data from it, restarted about every 50 s and
+was stopped after 5 failed attempts. Pipelines started at the same moment with the
+same settings were fine. Restarting the shared encode cleared it. The cause inside
+SRS or the encode is not established. The Error History now reads "No input data" and
+shows the shared encode's and SRS's state, which should show it the next time.
+Workaround: stop every output of the pipeline, wait about 20 s until its shared
+encode stops, then start them again. Details in
+[the design decision](../4-reference/3-design-decisions.md#an-output-that-never-connected-is-reported-as-waiting-for-input-and-restarts-record-the-input-source).
+
 ## SRS `srt_to_rtmp` damages audio and video (avoided, not used)
 
 SRS's native `srt_to_rtmp` remuxes an SRT publish into the RTMP layer so it can

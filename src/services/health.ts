@@ -1972,19 +1972,6 @@ export function createHealthService(
         });
     }
 
-    // hasErrorHistory/lastError live on the cached snapshot (see OutputHealth
-    // above) and only get refreshed on the next POLL_INTERVAL_MS tick. Clearing
-    // errors is a rare, explicit user action — patch the already-built snapshot
-    // in place so the client's next /api/health fetch reflects it immediately
-    // instead of the history badge lingering for up to POLL_INTERVAL_MS.
-    function clearOutputErrorInSnapshot(pipelineId: string, outputId: string): void {
-        const oh = snapshot.pipelines[pipelineId]?.outputs[outputId];
-        if (oh) {
-            oh.hasErrorHistory = false;
-            oh.lastError = null;
-        }
-    }
-
     function shutdown(): void {
         for (const timer of ffprobeTimers.values()) {
             clearTimeout(timer);
@@ -2005,7 +1992,6 @@ export function createHealthService(
         registerRoutes,
         shutdown,
         getSrsEvents: (): SrsEvent[] => [...srsEvents],
-        clearOutputErrorInSnapshot,
     };
 }
 

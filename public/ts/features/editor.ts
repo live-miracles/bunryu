@@ -1271,7 +1271,6 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
     const contentEl = document.getElementById('logs-modal-content');
     if (!modal || !contentEl) return;
     resetLogsModalLayout(modal);
-    hideLogsModalClearErrors();
 
     const pipelineName = state.pipelines.find((p) => p.id === pipelineId)?.name ?? pipelineId;
     if (titleEl) titleEl.textContent = `History — ${pipelineName}`;
@@ -1284,7 +1283,10 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
         return;
     }
 
-    contentEl.innerHTML = logs
+    // The API returns the newest first; show them oldest first, scrolled to the
+    // newest, like the logs.
+    contentEl.innerHTML = [...logs]
+        .reverse()
         .map(
             (
                 l,
@@ -1295,6 +1297,7 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
             </div>`,
         )
         .join('');
+    contentEl.scrollTop = contentEl.scrollHeight;
 }
 
 function renderOutputErrorHistory(
@@ -1306,9 +1309,8 @@ function renderOutputErrorHistory(
         return;
     }
 
+    // Oldest first, scrolled to the newest, like the logs.
     contentEl.innerHTML = history
-        .slice()
-        .reverse()
         .map((entry, idx) => {
             const ts = entry.ts
                 ? new Date(entry.ts).toLocaleString(undefined, { hour12: false })
@@ -1319,22 +1321,28 @@ function renderOutputErrorHistory(
             // is often empty (nothing to add beyond "stopped here").
             // 'warning' entries are FFmpeg warning bursts on an output that kept
             // running — informational, shown in the warning colour.
+            // 'started' entries mark a person pressing Start.
             const isCrash = entry.kind === 'crash';
             const isWarning = entry.kind === 'warning';
+            const isStart = entry.kind === 'started';
             const badgeClass = isCrash
                 ? 'badge-error'
                 : isWarning
                   ? 'badge-warning'
-                  : 'badge-neutral';
+                  : isStart
+                    ? 'badge-info'
+                    : 'badge-neutral';
             const badgeLabel = isCrash
-                ? idx === 0
+                ? idx === history.length - 1
                     ? 'latest crash'
                     : 'crash'
                 : isWarning
                   ? 'warning'
-                  : entry.message
-                    ? 'stopped (stderr)'
-                    : 'stopped';
+                  : isStart
+                    ? 'started'
+                    : entry.message
+                      ? 'stopped (stderr)'
+                      : 'stopped';
             const textClass = isCrash
                 ? 'text-error opacity-80'
                 : isWarning
@@ -1352,13 +1360,13 @@ function renderOutputErrorHistory(
             </div>`;
         })
         .join('');
+    contentEl.scrollTop = contentEl.scrollHeight;
 }
 
 export async function showOutputError(pipelineId: string, outId: string): Promise<void> {
     const modal = document.getElementById('logs-modal') as HTMLDialogElement | null;
     const titleEl = document.getElementById('logs-modal-title');
     const contentEl = document.getElementById('logs-modal-content');
-    const clearBtn = document.getElementById('logs-modal-clear-errors') as HTMLButtonElement | null;
     if (!modal || !contentEl) return;
     resetLogsModalLayout(modal);
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
@@ -1370,21 +1378,8 @@ export async function showOutputError(pipelineId: string, outId: string): Promis
     contentEl.textContent = 'Loading…';
     modal.showModal();
 
-    if (clearBtn) {
-        clearBtn.classList.remove('hidden');
-        clearBtn.onclick = () =>
-            withBusy(clearBtn, async () => {
-                await api.clearOutputErrorHistory(pipelineId, outId);
-                renderOutputErrorHistory(contentEl, []);
-                clearBtn.classList.add('hidden');
-                clearBtn.onclick = null;
-                await refreshAfterMutation();
-            });
-    }
-
     const history = await api.getOutputErrorHistory(pipelineId, outId);
     renderOutputErrorHistory(contentEl, history ?? []);
-    if (clearBtn && (!history || history.length === 0)) clearBtn.classList.add('hidden');
 }
 
 // Unlike output errors, the relay only ever carries one lastError/lastErrorAt
@@ -1396,7 +1391,6 @@ export function showRelayError(pipelineId: string): void {
     const contentEl = document.getElementById('logs-modal-content');
     if (!modal || !contentEl) return;
     resetLogsModalLayout(modal);
-    hideLogsModalClearErrors();
 
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
     if (titleEl) titleEl.textContent = `Goryu Error — ${pipeline?.name ?? pipelineId}`;
@@ -1423,13 +1417,6 @@ function resetLogsModalLayout(modal: HTMLDialogElement): void {
     const box = modal.querySelector('.modal-box') as HTMLElement | null;
     box?.style.removeProperty('width');
     box?.style.removeProperty('max-width');
-}
-
-function hideLogsModalClearErrors(): void {
-    const clearBtn = document.getElementById('logs-modal-clear-errors') as HTMLButtonElement | null;
-    if (!clearBtn) return;
-    clearBtn.classList.add('hidden');
-    clearBtn.onclick = null;
 }
 
 const LOG_TERMINALS: { label: string; elId: string; key: 'srs' | 'dashboard' | 'relay' }[] = [

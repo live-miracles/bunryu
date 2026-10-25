@@ -263,7 +263,7 @@ export interface PipelineLog {
     message: string;
 }
 
-export type OutputErrorKind = 'crash' | 'stopped' | 'warning';
+export type OutputErrorKind = 'crash' | 'stopped' | 'warning' | 'started';
 
 export interface OutputErrorRecord {
     ts: number;

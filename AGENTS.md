@@ -194,8 +194,9 @@ only for a new module.
 - `src/index.ts` - app bootstrap: middleware, auth gate, route registration,
   service wiring, graceful shutdown.
 - `src/services/outputs.ts` - one FFmpeg process per output: start/stop/retry,
-  stall/socket/memory watchdogs, timestamp-warning bursts and warning episodes,
-  output Error History writes; shared-encode readiness, dependents' restart on a
+  stall/socket/memory watchdogs (a socket or stall restart first reads the input's
+  SRS stream into the Error History and event), timestamp-warning bursts and warning
+  episodes, output Error History writes (including a manual Start); shared-encode readiness, dependents' restart on a
   rendition failure and `restart()`. `outputSockets.ts` parses `ss` for
   destination socket health.
 - `src/services/renditions.ts` - the shared-encode reconciler (1 s tick): creates

@@ -88,11 +88,25 @@ function socketMatchesRequirement(
     );
 }
 
+// Starts the warning of an output that is waiting for input data, not for its
+// destination.
+const NO_INPUT_DATA = 'No input data:';
+
+export function isNoInputDataWarning(warning: string): boolean {
+    return warning.startsWith(NO_INPUT_DATA);
+}
+
+// `wroteData` is whether this ffmpeg run has written anything yet. An output that
+// has not, and never connected to its destination, is not a destination problem:
+// ffmpeg opens the destination only after it has read enough of the input, so it
+// is still waiting for the input (see the 2026-10-25 incident in the design
+// decisions).
 export function destinationSocketWarning(
     output: Output,
     pid: number | null,
     tcpSocketsByPid: Map<number, TcpSocket[]>,
     tcpSocketSnapshotUsable: boolean,
+    wroteData = true,
 ): string | null {
     if (!tcpSocketSnapshotUsable || pid == null) return null;
     const requirement = requiredRtmpSocket(output);
@@ -108,7 +122,9 @@ export function destinationSocketWarning(
         (s) => socketMatchesRequirement(s, requirement) && TCP_HEALTHY_STATES.has(s.state),
     );
     if (!healthy) {
-        return `RTMP socket missing (destination port ${requirement.port} not established)`;
+        return wroteData
+            ? `RTMP socket missing (destination port ${requirement.port} not established)`
+            : `${NO_INPUT_DATA} ffmpeg has written nothing and never connected to the destination (RTMP socket missing, port ${requirement.port})`;
     }
 
     return null;

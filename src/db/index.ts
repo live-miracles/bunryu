@@ -241,11 +241,7 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
     const stmtSetDesiredStateForPipeline = sqlite.prepare(
         'UPDATE outputs SET desired_state = ? WHERE pipeline_id = ?',
     );
-    const stmtClearLastErrorsForPipeline = sqlite.prepare(
-        'UPDATE outputs SET last_error = NULL WHERE pipeline_id = ?',
-    );
     const stmtSetLastError = sqlite.prepare('UPDATE outputs SET last_error = ? WHERE id = ?');
-    const stmtClearLastError = sqlite.prepare('UPDATE outputs SET last_error = NULL WHERE id = ?');
     const stmtInsertPipelineLog = sqlite.prepare(
         'INSERT INTO pipeline_logs (pipeline_id, ts, event, message) VALUES (?, ?, ?, ?)',
     );
@@ -619,10 +615,6 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             if (result.changes > 0) bumpConfigRev();
         },
 
-        clearLastErrorsForPipeline(pipelineId: number): void {
-            stmtClearLastErrorsForPipeline.run(pipelineId);
-        },
-
         setOutputLastError(
             id: string,
             message: string,
@@ -635,10 +627,6 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
                 { ts: Date.now(), message, kind, ...(failedAttempts ? { failedAttempts } : {}) },
             ]);
             stmtSetLastError.run(encodeOutputErrorHistory(next), id);
-        },
-
-        clearOutputLastError(id: string): void {
-            stmtClearLastError.run(id);
         },
 
         getOutputErrorHistory(id: string): OutputErrorRecord[] {

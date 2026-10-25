@@ -588,17 +588,9 @@ export function renderSrtBondingDetailsInline(pipelineId: string): void {
     }
 }
 
-function hideLogsModalClearErrors(): void {
-    const clearBtn = document.getElementById('logs-modal-clear-errors') as HTMLButtonElement | null;
-    if (!clearBtn) return;
-    clearBtn.classList.add('hidden');
-    clearBtn.onclick = null;
-}
-
 export function showSrtBondingDetails(pipelineId: string): void {
     const modal = document.getElementById('logs-modal') as HTMLDialogElement | null;
     if (!modal) return;
-    hideLogsModalClearErrors();
 
     modal.classList.add('srt-details-modal');
     modal.dataset.srtPipelineId = pipelineId;

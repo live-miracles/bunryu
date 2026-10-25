@@ -156,7 +156,18 @@ function loadOutputService(t, fakeProc, options = {}) {
         });
     }
     delete require.cache[require.resolve('../src/services/outputs')];
-    return require('../src/services/outputs').createOutputService;
+    const { createOutputService } = require('../src/services/outputs');
+    // The watchdog describes the input's SRS stream before it restarts an output;
+    // a test supplies the streams, or SRS is unreachable.
+    return (db, inputState, diagnostics, fetchStreams) =>
+        createOutputService(
+            db,
+            inputState,
+            diagnostics,
+            fetchStreams ??
+                options.fetchStreams ??
+                (() => Promise.reject(new Error('SRS API unreachable'))),
+        );
 }
 
 function makeReadyInputState(options = {}) {
@@ -440,6 +451,159 @@ describe('output watchdog', () => {
             db.lastError,
             /Restarting output: RTMP socket CLOSE-WAIT on destination port 1935/,
         );
+
+        service.shutdown();
+    });
+
+    // Only the input pull is connected: ffmpeg opened the stream from SRS and then
+    // never got far enough to open the destination (2026-10-25 incident).
+    const INPUT_ONLY_SS =
+        'ESTAB 0 0 127.0.0.1:50100 127.0.0.1:21935 users:(("ffmpeg",pid=1234,fd=5))\n';
+    const SRS_STREAM = {
+        id: 'vid-1',
+        name: 'stream-key',
+        app: 'live',
+        vhost: 'v',
+        live_ms: 0,
+        publish: { active: true },
+        kbps: { recv_30s: 2638, send_30s: 5259 },
+        clients: 3,
+        frames: 292442,
+        recv_bytes: 0,
+        send_bytes: 0,
+        video: { codec: 'H264', profile: 'Main', level: '3.1', width: 1280, height: 720 },
+        audio: { codec: 'AAC', sample_rate: 44100, channel: 2, profile: 'LC' },
+    };
+
+    test('an output that never connected to its destination is reported as waiting for input data', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+            fetchStreams: async () => [SRS_STREAM],
+        });
+        const service = createOutputService(db, makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        await sleep(100);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.match(db.lastError, /watchdog: ffmpeg received no input data; restarting process/);
+        assert.doesNotMatch(db.lastError, /destination socket unhealthy/);
+        assert.match(db.lastError, /socket_warning=No input data: ffmpeg has written nothing/);
+        assert.match(db.lastError, /ESTAB peer=127\.0\.0\.1:21935/);
+        assert.match(db.lastError, /input_source: live\/stream-key/);
+        assert.match(
+            db.lastError,
+            /srs_stream: publish=active clients=3 recv_30s=2638kbps send_30s=5259kbps frames=292442 video=H264 1280x720 audio=AAC/,
+        );
+        const restart = diagnostics.events.find((e) => e.event === 'ffmpeg-restart');
+        assert.match(restart.reason, /^No input data: /);
+        assert.equal(restart.inputSource.stream, 'live/stream-key');
+        assert.equal(restart.inputSource.srs.publishing, true);
+        assert.equal(restart.inputSource.srs.recvKbps, 2638);
+        const warning = diagnostics.events.find((e) => e.event === 'ffmpeg-warning-started');
+        assert.match(warning.message, /^No input data: /);
+
+        service.shutdown();
+    });
+
+    test('a destination socket lost after data was written keeps the destination wording', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
+        await sleep(100);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.match(db.lastError, /destination socket unhealthy; restarting process/);
+        assert.match(db.lastError, /RTMP socket missing \(destination port 1935 not established\)/);
+        assert.doesNotMatch(db.lastError, /No input data/);
+
+        service.shutdown();
+    });
+
+    test('the restart goes ahead and says so when SRS does not answer', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+            fetchStreams: () => new Promise(() => {}),
+        });
+        const service = createOutputService(db, makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        await sleep(100);
+        assert.deepEqual(proc.killSignals, [], 'waits for SRS first');
+
+        await sleep(2100);
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.match(db.lastError, /srs_stream: unavailable \(no answer in 2000 ms\)/);
+        assert.equal(
+            diagnostics.events.find((e) => e.event === 'ffmpeg-restart').inputSource.srs.error,
+            'no answer in 2000 ms',
+        );
+
+        service.shutdown();
+    });
+
+    test('an output stopped while the watchdog waits for SRS is not killed again', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+            fetchStreams: () => sleep(150).then(() => [SRS_STREAM]),
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        await sleep(80);
+        db.getOutput('out1').desiredState = 'stopped';
+        await service.stopAndWait('out1');
+        const signals = [...proc.killSignals];
+        await sleep(250);
+
+        assert.deepEqual(proc.killSignals, signals);
+        assert.doesNotMatch(db.lastError ?? '', /watchdog/);
+
+        service.shutdown();
+    });
+
+    test('the progress watchdog restart records the input source too', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, {
+            fetchStreams: async () => [SRS_STREAM],
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
+        await sleep(80);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.match(db.lastError, /watchdog: ffmpeg output stalled; restarting process/);
+        assert.match(db.lastError, /input_source: live\/stream-key/);
+        assert.match(db.lastError, /srs_stream: publish=active/);
 
         service.shutdown();
     });
@@ -3269,5 +3433,105 @@ describe('shared renditions', () => {
             assert.match(stopped[0].message, /^Shared encode restarted by user/);
             service.shutdown();
         });
+    });
+});
+
+describe('manual start', () => {
+    beforeEach(() => {
+        process.chdir(tempDir);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        delete require.cache[require.resolve('../src/services/outputs')];
+        delete require.cache[require.resolve('../src/utils/appConfig')];
+    });
+
+    test('a start by a person is recorded in the Error History and the diagnostics', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        const service = createOutputService(db, makeReadyInputState(), diagnostics);
+
+        await service.start('out1', { byUser: true });
+
+        assert.deepEqual(db.errorRecords, [
+            { message: 'Started manually', kind: 'started', failedAttempts: undefined },
+        ]);
+        const event = diagnostics.events.find((e) => e.event === 'output-user-start');
+        assert.deepEqual(
+            { outputId: event.outputId, role: event.role, sourceReady: event.sourceReady },
+            { outputId: 'out1', role: 'output', sourceReady: true },
+        );
+
+        service.shutdown();
+    });
+
+    test('starts by the app itself leave no record', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        const service = createOutputService(db, makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+
+        assert.deepEqual(db.errorRecords, []);
+        assert.equal(
+            diagnostics.events.some((e) => e.event === 'output-user-start'),
+            false,
+        );
+
+        service.shutdown();
+    });
+
+    test('pressing Start on a running output records nothing', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        await service.start('out1', { byUser: true });
+
+        assert.deepEqual(db.errorRecords, []);
+
+        service.shutdown();
+    });
+
+    test('a manual start of a translation output is recorded too', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        db.getOutput('out1').audioEncoding = 'translation';
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1', { byUser: true });
+
+        assert.deepEqual(
+            db.errorRecords.map((r) => [r.kind, r.message]),
+            [['started', 'Started manually']],
+        );
+
+        service.shutdown();
+    });
+
+    test('a start while the input is not live says the output is waiting', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        const input = { ...makeReadyInputState(), isReady: () => false };
+        const service = createOutputService(db, input);
+
+        await service.start('out1', { byUser: true });
+
+        assert.equal(
+            db.errorRecords[0].message,
+            'Started manually; waiting for its source to be ready',
+        );
+        assert.equal(service.getStats('out1').status, 'stopped');
+
+        service.shutdown();
     });
 });
