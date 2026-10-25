@@ -166,7 +166,9 @@ detail of the first. The History button and the card are red while the latest re
 is a crash or watchdog restart. When the output has then run for a minute and is
 writing data, the crash is marked **recovered** (with the time), the card and the
 button return to the normal color and the retry count starts over; the record stays in
-the History. After a stop, or with only warnings, the button keeps the normal color. The exception is an
+the History. A record that holds a long FFmpeg log shows only its error line (the last
+line, as on the card) with **Show full log** to expand it, and its copy button puts the
+whole log on the clipboard. After a stop, or with only warnings, the button keeps the normal color. The exception is an
 output you stop after 5 failed attempts in a row: its card keeps a red "Stopped
 after 5 failed attempts" line with the last error, and the History button stays red,
 until you start the output again.

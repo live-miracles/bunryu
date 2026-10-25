@@ -169,6 +169,29 @@ export function flashSaveSuccess(id: string): void {
     el.dataset.flashTimer = String(window.setTimeout(() => el.classList.add('hidden'), 1000));
 }
 
+// A modal dialog is in the browser's top layer, above any z-index. The notice is a
+// popover, which joins the top layer later and so shows above an open dialog.
+let copiedNoticeTimer: number | undefined;
+function showCopiedNotice(): void {
+    const el = document.getElementById('copied-notification');
+    if (!el) return;
+    el.classList.remove('hidden');
+    try {
+        el.showPopover?.();
+    } catch {
+        /* already showing */
+    }
+    window.clearTimeout(copiedNoticeTimer);
+    copiedNoticeTimer = window.setTimeout(() => {
+        try {
+            el.hidePopover?.();
+        } catch {
+            /* already hidden */
+        }
+        el.classList.add('hidden');
+    }, 1500);
+}
+
 export async function copyText(text: string): Promise<void> {
     try {
         if (navigator.clipboard) {
@@ -182,9 +205,7 @@ export async function copyText(text: string): Promise<void> {
             document.execCommand('copy');
             document.body.removeChild(ta);
         }
-        const el = document.getElementById('copied-notification');
-        el?.classList.remove('hidden');
-        setTimeout(() => el?.classList.add('hidden'), 1500);
+        showCopiedNotice();
     } catch {
         /* ignore */
     }

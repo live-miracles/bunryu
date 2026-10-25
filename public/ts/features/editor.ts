@@ -13,6 +13,7 @@ import {
 import { refreshAfterMutation } from './dashboard.js';
 import { renderSrtPassphraseReset } from './render.js';
 import { noteSharedEncodeRestart } from './shared-encodes.js';
+import { ICON_COPY } from './output-badges.js';
 import type {
     StreamKey,
     AudioTrackInfo,
@@ -1380,7 +1381,7 @@ function renderOutputErrorHistory(
                 ${full}
             </details>`;
             const copyBtn = entry.message
-                ? `<button type="button" class="btn btn-ghost btn-xs ml-auto" data-copy-entry="${idx}">Copy</button>`
+                ? `<button type="button" class="btn btn-ghost btn-xs btn-square ml-auto" data-copy-entry="${idx}" title="Copy" aria-label="Copy">${ICON_COPY}</button>`
                 : '';
             return `<div class="${idx === 0 ? '' : 'mt-3 pt-3 border-t border-base-200 sm:mt-4 sm:pt-4'}">
                 <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
@@ -1396,12 +1397,7 @@ function renderOutputErrorHistory(
     contentEl.onclick = (event) => {
         const btn = (event.target as HTMLElement).closest<HTMLElement>('[data-copy-entry]');
         const message = btn ? history[Number(btn.dataset.copyEntry)]?.message : undefined;
-        if (!btn || !message) return;
-        // The page's "copied" toast is hidden behind the open dialog.
-        void copyText(message).then(() => {
-            btn.textContent = 'Copied';
-            window.setTimeout(() => (btn.textContent = 'Copy'), 1500);
-        });
+        if (message) void copyText(message);
     };
     contentEl.scrollTop = contentEl.scrollHeight;
 }
