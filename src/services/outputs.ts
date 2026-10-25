@@ -34,7 +34,12 @@ import {
     parseTcpSocketSnapshot,
     type TcpSocket,
 } from './outputSockets.js';
-import { fetchSrsStreams, type SrsStream } from '../utils/srs.js';
+import {
+    fetchSrsClientsForHealth,
+    fetchSrsStreams,
+    type SrsClient,
+    type SrsStream,
+} from '../utils/srs.js';
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
 // Each retry waits up to this fraction less than its step, at random: when a
@@ -87,6 +92,11 @@ const SOCKET_SNAPSHOT_TIMEOUT_MS = 2000;
 // How long a watchdog restart waits for SRS to describe the stream the output was
 // reading before it restarts the output without that evidence.
 const SOURCE_STATE_TIMEOUT_MS = 2000;
+// What SRS said is reused for this long, so many outputs found stuck together (or
+// one after another) cost SRS one request pair, however many there are.
+const SOURCE_STATE_CACHE_MS = 3000;
+// Readers listed per stream in a watchdog record; the rest are counted.
+const SOURCE_READERS_LISTED = 10;
 // Surface a UI warning once RSS crosses this fraction of the memory limit, well
 // before the watchdog actually restarts the process at 100% — gives an early
 // (yellow) signal that a leak may be building without waiting for the kill.
@@ -310,6 +320,7 @@ export function createOutputService(
     inputState: InputState,
     diagnostics?: DiagnosticsLogger,
     fetchStreams: () => Promise<SrsStream[]> = fetchSrsStreams,
+    fetchClients: () => Promise<SrsClient[]> = fetchSrsClientsForHealth,
 ): OutputService {
     const processes = new Map<string, ChildProcess>();
     const statuses = new Map<
@@ -1181,14 +1192,28 @@ export function createOutputService(
         return next;
     }
 
-    // Many outputs can be found stuck in the same tick (a shared encode they all
-    // read went bad): they share one request to SRS instead of one each.
-    let streamsRequest: Promise<SrsStream[]> | null = null;
-    function fetchStreamsOnce(): Promise<SrsStream[]> {
-        streamsRequest ??= fetchStreams().finally(() => {
-            streamsRequest = null;
-        });
-        return streamsRequest;
+    // What SRS says about its streams and the connections on them, both asked at
+    // once and each allowed to fail on its own.
+    interface SrsSnapshot {
+        streams: PromiseSettledResult<SrsStream[]>;
+        clients: PromiseSettledResult<SrsClient[]>;
+    }
+    let srsSnapshot: { atMs: number; promise: Promise<SrsSnapshot> } | null = null;
+    function fetchSrsSnapshot(): Promise<SrsSnapshot> {
+        if (srsSnapshot && Date.now() - srsSnapshot.atMs < SOURCE_STATE_CACHE_MS) {
+            return srsSnapshot.promise;
+        }
+        const promise = Promise.allSettled([fetchStreams(), fetchClients()]).then(
+            ([streams, clients]) => ({ streams, clients }),
+        );
+        srsSnapshot = { atMs: Date.now(), promise };
+        return promise;
+    }
+
+    function formatBytes(bytes: number): string {
+        if (bytes < 1024) return `${bytes}B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
     }
 
     // What the output was reading when the watchdog found it stuck: the stream in
@@ -1209,9 +1234,11 @@ export function createOutputService(
         const lines = [`input_source: ${fields.stream ?? 'unknown'}`];
 
         let timer: NodeJS.Timeout | undefined;
+        let snapshot: SrsSnapshot | null = null;
+        let noAnswer: string | null = null;
         try {
-            const streams = await Promise.race([
-                fetchStreamsOnce(),
+            snapshot = await Promise.race([
+                fetchSrsSnapshot(),
                 new Promise<never>((_resolve, reject) => {
                     timer = setTimeout(
                         () => reject(new Error(`no answer in ${SOURCE_STATE_TIMEOUT_MS} ms`)),
@@ -1219,7 +1246,25 @@ export function createOutputService(
                     );
                 }),
             ]);
-            const s = streams.find((x) => x.app === app && x.name === name);
+        } catch (err) {
+            noAnswer = err instanceof Error ? err.message : String(err);
+        } finally {
+            clearTimeout(timer);
+        }
+        const failure = (result: PromiseSettledResult<unknown> | undefined): string | null =>
+            noAnswer ??
+            (result?.status === 'rejected'
+                ? result.reason instanceof Error
+                    ? result.reason.message
+                    : String(result.reason)
+                : null);
+
+        const streamsError = failure(snapshot?.streams);
+        if (streamsError !== null || snapshot?.streams.status !== 'fulfilled') {
+            fields.srs = { error: streamsError };
+            lines.push(`srs_stream: unavailable (${streamsError})`);
+        } else {
+            const s = snapshot.streams.value.find((x) => x.app === app && x.name === name);
             if (!s) {
                 fields.srs = { found: false };
                 lines.push('srs_stream: not found in SRS');
@@ -1242,12 +1287,40 @@ export function createOutputService(
                     `srs_stream: publish=${s.publish.active ? 'active' : 'none'} clients=${s.clients} recv_30s=${s.kbps.recv_30s}kbps send_30s=${s.kbps.send_30s}kbps frames=${s.frames} video=${video ?? 'none'} audio=${audio ?? 'none'}`,
                 );
             }
-        } catch (err) {
-            const error = err instanceof Error ? err.message : String(err);
-            fields.srs = { error };
-            lines.push(`srs_stream: unavailable (${error})`);
-        } finally {
-            clearTimeout(timer);
+        }
+
+        // Each reader of the stream on its own: the stream's send rate is the sum
+        // over all of them, so it cannot say whether SRS sent this reader anything.
+        // Readers all connect from this host, so they cannot be told apart by
+        // address; the stuck one is usually the youngest or the one with the least sent.
+        const clientsError = failure(snapshot?.clients);
+        if (clientsError !== null || snapshot?.clients.status !== 'fulfilled') {
+            fields.readers = { error: clientsError };
+            lines.push(`srs_readers: unavailable (${clientsError})`);
+        } else {
+            // The ones SRS has sent least come first, so the cap never hides the stuck one.
+            const readers = snapshot.clients.value
+                .filter(
+                    (c) => c.publish !== true && c.name === name && c.tcUrl?.endsWith(`/${app}`),
+                )
+                .sort((a, b) => (a.send_bytes ?? 0) - (b.send_bytes ?? 0));
+            fields.readers = {
+                count: readers.length,
+                list: readers.slice(0, SOURCE_READERS_LISTED).map((c) => ({
+                    aliveSec: Math.round(c.alive ?? 0),
+                    sendBytes: c.send_bytes ?? 0,
+                    sendKbps: c.kbps?.send_30s ?? 0,
+                })),
+            };
+            lines.push(`srs_readers: ${readers.length} playing`);
+            for (const c of readers.slice(0, SOURCE_READERS_LISTED)) {
+                lines.push(
+                    `  reader alive=${Math.round(c.alive ?? 0)}s sent=${formatBytes(c.send_bytes ?? 0)} send_30s=${c.kbps?.send_30s ?? 0}kbps`,
+                );
+            }
+            if (readers.length > SOURCE_READERS_LISTED) {
+                lines.push(`  ... and ${readers.length - SOURCE_READERS_LISTED} more`);
+            }
         }
 
         if (renditionId) {

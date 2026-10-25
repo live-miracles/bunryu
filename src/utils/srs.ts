@@ -70,6 +70,12 @@ export interface SrsClient {
     url?: string;
     tcUrl?: string;
     publish?: boolean;
+    // Seconds connected, bytes moved each way and the 30 s rates (a player's
+    // send_30s lags for its first seconds; send_bytes does not).
+    alive?: number;
+    send_bytes?: number;
+    recv_bytes?: number;
+    kbps?: { recv_30s: number; send_30s: number };
 }
 
 export async function kickSrsClientsByStream(app: string, stream: string): Promise<void> {

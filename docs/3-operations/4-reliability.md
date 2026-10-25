@@ -30,10 +30,17 @@ is therefore waiting for its input, not blocked by the destination, and the sock
 watchdog says so: "No input data: ffmpeg has written nothing and never connected to
 the destination". Before the socket or progress watchdog restarts an output, it reads
 that output's stream from SRS (waiting at most 2 s) and adds `input_source`,
-`srs_stream` (publisher, readers, bitrate, frames, codecs) and, for a shared output,
-`shared_encode` (process state, readiness, uptime, bitrate) to the History
-record, and an `inputSource` object to the `ffmpeg-restart` diagnostic event. If SRS
-does not answer, the line says so and the restart goes ahead. Why:
+`srs_stream` (publisher, reader count, bitrate, frames, codecs), `srs_readers` (each
+reader of the stream with how long it has been connected and how many bytes SRS has
+sent it; up to 10, the ones sent least first) and, for a shared output, `shared_encode` (process state,
+readiness, uptime, bitrate) to the History record, and an `inputSource` object to the
+`ffmpeg-restart` diagnostic event. The stream's send rate is the sum over all its
+readers, so only `srs_readers` shows whether SRS sent the stuck reader anything.
+Readers all connect from this host and cannot be matched to an output: the stuck one
+is usually the youngest or the one with the least sent. SRS is asked once for
+everything (streams and connections) and the answer is reused for 3 s, so many
+outputs found stuck together cost SRS one request pair. If SRS does not answer, the
+line says so and the restart goes ahead. Why:
 [the 2026-10-25 shared-encode incident](../4-reference/3-design-decisions.md#an-output-that-never-connected-is-reported-as-waiting-for-input-and-restarts-record-the-input-source).
 
 **Blocked destinations.** Every RTMP/RTMPS output carries `-rw_timeout 10000000`

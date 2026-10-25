@@ -159,14 +159,14 @@ function loadOutputService(t, fakeProc, options = {}) {
     const { createOutputService } = require('../src/services/outputs');
     // The watchdog describes the input's SRS stream before it restarts an output;
     // a test supplies the streams, or SRS is unreachable.
-    return (db, inputState, diagnostics, fetchStreams) =>
+    const unreachable = () => Promise.reject(new Error('SRS API unreachable'));
+    return (db, inputState, diagnostics, fetchStreams, fetchClients) =>
         createOutputService(
             db,
             inputState,
             diagnostics,
-            fetchStreams ??
-                options.fetchStreams ??
-                (() => Promise.reject(new Error('SRS API unreachable'))),
+            fetchStreams ?? options.fetchStreams ?? unreachable,
+            fetchClients ?? options.fetchClients ?? unreachable,
         );
 }
 
@@ -508,6 +508,157 @@ describe('output watchdog', () => {
         assert.equal(restart.inputSource.srs.recvKbps, 2638);
         const warning = diagnostics.events.find((e) => e.event === 'ffmpeg-warning-started');
         assert.match(warning.message, /^No input data: /);
+
+        service.shutdown();
+    });
+
+    const readerOf = (over) => ({
+        id: 'c1',
+        ip: '127.0.0.1',
+        name: 'stream-key',
+        tcUrl: 'rtmp://127.0.0.1:1935/live',
+        type: 'rtmp-play',
+        publish: false,
+        alive: 47.2,
+        send_bytes: 0,
+        recv_bytes: 3539,
+        kbps: { recv_30s: 0, send_30s: 0 },
+        ...over,
+    });
+
+    test('the restart record lists each reader of the stream with what SRS sent it', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+            fetchStreams: async () => [SRS_STREAM],
+            fetchClients: async () => [
+                readerOf({
+                    id: 'c2',
+                    alive: 300,
+                    send_bytes: 18_874_368,
+                    kbps: { send_30s: 3100 },
+                }),
+                readerOf({ id: 'c1' }),
+                // Not readers of this stream: its publisher, another stream, another app.
+                readerOf({ id: 'p', publish: true, type: 'rtmp-publish' }),
+                readerOf({ id: 'o', name: 'other-key' }),
+                readerOf({ id: 'a', tcUrl: 'rtmp://127.0.0.1:1935/internal' }),
+            ],
+        });
+        const service = createOutputService(db, makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        await sleep(100);
+
+        assert.match(
+            db.lastError,
+            /srs_readers: 2 playing\n {2}reader alive=47s sent=0B send_30s=0kbps/,
+        );
+        assert.match(db.lastError, / {2}reader alive=300s sent=18\.0MB send_30s=3100kbps/);
+        const restart = diagnostics.events.find((e) => e.event === 'ffmpeg-restart');
+        assert.deepEqual(restart.inputSource.readers, {
+            count: 2,
+            list: [
+                { aliveSec: 47, sendBytes: 0, sendKbps: 0 },
+                { aliveSec: 300, sendBytes: 18_874_368, sendKbps: 3100 },
+            ],
+        });
+
+        service.shutdown();
+    });
+
+    test('readers are capped in the record and counted', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+            fetchStreams: async () => [SRS_STREAM],
+            // The last in SRS's order has been sent the least, and must still be listed.
+            fetchClients: async () =>
+                Array.from({ length: 13 }, (_, i) =>
+                    readerOf({ id: `c${i}`, alive: 100 + i, send_bytes: (13 - i) * 1000 }),
+                ),
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        await sleep(100);
+
+        assert.match(db.lastError, /srs_readers: 13 playing/);
+        assert.equal(db.lastError.match(/ {2}reader alive=/g).length, 10);
+        assert.match(db.lastError, / {2}\.\.\. and 3 more/);
+        assert.match(db.lastError, /reader alive=112s sent=1000B/);
+        assert.doesNotMatch(db.lastError, /reader alive=100s/);
+
+        service.shutdown();
+    });
+
+    test('streams and readers can fail independently', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+            fetchStreams: async () => [SRS_STREAM],
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        await sleep(100);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.match(db.lastError, /srs_stream: publish=active/);
+        assert.match(db.lastError, /srs_readers: unavailable \(SRS API unreachable\)/);
+
+        service.shutdown();
+    });
+
+    test('outputs found stuck together share one request to SRS', async (t) => {
+        const procs = [new FakeFfmpeg(1234), new FakeFfmpeg(1235)];
+        let spawned = 0;
+        const db = makeDb();
+        const first = db.getOutput('out1');
+        const second = { ...first, id: 'out2', seq: 2, name: 'Facebook' };
+        db.getOutput = (id) => (id === 'out1' ? first : id === 'out2' ? second : null);
+        db.listOutputsForPipeline = () => [first, second];
+        db.listOutputs = () => [first, second];
+        let streamCalls = 0;
+        let clientCalls = 0;
+        const createOutputService = loadOutputService(t, () => procs[spawned++ % 2], {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput:
+                'ESTAB 0 0 127.0.0.1:50100 127.0.0.1:21935 users:(("ffmpeg",pid=1234,fd=5))\n' +
+                'ESTAB 0 0 127.0.0.1:50101 127.0.0.1:21935 users:(("ffmpeg",pid=1235,fd=5))\n',
+            fetchStreams: async () => {
+                streamCalls++;
+                return [SRS_STREAM];
+            },
+            fetchClients: async () => {
+                clientCalls++;
+                return [];
+            },
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        await service.start('out2');
+        await sleep(150);
+
+        assert.deepEqual(procs[0].killSignals, ['SIGTERM']);
+        assert.deepEqual(procs[1].killSignals, ['SIGTERM']);
+        assert.deepEqual([streamCalls, clientCalls], [1, 1]);
 
         service.shutdown();
     });

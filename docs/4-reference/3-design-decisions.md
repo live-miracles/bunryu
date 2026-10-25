@@ -589,6 +589,15 @@ logged nothing about the stream, so the state inside SRS was not recorded.
 the one fact that would have told an input fault from a destination fault (what SRS
 held for the stream at that moment) was not captured.
 
+**Where the evidence is recorded:** in each output's own History and in the
+diagnostics, per output. Recording it once per source stream (in the pipeline History,
+with the other outputs pointing at it) would stop the repeats and the SRS calls, and
+is the same fault for outputs that read the input directly; it was left out for now
+because the 3 s shared request already bounds the load and per-output records are
+enough while this has been seen once. It would relax the convention that outputs do
+not write to the pipeline History. Revisit if many outputs failing together make the
+repeats a problem.
+
 **Why not a shorter input `-rw_timeout`:** it also bounds every read while running, so
 a brief gap in the input would restart outputs and eat their 5-attempt budget. The
 10 minutes exist for publisher-less pulls (see the entry on blocked destinations
