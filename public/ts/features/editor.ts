@@ -1361,19 +1361,48 @@ function renderOutputErrorHistory(
                 : isWarning
                   ? 'text-warning opacity-80'
                   : 'opacity-60';
-            const body = entry.message
-                ? `<pre class="text-xs ${textClass} whitespace-pre-wrap [overflow-wrap:anywhere]">${escapeHtml(entry.message)}</pre>`
+            // A record is often a long ffmpeg log. Show its error line, the last line,
+            // as the card does, with the whole log behind a toggle.
+            const lines = entry.message.split('\n').filter((line) => line.trim());
+            const full = `<pre class="text-xs ${textClass} whitespace-pre-wrap [overflow-wrap:anywhere]">${escapeHtml(entry.message)}</pre>`;
+            const body =
+                lines.length <= 1
+                    ? entry.message
+                        ? full
+                        : ''
+                    : `<details class="group">
+                <summary class="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span class="min-w-0 break-words text-xs ${textClass} group-open:hidden">${escapeHtml(lines[lines.length - 1])}</span>
+                    <span class="shrink-0 text-xs underline opacity-70">
+                        <span class="group-open:hidden">Show full log</span><span class="hidden group-open:inline">Hide full log</span>
+                    </span>
+                </summary>
+                ${full}
+            </details>`;
+            const copyBtn = entry.message
+                ? `<button type="button" class="btn btn-ghost btn-xs ml-auto" data-copy-entry="${idx}">Copy</button>`
                 : '';
             return `<div class="${idx === 0 ? '' : 'mt-3 pt-3 border-t border-base-200 sm:mt-4 sm:pt-4'}">
                 <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
                     <span class="badge badge-xs ${badgeClass} uppercase">${badgeLabel}</span>${countBadge}
                     <span class="text-xs opacity-50">${ts}</span>
                     ${recovered}
+                    ${copyBtn}
                 </div>
                 ${body}
             </div>`;
         })
         .join('');
+    contentEl.onclick = (event) => {
+        const btn = (event.target as HTMLElement).closest<HTMLElement>('[data-copy-entry]');
+        const message = btn ? history[Number(btn.dataset.copyEntry)]?.message : undefined;
+        if (!btn || !message) return;
+        // The page's "copied" toast is hidden behind the open dialog.
+        void copyText(message).then(() => {
+            btn.textContent = 'Copied';
+            window.setTimeout(() => (btn.textContent = 'Copy'), 1500);
+        });
+    };
     contentEl.scrollTop = contentEl.scrollHeight;
 }
 
