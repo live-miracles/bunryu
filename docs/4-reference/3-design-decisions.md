@@ -643,8 +643,9 @@ output that crashes again seconds after restarting does not flash normal in betw
 The retry count starts over at recovery. A crash after a recovery is a new record even
 with the same text, so a flapping output is still visible as separate episodes.
 
-**Not covered:** translation outputs, which run in the translation mixer's process and
-are not watched by this tick.
+**Translation outputs** run in the translation mixer's own process and only report
+their status and progress to the output service, so the watchdog tick visits them
+separately (by what they reported) and applies the same recovery rule.
 
 **Revisit when:** distinct failures are being merged (widen the signature) or a
 flapping output fills the History with episodes.

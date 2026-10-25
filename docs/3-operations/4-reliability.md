@@ -305,7 +305,8 @@ A crash that repeats with the same first and last line (numbers blanked) is not 
 record but a count on the last one, so one failure that repeats for an hour takes one
 of the 10 slots, not all of them. When an output with a current crash has run for 60 s
 (the same limit that ends a failed-attempt streak) and is writing data, the watchdog
-tick marks that crash recovered and logs an `output-recovered` event; the crash stops
+tick marks that crash recovered (for outputs run by the translation mixer too, from
+the status and progress it reports) and logs an `output-recovered` event; the crash stops
 being the current error, and a later crash of the same kind is a new record.
 
 The warnings that otherwise only show on the output card are recorded the same way,

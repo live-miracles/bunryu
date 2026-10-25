@@ -3606,6 +3606,36 @@ describe('recovery from a crash', () => {
         service.shutdown();
     });
 
+    test('an output run by the translation mixer is marked recovered too', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = crashedDb(Date.now() - 120_000);
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            ssError: new Error('no ss'),
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        // The mixer owns the process and only reports its status and progress.
+        service.reportExternalStatus('out1', 'running', 4321);
+        service.reportExternalProgress('out1', {
+            bitrateKbps: 3200,
+            lastOutTimeUs: 1_000_000,
+            lastTotalSizeBytes: 4096,
+        });
+        await sleep(40);
+        assert.deepEqual(db.recovered, [], 'not yet a minute');
+
+        const realNow = Date.now;
+        let now = realNow();
+        t.mock.method(Date, 'now', () => now);
+        now += 61_000;
+        await sleep(40);
+
+        assert.deepEqual(db.recovered, ['out1']);
+
+        service.shutdown();
+    });
+
     test('a crash recorded during this run is not one it recovered from', async (t) => {
         const proc = new FakeFfmpeg();
         const db = crashedDb(Date.now() + 10_000);

@@ -1431,10 +1431,26 @@ export function createOutputService(
         });
     }
 
+    // The same for outputs another service runs (the translation mixer's) and
+    // reports here: they have no process of this service, so the loop below
+    // never visits them.
+    function noteExternalRecoveries(now: number): void {
+        for (const [outputId, status] of statuses) {
+            if (status.status !== 'running' || processes.has(outputId)) continue;
+            const startedAtMs = startTimes.get(outputId);
+            const p = progress.get(outputId);
+            if (!startedAtMs || !p) continue;
+            const output = db.getOutput(outputId);
+            if (output?.desiredState !== 'running') continue;
+            noteRecovery(output, startedAtMs, p, now);
+        }
+    }
+
     function checkOutputWatchdog(): void {
         const now = Date.now();
         refreshTcpSocketSnapshot();
         for (const [outputId, p] of progress) evaluateTimestampBurst(outputId, p, now);
+        noteExternalRecoveries(now);
         for (const [outputId, proc] of processes) {
             if (watchdogKills.has(outputId) || watchdogRestarting.has(outputId)) continue;
             const output = db.getOutput(outputId);
