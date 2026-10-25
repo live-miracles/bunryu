@@ -1668,6 +1668,33 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             service.shutdown();
         });
 
+        test('reports the last minutes of loss, retransmits and drops per leg, group and output', async (t) => {
+            const at = (lost, dropped, sendDropped) =>
+                makeBondingStatus({
+                    input: {
+                        recvDropTotal: dropped,
+                        legs: [makeLeg({ recvLossTotal: lost, retransTotal: lost })],
+                    },
+                    output: { sendDropTotal: sendDropped },
+                });
+            const { relay, service } = await startService(t, at(100, 40, 0), { withDate: true });
+            relay.setStatus(at(107, 41, 3));
+            await tickPoll(t);
+            relay.setStatus(at(109, 42, 3));
+            await tickPoll(t);
+
+            const app = express();
+            service.registerRoutes(app);
+            const { srtBonding } = (await getSnapshot(app)).pipelines['1'];
+            assert.equal(srtBonding.input.recent.spanMs, 10_000);
+            assert.equal(srtBonding.input.recent.drop, 2);
+            assert.equal(srtBonding.input.legs[0].recent.loss, 9);
+            assert.equal(srtBonding.input.legs[0].recent.retrans, 9);
+            assert.equal(srtBonding.output.recent.drop, 3);
+            assert.equal(srtBonding.input.recvDropTotal, 42, 'the totals are still reported');
+            service.shutdown();
+        });
+
         test('a leg that returns from a new port is logged as lost and joined', async (t) => {
             const withPort = (port) =>
                 makeBondingStatus({

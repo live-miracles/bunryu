@@ -627,6 +627,29 @@
                 <div id="srt-bonding-status-tooltip-content" class="js-tooltip-content hidden"></div>
               </div>
               <span class="text-xs font-semibold opacity-60">SRT Relay</span>
+              <button
+                id="srt-bonding-details-toggle"
+                class="btn btn-xs btn-outline btn-square hidden shrink-0"
+                type="button"
+                aria-haspopup="dialog"
+                title="Detailed stats"
+                aria-label="Detailed stats">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+                  <path d="M18 17V9" />
+                  <path d="M13 17V5" />
+                  <path d="M8 17v-3" />
+                </svg>
+              </button>
             </div>
             <div class="flex flex-wrap gap-1">
               <button
@@ -671,12 +694,7 @@
             </div>
           </div>
           <code class="hidden" id="srt-bonding-url"></code>
-          <div class="mt-1 flex flex-wrap items-center gap-2">
-            <div class="min-w-0 flex-1" id="srt-bonding-stats"></div>
-            <button id="srt-bonding-details-toggle" class="btn btn-xs btn-ghost btn-outline hidden shrink-0" type="button" aria-haspopup="dialog">
-              Detailed stats
-            </button>
-          </div>
+          <div class="mt-1 min-w-0" id="srt-bonding-stats"></div>
           <div class="mt-2" id="srt-bonding-legs"></div>
           <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
             <div class="flex min-w-0 items-center gap-2">
@@ -704,13 +722,6 @@
               </button>
             </div>
           </div>
-        </div>
-
-        <div id="srt-bonding-graphs" class="border-base-content/10 bg-base-100/50 order-last hidden rounded-xl border p-3"></div>
-
-        <div id="srt-bonding-stats-card" class="border-base-content/10 bg-base-100/50 order-last hidden rounded-xl border p-3">
-          <div class="mb-1 text-xs font-semibold opacity-60">Detailed SRT Statistics</div>
-          <div id="srt-bonding-details"></div>
         </div>
 
         <!-- Publish URLs -->

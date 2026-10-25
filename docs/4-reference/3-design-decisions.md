@@ -303,6 +303,35 @@ no other leg is running, and `pending` still is one.
 warning until the input reconnects. Revisit if the relay starts reporting lost legs
 itself.
 
+### SRT loss, retransmit and drop figures cover the last 10 minutes, not the session
+
+**Decision:** the SRT Relay card and the Overview table show loss / retransmit / drop
+as growth over the last 10 minutes (`recent` in `/api/health`, computed from the 5 s
+poll's cumulative counters). The totals since connect stay in the
+details dialog. A bonded group shows only its Drop, marked when above zero; per-leg
+drops are not marked.
+
+**Why:** the relay's counters only grow, so on a long event they say nothing about the
+link now. The bonded stream on the production VM (2026-10-25, two legs, about 9 Mbit/s,
+10.4 h of per-minute snapshots) showed 10.1 k lost and 3 k dropped packets on one leg,
+which reads as a bad link, while most minutes had no loss at all and the rest came in
+bursts.
+
+**Why 10 minutes and not 1:** over those 623 minutes, 39 % had loss on a leg and 8 %
+had a leg drop, in bursts. A 1-minute figure is zero most of the time and a burst is
+gone from it a minute later, so an operator glancing at the card misses it; 10 minutes
+keeps a burst on screen long enough to see, and matches the dialog's 10-minute history
+step. The alerts keep their own 1-minute window, which is for
+reacting, not for looking back.
+
+**Why the group's Drop is the one marked:** a leg's drop is a packet that leg did not
+deliver in time, and the other leg usually did. Leg drops happened in 52 of the 623
+minutes but the group's only in 2 (286 packets in total), and only those reached the
+stream.
+
+**Revisit when:** operators ask for another window (the window is `SRT_RECENT_WINDOW_MS`
+in `src/utils/srtRecent.ts`), or the dialog's cumulative graphs are changed to rates.
+
 ### Outputs pull from SRS, not from the relay
 
 **Decision:** the relay stays a byte-level pipe (one input, one downstream SRT

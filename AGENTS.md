@@ -209,7 +209,9 @@ only for a new module.
   state, input live/media state (schedules ffprobe via `mediaProbe.ts`, and
   restarts running outputs when a new publisher's probed format differs from the
   last one), alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
-  readiness/protocol and builds the pull URL outputs read.
+  readiness/protocol and builds the pull URL outputs read. `utils/srtRecent.ts` keeps
+  the 10-minute rolling SRT loss/retransmit/drop counts behind `recent` in the health
+  payload.
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `translationMixer.ts`
   (translation output mixer), `preview.ts` (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.

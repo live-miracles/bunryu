@@ -23,7 +23,7 @@ import type {
     Output,
 } from '../types.js';
 import { buildSrtOutputUrl, isSrtHostRequired, type SrtOutputSettings } from '../core/srt.js';
-export { renderSrtBondingDetailsInline, showSrtBondingDetails } from './srt-bonding-details.js';
+export { showSrtBondingDetails } from './srt-bonding-details.js';
 
 // Upper bound on selectable audio tracks. Outputs are often configured before
 // the pipeline's input has ever connected (so nothing has been probed yet), so

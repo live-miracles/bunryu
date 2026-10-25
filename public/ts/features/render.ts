@@ -35,7 +35,7 @@ import { updateLayoutOrder, updatePipeline, updatePipelineGroups } from '../core
 import { dupTooltip, formatOutputName, renderOutputCard, type DupRef } from './output-card.js';
 import { outputStatusCounts } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
-import { renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
+import { recentFigure, renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import { alertHint } from '../core/hints.js';
 import { INPUT_ALERT_CODES, srtPassphraseResetBlock } from '../core/pipeline.js';
@@ -1249,13 +1249,17 @@ function renderOverview(): void {
         const color = legHealthColor(leg);
         const health = legHealthLabel(leg);
         const title = leg.healthReason ?? `Transport state: ${leg.state}`;
+        const legFigure = recentFigure(leg.recent, false, {
+            formatCompactCount,
+            fmtLossRexmitDrop,
+        });
         return `
             <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}<span class="opacity-60">(${escapeHtml(leg.state)})</span></span></td>
             <td class="font-mono text-xs">${escapeHtml(leg.ip)}</td>
             <td class="font-mono text-xs">${fmtMs(leg.latencyMs)}</td>
             <td class="font-mono text-xs">${fmtMs(leg.rttMs)}</td>
             <td class="font-mono text-xs">${fmtMbpsValue(leg.recvRateMbps)}</td>
-            <td class="font-mono text-xs" title="Loss / Rexmit / Drop">${fmtLossRexmitDrop(leg.recvLossTotal, leg.retransTotal, leg.recvDropTotal)}</td>`;
+            <td class="font-mono text-xs${legFigure.quiet ? ' opacity-50' : ''}" title="${escapeHtml(legFigure.title)}">${legFigure.text}</td>`;
     };
 
     let relayRows = '';
@@ -1278,8 +1282,17 @@ function renderOverview(): void {
                 <td${rowspan}>${overviewStatusBadge(outputSt)}</td>
                 <td${rowspan}>${renderOverviewIssues(relayIssues(p, relayProcessRunning, inputSt, outputSt))}</td>
                 <td class="font-mono text-xs"${rowspan}>${p.input.live ? formatUptime(p.input.uptimeMs) : '—'}</td>`;
+            const inputFigure = recentFigure(p.srtBonding.input.recent, aggregateStatsAreDropOnly, {
+                formatCompactCount,
+                fmtLossRexmitDrop,
+            });
+            const inputFigureClass = inputFigure.dropped
+                ? ' text-warning font-semibold'
+                : inputFigure.quiet
+                  ? ' opacity-50'
+                  : '';
             const totalsCells = `
-                <td class="font-mono text-xs" title="${aggregateStatsAreDropOnly ? 'Deduplicated drop packets on the bonded group input. Loss and receive retransmission are unavailable for the bonded aggregate.' : 'Loss / Rexmit / Drop on the input connection.'}"${rowspan}>${aggregateStatsAreDropOnly ? fmtLossRexmitDrop(null, null, p.srtBonding.input.recvDropTotal) : fmtLossRexmitDrop(p.srtBonding.input.recvLossTotal, p.srtBonding.input.retransTotal, p.srtBonding.input.recvDropTotal)}</td>`;
+                <td class="font-mono text-xs${inputFigureClass}" title="${escapeHtml(inputFigure.title)}"${rowspan}>${inputFigure.text}</td>`;
 
             if (legs.length > 1) {
                 relayRows += legs
@@ -1637,7 +1650,7 @@ function renderOverview(): void {
         <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm table-relay">
-                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Bonded group inputs show deduplicated Drop; non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D</span>', 'State', 'Source IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop">L / R / D</span>'])}
+                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D <span class="font-normal opacity-60">10 min</span></span>', 'State', 'Source IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal opacity-60">10 min</span></span>'])}
                 <tbody>${relayRows}</tbody>
             </table>
         </div>`;
@@ -1889,7 +1902,6 @@ function renderPipelineInfo(selectedId: string | null): void {
     const bondingInputActive = pipeline.srtBonding.inputActive;
     const bondingOutputConnected = pipeline.srtBonding.outputConnected;
     const hasActiveBondingConnection = bondingInputActive || bondingOutputConnected;
-    const showSrtInputGraphs = hasActiveBondingConnection;
     const relayProcessRunning = state.health.srtRelay?.status === 'running';
     const bondingHost = state.config.publicHost || 'localhost';
     const bondingPortValue = state.health.srtRelay?.port ?? 10081;
@@ -1900,11 +1912,9 @@ function renderPipelineInfo(selectedId: string | null): void {
         (state.config.srtPassphrase
             ? `&passphrase=${encodeURIComponent(state.config.srtPassphrase)}&pbkeylen=16`
             : '');
-    const bondingGraphs = document.getElementById('srt-bonding-graphs');
     const bondingDetailsToggle = document.getElementById(
         'srt-bonding-details-toggle',
     ) as HTMLButtonElement | null;
-    bondingGraphs?.classList.toggle('hidden', !showSrtInputGraphs);
     bondingDetailsToggle?.classList.toggle('hidden', !hasActiveBondingConnection);
     if (bondingDetailsToggle) {
         bondingDetailsToggle.onclick = () =>
@@ -1981,19 +1991,9 @@ function renderPipelineInfo(selectedId: string | null): void {
         }
     }
 
-    void import('../features/srt-bonding-details.js').then((ed) => {
-        ed.refreshSrtBondingDetailsModal(pipeline.id);
-        if (showSrtInputGraphs) {
-            ed.renderSrtBondingDetailsInline(pipeline.id);
-        } else {
-            const details = document.getElementById('srt-bonding-details');
-            if (details) {
-                details.innerHTML = '';
-                delete details.dataset.pipelineId;
-            }
-            if (bondingGraphs) bondingGraphs.innerHTML = '';
-        }
-    });
+    void import('../features/srt-bonding-details.js').then((ed) =>
+        ed.refreshSrtBondingDetailsModal(pipeline.id),
+    );
 
     renderPreview(pipeline);
     renderOutputsList(pipeline);

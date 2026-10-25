@@ -265,11 +265,7 @@ async function loadLegHistory(pipelineId: string, showLoading = true): Promise<v
 
     const requestId = (legHistoryRequestIds.get(pipelineId) ?? 0) + 1;
     legHistoryRequestIds.set(pipelineId, requestId);
-    const isCurrentRequest = (): boolean => {
-        if (legHistoryRequestIds.get(pipelineId) !== requestId) return false;
-        const details = document.getElementById('srt-bonding-details');
-        return !details?.dataset.pipelineId || details.dataset.pipelineId === pipelineId;
-    };
+    const isCurrentRequest = (): boolean => legHistoryRequestIds.get(pipelineId) === requestId;
     const to = Date.now() - offset;
     const from = to - LEG_HISTORY_WINDOW_MS;
     const prefetchedPage = freshLegHistoryPage(pipelineId, offset);
@@ -559,35 +555,6 @@ function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement
     void loadLegHistory(pipelineId);
 }
 
-export function renderSrtBondingDetailsInline(pipelineId: string): void {
-    const target = document.getElementById('srt-bonding-details');
-    if (!target) return;
-    const alreadyRendered =
-        target.dataset.pipelineId === pipelineId &&
-        !!document.getElementById('srt-leg-history-section');
-    if (alreadyRendered) {
-        // The raw counters come from the already-polled state.pipelines
-        // snapshot, so re-rendering them is free (no request).
-        const body = target.querySelector('[data-srt-stats-body]');
-        if (body) body.innerHTML = renderSrtStatsSections(pipelineId);
-        // Poll refreshes re-render the live dashboard every five seconds. Do
-        // not restart a paged historical request on each poll, otherwise a
-        // slow request can be perpetually superseded before it renders.
-        if ((legHistoryOffsets.get(pipelineId) ?? 0) === 0) {
-            void loadLegHistory(pipelineId, false);
-        }
-        return;
-    }
-    target.dataset.pipelineId = pipelineId;
-    renderSrtBondingDetailsContent(pipelineId, target);
-    const graphs = document.getElementById('srt-bonding-graphs');
-    const history = target.querySelector('#srt-leg-history-section');
-    if (graphs && history) {
-        graphs.innerHTML = '';
-        graphs.append(history);
-    }
-}
-
 export function showSrtBondingDetails(pipelineId: string): void {
     const modal = document.getElementById('logs-modal') as HTMLDialogElement | null;
     if (!modal) return;
@@ -605,6 +572,12 @@ export function refreshSrtBondingDetailsModal(pipelineId: string): void {
     const statsBody = modal.querySelector('[data-srt-stats-body]');
     if (statsBody) statsBody.innerHTML = renderSrtStatsSections(pipelineId);
     fitSrtDetailsDialog(modal);
+    // Polls re-render the dashboard every five seconds. Do not restart a paged
+    // historical request on each poll, otherwise a slow request can be
+    // perpetually superseded before it renders.
+    if ((legHistoryOffsets.get(pipelineId) ?? 0) === 0) {
+        void loadLegHistory(pipelineId, false);
+    }
 }
 
 function fitSrtDetailsDialog(modal: HTMLDialogElement): void {

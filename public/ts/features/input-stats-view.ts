@@ -105,6 +105,8 @@ export function renderCompactMetaRow(
         label: string;
         labelTitle?: string;
         value: string | number | null | undefined;
+        valueClass?: string;
+        valueTitle?: string;
     }>,
     className = '',
 ): string {
@@ -113,7 +115,9 @@ export function renderCompactMetaRow(
             (item) =>
                 `<span class="input-meta-item"><span class="input-meta-label"${
                     item.labelTitle ? ` title="${escapeHtml(item.labelTitle)}"` : ''
-                }>${item.label}</span><span class="input-meta-value">${item.value == null ? '—' : escapeHtml(String(item.value))}</span></span>`,
+                }>${item.label}</span><span class="input-meta-value${item.valueClass ? ` ${item.valueClass}` : ''}"${
+                    item.valueTitle ? ` title="${escapeHtml(item.valueTitle)}"` : ''
+                }>${item.value == null ? '—' : escapeHtml(String(item.value))}</span></span>`,
         )
         .join('')}</div>`;
 }

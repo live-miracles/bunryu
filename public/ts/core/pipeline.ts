@@ -57,6 +57,7 @@ const EMPTY_BONDING: SrtBondingStatus = {
         reorderDistance: null,
         rcvBufMs: null,
         legs: [],
+        recent: null,
         expectedLegs: 0,
     },
     output: {
@@ -70,6 +71,7 @@ const EMPTY_BONDING: SrtBondingStatus = {
         sendRateMbps: null,
         undecryptTotal: null,
         sndBufMs: null,
+        recent: null,
     },
     lastErrorAt: null,
     lastError: null,

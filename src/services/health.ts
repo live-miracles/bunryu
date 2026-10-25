@@ -33,6 +33,7 @@ import {
     topProcessesByRss,
 } from '../utils/procStats.js';
 import { readRelayConfig } from '../utils/relayConfig.js';
+import { createSrtRecentTracker, type SrtRecent } from '../utils/srtRecent.js';
 import {
     allowLegLogLine,
     createLegLogState,
@@ -192,7 +193,12 @@ interface PipelineHealth {
         publishConflict: boolean;
         srsPublisher: SrsPublisherInfo | null;
         localSrtPublisherConflict: boolean;
-        input: { expectedLegs: number };
+        input: {
+            expectedLegs: number;
+            recent: SrtRecent | null;
+            legs: Array<{ recent: SrtRecent | null }>;
+        };
+        output: { recent: SrtRecent | null };
     };
 }
 
@@ -540,6 +546,7 @@ export function createHealthService(
         >
     >();
     const legHistory = new Map<number, Map<string, LegHistorySeries>>();
+    const srtRecent = createSrtRecentTracker();
     // The relay drops a failed leg from its legs[] instead of reporting it broken,
     // so a lost leg shows only as a smaller count than the group has had. Keyed by
     // pipeline; reset when the input goes away.
@@ -1048,6 +1055,7 @@ export function createHealthService(
         for (const pipelineId of legHistory.keys()) {
             if (!activePipelineIds.has(pipelineId)) legHistory.delete(pipelineId);
         }
+        srtRecent.keepOnly(activePipelineIds);
         for (const pipelineId of legGroups.keys()) {
             if (!activePipelineIds.has(pipelineId)) legGroups.delete(pipelineId);
         }
@@ -1703,6 +1711,7 @@ export function createHealthService(
                 relayAcceptedBySrs,
             });
             const rawLegs = rawBondingStatus.input.legs;
+            const recent = srtRecent.update(pipeline.id, now, rawBondingStatus);
             const bondingStatus: PipelineHealth['srtBonding'] = {
                 ...rawBondingStatus,
                 acceptedBySrs: relayAcceptedBySrs,
@@ -1712,15 +1721,18 @@ export function createHealthService(
                 input: {
                     ...rawBondingStatus.input,
                     expectedLegs,
+                    recent: recent.input,
                     legs: rawLegs.map((leg) => {
                         const status = legHealth.get(`${leg.ip}:${leg.port}`);
                         return {
                             ...leg,
                             health: status?.health ?? 'ok',
                             healthReason: status?.reason ?? null,
+                            recent: recent.legs.get(leg.ip) ?? null,
                         };
                     }),
                 },
+                output: { ...rawBondingStatus.output, recent: recent.output },
             };
 
             pipelinesHealth[String(pipeline.id)] = {

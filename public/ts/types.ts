@@ -151,6 +151,17 @@ export interface SrtRelayStatus {
     port: number;
 }
 
+// How much a link's cumulative counters grew over the last `spanMs` (up to ten
+// minutes; less right after it connected). A counter the relay does not report
+// for the link is null.
+export interface SrtRecent {
+    spanMs: number;
+    packets: number | null;
+    loss: number | null;
+    retrans: number | null;
+    drop: number | null;
+}
+
 export type SrtBondingLegState = 'pending' | 'idle' | 'running' | 'unknown';
 
 export interface SrtBondingLeg {
@@ -173,6 +184,7 @@ export interface SrtBondingLeg {
     rcvBufMs: number | null;
     health?: 'ok' | 'warn' | 'error';
     healthReason?: string | null;
+    recent: SrtRecent | null;
 }
 
 export interface SrtBondingInputStatus {
@@ -196,6 +208,7 @@ export interface SrtBondingInputStatus {
     reorderDistance: number | null;
     rcvBufMs: number | null;
     legs: SrtBondingLeg[];
+    recent: SrtRecent | null;
     // The most legs this bonded input has had since it connected. A failed leg
     // leaves `legs`, so `expectedLegs - legs.length` is the number that are down.
     expectedLegs: number;
@@ -212,6 +225,7 @@ export interface SrtBondingOutputStatus {
     sendRateMbps: number | null;
     undecryptTotal: number | null;
     sndBufMs: number | null;
+    recent: SrtRecent | null;
 }
 
 export interface SrtBondingStatus {

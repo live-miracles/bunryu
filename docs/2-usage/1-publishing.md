@@ -38,9 +38,18 @@ The trade-off is visibility: SRS does not expose packet loss, retransmit or drop
 counters for an SRT publisher, so a stream sent straight to 10080 has no link
 statistics or loss alerts in the dashboard (its input card says so). Through the
 relay you get them, so use the bonded port when you want to watch the link.
-The pipeline's SRT Relay card keeps a compact summary visible; select **Detailed stats**
-to open a dialog sized to its input, per-leg, output and graph content, within the
+The pipeline's SRT Relay card keeps a compact summary visible; select the **Detailed stats**
+icon (bars) beside the card's title to open a dialog sized to its input, per-leg, output and graph content, within the
 screen width. It refreshes live statistics with the dashboard's regular poll.
+
+The card's **L / R / D** figures (packets lost, retransmitted and dropped) count the
+**last 10 minutes**, not the whole session; the label shows the window (less than 10 min
+for the first minutes after a link connects), and hovering a figure names the
+counts. A link with nothing lately is dimmed so a burst stands out. A bonded input as a whole shows
+only **Drop**, the packets still missing after the legs backed each other up; that is
+what actually damages the stream, so it turns amber when it is above zero. A drop on one
+leg does not: the other leg usually delivered the packet. The Overview's SRT Relay table
+uses the same figures; the dialog's detailed rows (the totals since the stream connected) and graphs are cumulative.
 
 Whatever the protocol, the pipeline's log records the encoder's address each time a
 publisher connects (`Publisher: rtmp from <ip>`), which is how you tell afterwards
