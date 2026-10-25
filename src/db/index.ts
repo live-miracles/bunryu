@@ -38,7 +38,7 @@ const OUTPUT_WARNING_HISTORY_LIMIT = 5;
 // one exception is a stop that followed repeated failures (failedAttempts), which
 // stays current while the output remains stopped.
 function toLastErrorString(error: OutputErrorRecord | null): string | null {
-    return error ? `${error.ts}\n${error.message}` : null;
+    return error ? `${error.lastTs ?? error.ts}\n${error.message}` : null;
 }
 
 // Warnings are informational and do not affect whether a crash is current.
@@ -50,7 +50,7 @@ function currentCrashRecord(
 ): OutputErrorRecord | null {
     const latest = history.filter((e) => e.kind !== 'warning').at(-1);
     if (!latest) return null;
-    if (latest.kind === 'crash') return latest;
+    if (latest.kind === 'crash') return latest.recoveredTs === undefined ? latest : null;
     return latest.kind === 'stopped' && latest.failedAttempts && desiredState === 'stopped'
         ? latest
         : null;
@@ -114,8 +114,28 @@ function parseOutputErrorHistory(raw: string | null): OutputErrorRecord[] {
             message: e.message,
             kind: e.kind ?? 'crash',
             ...(e.failedAttempts ? { failedAttempts: e.failedAttempts } : {}),
+            ...(typeof e.count === 'number' ? { count: e.count } : {}),
+            ...(typeof e.lastTs === 'number' ? { lastTs: e.lastTs } : {}),
+            ...(typeof e.recoveredTs === 'number' ? { recoveredTs: e.recoveredTs } : {}),
         })),
     );
+}
+
+function lastNonWarningIndex(history: OutputErrorRecord[]): number {
+    for (let i = history.length - 1; i >= 0; i--) if (history[i].kind !== 'warning') return i;
+    return -1;
+}
+
+// What makes two crashes "the same" for grouping: the first and the last line of
+// the message with numbers and addresses blanked, so pids, uptimes, bitrates and
+// ffmpeg's `0x...` pointers do not tell attempts apart.
+function crashSignature(message: string): string {
+    const lines = message
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.replace(/0x[0-9a-f]+/gi, '0x#').replace(/\d+/g, '#'));
+    return `${lines[0] ?? ''}\n${lines.at(-1) ?? ''}`;
 }
 
 function encodeOutputErrorHistory(history: OutputErrorRecord[]): string {
@@ -622,6 +642,22 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             failedAttempts?: number,
         ): void {
             const existing = loadOutputErrorHistory(id);
+            // The same crash again, with nothing else (but warnings) since: one
+            // record, so an output failing the same way for an hour does not push
+            // every other record out of the ten the History keeps.
+            if (kind === 'crash') {
+                const at = lastNonWarningIndex(existing);
+                const prev = existing[at];
+                if (
+                    prev?.kind === 'crash' &&
+                    prev.recoveredTs === undefined &&
+                    crashSignature(prev.message) === crashSignature(message)
+                ) {
+                    existing[at] = { ...prev, count: (prev.count ?? 1) + 1, lastTs: Date.now() };
+                    stmtSetLastError.run(encodeOutputErrorHistory(existing), id);
+                    return;
+                }
+            }
             const next = trimOutputErrorHistory([
                 ...existing,
                 { ts: Date.now(), message, kind, ...(failedAttempts ? { failedAttempts } : {}) },
@@ -631,6 +667,16 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
 
         getOutputErrorHistory(id: string): OutputErrorRecord[] {
             return loadOutputErrorHistory(id);
+        },
+
+        markOutputRecovered(id: string): number | null {
+            const history = loadOutputErrorHistory(id);
+            const at = lastNonWarningIndex(history);
+            const crash = history[at];
+            if (crash?.kind !== 'crash' || crash.recoveredTs !== undefined) return null;
+            history[at] = { ...crash, recoveredTs: Date.now() };
+            stmtSetLastError.run(encodeOutputErrorHistory(history), id);
+            return crash.count ?? 1;
         },
 
         appendPipelineLog(pipelineId: number, event: string, message: string): void {

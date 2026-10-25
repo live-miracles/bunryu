@@ -522,16 +522,101 @@ describe('Output CRUD', () => {
         const p = db.createPipeline();
         const o = db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
 
-        for (let i = 1; i <= 12; i++) db.setOutputLastError(o.id, `error ${i}`, 'crash');
+        const names = 'abcdefghijkl'.split('');
+        for (const n of names) db.setOutputLastError(o.id, `error ${n}`, 'crash');
 
         const history = db.getOutputErrorHistory(o.id);
         assert.deepEqual(
             history.map((e) => e.message),
-            Array.from({ length: 10 }, (_, i) => `error ${i + 3}`),
+            names.slice(2).map((n) => `error ${n}`),
         );
 
         const got = db.getOutput(o.id);
-        assert.match(got?.lastError ?? '', /error 12$/);
+        assert.match(got?.lastError ?? '', /error l$/);
+    });
+
+    test('the same crash again is one record with a count and the latest time', (t) => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        const o = db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+        let now = 1_000_000;
+        t.mock.method(Date, 'now', () => now);
+        const crash = (pid, uptime) =>
+            `watchdog: ffmpeg received no input data; restarting process\npid=${pid}\nuptime=${uptime}s\nRestarting output: No input data (port 1935)`;
+
+        db.setOutputLastError(o.id, crash(100, 45), 'crash');
+        now += 50_000;
+        db.setOutputLastError(o.id, crash(101, 47), 'crash');
+        now += 50_000;
+        db.setOutputLastError(o.id, crash(102, 46), 'crash');
+        db.setOutputLastError(o.id, 'a timestamp warning', 'warning');
+        now += 50_000;
+        db.setOutputLastError(o.id, crash(103, 45), 'crash');
+
+        const history = db.getOutputErrorHistory(o.id);
+        assert.equal(history.filter((e) => e.kind === 'crash').length, 1);
+        const [first] = history;
+        assert.equal(first.message, crash(100, 45), 'the first crash keeps its detail');
+        assert.deepEqual([first.ts, first.lastTs, first.count], [1_000_000, 1_150_000, 4]);
+        // The card's "since" is the latest crash.
+        assert.match(db.getOutput(o.id)?.lastError ?? '', /^1150000\n/);
+    });
+
+    test('a different crash, or one after a stop or a start, is a new record', () => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        const o = db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+
+        db.setOutputLastError(o.id, 'Connection refused', 'crash');
+        db.setOutputLastError(o.id, 'Connection timed out', 'crash');
+        db.setOutputLastError(o.id, 'Connection timed out', 'crash');
+        db.setOutputLastError(o.id, '', 'stopped');
+        db.setOutputLastError(o.id, 'Connection timed out', 'crash');
+        db.setOutputLastError(o.id, 'Started manually', 'started');
+        db.setOutputLastError(o.id, 'Connection timed out', 'crash');
+
+        assert.deepEqual(
+            db.getOutputErrorHistory(o.id).map((e) => [e.kind, e.message, e.count]),
+            [
+                ['crash', 'Connection refused', undefined],
+                ['crash', 'Connection timed out', 2],
+                ['stopped', '', undefined],
+                ['crash', 'Connection timed out', undefined],
+                ['started', 'Started manually', undefined],
+                ['crash', 'Connection timed out', undefined],
+            ],
+        );
+    });
+
+    test('a recovered crash stays in the history but is no longer the current error', (t) => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        const o = db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+        let now = 5_000;
+        t.mock.method(Date, 'now', () => now);
+
+        assert.equal(db.markOutputRecovered(o.id), null, 'nothing to recover from');
+        db.setOutputLastError(o.id, 'Connection refused', 'crash');
+        db.setOutputLastError(o.id, 'Connection refused', 'crash');
+        db.setOutputLastError(o.id, 'a warning', 'warning');
+        now = 9_000;
+        assert.equal(db.markOutputRecovered(o.id), 2);
+        assert.equal(db.markOutputRecovered(o.id), null, 'only once');
+
+        const got = db.getOutput(o.id);
+        assert.equal(got?.lastError, null);
+        assert.equal(got?.hasErrorHistory, true);
+        const crash = db.getOutputErrorHistory(o.id)[0];
+        assert.deepEqual([crash.count, crash.recoveredTs], [2, 9_000]);
+
+        // The same failure later is a new episode, not a count on the old one.
+        db.setOutputLastError(o.id, 'Connection refused', 'crash');
+        assert.equal(db.getOutputErrorHistory(o.id).filter((e) => e.kind === 'crash').length, 2);
+        assert.match(db.getOutput(o.id)?.lastError ?? '', /Connection refused$/);
+
+        // Only a crash can be recovered from.
+        db.setOutputLastError(o.id, 'Started manually', 'started');
+        assert.equal(db.markOutputRecovered(o.id), null);
     });
 
     test('warning entries never supersede a crash and never push crashes out', () => {

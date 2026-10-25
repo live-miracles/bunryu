@@ -1312,8 +1312,21 @@ function renderOutputErrorHistory(
     // Oldest first, scrolled to the newest, like the logs.
     contentEl.innerHTML = history
         .map((entry, idx) => {
+            const fmt = (t: number): string =>
+                new Date(t).toLocaleString(undefined, { hour12: false });
+            // A repeated crash is one record: first and latest time, and how many.
             const ts = entry.ts
-                ? new Date(entry.ts).toLocaleString(undefined, { hour12: false })
+                ? entry.lastTs && entry.lastTs !== entry.ts
+                    ? `${fmt(entry.ts)} → ${fmt(entry.lastTs)}`
+                    : fmt(entry.ts)
+                : '';
+            const countBadge =
+                entry.count && entry.count > 1
+                    ? `<span class="badge badge-xs badge-outline">×${entry.count}</span>`
+                    : '';
+            const recovered = entry.recoveredTs
+                ? `<span class="badge badge-xs badge-success uppercase">recovered</span>
+                    <span class="text-xs opacity-50">${fmt(entry.recoveredTs)}</span>`
                 : '';
             // 'stopped' entries mark a deliberate stop, not a failure — badge
             // and text stay neutral so they read as diagnostic info rather
@@ -1333,7 +1346,7 @@ function renderOutputErrorHistory(
                     ? 'badge-info'
                     : 'badge-neutral';
             const badgeLabel = isCrash
-                ? idx === history.length - 1
+                ? idx === history.length - 1 && !entry.recoveredTs
                     ? 'latest crash'
                     : 'crash'
                 : isWarning
@@ -1352,9 +1365,10 @@ function renderOutputErrorHistory(
                 ? `<pre class="text-xs ${textClass} whitespace-pre-wrap [overflow-wrap:anywhere]">${escapeHtml(entry.message)}</pre>`
                 : '';
             return `<div class="${idx === 0 ? '' : 'mt-3 pt-3 border-t border-base-200 sm:mt-4 sm:pt-4'}">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="badge badge-xs ${badgeClass} uppercase">${badgeLabel}</span>
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
+                    <span class="badge badge-xs ${badgeClass} uppercase">${badgeLabel}</span>${countBadge}
                     <span class="text-xs opacity-50">${ts}</span>
+                    ${recovered}
                 </div>
                 ${body}
             </div>`;

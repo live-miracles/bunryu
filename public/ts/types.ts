@@ -269,6 +269,12 @@ export interface OutputErrorRecord {
     ts: number;
     message: string;
     kind: OutputErrorKind;
+    // A crash repeated with the same signature is one record: `ts` is the first
+    // of `count` crashes, `lastTs` the latest; `recoveredTs` is when the output
+    // had run steadily again.
+    count?: number;
+    lastTs?: number;
+    recoveredTs?: number;
 }
 
 export interface InputHealth {

@@ -3535,3 +3535,117 @@ describe('manual start', () => {
         service.shutdown();
     });
 });
+
+describe('recovery from a crash', () => {
+    beforeEach(() => {
+        process.chdir(tempDir);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        delete require.cache[require.resolve('../src/services/outputs')];
+        delete require.cache[require.resolve('../src/utils/appConfig')];
+    });
+
+    // The current error is what the output row says (as the real db derives it).
+    function crashedDb(crashedAtMs) {
+        const db = makeDb();
+        const output = db.getOutput('out1');
+        output.lastError = `${crashedAtMs}\nboom`;
+        db.recovered = [];
+        db.markOutputRecovered = (id) => {
+            db.recovered.push(id);
+            output.lastError = null;
+            return 3;
+        };
+        return db;
+    }
+
+    function writeData(proc) {
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
+    }
+
+    test('an output that runs for a minute after a crash is marked recovered and its retry count starts over', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = crashedDb(Date.now() - 120_000);
+        const diagnostics = makeDiagnosticsSpy();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            ssError: new Error('no ss'),
+        });
+        const service = createOutputService(db, makeReadyInputState(), diagnostics);
+
+        await service.start('out1');
+        proc.emit('close', 1, null);
+        assert.equal(service.getStats('out1').failures, 1);
+        await sleep(1100); // the retry starts it again
+        writeData(proc);
+        await sleep(40);
+        assert.deepEqual(db.recovered, [], 'a run that just started has recovered from nothing');
+
+        const realNow = Date.now;
+        let now = realNow();
+        t.mock.method(Date, 'now', () => now);
+        now += 30_000;
+        await sleep(40);
+        assert.deepEqual(db.recovered, [], 'not yet a minute');
+
+        now += 31_000;
+        await sleep(40);
+        assert.deepEqual(db.recovered, ['out1']);
+        assert.equal(service.getStats('out1').failures, 0);
+        const event = diagnostics.events.find((e) => e.event === 'output-recovered');
+        assert.deepEqual(
+            { crashes: event.crashes, failures: event.failures },
+            { crashes: 3, failures: 1 },
+        );
+
+        await sleep(40);
+        assert.deepEqual(db.recovered, ['out1'], 'only once');
+
+        service.shutdown();
+    });
+
+    test('a crash recorded during this run is not one it recovered from', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = crashedDb(Date.now() + 10_000);
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            ssError: new Error('no ss'),
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        writeData(proc);
+        const realNow = Date.now;
+        let now = realNow();
+        t.mock.method(Date, 'now', () => now);
+        now += 120_000;
+        await sleep(40);
+
+        assert.deepEqual(db.recovered, []);
+
+        service.shutdown();
+    });
+
+    test('an output that is not writing data has not recovered', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = crashedDb(Date.now() - 120_000);
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            ssError: new Error('no ss'),
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        const realNow = Date.now;
+        let now = realNow();
+        t.mock.method(Date, 'now', () => now);
+        now += 120_000;
+        await sleep(40);
+
+        assert.deepEqual(db.recovered, []);
+
+        service.shutdown();
+    });
+});

@@ -83,6 +83,13 @@ export interface OutputErrorRecord {
     // stay up (this many failed attempts in a row), so the stop stays visible as
     // an error until the output is started again.
     failedAttempts?: number;
+    // A crash that repeats with the same signature (see crashSignature in db/)
+    // stays one record: `ts` is the first, `lastTs` the latest of `count` crashes.
+    count?: number;
+    lastTs?: number;
+    // When the output had run steadily again after this crash. A recovered crash
+    // is no longer the current error.
+    recoveredTs?: number;
 }
 
 export interface Output {
@@ -183,6 +190,9 @@ export interface Db {
         failedAttempts?: number,
     ): void;
     getOutputErrorHistory(id: string): OutputErrorRecord[];
+    // Marks the latest crash as recovered when it is the current error: how many
+    // times it happened, or null when there was nothing to recover from.
+    markOutputRecovered(id: string): number | null;
 
     appendPipelineLog(pipelineId: number, event: string, message: string): void;
     getPipelineLogs(pipelineId: number, limit?: number): PipelineLog[];

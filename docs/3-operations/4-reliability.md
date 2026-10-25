@@ -301,6 +301,12 @@ once per 10 minutes, and the diagnostics events always carry every burst. That
 history keeps the last 10 records per output, of which at most 5 may be warnings, so
 warnings can never push crashes and stops out; warnings never count as the output's
 current error. Crashes, watchdog restarts and stops are recorded there as before.
+A crash that repeats with the same first and last line (numbers blanked) is not a new
+record but a count on the last one, so one failure that repeats for an hour takes one
+of the 10 slots, not all of them. When an output with a current crash has run for 60 s
+(the same limit that ends a failed-attempt streak) and is writing data, the watchdog
+tick marks that crash recovered and logs an `output-recovered` event; the crash stops
+being the current error, and a later crash of the same kind is a new record.
 
 The warnings that otherwise only show on the output card are recorded the same way,
 once per episode: high memory usage (70 % or more of the output's limit), an

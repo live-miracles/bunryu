@@ -620,6 +620,35 @@ to work once. If it is built, the design to start from:
 state, shared encode state) show where the bad state is. Build the restart then if it
 is in SRS or the encode, and fix it at the source if it is something else.
 
+### A repeated crash is one History record, and recovery is a field on it
+
+**Decision (October 2026):** an output's History keeps at most 10 records. A crash
+with the same signature as the previous crash record (first and last line, numbers and
+addresses blanked, nothing but warnings in between) increments `count` and `lastTs`
+on that record instead of adding one. When an output with a current crash has run for
+60 s and is writing data, the crash gets `recoveredTs`, which ends its time as the
+current error. No separate "recovered" record is written.
+
+**Why:** a failure that repeats gets one slot instead of up to ten: on 2026-10-25
+the first output failed 19 times in a row the same way, which with one record per
+attempt leaves only the last ten copies and none of the records before them. And an
+output that restarted by itself stayed red until someone stopped and started it,
+because nothing but a stop or a start supersedes a crash. A separate recovery record
+would have taken a slot per episode for no information the crash does not carry.
+
+**Choices:** the first crash keeps its message (nearest the onset, the most useful),
+and later ones are in the diagnostics events; `lastTs` is what the card shows as the
+time of the error. 60 s is the limit that already ends a failed-attempt streak, so an
+output that crashes again seconds after restarting does not flash normal in between.
+The retry count starts over at recovery. A crash after a recovery is a new record even
+with the same text, so a flapping output is still visible as separate episodes.
+
+**Not covered:** translation outputs, which run in the translation mixer's process and
+are not watched by this tick.
+
+**Revisit when:** distinct failures are being merged (widen the signature) or a
+flapping output fills the History with episodes.
+
 ### Don't add an `ss -ti` ack-progress check; `-rw_timeout` is the knob
 
 **Decision (October 2026):** the socket watchdog keeps reading only the socket state

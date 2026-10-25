@@ -160,8 +160,13 @@ the card as warnings, each with the time it began ("since 09:18"), and every cra
 episode is kept in the output's **History** with the FFmpeg stderr tail,
 together with every stop and every start you make with **Start** (a "started" record).
 Both this history and the pipeline's **History** list the oldest entry first and open scrolled to the newest, like the logs.
-The History button is red while the latest record is a crash or watchdog restart;
-after a stop, or with only warnings, it keeps the normal color. The exception is an
+A crash that repeats the same way (a different pid or uptime does not count as
+different) is one record with a count ("×19"), its first and latest time and the
+detail of the first. The History button and the card are red while the latest record
+is a crash or watchdog restart. When the output has then run for a minute and is
+writing data, the crash is marked **recovered** (with the time), the card and the
+button return to the normal color and the retry count starts over; the record stays in
+the History. After a stop, or with only warnings, the button keeps the normal color. The exception is an
 output you stop after 5 failed attempts in a row: its card keeps a red "Stopped
 after 5 failed attempts" line with the last error, and the History button stays red,
 until you start the output again.

@@ -1389,6 +1389,48 @@ export function createOutputService(
         orphansSeen = orphans;
     }
 
+    // An output with a current crash that has since run for STABLE_RUN_MS and is
+    // writing data has recovered: the crash stays in its History, marked
+    // recovered, and stops being the current error (the card clears), and the
+    // retry count starts over. Costs nothing for an output without a current
+    // error, which the output row already says.
+    function noteRecovery(
+        output: Output,
+        startedAtMs: number,
+        p: OutputProgress,
+        now: number,
+    ): void {
+        if (output.lastError === null || now - startedAtMs < STABLE_RUN_MS) return;
+        if ((p.lastTotalSize ?? 0) <= 0) return;
+        // lastError is "<ts of the latest crash>\n<message>": a crash recorded
+        // during this run is not one it has recovered from.
+        if (!(Number.parseInt(output.lastError, 10) < startedAtMs)) return;
+        let crashes: number | null;
+        try {
+            crashes = db.markOutputRecovered(output.id);
+        } catch (err) {
+            console.warn(red(`[outputs] ${output.id} could not record its recovery:`), err);
+            return;
+        }
+        if (crashes === null) return;
+        const retry = retryState.get(output.id);
+        const failures = retry?.failures ?? 0;
+        if (retry) retry.failures = 0;
+        console.log(
+            green(
+                `[outputs] ${output.id} (${output.name}) recovered: running for ${Math.round((now - startedAtMs) / 1000)}s after ${crashes} crash${crashes === 1 ? '' : 'es'}`,
+            ),
+        );
+        logEvent('output-recovered', {
+            outputId: output.id,
+            outputName: output.name,
+            ...roleFields(output),
+            crashes,
+            failures,
+            ranMs: now - startedAtMs,
+        });
+    }
+
     function checkOutputWatchdog(): void {
         const now = Date.now();
         refreshTcpSocketSnapshot();
@@ -1407,6 +1449,7 @@ export function createOutputService(
             // own watchdog) a lack of data is not this output's fault.
             const renditionId = renditionOf.get(outputId);
             if (renditionId !== undefined && !isRenditionReady(renditionId)) continue;
+            noteRecovery(output, startedAtMs, p, now);
 
             const rssBytes = proc.pid == null ? null : readProcRssBytes(proc.pid);
             // A shared output only copies, whatever preset its recipe names.
