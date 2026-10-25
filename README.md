@@ -10,6 +10,8 @@ _Bunryu (分流, "branching flow"): one live stream, many destinations._
 
 **Self-hosted restreaming server built for reliability, for live events that run for many hours.** Take inputs over RTMP, SRT and bonded SRT, and forward each one to many RTMP/RTMPS/SRT destinations (YouTube, Facebook, Twitch, CDNs) from one Linux server. Watchdogs restart a failed output without affecting the others.
 
+**Who it's for:** teams that run many live inputs and need each one forwarded to many destinations for hours, on a server they control. **Who it isn't for:** viewers' playback (no player, WebRTC or HLS delivery), hardware encoding, ARM or Windows hosts, or a hosted multistreaming service with accounts and billing ([when not to use it](docs/1-getting-started/5-comparison.md#when-not-to-use-bunryu)).
+
 Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](https://github.com/live-miracles/goryu) for bonded SRT ingress, and FFmpeg for outputs, with a Node.js + TypeScript control plane, web dashboard and REST API.
 
 | [Install](docs/1-getting-started/3-install.md) | [Try with Docker](docs/1-getting-started/2-docker.md) | [Documentation](docs/README.md) |
@@ -23,10 +25,8 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](http
 - [Forward](docs/2-usage/2-outputs.md) each input to many RTMP, RTMPS or SRT destinations: no fixed limit, tested with 50 inputs and 500 outputs per server. Copy-mode (passthrough) outputs cost almost no CPU.
 - [Transcode](docs/2-usage/2-outputs.md#video-encoding) a few outputs to 720p, 1080p or a rotated vertical feed for Shorts/Reels, and [select audio tracks](docs/2-usage/2-outputs.md#audio) per output, including multi-track SRT outputs. Outputs that need the same encode [share one FFmpeg](docs/2-usage/2-outputs.md#shared-encodes), so ten 720p outputs cost one encode, not ten.
 - [Mix translation audio](docs/2-usage/3-translation.md) (beta) from an interpreter's pipeline over the source, with speech detection, ducking, delay and restore timing. If the translator drops, the output continues with source audio.
-- [Recover automatically](docs/3-operations/4-reliability.md): stall, socket and memory watchdogs with bounded restarts. One failing destination never affects the others.
-- Keep [post-incident evidence](docs/3-operations/4-reliability.md#input-timestamp-fault-detection): per-output History with FFmpeg stderr tails, grouped timestamp warnings, and [rotated structured diagnostics](docs/3-operations/3-configuration.md).
 - Watch everything in a live dashboard: HLS preview, ffprobe media details, bitrates, host and per-process CPU/RAM/network charts, and copy-ready publish URLs, and it stays readable with 50 inputs and 500 outputs ([measured](docs/1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling)).
-- Restart safely: SRS accepts publishes only once the control plane is ready, and all configuration persists in SQLite.
+- Stay reliable through long events: [watchdogs, isolated outputs, safe restarts and post-incident evidence](#built-for-reliability).
 
 ![Overview page with host charts and per-process resources](.github/assets/overview.png)
 
@@ -43,7 +43,7 @@ A live event can't be restarted. Bunryu assumes something will go wrong (a desti
 - **Safe startup:** SRS accepts publishes only once the control plane is ready, and a service restart or host reboot comes back from SQLite without manual steps.
 - **Accurate state:** inputs and outputs don't stay "running" in the dashboard after a disconnect, crash or restart.
 - **Evidence:** per-output History, rotated diagnostics, and [incident write-ups](fail-reports/README.md) of real failures and their fixes.
-- **Small and boring:** no media code of our own. SRS, libsrt and FFmpeg do the media work, and the control plane is about 11,000 lines of TypeScript; it costs some efficiency ([why](docs/1-getting-started/5-comparison.md#design-approach)).
+- **Small and boring:** no media code of our own. SRS, libsrt and FFmpeg do the media work, and the control plane is about 12,000 lines of TypeScript; it costs some efficiency ([why](docs/1-getting-started/5-comparison.md#design-approach)).
 
 These paths are exercised with fault-injection scenarios (a frozen destination, one that never reads, one that refuses connections, output churn, a publisher outage, an SRS crash, a CPU-saturated host and a soak with 50 healthy outputs). No software can promise that nothing fails: see [Known issues](docs/3-operations/5-known-issues.md) and the [supported capacity](docs/1-getting-started/1-introduction.md#capacity-and-limits) for what Bunryu does not cover.
 
