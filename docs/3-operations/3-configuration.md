@@ -95,7 +95,7 @@ Other things the diagnostics record so an incident can be pieced together:
 - **Pipeline alerts:** `pipeline-alert-started` and `pipeline-alert-ended`
   (duration, number of polls it was active, last message). An alert absent for
   six polls (~30 s) ends its episode, so a flickering condition is one episode. The
-  dashboard shows the episode's start ("since 09:18") next to the alert.
+  dashboard shows how long ago the episode started ("since 3 min ago") next to the alert.
 - **Publisher address:** `publisher-source` when a publisher connects, with the
   encoder's address (`rtmp from <ip>`, `srt from <ip>`, `srt via relay from <ip>:<port>`);
   the pipeline log gets the same line. A bonded input has none: its legs are logged

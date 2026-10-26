@@ -97,7 +97,7 @@ describe('bonded legs table', () => {
         const html = renderBondedLegs(input([leg(), leg({ ip: '203.0.113.11' })]), deps);
         assert.match(
             html,
-            /L \/ R \/ D<\/span> <span class="font-normal opacity-60">10 min<\/span>/,
+            /L \/ R \/ D<\/span> <span class="font-normal text-muted">10 min<\/span>/,
         );
         assert.match(html, />2 \/ 3 \/ 0<\/td>/);
         assert.doesNotMatch(html, /10\.1k/, 'the totals are not in the cell');

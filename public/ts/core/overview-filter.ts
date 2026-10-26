@@ -31,5 +31,5 @@ export function searchBoxHtml(id: string, label: string, value: string): string 
 
 // The single row shown when a search leaves a table empty.
 export function noMatchRowHtml(colspan: number, noun: string, query: string): string {
-    return `<tr><td colspan="${colspan}" class="py-4 text-center opacity-50">No ${noun} match “${escapeHtml(query.trim())}”.</td></tr>`;
+    return `<tr><td colspan="${colspan}" class="py-4 text-center text-muted">No ${noun} match “${escapeHtml(query.trim())}”.</td></tr>`;
 }

@@ -173,7 +173,7 @@ shown. The badge's tooltip names the figures it shows. The speed is not shown fo
 start. An output that failed
 shows its failed attempts since it was last started and, while it waits to try again,
 when the next attempt is due ("retry in 8 s"). Problems appear on
-the card as warnings, each with the time it began ("since 09:18"), and every crash, watchdog restart and finished warning
+the card as warnings, each with how long ago it began ("since 3 min ago"), and every crash, watchdog restart and finished warning
 episode is kept in the output's **History** with the FFmpeg stderr tail,
 together with every stop and every start you make with **Start** (a "started" record).
 Both this history and the pipeline's **History** list the oldest entry first and open scrolled to the newest, like the logs.

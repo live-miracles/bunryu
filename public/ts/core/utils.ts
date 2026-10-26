@@ -96,6 +96,19 @@ export function formatLocalTime(ts: number): string {
     return new Date(ts).toLocaleTimeString(undefined, { hour12: false });
 }
 
+// How long before `nowMs` something happened: "just now", "40 s ago", "5 min ago",
+// "3 h ago", "2 d ago". A clock time alone does not say whether it is stale; the exact
+// time stays in the element's title.
+export function formatAgo(ts: number, nowMs: number): string {
+    const s = Math.max(0, Math.floor((nowMs - ts) / 1000));
+    if (s < 5) return 'just now';
+    if (s < 60) return `${s} s ago`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    return h < 24 ? `${h} h ago` : `${Math.floor(h / 24)} d ago`;
+}
+
 export function formatLocalDateTime(ts: number): string {
     return new Date(ts).toLocaleString();
 }

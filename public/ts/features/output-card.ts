@@ -1,7 +1,7 @@
 import {
     escapeHtml,
-    formatClockTime,
-    formatLocalTime,
+    formatAgo,
+    formatLocalDateTime,
     STATUS_COLOR_ERROR,
     STATUS_COLOR_GOOD,
     STATUS_COLOR_OFF,
@@ -102,10 +102,10 @@ function outputEncodingWarnings(output: OutputView, input: InputHealth): string[
     return warnings;
 }
 
-// "since 09:18" after a warning that is still going on.
+// "since 3 min ago" after a warning that is still going on.
 function sinceHtml(sinceMs: number | null | undefined): string {
     return sinceMs
-        ? `<span class="text-xs opacity-60 shrink-0">since ${formatClockTime(sinceMs)}</span>`
+        ? `<span class="text-xs text-muted shrink-0" title="${formatLocalDateTime(sinceMs)}">since ${formatAgo(sinceMs, healthNowMs())}</span>`
         : '';
 }
 
@@ -223,7 +223,7 @@ export function renderOutputCard(
     }
     if (uptimeMs !== null) {
         badges.push(
-            `<span class="font-mono text-xs opacity-60 whitespace-nowrap">${deps.formatUptime(uptimeMs)}</span>`,
+            `<span class="font-mono text-xs text-muted whitespace-nowrap">${deps.formatUptime(uptimeMs)}</span>`,
         );
     }
     const metricsBadge = outputMetricsBadge(output, input);
@@ -237,11 +237,13 @@ export function renderOutputCard(
             (output.url.length > 27
                 ? output.url.slice(0, 25) + '...' + output.url.slice(-2)
                 : output.url);
-        inlineSink = `<code class="text-xs font-normal opacity-60 min-w-0 flex-1 basis-24 truncate" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>`;
+        inlineSink = `<code class="text-xs font-normal text-muted min-w-0 flex-1 basis-24 truncate" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>`;
     }
 
     const lastErrorLine = currentErrorLine(output);
-    const lastErrorTs = output.lastErrorAt ? formatLocalTime(output.lastErrorAt) : '';
+    const lastErrorTs = output.lastErrorAt
+        ? `<span class="text-xs text-error shrink-0" title="${formatLocalDateTime(output.lastErrorAt)}">${formatAgo(output.lastErrorAt, healthNowMs())}</span>`
+        : '';
     const retryBadge =
         output.failures > 0
             ? `<span class="badge badge-sm badge-error gap-1 shrink-0" title="${output.failures} retr${output.failures === 1 ? 'y' : 'ies'}">${ICON_ITERATION_CW}${output.failures}</span>`
@@ -261,7 +263,7 @@ export function renderOutputCard(
     const lastErrorHtml = lastErrorLine
         ? `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
                 ${retryBadge}
-                <span class="text-xs text-error shrink-0">${lastErrorTs}</span>
+                ${lastErrorTs}
                 ${retryInHtml}
                 <span class="text-xs text-error truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>${hintHtml(errorHint(lastErrorLine))}
            </div>`

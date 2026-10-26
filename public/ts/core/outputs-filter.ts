@@ -43,7 +43,7 @@ export function outputSummaryHtml(counts: OutputCounts, shown: number, total: nu
     const filtered =
         shown === total
             ? ''
-            : `<span class="opacity-60 whitespace-nowrap" title="Showing ${shown} of ${total} outputs">${shown} of ${total}</span>`;
+            : `<span class="text-muted whitespace-nowrap" title="Showing ${shown} of ${total} outputs">${shown} of ${total}</span>`;
     return [
         filtered,
         badge(counts.error, 'badge-error', counts.error === 1 ? 'error' : 'errors'),

@@ -53,6 +53,30 @@ body {
     mask-image: linear-gradient(to top, #000 70%, transparent 100%);
 }
 
+/* Secondary text (labels, units, timestamps). Dimmed far enough to recede but not
+   below the WCAG AA contrast of 4.5:1 that opacity-60 and below gave on the panels.
+   Deliberate "inactive" dimming (a quiet SRT figure, a disabled button) stays on the
+   opacity utilities. */
+.text-muted {
+    opacity: 0.82;
+}
+
+/* Inactive tabs are 50% in daisyUI (3.3:1). */
+.tabs .tab:not(.tab-active, :hover) {
+    color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+
+/* daisyUI dims table headers to 60%, which is 4.1:1 on the panels. */
+.table :where(thead, tfoot) {
+    color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+
+/* A field that was edited and breaks its own constraint (port range, latency, URL
+   scheme, passphrase length) turns red without waiting for Save. */
+.input:user-invalid {
+    --input-color: var(--color-error);
+}
+
 #overview-col .overview-name-col {
     min-width: 11rem;
 }
@@ -118,7 +142,7 @@ body {
 }
 
 .input-meta-label {
-    opacity: 0.6;
+    opacity: 0.82;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;

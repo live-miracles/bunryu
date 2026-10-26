@@ -10,7 +10,9 @@ import {
     getUrlParam,
     fmtMs,
     fmtMbpsValue,
+    formatAgo,
     formatClockTime,
+    formatLocalDateTime,
     setHtmlKeepScroll,
     LOW_BITRATE_KBPS,
     STATUS_COLOR_GOOD,
@@ -486,12 +488,12 @@ function inputStatusColor(input: InputHealth): string {
 function overviewStatusBadge(st: InputStatus | OutStatus): string {
     if (st === 'error') return '<span class="badge badge-sm badge-error">ERROR</span>';
     if (st === 'warn') return '<span class="badge badge-sm badge-warning">WARNING</span>';
-    if (st === 'off') return '<span class="font-mono text-xs opacity-40">—</span>';
+    if (st === 'off') return '<span class="font-mono text-xs text-muted">—</span>';
     return '<span class="badge badge-sm badge-success">OK</span>';
 }
 
 function renderOverviewIssues(issues: OverviewIssue[]): string {
-    if (issues.length === 0) return '<span class="opacity-40">—</span>';
+    if (issues.length === 0) return '<span class="text-muted">—</span>';
     return issueLinesHtml(issues);
 }
 
@@ -1004,7 +1006,7 @@ function renderPipelineList(): void {
 
         const uptimeSpan =
             p.input.live && p.input.uptimeMs !== null
-                ? `<span class="font-mono text-xs opacity-60 shrink-0">${formatUptime(p.input.uptimeMs)}</span>`
+                ? `<span class="font-mono text-xs text-muted shrink-0">${formatUptime(p.input.uptimeMs)}</span>`
                 : '';
         const inputTypeBadge = p.input.connected
             ? `<span class="badge badge-sm badge-outline shrink-0">${p.srtBonding.acceptedBySrs ? relayTypeLabel(p) : p.input.isSrt ? 'SRT' : 'RTMP'}</span>`
@@ -1322,7 +1324,7 @@ function renderOverview(): void {
             fmtLossRexmitDrop,
         });
         return `
-            <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}<span class="opacity-60">(${escapeHtml(leg.state)})</span></span></td>
+            <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}<span class="text-muted">(${escapeHtml(leg.state)})</span></span></td>
             <td class="font-mono text-xs">${escapeHtml(leg.ip)}</td>
             <td class="font-mono text-xs">${fmtMs(leg.latencyMs)}</td>
             <td class="font-mono text-xs">${fmtMs(leg.rttMs)}</td>
@@ -1374,9 +1376,9 @@ function renderOverview(): void {
             }
         }
         if (problemsOnly && relayRows === '') {
-            relayRows = `<tr><td colspan="12" class="py-4 text-center opacity-50">No relay issues.</td></tr>`;
+            relayRows = `<tr><td colspan="12" class="py-4 text-center text-muted">No relay issues.</td></tr>`;
         } else if (activeOnly && relayRows === '') {
-            relayRows = `<tr><td colspan="12" class="py-4 text-center opacity-50">No active relay sessions.</td></tr>`;
+            relayRows = `<tr><td colspan="12" class="py-4 text-center text-muted">No active relay sessions.</td></tr>`;
         }
     }
 
@@ -1395,7 +1397,7 @@ function renderOverview(): void {
     let inputRows = '';
     let inputsShown = 0;
     if (state.pipelines.length === 0) {
-        inputRows = `<tr><td colspan="7" class="py-4 text-center opacity-50">No pipelines yet.</td></tr>`;
+        inputRows = `<tr><td colspan="7" class="py-4 text-center text-muted">No pipelines yet.</td></tr>`;
     } else {
         for (const p of state.pipelines) {
             const inp = p.input;
@@ -1438,9 +1440,9 @@ function renderOverview(): void {
         if (inputRows === '' && state.inputSearch.trim() !== '') {
             inputRows = noMatchRowHtml(7, 'inputs', state.inputSearch);
         } else if (problemsOnly && inputRows === '') {
-            inputRows = `<tr><td colspan="7" class="py-4 text-center opacity-50">No input issues.</td></tr>`;
+            inputRows = `<tr><td colspan="7" class="py-4 text-center text-muted">No input issues.</td></tr>`;
         } else if (activeOnly && inputRows === '') {
-            inputRows = `<tr><td colspan="7" class="py-4 text-center opacity-50">No active inputs.</td></tr>`;
+            inputRows = `<tr><td colspan="7" class="py-4 text-center text-muted">No active inputs.</td></tr>`;
         }
     }
 
@@ -1456,7 +1458,7 @@ function renderOverview(): void {
     let outputRows = '';
     let outputsShown = 0;
     if (totalOuts === 0) {
-        outputRows = `<tr><td colspan="9" class="py-4 text-center opacity-50">No outputs yet.</td></tr>`;
+        outputRows = `<tr><td colspan="9" class="py-4 text-center text-muted">No outputs yet.</td></tr>`;
     } else {
         for (const p of state.pipelines) {
             for (const o of p.outs) {
@@ -1477,7 +1479,7 @@ function renderOverview(): void {
                 const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
                 const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
                 outputRows += `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
-                    <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="opacity-40 text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
+                    <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
                     <td>${badge}</td>
                     <td>${renderOverviewIssues(outputIssues(o, p.input))}</td>
                     <td class="font-mono text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
@@ -1492,9 +1494,9 @@ function renderOverview(): void {
         if (outputRows === '' && state.outputSearch.trim() !== '') {
             outputRows = noMatchRowHtml(9, 'outputs', state.outputSearch);
         } else if (problemsOnly && outputRows === '') {
-            outputRows = `<tr><td colspan="9" class="py-4 text-center opacity-50">No output issues.</td></tr>`;
+            outputRows = `<tr><td colspan="9" class="py-4 text-center text-muted">No output issues.</td></tr>`;
         } else if (activeOnly && outputRows === '') {
-            outputRows = `<tr><td colspan="9" class="py-4 text-center opacity-50">No active outputs.</td></tr>`;
+            outputRows = `<tr><td colspan="9" class="py-4 text-center text-muted">No active outputs.</td></tr>`;
         }
     }
 
@@ -1518,7 +1520,7 @@ function renderOverview(): void {
     const rangeLabel = `<span class="inline-flex justify-center w-28">${
         atLive
             ? `<span class="badge badge-success badge-xs gap-1">LIVE</span>`
-            : `<span class="font-mono text-xs opacity-60">${formatClockTime(windowStart)} – ${formatClockTime(windowEnd)}</span>`
+            : `<span class="font-mono text-xs text-muted">${formatClockTime(windowStart)} – ${formatClockTime(windowEnd)}</span>`
     }</span>`;
 
     const chartsHtml = `
@@ -1649,7 +1651,7 @@ function renderOverview(): void {
         <table class="table table-sm">
             <thead>
                 <tr>
-                    <th class="font-mono text-xs font-normal opacity-60" title="How long the dashboard process has been running">${m.uptimeSeconds != null ? `Up ${formatUptime(m.uptimeSeconds * 1000)}` : ''}</th>
+                    <th class="font-mono text-xs font-normal text-muted" title="How long the dashboard process has been running">${m.uptimeSeconds != null ? `Up ${formatUptime(m.uptimeSeconds * 1000)}` : ''}</th>
                     <th>Node</th>
                     <th>SRS</th>
                     <th>Relay</th>
@@ -1660,7 +1662,7 @@ function renderOverview(): void {
             </thead>
             <tbody>
                 <tr>
-                    <td class="text-xs opacity-60" title="${cpuRowTitle}">CPU</td>
+                    <td class="text-xs text-muted" title="${cpuRowTitle}">CPU</td>
                     ${cell(fmtProcCpu(m.node?.cpuPercent))}
                     ${cell(fmtProcCpu(m.srs?.cpuPercent))}
                     ${cell(fmtProcCpu(m.relay?.cpuPercent))}
@@ -1669,7 +1671,7 @@ function renderOverview(): void {
                     ${cell(fmtProcCpu(sysCpuPercent), systemColTitle)}
                 </tr>
                 <tr>
-                    <td class="text-xs opacity-60">RAM</td>
+                    <td class="text-xs text-muted">RAM</td>
                     ${cell(fmtProcRam(m.node?.ramBytes))}
                     ${cell(fmtProcRam(m.srs?.ramBytes))}
                     ${cell(fmtProcRam(m.relay?.ramBytes))}
@@ -1678,7 +1680,7 @@ function renderOverview(): void {
                     ${cell(fmtProcRam(sysRamUsedBytes), systemColTitle)}
                 </tr>
                 <tr>
-                    <td class="text-xs opacity-60" title="${downlinkRowTitle}">Downlink ↓</td>
+                    <td class="text-xs text-muted" title="${downlinkRowTitle}">Downlink ↓</td>
                     ${cell('—')}
                     ${cell(srsDownlinkKnown ? formatBitrate(srsDownlinkKbps) : '—')}
                     ${cell(relayDownlinkKnown ? formatBitrate(relayDownlinkKbps) : '—')}
@@ -1687,7 +1689,7 @@ function renderOverview(): void {
                     ${cell(formatBitrate(sysDownlinkKbps), systemColTitle)}
                 </tr>
                 <tr>
-                    <td class="text-xs opacity-60" title="${uplinkRowTitle}">Uplink ↑</td>
+                    <td class="text-xs text-muted" title="${uplinkRowTitle}">Uplink ↑</td>
                     ${cell('—')}
                     ${cell('—')}
                     ${cell('—')}
@@ -1727,7 +1729,7 @@ function renderOverview(): void {
         <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm table-relay">
-                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D <span class="font-normal opacity-60">10 min</span></span>', 'State', 'Source IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal opacity-60">10 min</span></span>'])}
+                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D <span class="font-normal text-muted">10 min</span></span>', 'State', 'Source IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal text-muted">10 min</span></span>'])}
                 <tbody>${relayRows}</tbody>
             </table>
         </div>`;
@@ -1987,7 +1989,7 @@ function renderPipelineInfo(selectedId: string | null): void {
         relayBondedUrl: `${relayUrlBase}&grouptype=broadcast${relayUrlTail}`,
     });
     bondingCard?.classList.toggle('hidden', publishMode !== 'relay');
-    bondingCard?.classList.remove('opacity-60');
+    bondingCard?.classList.remove('text-muted');
     if (bondingDot && bondingDotFill) {
         const indicator = getBondingIndicator(pipeline, relayProcessRunning);
         bondingDotFill.style.backgroundColor = 'transparent';
@@ -2034,11 +2036,9 @@ function renderPipelineInfo(selectedId: string | null): void {
                   .slice(-1)[0] ?? '')
             : '';
         bondingErrWrap.classList.toggle('hidden', !currentError);
-        bondingErrTs.textContent = pipeline.srtBonding.lastErrorAt
-            ? new Date(pipeline.srtBonding.lastErrorAt).toLocaleTimeString(undefined, {
-                  hour12: false,
-              })
-            : '';
+        const errorAt = pipeline.srtBonding.lastErrorAt;
+        bondingErrTs.textContent = errorAt ? formatAgo(errorAt, healthNowMs()) : '';
+        bondingErrTs.title = errorAt ? formatLocalDateTime(errorAt) : '';
         bondingErr.textContent = lastErrorLine;
         // Always there once the relay has recorded an error; red only while it is unresolved.
         if (bondingHistoryBtn) {
@@ -2147,7 +2147,7 @@ function renderPublishCard(
                     ? `<button type="button" data-reveal="${mode}:${r.label}" class="btn btn-xs btn-ghost btn-square shrink-0" title="${revealed ? 'Hide' : 'Show'} ${r.label.toLowerCase()} for ${PUBLISH_REVEAL_MS / 1000} s" aria-label="${revealed ? 'Hide' : 'Show'} ${r.label.toLowerCase()}" aria-pressed="${revealed}">${revealed ? ICON_EYE_OFF : ICON_EYE}</button>`
                     : '';
                 return `<div class="flex min-w-0 items-center gap-2">
-                    <span class="w-28 shrink-0 text-xs opacity-60">${r.label}</span>
+                    <span class="w-28 shrink-0 text-xs text-muted">${r.label}</span>
                     <code class="min-w-0 flex-1 truncate text-xs"${title}>${escapeHtml(text)}</code>${eye}
                     <button type="button" data-copy-idx="${i}" class="btn btn-xs btn-square ${r.primary ? 'btn-accent' : 'btn-ghost'} btn-outline shrink-0" title="Copy ${r.label.toLowerCase()}" aria-label="Copy ${r.label.toLowerCase()}">${ICON_COPY}</button>
                 </div>`;
@@ -2207,7 +2207,7 @@ function renderOutputsList(pipeline: PipelineView): void {
     toolbar?.classList.toggle('flex', pipeline.outs.length > 0);
 
     if (pipeline.outs.length === 0) {
-        listEl.innerHTML = '<p class="text-sm opacity-50">No outputs yet.</p>';
+        listEl.innerHTML = '<p class="text-sm text-muted">No outputs yet.</p>';
         return;
     }
 
@@ -2278,7 +2278,7 @@ function renderOutputsList(pipeline: PipelineView): void {
 
     listEl.innerHTML =
         visible.length === 0
-            ? `<p class="text-sm opacity-50">${escapeHtml(noMatchingOutputsText(query, problemsOnly))}</p>`
+            ? `<p class="text-sm text-muted">${escapeHtml(noMatchingOutputsText(query, problemsOnly))}</p>`
             : visible
                   .map(({ output }) =>
                       renderOutputCard(output, pipeline.input, dupUrls, {
@@ -2407,21 +2407,21 @@ function renderRejectedPublishes(): void {
                     <span class="font-mono text-sm">${r.reason === 'unrecognized' ? 'Unrecognized' : escapeHtml(r.label)}</span>
                     <span class="badge badge-sm badge-outline shrink-0">${r.protocol === 'srt' ? 'SRT' : 'RTMP'}</span>
                     ${playBadge}
-                    <span class="min-w-0 truncate text-xs opacity-60" title="${escapeHtml(via)}">${escapeHtml(via)}</span>
+                    <span class="min-w-0 truncate text-xs text-muted" title="${escapeHtml(via)}">${escapeHtml(via)}</span>
                 </div>
                 <div class="flex items-center gap-2 pl-5">
                     ${streamsBadge}
                     <span class="badge badge-sm badge-error shrink-0 gap-1 px-2" title="${r.attempts} rejected attempt${r.attempts === 1 ? '' : 's'}">${ICON_CROSS}${r.attempts}</span>
-                    <span class="font-mono text-xs opacity-60">${formatUptime(r.lastAttemptAgoMs)} ago</span>
+                    <span class="font-mono text-xs text-muted">${formatUptime(r.lastAttemptAgoMs)} ago</span>
                 </div>
             </li>`;
         })
         .join('');
     el.innerHTML = `<div class="border-base-content/10 border-t pt-2">
-        <div class="text-xs font-bold uppercase opacity-60">Rejected publish attempts</div>
-        <div class="mb-1 text-xs opacity-50">Not pipelines — nothing here is being forwarded</div>
+        <div class="text-xs font-bold uppercase text-muted">Rejected publish attempts</div>
+        <div class="mb-1 text-xs text-muted">Not pipelines — nothing here is being forwarded</div>
         <ul>${rows}</ul>
-        ${state.rejectedOmitted > 0 ? `<div class="text-xs opacity-50">+${state.rejectedOmitted} more</div>` : ''}
+        ${state.rejectedOmitted > 0 ? `<div class="text-xs text-muted">+${state.rejectedOmitted} more</div>` : ''}
     </div>`;
 }
 

@@ -88,7 +88,7 @@
             value="100"
             aria-label="Alert volume" />
         </div>
-        <div id="saving-badge" class="hidden items-center gap-2 text-sm opacity-60">
+        <div id="saving-badge" class="text-muted hidden items-center gap-2 text-sm">
           <span class="loading loading-infinity loading-xs"></span>
           Saving
         </div>
@@ -457,7 +457,7 @@
         <div id="preview-section" class="mb-4 hidden">
           <div id="preview-card" class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
             <div class="mb-2 flex items-center justify-between">
-              <span class="text-xs font-semibold opacity-60">PREVIEW</span>
+              <span class="text-muted text-xs font-semibold">PREVIEW</span>
               <div class="flex items-center gap-2">
                 <select id="preview-audio-select" class="select select-xs hidden max-w-44" onchange="previewTrackChange()"></select>
                 <button id="preview-stop-btn" class="btn btn-xs btn-ghost" onclick="previewToggleBtn()">
@@ -613,7 +613,7 @@
 
         <!-- Shared encodes: one FFmpeg encode used by several outputs of this pipeline -->
         <div id="shared-encodes-card" class="border-base-content/10 bg-base-100/50 mb-4 hidden rounded-xl border p-3">
-          <div class="mb-1 text-xs font-semibold opacity-60">Shared encodes</div>
+          <div class="text-muted mb-1 text-xs font-semibold">Shared encodes</div>
           <div id="shared-encodes-list" class="flex flex-col gap-2"></div>
         </div>
 
@@ -626,7 +626,7 @@
                 </div>
                 <div id="srt-bonding-status-tooltip-content" class="js-tooltip-content hidden"></div>
               </div>
-              <span class="text-xs font-semibold opacity-60">SRT Relay</span>
+              <span class="text-muted text-xs font-semibold">SRT Relay</span>
               <button
                 id="srt-bonding-details-toggle"
                 class="btn btn-xs btn-square btn-ghost hidden shrink-0"
@@ -687,7 +687,7 @@
         <!-- Publish: one input mode at a time (RTMP, SRT or SRT Relay) -->
         <div id="publish-card" class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
           <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span class="text-xs font-semibold opacity-60">Publish to this input</span>
+            <span class="text-muted text-xs font-semibold">Publish to this input</span>
             <div class="join" id="publish-modes" role="tablist" aria-label="Input mode"></div>
           </div>
           <div class="flex flex-col gap-1" id="publish-rows"></div>
@@ -847,12 +847,12 @@
           <div
             id="settings-version"
             class="bg-base-300 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-0.5 rounded-lg px-3 py-2 font-mono text-xs opacity-70">
-            <span class="opacity-60">Commit</span><span id="v-commit">—</span> <span class="opacity-60">Bunryu</span><span id="v-app">—</span>
-            <span class="opacity-60">SRS</span><span id="v-srs">—</span> <span class="opacity-60">Relay</span><span id="v-relay">—</span>
-            <span class="opacity-60">FFmpeg</span><span id="v-ffmpeg">—</span> <span class="opacity-60">Node</span><span id="v-node">—</span>
-            <span class="opacity-60">OS</span><span id="v-os">—</span> <span class="opacity-60">Kernel</span><span id="v-kernel">—</span>
-            <span class="opacity-60">CPU</span><span><span id="v-cpu">—</span><span id="v-cpu-model"></span></span> <span class="opacity-60">RAM</span
-            ><span id="v-ram">—</span> <span class="opacity-60">Disk</span><span id="v-disk">—</span>
+            <span class="text-muted">Commit</span><span id="v-commit">—</span> <span class="text-muted">Bunryu</span><span id="v-app">—</span>
+            <span class="text-muted">SRS</span><span id="v-srs">—</span> <span class="text-muted">Relay</span><span id="v-relay">—</span>
+            <span class="text-muted">FFmpeg</span><span id="v-ffmpeg">—</span> <span class="text-muted">Node</span><span id="v-node">—</span>
+            <span class="text-muted">OS</span><span id="v-os">—</span> <span class="text-muted">Kernel</span><span id="v-kernel">—</span>
+            <span class="text-muted">CPU</span><span><span id="v-cpu">—</span><span id="v-cpu-model"></span></span> <span class="text-muted">RAM</span
+            ><span id="v-ram">—</span> <span class="text-muted">Disk</span><span id="v-disk">—</span>
           </div>
 
           <!-- Server Name + Public Host -->

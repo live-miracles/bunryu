@@ -191,7 +191,7 @@ shows "Output is running at 0.62x realtime and falling behind live". One good wi
 clears it. It is a warning only: nothing is restarted, and it is recorded like the
 other card warnings (an `ffmpeg-warning-started` / `ffmpeg-warning-ended` pair of
 diagnostics events with `kind: falling-behind`, and a History record when it
-ends). The card shows when the warning began ("since 09:18"). The last finished
+ends). The card shows how long ago the warning began ("since 3 min ago"). The last finished
 window's speed is also in the health data (`speed`) and on the card's badge when it is
 below 0.95x or above 1.05x; the first window after a start is not reported, because
 FFmpeg reads its probe data faster than realtime and it would read high on every start.

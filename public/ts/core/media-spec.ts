@@ -65,7 +65,7 @@ export function audioSpec(
 ): string {
     const codecLabel = [codec || '—', codec ? profile || null : null].filter(Boolean).join(' ');
     const sr = sampleRate ? fmtHz(sampleRate) : null;
-    return `${codecLabel} ${channels ? `${channels}ch` : '—'}${sr ? ` ${sr}` : ''}${labelHtml ? ` <span class="opacity-40">${labelHtml}</span>` : ''}`;
+    return `${codecLabel} ${channels ? `${channels}ch` : '—'}${sr ? ` ${sr}` : ''}${labelHtml ? ` <span class="text-muted">${labelHtml}</span>` : ''}`;
 }
 
 // One line per audio track, "Track N: …" ("Track N (PID p): …" when the

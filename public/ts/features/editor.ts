@@ -624,7 +624,7 @@ function sinkKeyFieldHtml(idx: number, key: string): string {
             fieldsetHtml(
                 'Passphrase',
                 '',
-                `<input type="text" id="out-srt-passphrase-input" name="srtPassphrase" class="input input-sm w-56 font-mono text-xs js-srt-passphrase" placeholder="Passphrase" value="${escapeHtml(srt.passphrase)}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="text" id="out-srt-passphrase-input" name="srtPassphrase" class="input input-sm w-56 font-mono text-xs js-srt-passphrase" placeholder="Passphrase" pattern=".{10,79}" title="10 to 79 characters, or empty for none" value="${escapeHtml(srt.passphrase)}" oninput="this.classList.remove('input-error')" />`,
             ),
             fieldsetHtml(
                 'Key Length',
@@ -648,7 +648,7 @@ function sinkKeyFieldHtml(idx: number, key: string): string {
         s.keyLabel,
         'flex-1',
         `<input type="text" id="out-sink-key-input" name="sinkKey" class="input input-sm w-full font-mono text-xs js-sink-key"
-               placeholder="${s.placeholder}" value="${escapeHtml(key)}"
+               placeholder="${s.placeholder}" value="${escapeHtml(key)}"${idx === CUSTOM_RTMP_IDX ? ' pattern="rtmps?://.+" title="Starts with rtmp:// or rtmps://"' : ''}
                oninput="this.classList.remove('input-error')" onpaste="onSinkKeyPaste(event)" />`,
     );
 }
@@ -887,7 +887,7 @@ function renderOutputTranslationControls(
             <legend class="fieldset-legend">Restore Fade (ms)</legend>
             <input id="out-translation-restore-duration-input" class="input input-sm w-full" type="number" min="0" max="30000" value="${mix?.restoreDurationMs ?? 5000}" />
           </fieldset>
-        ${options ? '' : '<p class="w-full text-xs opacity-60">Create another pipeline for the translator feed first.</p>'}
+        ${options ? '' : '<p class="w-full text-xs text-muted">Create another pipeline for the translator feed first.</p>'}
       </div>`;
     document.getElementById('out-audio-encoding-input')?.addEventListener('change', (event) => {
         const enabled = (event.target as HTMLSelectElement).value === 'translation';
@@ -1280,7 +1280,7 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
 
     const logs = await api.getPipelineLogs(pipelineId);
     if (!logs || logs.length === 0) {
-        contentEl.innerHTML = '<p class="opacity-50 text-sm">No history recorded yet.</p>';
+        contentEl.innerHTML = '<p class="text-muted text-sm">No history recorded yet.</p>';
         return;
     }
 
@@ -1306,7 +1306,7 @@ function renderOutputErrorHistory(
     history: import('../types.js').OutputErrorRecord[],
 ): void {
     if (history.length === 0) {
-        contentEl.innerHTML = '<p class="opacity-50 text-sm">No history recorded yet.</p>';
+        contentEl.innerHTML = '<p class="text-muted text-sm">No history recorded yet.</p>';
         return;
     }
 
@@ -1327,7 +1327,7 @@ function renderOutputErrorHistory(
                     : '';
             const recovered = entry.recoveredTs
                 ? `<span class="badge badge-xs badge-success uppercase">recovered</span>
-                    <span class="text-xs opacity-50">${fmt(entry.recoveredTs)}</span>`
+                    <span class="text-xs text-muted">${fmt(entry.recoveredTs)}</span>`
                 : '';
             // 'stopped' entries mark a deliberate stop, not a failure — badge
             // and text stay neutral so they read as diagnostic info rather
@@ -1361,7 +1361,7 @@ function renderOutputErrorHistory(
                 ? 'text-error opacity-80'
                 : isWarning
                   ? 'text-warning opacity-80'
-                  : 'opacity-60';
+                  : 'text-muted';
             // A record is often a long ffmpeg log. Show its error line, the last line,
             // as the card does, with the whole log behind a toggle.
             const lines = entry.message.split('\n').filter((line) => line.trim());
@@ -1386,7 +1386,7 @@ function renderOutputErrorHistory(
             return `<div class="${idx === 0 ? '' : 'mt-3 pt-3 border-t border-base-200 sm:mt-4 sm:pt-4'}">
                 <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
                     <span class="badge badge-xs ${badgeClass} uppercase">${badgeLabel}</span>${countBadge}
-                    <span class="text-xs opacity-50">${ts}</span>
+                    <span class="text-xs text-muted">${ts}</span>
                     ${recovered}
                     ${copyBtn}
                 </div>
@@ -1436,7 +1436,7 @@ export function showRelayError(pipelineId: string): void {
 
     const message = pipeline?.srtBonding.lastError;
     if (!message) {
-        contentEl.innerHTML = '<p class="opacity-50 text-sm">No error recorded.</p>';
+        contentEl.innerHTML = '<p class="text-muted text-sm">No error recorded.</p>';
         modal.showModal();
         return;
     }
@@ -1445,7 +1445,7 @@ export function showRelayError(pipelineId: string): void {
         ? new Date(pipeline.srtBonding.lastErrorAt).toLocaleString(undefined, { hour12: false })
         : '';
     contentEl.innerHTML = `
-        <div class="text-xs opacity-50 mb-2">${ts}</div>
+        <div class="text-xs text-muted mb-2">${ts}</div>
         <pre class="text-xs text-error opacity-80 whitespace-pre-wrap break-all overflow-x-auto">${escapeHtml(message)}</pre>
     `;
     modal.showModal();
@@ -1520,13 +1520,13 @@ export async function showSrsLogs(): Promise<void> {
     if (!data) return;
 
     const renderTerminal = (label: string, elId: string, tail: ServerLogTail): string => {
-        let section = `<p class="text-xs font-semibold uppercase opacity-50 mb-2">${label} (last 200 lines)</p>`;
+        let section = `<p class="text-xs font-semibold uppercase text-muted mb-2">${label} (last 200 lines)</p>`;
         if (tail.lines.length === 0) {
             const msg =
                 tail.source === 'none'
                     ? `No ${label} log output found — it may not have started yet. In Docker this viewer is always empty; use \`docker compose logs\`.`
                     : `${label} log output is empty — no log output yet.`;
-            section += `<p class="text-sm opacity-50 mb-4">${msg}</p>`;
+            section += `<p class="text-sm text-muted mb-4">${msg}</p>`;
         } else {
             section += `<div id="${elId}" class="h-72 overflow-y-auto rounded-xl border border-white/10 bg-black p-3">
                 <pre class="text-gray-300 whitespace-pre-wrap break-all">${tail.lines.map((l) => ansiLineToHtml(l)).join('\n')}</pre>
@@ -1546,9 +1546,9 @@ export async function showSrsLogs(): Promise<void> {
         host: 'Host',
     };
 
-    html += '<p class="text-xs font-semibold uppercase opacity-50 mt-4 mb-2">Server events</p>';
+    html += '<p class="text-xs font-semibold uppercase text-muted mt-4 mb-2">Server events</p>';
     if (data.events.length === 0) {
-        html += '<p class="text-sm opacity-50 mb-4">No events recorded yet.</p>';
+        html += '<p class="text-sm text-muted mb-4">No events recorded yet.</p>';
     } else {
         html +=
             '<div class="mb-4">' +

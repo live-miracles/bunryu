@@ -122,7 +122,7 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
     if (!wrap) return;
     if (data.legs.length === 0 || data.legs.every((leg) => leg.samples.length === 0)) {
         wrap.innerHTML =
-            '<p class="text-sm opacity-50">No SRT input history is available for this period.</p>';
+            '<p class="text-sm text-muted">No SRT input history is available for this period.</p>';
         delete wrap.dataset.chartMode;
         return;
     }
@@ -135,7 +135,7 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
     );
     if (!hasLossTotals && !hasDropTotals) {
         wrap.innerHTML =
-            '<p class="text-sm opacity-50">No SRT packet loss/drop history is available for this period.</p>';
+            '<p class="text-sm text-muted">No SRT packet loss/drop history is available for this period.</p>';
         delete wrap.dataset.chartMode;
         return;
     }
@@ -148,10 +148,10 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
         .join('');
     if (wrap.dataset.chartMode !== chartMode) {
         const lossChart = hasLossTotals
-            ? '<div><div class="text-xs opacity-60 mb-1">Cumulative packet loss</div><canvas id="srt-leg-loss-chart" class="w-full h-32 text-base-content"></canvas></div>'
+            ? '<div><div class="text-xs text-muted mb-1">Cumulative packet loss</div><canvas id="srt-leg-loss-chart" class="w-full h-32 text-base-content"></canvas></div>'
             : '';
         const dropChart = hasDropTotals
-            ? '<div><div class="text-xs opacity-60 mb-1">Cumulative packet drops</div><canvas id="srt-leg-drop-chart" class="w-full h-32 text-base-content"></canvas></div>'
+            ? '<div><div class="text-xs text-muted mb-1">Cumulative packet drops</div><canvas id="srt-leg-drop-chart" class="w-full h-32 text-base-content"></canvas></div>'
             : '';
         wrap.innerHTML = `<div class="flex flex-wrap gap-x-3 gap-y-1 mb-2">${legend}</div>
             <div class="grid grid-cols-1 gap-4">
@@ -277,7 +277,7 @@ async function loadLegHistory(pipelineId: string, showLoading = true): Promise<v
             // placeholder and flashing.
             content.classList.add('opacity-50');
         } else {
-            content.innerHTML = '<p class="text-sm opacity-50">Loading leg history…</p>';
+            content.innerHTML = '<p class="text-sm text-muted">Loading leg history…</p>';
         }
     }
     const cached = offset === 0 ? legHistoryCache.get(pipelineId) : undefined;
@@ -307,7 +307,7 @@ async function loadLegHistory(pipelineId: string, showLoading = true): Promise<v
             range.innerHTML =
                 offset === 0
                     ? '<span class="badge badge-success badge-xs gap-1">LIVE</span>'
-                    : `<span class="font-mono text-xs opacity-60">${fmt(data.from)} – ${fmt(data.to)}</span>`;
+                    : `<span class="font-mono text-xs text-muted">${fmt(data.from)} – ${fmt(data.to)}</span>`;
         }
         const back = document.getElementById('srt-leg-history-back') as HTMLButtonElement | null;
         const forward = document.getElementById(
@@ -344,7 +344,7 @@ function renderLegHistorySection(): string {
                 <button id="srt-leg-history-forward" type="button" class="btn btn-xs btn-ghost" disabled>10 min &#8594;</button>
             </div>
         </div>
-        <div id="srt-leg-history-content"><p class="text-sm opacity-50">Loading leg history…</p></div>
+        <div id="srt-leg-history-content"><p class="text-sm text-muted">Loading leg history…</p></div>
     </div>`;
 }
 
@@ -403,7 +403,7 @@ export function srtDetailRow(label: string, value: string): string {
         ? `<span class="js-tooltip inline-flex shrink-0 opacity-50 hover:opacity-100" tabindex="0" aria-label="${escapeHtml(description)}">${ICON_INFO}<div class="js-tooltip-content hidden"><div class="max-w-xs text-xs whitespace-normal">${escapeHtml(description)}</div></div></span>`
         : '';
     return `<div class="flex items-center gap-3 py-1 border-b border-base-content/10 last:border-b-0">
-        <span class="inline-flex items-center gap-1"><span class="opacity-60">${label}</span>${info}</span>
+        <span class="inline-flex items-center gap-1"><span class="text-muted">${label}</span>${info}</span>
         <span>${value}</span>
     </div>`;
 }
@@ -412,7 +412,7 @@ export function srtDetailRow(label: string, value: string): string {
 export function srtDetailSection(title: string, rowsHtml: string): string {
     if (!rowsHtml) return '';
     return `<section class="border-base-content/10 bg-base-100/50 min-w-0 rounded-lg border p-2">
-        <div class="text-xs font-semibold uppercase opacity-50 mb-1">${escapeHtml(title)}</div>
+        <div class="text-xs font-semibold uppercase text-muted mb-1">${escapeHtml(title)}</div>
         <div class="text-xs">${rowsHtml}</div>
     </section>`;
 }
@@ -428,7 +428,7 @@ function fmtRawCount(n: number | null | undefined): string {
 // the latest polled state.pipelines snapshot without reopening the dialog.
 function renderSrtStatsSections(pipelineId: string): string {
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
-    if (!pipeline) return '<p class="opacity-50 text-sm">No SRT relay data.</p>';
+    if (!pipeline) return '<p class="text-muted text-sm">No SRT relay data.</p>';
 
     const { input, output } = pipeline.srtBonding;
 
@@ -479,7 +479,7 @@ function renderSrtStatsSections(pipelineId: string): string {
 
     const legsHtml =
         input.legs.length === 0
-            ? `<p class="opacity-50 text-sm">${input.bonded ? 'No bonded legs.' : 'No active SRT connection.'}</p>`
+            ? `<p class="text-muted text-sm">${input.bonded ? 'No bonded legs.' : 'No active SRT connection.'}</p>`
             : input.legs
                   .map((leg, idx) => {
                       const legRows = [
@@ -531,7 +531,7 @@ function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
     if (titleEl) titleEl.textContent = `SRT Relay Details — ${pipeline?.name ?? pipelineId}`;
     if (!pipeline) {
-        contentEl.innerHTML = '<p class="opacity-50 text-sm">No SRT relay data.</p>';
+        contentEl.innerHTML = '<p class="text-muted text-sm">No SRT relay data.</p>';
         return;
     }
 

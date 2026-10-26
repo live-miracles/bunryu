@@ -1,4 +1,5 @@
-import { escapeHtml, formatLocalTime } from '../core/utils.js';
+import { healthNowMs } from '../core/state.js';
+import { escapeHtml, formatAgo, formatLocalDateTime } from '../core/utils.js';
 import { renderStatusTooltip, splitDotGradient, type StatusIssue } from './status-tooltip.js';
 import {
     ICON_HISTORY,
@@ -149,7 +150,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     }
     const uptime =
         uptimeMs !== null
-            ? `<span class="font-mono text-xs opacity-60 whitespace-nowrap">${escapeHtml(deps.formatUptime(uptimeMs))}</span>`
+            ? `<span class="font-mono text-xs text-muted whitespace-nowrap">${escapeHtml(deps.formatUptime(uptimeMs))}</span>`
             : '';
     const badges: string[] = [outputMetricsBadge(rendition, input)];
     const readers = rendition.readers ?? 0;
@@ -164,7 +165,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     const errorHtml =
         errorLine && rendition.lastErrorAt !== null && !isStopped
             ? `<div class="flex items-center gap-2 pl-2 mt-0.5 min-w-0">
-                <span class="text-xs text-error shrink-0">${formatLocalTime(rendition.lastErrorAt)}</span>
+                <span class="text-xs text-error shrink-0" title="${formatLocalDateTime(rendition.lastErrorAt)}">${formatAgo(rendition.lastErrorAt, healthNowMs())}</span>
                 <span class="text-xs text-error truncate" title="${escapeHtml(errorLine)}">${escapeHtml(errorLine)}</span>
            </div>`
             : '';

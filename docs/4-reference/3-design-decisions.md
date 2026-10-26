@@ -1245,6 +1245,28 @@ Not adopted:
   already catch. A baseline adds three tuned thresholds (warm-up, deviation, run
   length) with no incident behind them.
 
+Its rebuilt dashboard (a fleet console for thousands of outputs, with roles, tours and a
+command palette) mostly does not fit a 50-input, 10-viewer tool. Three small things did,
+adopted on 2026-10-26:
+- **Secondary text meets WCAG AA contrast.** Measured on the pipeline page, 15 of 73
+  texts were below 4.5:1 (labels and timestamps dimmed with `opacity-60` or `opacity-40`
+  were at 2.6 to 4.0, daisyUI's table headers at 4.1, inactive tabs at 3.3). One
+  `text-muted` class (82 %) now carries all secondary text, and an audit of the
+  pipeline and Overview pages finds none below AA (66 and 140 texts). Dimming that
+  means "inactive" (a quiet SRT figure, a disabled button) stays on the opacity
+  utilities.
+- **Ages instead of clock times** ("probed 2 min ago", "since 3 min ago"; the exact
+  time on hover), because "probed 14:07" does not say whether it is stale. They count
+  from the health snapshot's own time, so a skewed browser clock does not change them.
+  History keeps full dates and times for incident review.
+- **Inline validation.** The output editor's port, latency, passphrase length and
+  custom RTMP URL carry native constraints and turn red once edited and invalid
+  (`:user-invalid`), instead of only after Save. The Save check stays the authority.
+
+Not adopted from the dashboard: light theme and density switch, command palette, tours
+and guide pages, roles, per-group charts, and a last-minute ingest-rate sparkline per
+pipeline (the low-bitrate warning already covers the serious case).
+
 **Revisit when:** someone wants external alerting (add `/metrics`, loopback-only),
 or an incident shows outputs connected but not keeping up (add the delivery
 ratio; `outputSockets.ts` already reads `ss`), or an incident shows a destination

@@ -86,7 +86,7 @@ describe('audioSpecLines', () => {
         assert.equal(lines[0], 'Track 1: aac LC 2ch 48kHz');
         assert.equal(
             lines[1],
-            'Track 2: aac LC 2ch 48kHz <span class="opacity-40">hin &lt;b&gt;</span>',
+            'Track 2: aac LC 2ch 48kHz <span class="text-muted">hin &lt;b&gt;</span>',
         );
     });
 
@@ -114,7 +114,7 @@ describe('renderInputStats', () => {
         live: true,
         mediaOk: true,
         mediaError: null,
-        mediaCheckedAt: new Date(2026, 9, 19, 12, 3).getTime(),
+        mediaCheckedAt: Date.now() - 125_000,
         publisherIp: '198.51.100.7',
         video,
         audio: null,
@@ -129,7 +129,8 @@ describe('renderInputStats', () => {
         assert.match(html, /198\.51\.100\.7 · <span class="">5\.2 Mbps<\/span>/);
         assert.match(html, /h264 1920x1080p50 High L4\.2/);
         assert.match(html, /Track 1: aac LC 2ch 48kHz/);
-        assert.match(html, /probed 12:03/);
+        assert.match(html, /probed 2 min ago/);
+        assert.match(html, /title="When ffprobe last read the input: \d/);
     });
 
     test('shows the measured keyframe interval, in warning colour when it raised the alert', () => {

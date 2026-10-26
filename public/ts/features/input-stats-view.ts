@@ -1,9 +1,10 @@
 import { audioSpecLines, keyframeSpec, videoSpec } from '../core/media-spec.js';
+import { healthNowMs } from '../core/state.js';
 import {
     LOW_BITRATE_KBPS,
     escapeHtml,
+    formatAgo,
     formatBitrate,
-    formatClockTime,
     formatLocalTime,
 } from '../core/utils.js';
 import type { InputHealth } from '../types.js';
@@ -29,10 +30,10 @@ export function formatUptime(ms: number | null): string {
 
 function formatMediaProbeStatus(input: InputHealth): string | null {
     if (input.mediaCheckedAt) {
-        return `Last ffprobe ${formatLocalTime(input.mediaCheckedAt)}`;
+        return `Last ffprobe ${formatAgo(input.mediaCheckedAt, healthNowMs())}`;
     }
     if (input.mediaProbeStartedAt) {
-        return `ffprobe started ${formatLocalTime(input.mediaProbeStartedAt)}`;
+        return `ffprobe started ${formatAgo(input.mediaProbeStartedAt, healthNowMs())}`;
     }
     if (input.connected && !input.live) return 'ffprobe not run yet';
     return null;
@@ -47,14 +48,14 @@ export function inputStatusMessage(input: InputHealth): string {
 
 function renderMediaProbeNotice(input: InputHealth): string {
     const message = inputStatusMessage(input);
-    const toneClass = input.mediaError ? 'text-error' : input.live ? 'opacity-50' : 'text-warning';
+    const toneClass = input.mediaError ? 'text-error' : input.live ? 'text-muted' : 'text-warning';
     const probeStatus = input.mediaError ? null : formatMediaProbeStatus(input);
-    return `<p class="text-xs ${toneClass} mt-2">${escapeHtml(message)}${probeStatus ? ` <span class="opacity-60">${escapeHtml(probeStatus)}</span>` : ''}</p>`;
+    return `<p class="text-xs ${toneClass} mt-2">${escapeHtml(message)}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>`;
 }
 
 function renderDirectSrtNotice(relayPort: number | undefined): string {
     const port = relayPort ? ` (port ${relayPort})` : '';
-    return `<p class="text-xs opacity-50 mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the SRT relay input${port} to get them.</p>`;
+    return `<p class="text-xs text-muted mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the SRT relay input${port} to get them.</p>`;
 }
 
 export function renderInputStats(input: InputHealth, deps: InputStatsDeps): string {
@@ -81,18 +82,18 @@ export function renderInputStats(input: InputHealth, deps: InputStatsDeps): stri
         .filter(Boolean)
         .join(' · ');
     const probed = input.mediaCheckedAt
-        ? `<span class="opacity-40 shrink-0" title="When ffprobe last read the input">probed ${formatClockTime(input.mediaCheckedAt)}</span>`
+        ? `<span class="text-muted shrink-0" title="When ffprobe last read the input: ${formatLocalTime(input.mediaCheckedAt)}">probed ${formatAgo(input.mediaCheckedAt, healthNowMs())}</span>`
         : '';
     const keyframes = input.keyframes;
     const keyframesTooLong = (input.alerts ?? []).some((a) => a.code === 'input-keyframe-interval');
     const row = (label: string, value: string) =>
-        `<span class="opacity-60">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;
+        `<span class="text-muted">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;
 
     // Same one-line video and audio descriptions as the Overview's Stream
     // Specification column, labelled by row.
     return `
         <div class="my-1 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-xs">
-            <span class="opacity-60">Source</span>
+            <span class="text-muted">Source</span>
             <div class="flex min-w-0 justify-between gap-2"><span class="font-mono">${source}</span>${probed}</div>
             ${row('Video', v ? escapeHtml(v) : '—')}
             ${audioLines.length > 0 ? row('Audio', audioLines.join('<br>')) : ''}

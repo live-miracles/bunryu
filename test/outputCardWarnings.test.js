@@ -302,19 +302,15 @@ describe('hints on the output card', () => {
 });
 
 describe('when a warning started', () => {
-    const clock = (ts) => {
-        const d = new Date(ts);
-        const pad = (n) => String(n).padStart(2, '0');
-        return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
-    const startedAt = Date.UTC(2026, 9, 20, 9, 18, 30);
+    const startedAt = Date.now() - 185_000;
 
-    test('the card shows "since HH:MM" next to the warning', () => {
+    test('the card shows "since 3 min ago" next to the warning, with the exact time on hover', () => {
         const html = render({
             warningReason: 'Output is running at 0.62x realtime and falling behind live.',
             warningSinceMs: startedAt,
         });
-        assert.match(html, new RegExp(`since ${clock(startedAt)}`));
+        assert.match(html, /since 3 min ago/);
+        assert.match(html, /title="[^"]*\d[^"]*">since/);
     });
 
     test('a warning without a start time shows none', () => {

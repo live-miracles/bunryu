@@ -1,4 +1,5 @@
-import { escapeHtml, formatClockTime } from '../core/utils.js';
+import { healthNowMs } from '../core/state.js';
+import { escapeHtml, formatAgo, formatLocalDateTime } from '../core/utils.js';
 
 // The hover text of a two-half status dot, shared by the pipeline list, the SRT Relay
 // card and a shared encode row, so all three read the same way: each half has a
@@ -18,10 +19,10 @@ export function issueLinesHtml(issues: StatusIssue[]): string {
         .map((issue) => {
             const cls = issue.severity === 'error' ? 'text-error' : 'text-warning';
             const hint = issue.hint
-                ? `<div class="text-xs leading-snug opacity-60">Hint: ${escapeHtml(issue.hint)}</div>`
+                ? `<div class="text-xs leading-snug text-muted">Hint: ${escapeHtml(issue.hint)}</div>`
                 : '';
             const since = issue.sinceMs
-                ? ` <span class="opacity-60">since ${formatClockTime(issue.sinceMs)}</span>`
+                ? ` <span class="text-muted" title="${formatLocalDateTime(issue.sinceMs)}">since ${formatAgo(issue.sinceMs, healthNowMs())}</span>`
                 : '';
             return `<div class="${cls} text-xs leading-snug">${escapeHtml(issue.message)}${since}</div>${hint}`;
         })
