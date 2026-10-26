@@ -1432,7 +1432,7 @@ export function showRelayError(pipelineId: string): void {
     resetLogsModalLayout(modal);
 
     const pipeline = state.pipelines.find((p) => p.id === pipelineId);
-    if (titleEl) titleEl.textContent = `Goryu Error — ${pipeline?.name ?? pipelineId}`;
+    if (titleEl) titleEl.textContent = `History — ${pipeline?.name ?? pipelineId} SRT relay`;
 
     const message = pipeline?.srtBonding.lastError;
     if (!message) {

@@ -1,4 +1,4 @@
-import type { AudioInfo, AudioTrackInfo, VideoInfo } from '../types.js';
+import type { AudioInfo, AudioTrackInfo, KeyframeStats, VideoInfo } from '../types.js';
 import { escapeHtml } from './utils.js';
 
 // One-line media descriptions shared by the Overview's "Stream Specification"
@@ -41,6 +41,18 @@ export function videoSpec(
     return [video.codec || '—', res, video.profile || null, video.level ? `L${video.level}` : null]
         .filter(Boolean)
         .join(' ');
+}
+
+// e.g. "every 2.0 s", "every 2.4 s on average, up to 3.5 s", "1 in 12 s".
+export function keyframeSpec(
+    k: Pick<KeyframeStats, 'windowSec' | 'keyframes' | 'meanGapSec' | 'maxGapSec'>,
+): string {
+    if (k.keyframes < 2 || k.meanGapSec === null) {
+        return `${k.keyframes} in ${k.windowSec} s`;
+    }
+    const mean = k.meanGapSec.toFixed(1);
+    const max = k.maxGapSec.toFixed(1);
+    return mean === max ? `every ${mean} s` : `every ${mean} s on average, up to ${max} s`;
 }
 
 // e.g. "aac LC 2ch 48kHz". `labelHtml` must already be escaped.

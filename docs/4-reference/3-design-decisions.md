@@ -332,6 +332,33 @@ stream.
 **Revisit when:** operators ask for another window (the window is `SRT_RECENT_WINDOW_MS`
 in `src/utils/srtRecent.ts`), or the dialog's cumulative graphs are changed to rates.
 
+### Relay stream errors go to the pipeline log, merged while they repeat
+
+**Decision:** the health poll writes the error Goryu holds for a stream (`lastError`)
+to the pipeline log as a `relay_error` line and to the diagnostics (`relay-stream-error`).
+A repeat of the same error within 10 minutes of its last occurrence updates that one
+line to "(seen N times over …)" and sends diagnostics at most once a minute. An error
+already held when the dashboard starts is not logged again unless it is under 30 s old.
+
+**Why:** Goryu keeps one error per stream and zeroes it when the session ends
+(`remove_stream_state`) or a new one starts, so after an incident nothing shows what
+the relay had said. Its journal has it, but not next to the pipeline's other events.
+
+**Why merge:** read in Goryu (`session.c`, `backoff.c`): a stream that cannot publish
+downstream retries on a 1, 2, 4, 8, 16 s backoff, then every 16 s without end, and sets
+the error each time. A rejected stream key is the realistic case, and it would add
+about 225 lines an hour to a log that keeps 100. The text also differs between
+occurrences ("retrying in 4000 ms", the input peer's port, which changes on every
+reconnect), so the merge compares the text without the delay and with ports masked.
+The stream id (it holds the key) is dropped from the logged line.
+
+**Not done:** a separate persisted History list or API route for relay errors. They
+are rare and one-off in practice, and the pipeline log already is the history; the
+relay card's History button shows the one error the relay holds now.
+
+**Revisit when:** the log shows a relay error merged many times a day, which would
+point at a cause worth an alert of its own.
+
 ### Outputs pull from SRS, not from the relay
 
 **Decision:** the relay stays a byte-level pipe (one input, one downstream SRT
@@ -914,6 +941,22 @@ worker.
 **Revisit** if push notifications or an offline page are wanted; both need a
 service worker and a cache policy that keeps deploys from going stale.
 
+### Every two-half status dot has the same hover
+
+**Decision:** the pipeline list, the SRT Relay card and a shared encode row share one
+renderer (`public/ts/features/status-tooltip.ts`). The hover has a heading per half
+(pipeline: Input, Outputs; relay: SRT input, Forward to SRS; shared encode: FFmpeg,
+SRS input), then that half's problems or one muted line, "OK" or why it is off. A
+switched-off encode shows a single "Idle" line. The gradient comes from one helper too.
+
+**Why:** the three had grown apart: the pipeline dot listed problems in one mixed list
+and showed nothing when healthy, the relay dot listed problems or one sentence, and the
+shared encode dot had headed halves. With the same dot shape on all three, a reader
+expects the same hover, and a mixed list does not say which half to look at.
+
+**In the pipeline's hover** the relay's problems sit under Input, because the dot's left
+half already takes the relay's colour; the outputs sit under Outputs.
+
 ### The Overview filters in the browser, and searches names, keys and URLs
 
 **Decision:** each Overview table has its own search box on its heading line, matching
@@ -1185,9 +1228,27 @@ Not adopted:
   state and UI.
 - **Logs in SQLite** (krsna). JSONL plus journald is enough at this size.
 
+Reviewed again on 2026-10-25, when krsna had added alert notifications, picture and
+sound checks, destination anomaly baselines and a keyframe-interval verdict. Adopted:
+the keyframe check, as a [one-time ffprobe per publisher](#measure-the-keyframe-interval-once-per-publisher-in-a-second-ffprobe-and-only-report-it).
+Not adopted:
+- **Alert notifications** (Slack, Discord, signed webhooks, Web Push). The operators
+  do not need the server to send them.
+- **Picture and sound checks** (frozen or black picture, silent track). `live-gallery`
+  already checks the outputs this way, and krsna's own cost is about 2 % of a core per
+  checked pipeline.
+- **Destination anomaly baselines** (each output learns its usual delivery, round
+  trip and retransmits and is flagged when it drifts). None of the six incidents in
+  `fail-reports/` (2026-07-10 to 2026-10-25) was a slow degradation: each was a step
+  change or an outright failure (an OOM kill, a log flood, a 30 s timestamp offset, a
+  shared encode that delivered nothing), which the existing watchdogs and alerts
+  already catch. A baseline adds three tuned thresholds (warm-up, deviation, run
+  length) with no incident behind them.
+
 **Revisit when:** someone wants external alerting (add `/metrics`, loopback-only),
 or an incident shows outputs connected but not keeping up (add the delivery
-ratio; `outputSockets.ts` already reads `ss`).
+ratio; `outputSockets.ts` already reads `ss`), or an incident shows a destination
+getting steadily worse while staying green (add the baselines).
 
 ### Warn when an output falls behind realtime, measured from its media clock
 
@@ -1397,6 +1458,67 @@ restarting every output on every new publisher (the rejected approach above); a
 **Revisit when:** a format change turns out not to need a restart for some destination
 type, or probes after a reconnect prove unreliable enough to report a change that did
 not happen.
+
+### Measure the keyframe interval once per publisher, in a second ffprobe, and only report it
+
+**Decision (October 2026):** 60 s after a publisher's first successful probe, a second
+`ffprobe -select_streams v:0 -show_entries packet=pts_time,dts_time,flags -read_intervals %+12`
+reads 12 s of video packets and measures the gaps between keyframes. The result is
+`input.keyframes` in `/api/health`, a **Keyframes** row in the pipeline panel and a
+diagnostics event. A longest gap over 4.25 s raises the `input-keyframe-interval`
+warning alert. Nothing is restarted or rejected.
+
+**Why:**
+- **A long keyframe interval is an encoder setting that breaks a destination without
+  any error on our side**: YouTube needs a keyframe at least every 4 s and recommends
+  2 s, and copy-mode outputs forward the gaps unchanged. Before this nothing showed
+  the interval, and the only trace was a slow preview start (a documented side effect).
+  krsna's flight recorder judges the same thing continuously.
+- **Once per publisher is enough and cheap.** The interval is an encoder setting, so
+  it is fixed until the encoder is reconfigured or reconnects, and a reconnect is a
+  new publisher and is measured again. Demuxing only: 0.03 s of CPU for the whole window
+  on a 1080p50 6 Mbit/s clip.
+- **60 s after the probe, not right away.** Measured straight after connecting, a
+  chained input showed a start-up transient as if it were its setting. On 2026-10-26 a
+  pipeline fed by another pipeline's output read 5 keyframes in 12 s, mean 2.5 s and
+  longest 4.0 s (one keyframe missing), while its source was still recovering from a
+  reconnect (the shared encode restarted every ~6 s with `non-existing PPS 0
+  referenced`); minutes later both read a clean 2 s GOP, but the value stayed on the
+  panel until the next reconnect. Waiting means one measurement of a settled stream,
+  not a second one to correct the first. It also spreads the checks after a mass
+  reconnect.
+- **A second ffprobe, not a longer first one.** Reading packets for 12 s in the first
+  probe would delay the media state and the input-format check that restarts outputs,
+  both of which depend on it.
+- **Checks run at most 4 at a time.** A live input is read in real time, so a check
+  holds its ffprobe for about 10 to 12 s, and it has about 12 MB of private memory
+  (measured from `/proc/<pid>/smaps_rollup`; the rest of its 29 MB RSS is the shared
+  binary). After a mass reconnect the 200 ms probe stagger would start about 50 at
+  once, which is about 600 MB on a host that has been 1 GB. The queue drops a job
+  whose publisher changed while it waited.
+- **12 s and 4.25 s.** 12 s holds at least two keyframes for any interval up to 4 s
+  with margin; 4.25 s is the platform limit plus frame-rate rounding. A window under
+  10 s (the stream ended while it was read) cannot raise the alert.
+
+**Evidence:** the test stack's publisher at `-g 50` (2 s) measured 6 keyframes, mean and
+longest 2.0 s, no alert, in 10.6 s; republished at `-g 150` it measured 2 keyframes,
+longest 6.0 s, and raised the alert. Unit tests cover the parsing (2 s, 4 s, 6 s,
+one keyframe, none, a cut-short window, `N/A` timestamps), the alert, once per
+publisher, the 60 s wait (and a publisher that changes during it), a failed check,
+shutdown killing an in-flight check and the concurrency limit; removing the limit, the
+wait or the shutdown kill fails its test. The 2 s and 6 s runs above were made with
+the check running right after the probe; with the wait, the end-to-end run below.
+
+**Not adopted:** measuring right after connecting and again later if the result looks
+irregular (two probes, and a rule for "irregular"); a continuous check (a snapshot is what an encoder setting needs, and a
+rolling one needs a long-lived reader per input); an alert at 2 s (platforms
+recommend it, only 4 s is a limit); measuring from the SRS log or the live packets of
+the outputs (neither carries keyframe flags).
+
+**Revisit when:** an encoder is found changing its keyframe interval mid-stream
+(re-measure periodically), 60 s turns out too short for a source that takes longer to
+settle, or the 4-at-a-time queue makes the result arrive too late on a very large
+reconnect.
 
 ## Ingest protection
 

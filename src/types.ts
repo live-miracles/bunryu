@@ -194,7 +194,10 @@ export interface Db {
     // times it happened, or null when there was nothing to recover from.
     markOutputRecovered(id: string): number | null;
 
-    appendPipelineLog(pipelineId: number, event: string, message: string): void;
+    // Returns the new row's id, for a line that is updated in place later.
+    appendPipelineLog(pipelineId: number, event: string, message: string): number;
+    // False when the row is gone (the log keeps only the newest 100 lines).
+    updatePipelineLog(pipelineId: number, id: number, message: string): boolean;
     getPipelineLogs(pipelineId: number, limit?: number): PipelineLog[];
 
     createSession(token: string): void;

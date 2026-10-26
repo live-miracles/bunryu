@@ -843,6 +843,23 @@ describe('Pipeline logs', () => {
         assert.equal(logs[logs.length - 1].message, 'msg 50');
     });
 
+    test('a line can be updated in place by the id its append returned', () => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        const other = db.createPipeline();
+        const id = db.appendPipelineLog(p.id, 'relay_error', 'boom');
+        db.appendPipelineLog(p.id, 'online', 'later line');
+        assert.equal(db.updatePipelineLog(p.id, id, 'boom (seen 3 times over 1 min)'), true);
+        assert.deepEqual(
+            db.getPipelineLogs(p.id).map((l) => l.message),
+            ['later line', 'boom (seen 3 times over 1 min)'],
+        );
+        // Another pipeline's row, or one the cap has pruned, is not touched and says so.
+        assert.equal(db.updatePipelineLog(other.id, id, 'x'), false);
+        for (let i = 0; i < 100; i++) db.appendPipelineLog(p.id, 'test', `msg ${i}`);
+        assert.equal(db.updatePipelineLog(p.id, id, 'x'), false);
+    });
+
     test('pruning is scoped per pipeline, not global', () => {
         const db = makeDb();
         const p1 = db.createPipeline();

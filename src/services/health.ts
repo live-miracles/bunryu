@@ -33,6 +33,7 @@ import {
     topProcessesByRss,
 } from '../utils/procStats.js';
 import { readRelayConfig } from '../utils/relayConfig.js';
+import { createRelayErrorLog } from '../utils/relayErrorLog.js';
 import { createSrtRecentTracker, type SrtRecent } from '../utils/srtRecent.js';
 import {
     allowLegLogLine,
@@ -49,8 +50,12 @@ import {
 } from '../utils/publisherLog.js';
 import {
     isProbeUsable,
+    keyframeIntervalTooLong,
+    keyframeSummary,
     probeError,
     runFfprobe,
+    runKeyframeProbe,
+    type KeyframeStats,
     type ProbeFailure,
     type ProbeResult,
 } from './mediaProbe.js';
@@ -66,6 +71,16 @@ const FFPROBE_FAILED_REFRESH_MS = 30000;
 // simpler and mirrors the output restart pattern; a semaphore would be needed
 // only if memory pressure from simultaneous ffprobe processes became a concern.
 const FFPROBE_STAGGER_MS = 200;
+// Each keyframe check holds an ffprobe (about 12 MB of private memory) for the
+// whole of its ~12 s window, so after a mass reconnect they queue instead of all
+// running at once.
+const KEYFRAME_MAX_CONCURRENT = 4;
+// The check starts this long after the publisher's first successful probe, not
+// right away: the first seconds of a publisher (above all one fed by another
+// pipeline's output that is still recovering) are not representative, and the
+// result is shown until the publisher changes. Measured once, so a bad first
+// window cannot be corrected later.
+const KEYFRAME_DELAY_MS = 60_000;
 const POLL_INTERVAL_MS = 5000;
 // An alert absent for this many polls in a row (~30 s) ends its episode, so a
 // condition that flickers poll to poll is one episode, not dozens.
@@ -136,6 +151,8 @@ export interface InputHealth {
     mediaProbeStartedAt: number | null;
     mediaCheckedAt: number | null;
     mediaError: string | null;
+    // The keyframe check of the current publisher; null until it has run (or when it failed).
+    keyframes: (KeyframeStats & { checkedAt: number }) | null;
     recvBitrateKbps: number | null;
     sendBitrateKbps: number | null;
     readers: number;
@@ -554,6 +571,43 @@ export function createHealthService(
     // Which legs (ip:port) a bonded input had at the last poll, for the pipeline log and
     // the diagnostics. Keyed by pipeline; reset when the input goes away. See utils/legLog.ts.
     const legLogs = new Map<number, LegLogState>();
+    // Goryu's latest error per stream, kept in the pipeline log and the diagnostics before
+    // the relay drops it with the session. Repeats are merged: utils/relayErrorLog.ts.
+    const relayErrorLog = createRelayErrorLog();
+    const recordRelayError = (
+        pipelineId: number,
+        now: number,
+        lastError: string | null,
+        lastErrorAt: number | null,
+    ): void => {
+        const record = relayErrorLog.observe(pipelineId, now, lastError, lastErrorAt);
+        if (!record) return;
+        if (record.diagnostics) {
+            diagnostics?.event('relay-stream-error', {
+                pipelineId,
+                error: lastError,
+                repeat: record.kind === 'repeat',
+                count: record.count,
+                spanMs: record.spanMs,
+            });
+        }
+        const message = `Relay error: ${record.message}`;
+        try {
+            if (
+                record.kind === 'repeat' &&
+                record.logId !== null &&
+                db.updatePipelineLog(pipelineId, record.logId, message)
+            ) {
+                return;
+            }
+            relayErrorLog.setLogId(
+                pipelineId,
+                db.appendPipelineLog(pipelineId, 'relay_error', message),
+            );
+        } catch {
+            /* non-critical */
+        }
+    };
     // Whether the current publisher's source address has been logged. See utils/publisherLog.ts.
     const publisherLogs = new Map<number, PublisherLogState>();
     const noteLegChanges = (
@@ -593,12 +647,30 @@ export function createHealthService(
     const ffprobeStartedAt = new Map<number, number>();
     const ffprobeChildren = new Map<number, ChildProcess>();
     const ffprobeGenerations = new Map<number, number>();
+    // Keyframe check per pipeline: once per publisher, KEYFRAME_DELAY_MS after its first successful probe.
+    const keyframeResults = new Map<number, KeyframeStats & { checkedAt: number }>();
+    // Pipelines whose current publisher has had its check queued (it runs once, so
+    // this stays set after it finishes, or fails, until the publisher changes).
+    const keyframeScheduled = new Set<number>();
+    const keyframeChildren = new Map<number, ChildProcess>();
+    interface KeyframeJob {
+        pipelineId: number;
+        url: string;
+        protocol: InputProtocol;
+        generation: number;
+    }
+    const keyframeQueue: KeyframeJob[] = [];
+    let keyframeRunning = 0;
+    // Set by shutdown(): a probe still in flight must not start a keyframe check.
+    let stopped = false;
 
     function clearFfprobeState(pipelineId: number): void {
         if (
             !ffprobeTimers.has(pipelineId) &&
             !ffprobeInFlight.has(pipelineId) &&
-            !ffprobeResults.has(pipelineId)
+            !ffprobeResults.has(pipelineId) &&
+            !keyframeScheduled.has(pipelineId) &&
+            !keyframeResults.has(pipelineId)
         ) {
             return;
         }
@@ -613,6 +685,13 @@ export function createHealthService(
         }
         ffprobeChildren.delete(pipelineId);
         ffprobeResults.delete(pipelineId);
+        const keyframeChild = keyframeChildren.get(pipelineId);
+        if (keyframeChild && keyframeChild.exitCode == null && keyframeChild.signalCode == null) {
+            keyframeChild.kill('SIGKILL');
+        }
+        keyframeChildren.delete(pipelineId);
+        keyframeScheduled.delete(pipelineId);
+        keyframeResults.delete(pipelineId);
         ffprobeGenerations.set(pipelineId, (ffprobeGenerations.get(pipelineId) ?? 0) + 1);
     }
 
@@ -722,6 +801,97 @@ export function createHealthService(
         }
     }
 
+    // Measures the keyframe gaps once per publisher, KEYFRAME_DELAY_MS after its first successful
+    // probe. Reporting only: a failed check is a diagnostics event, not a retry
+    // loop and not a media error, and the result is dropped with the publisher.
+    function queueKeyframeProbe(job: KeyframeJob): void {
+        keyframeScheduled.add(job.pipelineId);
+        keyframeQueue.push(job);
+        pumpKeyframeQueue();
+    }
+
+    function pumpKeyframeQueue(): void {
+        while (!stopped && keyframeRunning < KEYFRAME_MAX_CONCURRENT && keyframeQueue.length > 0) {
+            const job = keyframeQueue.shift()!;
+            // The publisher changed or the pipeline went away while it waited.
+            if ((ffprobeGenerations.get(job.pipelineId) ?? 0) !== job.generation) continue;
+            keyframeRunning++;
+            void runKeyframeProbeJob(job).finally(() => {
+                keyframeRunning--;
+                pumpKeyframeQueue();
+            });
+        }
+    }
+
+    async function runKeyframeProbeJob(job: KeyframeJob): Promise<void> {
+        const { pipelineId, url, protocol, generation } = job;
+        const current = (): boolean =>
+            !stopped && (ffprobeGenerations.get(pipelineId) ?? 0) === generation;
+        const startedAt = Date.now();
+        try {
+            let failure: ProbeFailure | null = null;
+            const stats = await runKeyframeProbe(
+                url,
+                (child) => {
+                    keyframeChildren.set(pipelineId, child);
+                },
+                (info) => {
+                    failure = info;
+                },
+            );
+            if (!current()) return;
+            const elapsedMs = Date.now() - startedAt;
+            if (!stats) {
+                const info = failure as ProbeFailure | null;
+                diagnostics?.event('keyframe-probe-failed', {
+                    pipelineId,
+                    protocol,
+                    reason: info?.reason ?? 'unknown',
+                    elapsedMs,
+                    exitCode: info?.exitCode ?? null,
+                    signal: info?.signal ?? null,
+                    stderrTail: info?.stderrTail ?? '',
+                });
+                console.warn(
+                    `[probe] pipeline ${pipelineId} (${protocol}) keyframe check failed: ${info?.reason ?? 'unknown'} after ${elapsedMs}ms; no keyframe interval for this publisher`,
+                );
+                return;
+            }
+            keyframeResults.set(pipelineId, { ...stats, checkedAt: Date.now() });
+            const tooLong = keyframeIntervalTooLong(stats);
+            diagnostics?.event('keyframe-interval', {
+                pipelineId,
+                protocol,
+                keyframes: stats.keyframes,
+                meanGapSec: stats.meanGapSec,
+                maxGapSec: stats.maxGapSec,
+                spanSec: stats.spanSec,
+                windowSec: stats.windowSec,
+                tooLong,
+                elapsedMs,
+            });
+            if (tooLong) {
+                try {
+                    db.appendPipelineLog(
+                        pipelineId,
+                        'keyframe_interval',
+                        `Keyframes are too far apart: ${keyframeSummary(stats)}`,
+                    );
+                } catch {
+                    /* non-critical */
+                }
+            }
+        } catch (err) {
+            // This runs detached, so a rejection would have no handler.
+            console.error(
+                `[probe] pipeline ${pipelineId} (${protocol}) keyframe check handling failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        } finally {
+            // Only this publisher's child: a new publisher may already have its own.
+            if (current()) keyframeChildren.delete(pipelineId);
+        }
+    }
+
     async function runScheduledFfprobe(
         pipelineId: number,
         url: string,
@@ -809,6 +979,24 @@ export function createHealthService(
         if (status?.ok) return;
         if (status && Date.now() - status.checkedAt < FFPROBE_FAILED_REFRESH_MS) return;
         scheduleFfprobe(pipelineId, streamKey, protocol, stagger * FFPROBE_STAGGER_MS);
+    }
+
+    // Called every poll for a connected input: queues its keyframe check once its
+    // first successful probe is KEYFRAME_DELAY_MS old.
+    function queueKeyframeProbeWhenDue(
+        pipelineId: number,
+        streamKey: string,
+        protocol: InputProtocol,
+    ): void {
+        const status = ffprobeResults.get(pipelineId);
+        if (stopped || keyframeScheduled.has(pipelineId)) return;
+        if (!status?.ok || Date.now() - status.checkedAt < KEYFRAME_DELAY_MS) return;
+        queueKeyframeProbe({
+            pipelineId,
+            url: inputPullUrl(streamKey, protocol),
+            protocol,
+            generation: ffprobeGenerations.get(pipelineId) ?? 0,
+        });
     }
 
     let pollInProgress = false;
@@ -1062,6 +1250,7 @@ export function createHealthService(
         for (const pipelineId of legLogs.keys()) {
             if (!activePipelineIds.has(pipelineId)) legLogs.delete(pipelineId);
         }
+        relayErrorLog.keepOnly(activePipelineIds);
         for (const pipelineId of ffprobeResults.keys()) {
             if (!activePipelineIds.has(pipelineId)) clearFfprobeState(pipelineId);
         }
@@ -1195,6 +1384,7 @@ export function createHealthService(
                             nowProtocol,
                             ffprobeStagger++,
                         );
+                        queueKeyframeProbeWhenDue(pipeline.id, pipeline.streamKey, nowProtocol);
                     }
                 } else if (!nowConnected) {
                     inputState.clearPipeline(pipeline.id);
@@ -1325,6 +1515,15 @@ export function createHealthService(
                         sinceMs: now,
                     });
                 }
+            }
+            const keyframes = keyframeResults.get(pipeline.id) ?? null;
+            if (displayConnected && keyframes && keyframeIntervalTooLong(keyframes)) {
+                alerts.push({
+                    severity: 'warning',
+                    code: 'input-keyframe-interval',
+                    message: `Input keyframes are too far apart: ${keyframeSummary(keyframes)}`,
+                    sinceMs: keyframes.checkedAt,
+                });
             }
             const recentDisconnects = (inputDisconnectsAt.get(pipeline.id) ?? []).filter(
                 (at) => now - at <= INPUT_FLAP_WINDOW_MS,
@@ -1712,6 +1911,12 @@ export function createHealthService(
             });
             const rawLegs = rawBondingStatus.input.legs;
             const recent = srtRecent.update(pipeline.id, now, rawBondingStatus);
+            recordRelayError(
+                pipeline.id,
+                now,
+                rawBondingStatus.lastError,
+                rawBondingStatus.lastErrorAt,
+            );
             const bondingStatus: PipelineHealth['srtBonding'] = {
                 ...rawBondingStatus,
                 acceptedBySrs: relayAcceptedBySrs,
@@ -1750,6 +1955,7 @@ export function createHealthService(
                         : null,
                     mediaCheckedAt: displayConnected ? (mediaProbe?.checkedAt ?? null) : null,
                     mediaError: displayConnected ? displayMediaError : null,
+                    keyframes: displayConnected ? keyframes : null,
                     recvBitrateKbps: s?.kbps?.recv_30s ?? null,
                     sendBitrateKbps: s?.kbps?.send_30s ?? null,
                     readers: s ? Math.max(0, (s.clients ?? 0) - 1) : 0,
@@ -1985,6 +2191,7 @@ export function createHealthService(
     }
 
     function shutdown(): void {
+        stopped = true;
         for (const timer of ffprobeTimers.values()) {
             clearTimeout(timer);
         }
@@ -1997,6 +2204,14 @@ export function createHealthService(
             }
         }
         ffprobeChildren.clear();
+        for (const child of keyframeChildren.values()) {
+            if (child.exitCode == null && child.signalCode == null) {
+                child.kill('SIGKILL');
+            }
+        }
+        keyframeChildren.clear();
+        keyframeScheduled.clear();
+        keyframeQueue.length = 0;
     }
 
     return {

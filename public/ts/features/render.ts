@@ -48,9 +48,20 @@ import {
 } from './output-card.js';
 import { outputStatusCounts } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
-import { recentFigure, renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
+import {
+    hasCurrentRelayError,
+    recentFigure,
+    renderBondedLegs,
+    renderBondingStats,
+} from './srt-bonding-view.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import { alertHint } from '../core/hints.js';
+import {
+    issueLinesHtml,
+    renderStatusTooltip,
+    splitDotGradient,
+    type StatusIssue,
+} from './status-tooltip.js';
 import {
     countOutputs,
     matchesOutputFilter,
@@ -95,19 +106,11 @@ function statusColor(st: OutStatus): string {
 function statusBadge(n: number, cls: string): string {
     return n > 0 ? `<div class="badge badge-sm ${cls} px-2">${n}</div>` : '';
 }
-type OverviewIssue = {
-    severity: 'warning' | 'error';
-    message: string;
-    // What to do about it, when known (see core/hints.ts).
-    hint?: string;
-    // When it began, for an issue that is still going on.
-    sinceMs?: number;
-};
+type OverviewIssue = StatusIssue;
 type BondingIndicator = {
     leftColor: string;
     rightColor: string;
-    issues: OverviewIssue[];
-    offMessage: string | null;
+    tooltip: string;
 };
 type RelayFlowStatus = 'good' | 'warn' | 'error' | 'off';
 
@@ -309,7 +312,9 @@ interface DerivedInputHealth {
     issues: OverviewIssue[];
 }
 
-function outputHealth(o: OutputView, input: InputHealth): OutputHealth {
+// `includeInput` false leaves out "the input is not live", which a shared encode's
+// status shows on its own side of the dot (see sharedEncodeIndicator).
+function outputHealth(o: OutputView, input: InputHealth, includeInput = true): OutputHealth {
     if (o.desiredState === 'stopped') return { status: 'off', issues: [] };
 
     // An output that pulls a shared encode which is not up yet is waiting, not
@@ -337,7 +342,7 @@ function outputHealth(o: OutputView, input: InputHealth): OutputHealth {
     }
 
     if (o.status === 'running') {
-        if (!input.live) {
+        if (includeInput && !input.live) {
             return {
                 status: 'warn',
                 issues: [
@@ -485,34 +490,9 @@ function overviewStatusBadge(st: InputStatus | OutStatus): string {
     return '<span class="badge badge-sm badge-success">OK</span>';
 }
 
-function issueLinesHtml(issues: OverviewIssue[]): string {
-    return issues
-        .map((issue) => {
-            const cls = issue.severity === 'error' ? 'text-error' : 'text-warning';
-            const hint = issue.hint
-                ? `<div class="text-xs leading-snug opacity-60">Hint: ${escapeHtml(issue.hint)}</div>`
-                : '';
-            const since = issue.sinceMs
-                ? ` <span class="opacity-60">since ${formatClockTime(issue.sinceMs)}</span>`
-                : '';
-            return `<div class="${cls} text-xs leading-snug">${escapeHtml(issue.message)}${since}</div>${hint}`;
-        })
-        .join('');
-}
-
 function renderOverviewIssues(issues: OverviewIssue[]): string {
     if (issues.length === 0) return '<span class="opacity-40">—</span>';
     return issueLinesHtml(issues);
-}
-
-// Content for a `.js-tooltip-content` popup: one colored line per issue (error/warning),
-// or a single muted line when there's nothing wrong but a status is still worth explaining.
-function renderIssueTooltip(issues: OverviewIssue[], offMessage?: string | null): string {
-    if (issues.length > 0) return issueLinesHtml(issues);
-    if (offMessage) {
-        return `<div class="text-xs leading-snug opacity-70">${escapeHtml(offMessage)}</div>`;
-    }
-    return '';
 }
 
 function inputIssues(input: InputHealth): OverviewIssue[] {
@@ -534,13 +514,22 @@ function summarizeOutputError(error: string | null | undefined, fallback: string
     return singleLine.length > 160 ? `${singleLine.slice(0, 157)}...` : singleLine;
 }
 
-function relayIssues(
+// A relay problem and the half of the status dot it belongs to: `input` is the SRT
+// link from the encoder, `output` is the relay's forward into SRS. `prefix` names the
+// side where the problem is listed without a heading, as in the Overview.
+interface RelayIssue {
+    side: 'input' | 'output';
+    prefix: string;
+    issue: OverviewIssue;
+}
+
+function relaySidedIssues(
     pipeline: PipelineView,
     relayProcessRunning: boolean,
     inputSt: RelayFlowStatus,
     outputSt: RelayFlowStatus,
-): OverviewIssue[] {
-    const issues: OverviewIssue[] = [];
+): RelayIssue[] {
+    const issues: RelayIssue[] = [];
     for (const alert of pipeline.alerts) {
         // The leg-specific version below includes the address and the precise
         // reason, so avoid showing per-leg alerts twice in the combined list.
@@ -550,10 +539,14 @@ function relayIssues(
         // Input alerts are shown with the input (see inputHealth).
         if (INPUT_ALERT_CODES.has(alert.code)) continue;
         issues.push({
-            severity: alert.severity,
-            message: alert.message,
-            hint: alertHint(alert.code) ?? undefined,
-            sinceMs: alert.sinceMs,
+            side: alert.code === 'relay-forwarding-stalled' ? 'output' : 'input',
+            prefix: '',
+            issue: {
+                severity: alert.severity,
+                message: alert.message,
+                hint: alertHint(alert.code) ?? undefined,
+                sinceMs: alert.sinceMs,
+            },
         });
     }
     const inputSeverity = inputSt === 'error' ? 'error' : 'warning';
@@ -561,19 +554,37 @@ function relayIssues(
 
     if (inputSt === 'warn' || inputSt === 'error') {
         for (const reason of relayInputReasons(pipeline, relayProcessRunning)) {
-            issues.push({ severity: inputSeverity, message: `Input: ${reason}` });
+            issues.push({
+                side: 'input',
+                prefix: 'Input: ',
+                issue: { severity: inputSeverity, message: reason },
+            });
         }
     }
     if (outputSt === 'warn' || outputSt === 'error') {
         for (const reason of relayOutputReasons(pipeline, relayProcessRunning)) {
             issues.push({
-                severity: outputSeverity,
-                message: `Output: ${summarizeOutputError(reason, reason)}`,
+                side: 'output',
+                prefix: 'Output: ',
+                issue: { severity: outputSeverity, message: summarizeOutputError(reason, reason) },
             });
         }
     }
 
     return issues;
+}
+
+// Every relay problem in one list, each reason tagged with its side ("Input: …").
+function relayIssues(
+    pipeline: PipelineView,
+    relayProcessRunning: boolean,
+    inputSt: RelayFlowStatus,
+    outputSt: RelayFlowStatus,
+): OverviewIssue[] {
+    return relaySidedIssues(pipeline, relayProcessRunning, inputSt, outputSt).map(
+        ({ prefix, issue }) =>
+            prefix ? { ...issue, message: `${prefix}${issue.message}` } : issue,
+    );
 }
 
 function outputIssues(o: OutputView, input: InputHealth): OverviewIssue[] {
@@ -781,12 +792,34 @@ function getBondingIndicator(
     pipeline: PipelineView,
     relayProcessRunning: boolean,
 ): BondingIndicator {
+    const tooltip = (
+        inputIssues: OverviewIssue[],
+        outputIssues: OverviewIssue[],
+        idle?: string,
+    ): string =>
+        renderStatusTooltip(
+            {
+                label: 'SRT input',
+                issues: inputIssues,
+                active: true,
+                ok: `${pipeline.srtBonding.input.bonded ? 'Bonded SRT input' : 'SRT input via relay'} receiving.`,
+                off: '',
+            },
+            {
+                label: 'Forward to SRS',
+                issues: outputIssues,
+                active: true,
+                ok: 'Forwarding to SRS.',
+                off: '',
+            },
+            idle,
+        );
+
     if (!relayProcessRunning) {
         return {
             leftColor: STATUS_COLOR_OFF,
             rightColor: STATUS_COLOR_OFF,
-            issues: [],
-            offMessage: 'SRT relay is not running; relay SRT input unavailable',
+            tooltip: tooltip([], [], 'SRT relay is not running; relay SRT input unavailable.'),
         };
     }
 
@@ -794,23 +827,20 @@ function getBondingIndicator(
         return {
             leftColor: STATUS_COLOR_OFF,
             rightColor: STATUS_COLOR_OFF,
-            issues: [],
-            offMessage: 'No relay SRT input for this stream key',
+            tooltip: tooltip([], [], 'No relay SRT input for this stream key.'),
         };
     }
 
     const inputSt = relayInputStatus(pipeline, relayProcessRunning);
     const outputSt = relayOutputStatus(pipeline, relayProcessRunning);
-    const issues = relayIssues(pipeline, relayProcessRunning, inputSt, outputSt);
+    const issues = relaySidedIssues(pipeline, relayProcessRunning, inputSt, outputSt);
+    const onSide = (side: RelayIssue['side']): OverviewIssue[] =>
+        issues.filter((i) => i.side === side).map(({ issue }) => issue);
 
     return {
         leftColor: flowStatusColor(inputSt),
         rightColor: flowStatusColor(outputSt),
-        issues,
-        offMessage:
-            issues.length > 0
-                ? null
-                : `${pipeline.srtBonding.input.bonded ? 'Bonded SRT input' : 'SRT input via relay'} active and forwarding to downstream output`,
+        tooltip: tooltip(onSide('input'), onSide('output')),
     };
 }
 
@@ -945,17 +975,32 @@ function renderPipelineList(): void {
         const selected = p.id === selectedId ? 'bg-base-100' : '';
         const relayInputSt = relayInputStatus(p, relayProcessRunning);
         const relayOutputSt = relayOutputStatus(p, relayProcessRunning);
-        const statusIssues: OverviewIssue[] = [
-            ...inputIssues(p.input),
-            ...p.outs.flatMap((o) =>
-                outputIssues(o, p.input).map((issue) => ({
-                    severity: issue.severity,
-                    message: `${o.name}: ${issue.message}`,
-                })),
-            ),
-            ...relayIssues(p, relayProcessRunning, relayInputSt, relayOutputSt),
-        ];
-        const statusTooltip = renderIssueTooltip(statusIssues);
+        // Same halves as the dot: everything on the way in (the input and, for SRT through
+        // the relay, the relay), then the outputs.
+        const statusTooltip = renderStatusTooltip(
+            {
+                label: 'Input',
+                issues: [
+                    ...inputIssues(p.input),
+                    ...relayIssues(p, relayProcessRunning, relayInputSt, relayOutputSt),
+                ],
+                active: p.input.connected,
+                ok: 'Input is live.',
+                off: 'No input.',
+            },
+            {
+                label: 'Outputs',
+                issues: p.outs.flatMap((o) =>
+                    outputIssues(o, p.input).map((issue) => ({
+                        severity: issue.severity,
+                        message: `${o.name}: ${issue.message}`,
+                    })),
+                ),
+                active: outOff < p.outs.length,
+                ok: 'Outputs are running normally.',
+                off: 'No outputs running.',
+            },
+        );
 
         const uptimeSpan =
             p.input.live && p.input.uptimeMs !== null
@@ -973,7 +1018,7 @@ function renderPipelineList(): void {
         return `<li data-pipeline-id="${p.id}" data-group-key="${groupKey}">
             <div class="flex items-center gap-2 ${selected} cursor-pointer js-select-pipeline" data-id="${p.id}">
                 <div class="js-tooltip shrink-0">
-                    <div class="rounded-box h-5 w-5" style="background:linear-gradient(90deg,${inColor},${inColor} 45%,#242933 45%,#242933 55%,${outColor} 55%)"></div>
+                    <div class="rounded-box h-5 w-5" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
                     <div class="js-tooltip-content hidden">${statusTooltip}</div>
                 </div>
                 ${statusBadge(outGood, 'badge-success')}
@@ -1188,7 +1233,7 @@ function renderGroupHeader(
     const outColor = statusColor(outSt);
 
     const summary = collapsed
-        ? `<div class="rounded-box h-5 w-5 shrink-0" style="background:linear-gradient(90deg,${inColor},${inColor} 45%,#242933 45%,#242933 55%,${outColor} 55%)"></div>
+        ? `<div class="rounded-box h-5 w-5 shrink-0" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
            ${statusBadge(outGood, 'badge-success')}
            ${statusBadge(outWarn, 'badge-warning')}
            ${statusBadge(outFailed, 'badge-error')}
@@ -1894,7 +1939,12 @@ function renderPipelineInfo(selectedId: string | null): void {
     });
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
     if (statsEl) statsEl.innerHTML = inputHtml;
-    renderSharedEncodes(pipeline, { outStatus, formatUptime });
+    renderSharedEncodes(pipeline, {
+        ffmpegHealth: (rendition) => outputHealth(rendition, pipeline.input, false),
+        inputHealth,
+        statusColor,
+        formatUptime,
+    });
     const bondingCard = document.getElementById('srt-bonding-card');
     const bondingDot = document.getElementById('srt-bonding-status-dot');
     const bondingDotFill = document.getElementById('srt-bonding-status-fill');
@@ -1904,7 +1954,9 @@ function renderPipelineInfo(selectedId: string | null): void {
     const bondingErrWrap = document.getElementById('srt-bonding-last-error-wrap');
     const bondingErrTs = document.getElementById('srt-bonding-last-error-ts');
     const bondingErr = document.getElementById('srt-bonding-last-error');
-    const bondingErrInfoBtn = document.getElementById('srt-bonding-last-error-info');
+    const bondingHistoryBtn = document.getElementById(
+        'srt-bonding-history-btn',
+    ) as HTMLButtonElement | null;
     const bondingInputActive = pipeline.srtBonding.inputActive;
     const bondingOutputConnected = pipeline.srtBonding.outputConnected;
     const hasActiveBondingConnection = bondingInputActive || bondingOutputConnected;
@@ -1939,17 +1991,11 @@ function renderPipelineInfo(selectedId: string | null): void {
     if (bondingDot && bondingDotFill) {
         const indicator = getBondingIndicator(pipeline, relayProcessRunning);
         bondingDotFill.style.backgroundColor = 'transparent';
-        bondingDotFill.style.backgroundImage =
-            `linear-gradient(90deg, ` +
-            `${indicator.leftColor} 0 45%, ` +
-            `#242933 45% 55%, ` +
-            `${indicator.rightColor} 55% 100%)`;
-        if (bondingTooltipContent) {
-            bondingTooltipContent.innerHTML = renderIssueTooltip(
-                indicator.issues,
-                indicator.offMessage,
-            );
-        }
+        bondingDotFill.style.backgroundImage = splitDotGradient(
+            indicator.leftColor,
+            indicator.rightColor,
+        );
+        if (bondingTooltipContent) bondingTooltipContent.innerHTML = indicator.tooltip;
     }
     if (bondingStats) {
         bondingStats.innerHTML = renderBondingStats(pipeline.srtBonding, relayProcessRunning, {
@@ -1980,21 +2026,25 @@ function renderPipelineInfo(selectedId: string | null): void {
     }
     if (bondingErrWrap && bondingErr && bondingErrTs) {
         const msg = pipeline.srtBonding.lastError;
+        const currentError = hasCurrentRelayError(pipeline.srtBonding);
         const lastErrorLine = msg
             ? (msg
                   .split('\n')
                   .filter((l) => l.trim())
                   .slice(-1)[0] ?? '')
             : '';
-        bondingErrWrap.classList.toggle('hidden', !msg);
+        bondingErrWrap.classList.toggle('hidden', !currentError);
         bondingErrTs.textContent = pipeline.srtBonding.lastErrorAt
             ? new Date(pipeline.srtBonding.lastErrorAt).toLocaleTimeString(undefined, {
                   hour12: false,
               })
             : '';
         bondingErr.textContent = lastErrorLine;
-        if (bondingErrInfoBtn) {
-            (bondingErrInfoBtn as HTMLButtonElement).onclick = () => {
+        // Always there once the relay has recorded an error; red only while it is unresolved.
+        if (bondingHistoryBtn) {
+            bondingHistoryBtn.classList.toggle('hidden', !msg);
+            bondingHistoryBtn.classList.toggle('text-error', currentError);
+            bondingHistoryBtn.onclick = () => {
                 void import('../features/editor.js').then((ed) => ed.showRelayError(pipeline.id));
             };
         }

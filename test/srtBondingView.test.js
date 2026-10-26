@@ -4,6 +4,7 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    hasCurrentRelayError,
     recentFigure,
     recentSpanLabel,
     renderBondedLegs,
@@ -162,5 +163,35 @@ describe('relay stats row', () => {
             deps,
         );
         assert.match(html, /input-meta-value text-warning font-semibold" title="[^"]*">3</);
+    });
+});
+
+describe('relay error history', () => {
+    const T = 1_000_000;
+    const status = (over = {}) => ({
+        lastError: 'srt_connect target=127.0.0.1:10080: Connection setup failure',
+        lastErrorAt: T,
+        inputActive: true,
+        outputConnected: false,
+        lastPacketAt: null,
+        ...over,
+    });
+
+    test('is current while the stream is up and nothing was forwarded since the error', () => {
+        assert.equal(hasCurrentRelayError(status()), true);
+        assert.equal(hasCurrentRelayError(status({ lastPacketAt: T - 5000 })), true);
+    });
+
+    test('is resolved once packets were forwarded after the error', () => {
+        assert.equal(hasCurrentRelayError(status({ lastPacketAt: T + 1000 })), false);
+    });
+
+    test('is history, not a problem, when the stream is idle or there was never an error', () => {
+        assert.equal(hasCurrentRelayError(status({ inputActive: false })), false);
+        assert.equal(hasCurrentRelayError(status({ lastError: null, lastErrorAt: null })), false);
+    });
+
+    test('an error without a time is current while the stream is up', () => {
+        assert.equal(hasCurrentRelayError(status({ lastErrorAt: null, lastPacketAt: T })), true);
     });
 });

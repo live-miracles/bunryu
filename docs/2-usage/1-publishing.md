@@ -57,6 +57,19 @@ what actually damages the stream, so it turns amber when it is above zero. A dro
 leg does not: the other leg usually delivered the packet. The Overview's SRT Relay table
 uses the same figures; the dialog's detailed rows (the totals since the stream connected) and graphs are cumulative.
 
+When the relay has recorded an error, a **History** button (clock icon, as on an
+output) appears beside the card's title and opens it. The relay keeps only its latest
+error per stream, and keeps it across reconnects, so the card shows the error line
+and turns the button red only while it is unresolved: the stream is up and has not
+forwarded a packet since the error. Once packets flow again, or the stream is idle,
+the line goes away and the error stays in History.
+
+Because the relay forgets that error when the session ends, each new one is also
+written to the pipeline log as "Relay error: …". A stream that keeps failing the same
+way (a rejected key retries every few seconds) stays one line, updated to "(seen N
+times over 3 min)" instead of filling the log; N counts the errors a 5 s poll saw, so
+it can be lower than the relay's own retries.
+
 Whatever the protocol, the pipeline's log records the encoder's address each time a
 publisher connects (`Publisher: rtmp from <ip>`), which is how you tell afterwards
 which encoder was on a key. A bonded input logs its legs instead.
@@ -139,8 +152,12 @@ ffmpeg -re -stream_loop -1 -i video.mp4 \
 ## Checking the input
 
 Once a publisher connects, the pipeline turns live and the dashboard shows the
-input's codec, resolution, frame rate, bitrate and audio tracks (from `ffprobe`).
-**Preview** plays the input in the dashboard.
+input's codec, resolution, frame rate, bitrate and audio tracks (from `ffprobe`),
+and how far apart its keyframes are (**Keyframes**, measured over 12 s of video about
+a minute after the publisher connects; "1 in 12 s" means a single keyframe in that time). YouTube needs a keyframe at least every 4 s
+and recommends 2 s; with a longer interval the pipeline gets a warning alert, and a
+preview starts late. Set the encoder's keyframe interval to 2 s (the commands above
+do). **Preview** plays the input in the dashboard.
 
 ### Preview
 

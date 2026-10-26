@@ -68,6 +68,8 @@ const ALERT_HINTS: Record<string, string> = {
     'input-low-framerate': 'The encoder is dropping frames: check its CPU load and its uplink.',
     'input-high-framerate':
         'The input is arriving faster than its nominal rate: check the encoder’s frame rate setting and clock.',
+    'input-keyframe-interval':
+        'Set the encoder’s keyframe interval to 2 s (never more than 4 s); with a longer one platforms may reject the stream and previews start late.',
     'input-flapping':
         'Check the encoder (power, crashes, cabling) and its uplink; the pipeline log lists each disconnect.',
     'relay-forwarding-stalled':

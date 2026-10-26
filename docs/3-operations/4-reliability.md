@@ -96,6 +96,7 @@ succeeds:
 | Input check | Scope | Cadence | Notes |
 |-------------|-------|---------|-------|
 | Media validation | Connected RTMP/SRT inputs without a successful probe yet for this publisher | Immediate probe (staggered across pipelines), then retried every `FFPROBE_FAILED_REFRESH_MS` (30s) while it keeps failing | Stops re-probing once a probe succeeds for the current publisher; a new probe cycle starts on the next publisher change. Every failed probe is written to diagnostics as `media-probe-failed` (reason `timeout`/`exit`/`parse`/`unusable`, elapsed time, exit status, ffprobe stderr tail) and the first failure and the later recovery per publisher are added to the pipeline log (`probe_failed` / `probe_recovered`). Input liveness and output recovery do not wait for a valid ffprobe result — ffprobe fills in media/track details when available. |
+| Keyframe interval | Each publisher, once, 60 s after its first successful probe | One more ffprobe that reads the video packets for 12 s, at most 4 at a time (the rest queue) | Never retried: a failed check is a `keyframe-probe-failed` diagnostics event and leaves the media state alone. See [Input keyframe interval](#input-keyframe-interval). |
 
 **Control-plane errors.** The health poll and the output watchdog
 each catch errors from their own tick and run again on the next one. They log the
@@ -351,6 +352,28 @@ with `srt_to_rtmp off` SRS does not count their frames (`frames` stays 0). An SR
 input through Goryu has loss, drop and retransmission alerts from the relay; one
 sent straight to SRS port 10080 has no link-quality alerts today.
 
+## Input keyframe interval
+
+Once per publisher, 60 s after its first successful probe, a second ffprobe reads the
+input's video packets for 12 s (demuxing only, no decoding) and measures the gaps
+between keyframes. The result (count, mean and longest gap) is `input.keyframes` in
+`/api/health`, the **Keyframes** row of the pipeline panel, and a `keyframe-interval`
+diagnostics event. If the longest gap is over 4.25 s (YouTube's limit is 4 s; the
+margin is frame-rate rounding), the pipeline gets an `input-keyframe-interval`
+warning alert and one `keyframe_interval` line in the pipeline log. Only a window of
+at least 10 s can raise it, so a stream that ends while being read proves nothing. A
+single keyframe or none in the window is a gap as long as the window.
+
+It is reporting only, like the other input alerts. Limits: it is one snapshot per
+publisher, taken a minute in so that a start-up transient is not what is shown, so
+an encoder setting changed later is seen after the next reconnect, and the value
+appears (and the alert can start) only a minute after the input goes live;
+a keyframe forced by a scene cut makes a gap shorter, which never raises the alert.
+Checks queue (4 at a time) so that a mass reconnect does not start dozens of
+ffprobe processes at once; a queued check whose publisher changed is dropped. The
+cost and the reasons are in the
+[design decision](../4-reference/3-design-decisions.md#measure-the-keyframe-interval-once-per-publisher-in-a-second-ffprobe-and-only-report-it).
+
 ## Flapping inputs
 
 When an input disconnects 3 or more times within 5 minutes (a bad uplink, a
@@ -359,7 +382,8 @@ many times. It is reporting only, like the other alerts, and it clears once fewe
 than 3 disconnects remain inside the window. Each disconnect is still its own line in
 the pipeline log; the alert is what makes a pattern visible without reading it.
 
-Input alerts (`input-flapping`, `input-low-framerate`, `input-high-framerate`) belong
+Input alerts (`input-flapping`, `input-low-framerate`, `input-high-framerate`,
+`input-keyframe-interval`) belong
 to the input itself, so they show on every input, RTMP included: the pipeline's
 status icon and the Inputs table's status and Issues column turn to warning, with the
 time the alert began. The SRT link-quality alerts (loss, drops, retransmissions,

@@ -270,6 +270,9 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             SELECT id FROM pipeline_logs WHERE pipeline_id = ? ORDER BY id DESC LIMIT ${PIPELINE_LOG_CAP}
         )`,
     );
+    const stmtUpdatePipelineLog = sqlite.prepare(
+        'UPDATE pipeline_logs SET message = ? WHERE id = ? AND pipeline_id = ?',
+    );
     const stmtGetPipelineLogs = sqlite.prepare(
         'SELECT id, pipeline_id, ts, event, message FROM pipeline_logs WHERE pipeline_id = ? ORDER BY id DESC LIMIT ?',
     );
@@ -679,9 +682,21 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             return crash.count ?? 1;
         },
 
-        appendPipelineLog(pipelineId: number, event: string, message: string): void {
-            stmtInsertPipelineLog.run(pipelineId, Date.now(), event, message);
+        // Returns the new row's id, for a line that is updated in place later.
+        appendPipelineLog(pipelineId: number, event: string, message: string): number {
+            const { lastInsertRowid } = stmtInsertPipelineLog.run(
+                pipelineId,
+                Date.now(),
+                event,
+                message,
+            );
             stmtPrunePipelineLogs.run(pipelineId, pipelineId);
+            return Number(lastInsertRowid);
+        },
+
+        // False when the row is gone (the log keeps only the newest 100 lines).
+        updatePipelineLog(pipelineId: number, id: number, message: string): boolean {
+            return stmtUpdatePipelineLog.run(message, id, pipelineId).changes > 0;
         },
 
         getPipelineLogs(pipelineId: number, limit = LOG_RETENTION_LIMIT): PipelineLog[] {

@@ -34,6 +34,21 @@ type Counts = {
     drop: number | null | undefined;
 };
 
+// The relay keeps a stream's last error across reconnects, so it can be days old.
+// Like an output's, it is shown as a problem only while it is unresolved: the stream
+// is up and has not forwarded a packet since the error. After that it is history,
+// still open from the history button.
+export function hasCurrentRelayError(
+    status: Pick<
+        SrtBondingStatus,
+        'lastError' | 'lastErrorAt' | 'inputActive' | 'outputConnected' | 'lastPacketAt'
+    >,
+): boolean {
+    if (!status.lastError || !(status.inputActive || status.outputConnected)) return false;
+    const { lastErrorAt, lastPacketAt } = status;
+    return !(lastErrorAt !== null && lastPacketAt !== null && lastPacketAt > lastErrorAt);
+}
+
 export function recentSpanLabel(spanMs: number): string {
     return spanMs >= 90_000
         ? `${Math.round(spanMs / 60_000)} min`

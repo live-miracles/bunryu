@@ -1,4 +1,4 @@
-import { audioSpecLines, videoSpec } from '../core/media-spec.js';
+import { audioSpecLines, keyframeSpec, videoSpec } from '../core/media-spec.js';
 import {
     LOW_BITRATE_KBPS,
     escapeHtml,
@@ -83,17 +83,20 @@ export function renderInputStats(input: InputHealth, deps: InputStatsDeps): stri
     const probed = input.mediaCheckedAt
         ? `<span class="opacity-40 shrink-0" title="When ffprobe last read the input">probed ${formatClockTime(input.mediaCheckedAt)}</span>`
         : '';
+    const keyframes = input.keyframes;
+    const keyframesTooLong = (input.alerts ?? []).some((a) => a.code === 'input-keyframe-interval');
     const row = (label: string, value: string) =>
         `<span class="opacity-60">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;
 
     // Same one-line video and audio descriptions as the Overview's Stream
     // Specification column, labelled by row.
     return `
-        <div class="my-1 grid grid-cols-[3.5rem_1fr] gap-x-3 gap-y-1 text-xs">
+        <div class="my-1 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-xs">
             <span class="opacity-60">Source</span>
             <div class="flex min-w-0 justify-between gap-2"><span class="font-mono">${source}</span>${probed}</div>
             ${row('Video', v ? escapeHtml(v) : '—')}
             ${audioLines.length > 0 ? row('Audio', audioLines.join('<br>')) : ''}
+            ${keyframes ? row('Keyframes', `<span class="${keyframesTooLong ? 'text-warning' : ''}" title="Measured over ${keyframes.windowSec} s of video about a minute after the publisher connected. Platforms need a keyframe at least every 4 s; 2 s is recommended.">${escapeHtml(keyframeSpec(keyframes))}</span>`) : ''}
         </div>
         ${v ? '' : renderMediaProbeNotice(input)}
         ${deps.directSrt ? renderDirectSrtNotice(deps.relayPort) : ''}

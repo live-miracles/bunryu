@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { parsePipelines } = require('../public/ts/core/pipeline');
 const {
     renderSharedEncodeRows,
+    sharedEncodeIndicator,
     sharedEncodeIssue,
     SHARED_ENCODE_RESTART_LOCKOUT_MS,
 } = require('../public/ts/features/shared-encodes');
@@ -277,9 +278,17 @@ describe('sharedEncodeIssue', () => {
 });
 
 describe('Shared encodes card', () => {
+    const side = (status, issues = []) => ({ status, issues });
     const deps = (overrides = {}) => ({
-        outStatus: (o) =>
-            o.status === 'failed' ? 'error' : o.desiredState === 'stopped' ? 'off' : 'good',
+        ffmpegHealth: (o) =>
+            o.status === 'failed'
+                ? side('error', [{ severity: 'error', message: 'ffmpeg boom' }])
+                : o.desiredState === 'stopped'
+                  ? side('off')
+                  : side('good'),
+        inputHealth: () => side('good'),
+        statusColor: (status) =>
+            ({ good: '#22c55e', warn: '#facc15', error: '#ef4444', off: '#6b7280' })[status],
         formatUptime: () => '1m 5s',
         restartLocked: () => false,
         ...overrides,
@@ -313,6 +322,83 @@ describe('Shared encodes card', () => {
         assert.match(html, /2 outs · 2 reads/);
         assert.match(html, /1m 5s/);
         assert.match(html, /3\.0 Mbps \/ 41% \//);
+    });
+
+    describe('status dot', () => {
+        const dot = (html) => html.match(/<div aria-label="status"[^>]*>/)[0];
+        const tooltip = (html) =>
+            html.match(
+                /aria-label="status"[\s\S]*?<div class="js-tooltip-content hidden">([\s\S]*?)<\/div>\s*<\/span>/,
+            )[1];
+
+        test('is split: the left half is FFmpeg, the right half is the SRS input', () => {
+            const html = renderSharedEncodeRows(
+                pipelineWith(),
+                deps({
+                    ffmpegHealth: () => side('error', [{ severity: 'error', message: 'x' }]),
+                    inputHealth: () => side('warn', [{ severity: 'warning', message: 'y' }]),
+                }),
+            );
+            assert.match(dot(html), /#ef4444 0 45%, #242933 45% 55%, #facc15 55% 100%/);
+        });
+
+        test('the tooltip lists each side under its own heading', () => {
+            const html = renderSharedEncodeRows(
+                pipelineWith(),
+                deps({
+                    ffmpegHealth: () => side('error', [{ severity: 'error', message: 'enc died' }]),
+                    inputHealth: () =>
+                        side('warn', [{ severity: 'warning', message: 'no keyframes' }]),
+                }),
+            );
+            const tip = tooltip(html);
+            assert.match(
+                tip,
+                /FFmpeg<\/div><div class="text-error text-xs leading-snug">enc died<\/div>/,
+            );
+            assert.match(
+                tip,
+                /SRS input<\/div><div class="text-warning text-xs leading-snug">no keyframes<\/div>/,
+            );
+        });
+
+        test('a healthy side says so, and a side that is off says why', () => {
+            const ok = tooltip(renderSharedEncodeRows(pipelineWith(), deps()));
+            assert.match(ok, /Encoding normally\./);
+            assert.match(ok, /Input is live\./);
+            const noInput = tooltip(
+                renderSharedEncodeRows(pipelineWith(), deps({ inputHealth: () => side('off') })),
+            );
+            assert.match(noInput, /No input on this stream key\./);
+        });
+
+        test('an encode nobody uses is grey on both sides and says it is idle', () => {
+            const rows = FLEET().map((o) =>
+                o.id === '1-2' ? { ...o, desiredState: 'stopped' } : o,
+            );
+            const html = renderSharedEncodeRows(
+                pipelineWith({ status: 'stopped', startedAtMs: null, ready: false }, rows),
+                deps({ inputHealth: () => side('error', [{ severity: 'error', message: 'z' }]) }),
+            );
+            assert.match(dot(html), /#6b7280 0 45%, #242933 45% 55%, #6b7280 55% 100%/);
+            assert.match(tooltip(html), /Idle: it starts with the first output that uses it\./);
+        });
+    });
+
+    test('sharedEncodeIndicator greys both halves for an encode nobody uses', () => {
+        const rendition = pipelineWith().renditions[0];
+        const input = side('error', [{ severity: 'error', message: 'z' }]);
+        const live = sharedEncodeIndicator(rendition, side('good'), input);
+        assert.equal(live.idle, false);
+        assert.equal(live.input.status, 'error');
+        const idle = sharedEncodeIndicator(
+            { ...rendition, desiredState: 'stopped' },
+            side('good'),
+            input,
+        );
+        assert.equal(idle.idle, true);
+        assert.deepEqual([idle.ffmpeg.status, idle.input.status], ['off', 'off']);
+        assert.deepEqual(idle.input.issues, []);
     });
 
     test('shows the encoding as badges like an output card: video if not copy, audio as T<n>', () => {

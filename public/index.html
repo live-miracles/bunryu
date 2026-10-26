@@ -629,7 +629,7 @@
               <span class="text-xs font-semibold opacity-60">SRT Relay</span>
               <button
                 id="srt-bonding-details-toggle"
-                class="btn btn-xs btn-outline btn-square hidden shrink-0"
+                class="btn btn-xs btn-square btn-ghost hidden shrink-0"
                 type="button"
                 aria-haspopup="dialog"
                 title="Detailed stats"
@@ -650,19 +650,12 @@
                   <path d="M8 17v-3" />
                 </svg>
               </button>
-            </div>
-          </div>
-          <div class="mt-1 min-w-0" id="srt-bonding-stats"></div>
-          <div class="mt-2" id="srt-bonding-legs"></div>
-          <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
-            <div class="flex min-w-0 items-center gap-2">
-              <span class="text-error shrink-0 text-xs" id="srt-bonding-last-error-ts"></span>
-              <div class="text-error min-w-0 truncate text-xs" id="srt-bonding-last-error"></div>
               <button
-                class="btn btn-xs btn-ghost text-error shrink-0 p-0 leading-none"
-                id="srt-bonding-last-error-info"
-                title="View full error"
-                aria-label="View full error">
+                id="srt-bonding-history-btn"
+                class="btn btn-xs btn-square btn-ghost hidden shrink-0"
+                type="button"
+                title="Error history"
+                aria-label="Error history">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="14"
@@ -672,12 +665,21 @@
                   stroke="currentColor"
                   stroke-width="2"
                   stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4" />
-                  <path d="M12 8h.01" />
+                  stroke-linejoin="round"
+                  aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7" />
+                  <path d="M3 3v6h6" />
+                  <path d="M12 7v5l3 2" />
                 </svg>
               </button>
+            </div>
+          </div>
+          <div class="mt-1 min-w-0" id="srt-bonding-stats"></div>
+          <div class="mt-2" id="srt-bonding-legs"></div>
+          <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="text-error shrink-0 text-xs" id="srt-bonding-last-error-ts"></span>
+              <div class="text-error min-w-0 truncate text-xs" id="srt-bonding-last-error"></div>
             </div>
           </div>
         </div>

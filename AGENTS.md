@@ -206,12 +206,14 @@ only for a new module.
   recipe), naming and URL recognition; the dashboard twins are in
   `public/ts/core/renditions.ts`.
 - `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay
-  state, input live/media state (schedules ffprobe via `mediaProbe.ts`, and
+  state, input live/media state (schedules ffprobe via `mediaProbe.ts`, which also
+  measures the keyframe interval once per publisher, and
   restarts running outputs when a new publisher's probed format differs from the
   last one), alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
   readiness/protocol and builds the pull URL outputs read. `utils/srtRecent.ts` keeps
   the 10-minute rolling SRT loss/retransmit/drop counts behind `recent` in the health
-  payload.
+  payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError` into merged
+  pipeline-log lines.
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `translationMixer.ts`
   (translation output mixer), `preview.ts` (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.
@@ -240,6 +242,8 @@ only for a new module.
   counts (`outputSeverity` in `features/output-card.ts` says what counts as a problem);
   `core/alert-sound.ts` decides which changes between polls beep;
   `features/sound-alerts.ts` is the navbar bell and volume and plays the beeps.
+  `features/status-tooltip.ts` is the hover text and gradient of every two-half
+  status dot (pipeline list, relay card, shared encode row).
   `core/hints.ts` maps known FFmpeg errors, warnings and alert codes to the
   one-line "Hint:" advice under them.
 - `test/*.test.js` unit tests and `test/integration/` API tests (`npm test`).

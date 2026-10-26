@@ -59,6 +59,7 @@ describe('alertHint', () => {
             'srt-latency-spike',
             'input-bitrate-collapse',
             'input-low-framerate',
+            'input-keyframe-interval',
             'input-flapping',
             'relay-forwarding-stalled',
         ]) {

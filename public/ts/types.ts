@@ -291,6 +291,16 @@ export interface OutputErrorRecord {
     recoveredTs?: number;
 }
 
+// The keyframe check, made about a minute after the publisher connected (see mediaProbe.ts).
+export interface KeyframeStats {
+    windowSec: number;
+    spanSec: number;
+    keyframes: number;
+    meanGapSec: number | null;
+    maxGapSec: number;
+    checkedAt: number;
+}
+
 export interface InputHealth {
     connected: boolean;
     live: boolean;
@@ -299,6 +309,7 @@ export interface InputHealth {
     mediaProbeStartedAt: number | null;
     mediaCheckedAt: number | null;
     mediaError: string | null;
+    keyframes: KeyframeStats | null;
     recvBitrateKbps: number | null;
     sendBitrateKbps: number | null;
     readers: number;

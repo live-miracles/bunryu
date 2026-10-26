@@ -60,10 +60,11 @@ describe('input-level alerts', () => {
         assert.deepEqual(p.input.alerts, []);
     });
 
-    test('the code list names exactly the three input alerts', () => {
+    test('the code list names exactly the input alerts', () => {
         assert.deepEqual([...INPUT_ALERT_CODES].sort(), [
             'input-flapping',
             'input-high-framerate',
+            'input-keyframe-interval',
             'input-low-framerate',
         ]);
     });

@@ -245,7 +245,13 @@ function makeFakeDb(pipelines, outputs = []) {
         listOutputs: () => outputs,
         appendPipelineLog(pipelineId, event, message) {
             if (this.appendLogThrows) throw new Error('db busy');
-            logs.push({ pipelineId, event, message });
+            logs.push({ id: logs.length + 1, pipelineId, event, message });
+            return logs.length;
+        },
+        updatePipelineLog(pipelineId, id, message) {
+            const row = logs.find((l) => l.id === id && l.pipelineId === pipelineId);
+            if (row) row.message = message;
+            return !!row;
         },
     };
 }
@@ -1015,6 +1021,267 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         });
     });
 
+    describe('keyframe interval check', () => {
+        // ffprobe packet lines for 12 s at 25 fps, a keyframe every `gop` seconds.
+        const packets = (gop) =>
+            Array.from({ length: 300 }, (_, i) => {
+                const t = i / 25;
+                return `${(t + 0.08).toFixed(6)},${t.toFixed(6)},${i % (gop * 25) === 0 ? 'K__' : '___'}`;
+            }).join('\n');
+
+        // One pipeline; the probe answers the stream JSON, the keyframe call `keyframeAnswer`.
+        async function keyframes(
+            t,
+            { gop, keyframeError = null, hangKeyframe = null, settleFirst = true },
+        ) {
+            let cid = 'cid-1';
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({
+                        code: 0,
+                        streams: [streamFixture({ publish: { active: true, cid } })],
+                    });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            const calls = [];
+            childProcess.execFile.mock.mockImplementation((_cmd, args, _opts, cb) => {
+                calls.push(args);
+                queueMicrotask(() => {
+                    if (args.includes('-read_intervals')) {
+                        if (hangKeyframe) return; // still reading its 12 s window
+                        if (keyframeError) return cb(keyframeError, '', 'boom');
+                        return cb(null, packets(gop), '');
+                    }
+                    cb(
+                        null,
+                        JSON.stringify({
+                            streams: [
+                                {
+                                    codec_type: 'video',
+                                    codec_name: 'h264',
+                                    width: 1920,
+                                    height: 1080,
+                                    r_frame_rate: '50/1',
+                                },
+                            ],
+                        }),
+                        '',
+                    );
+                });
+                if (hangKeyframe && args.includes('-read_intervals')) {
+                    return { exitCode: null, signalCode: null, kill: hangKeyframe };
+                }
+                return { kill() {} };
+            });
+            const diagnostics = makeDiagnosticsSpy();
+            const db = makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]);
+            const app = express();
+            const service = createHealthService(
+                db,
+                makeFakeOutputService(),
+                makeFakeSrtRelay(),
+                makeFakeInputState(),
+                diagnostics,
+            );
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+            service.start();
+            await sleep(300);
+            // The check starts 60 s after the first successful probe, from a poll.
+            const settle = async () => {
+                for (let i = 0; i < 13; i++) await tickPoll(t);
+                await sleep(100);
+            };
+            if (settleFirst) await settle();
+            return {
+                calls,
+                diagnostics,
+                db,
+                settle,
+                snapshot: async () => {
+                    await tickPoll(t); // the next poll carries the probe results
+                    return (await getSnapshot(app)).pipelines['1'];
+                },
+                reconnect: async (nextCid) => {
+                    cid = nextCid;
+                    await tickPoll(t);
+                    await sleep(300);
+                },
+                shutdown: () => service.shutdown(),
+            };
+        }
+
+        test('a 6 s GOP raises input-keyframe-interval, with the measurement shown', async (t) => {
+            const ctx = await keyframes(t, { gop: 6 });
+            const pipeline = await ctx.snapshot();
+            assert.equal(pipeline.input.keyframes.keyframes, 2);
+            assert.equal(pipeline.input.keyframes.maxGapSec, 6);
+            const alert = pipeline.alerts.find((a) => a.code === 'input-keyframe-interval');
+            assert.ok(alert, JSON.stringify(pipeline.alerts));
+            assert.equal(alert.severity, 'warning');
+            assert.match(alert.message, /6\.0 s/);
+            const event = ctx.diagnostics.events.find((e) => e.event === 'keyframe-interval');
+            assert.equal(event.tooLong, true);
+            assert.equal(event.maxGapSec, 6);
+            assert.equal(ctx.db.logs.filter((l) => l.event === 'keyframe_interval').length, 1);
+            ctx.shutdown();
+        });
+
+        test('a 2 s GOP raises nothing but is still reported', async (t) => {
+            const ctx = await keyframes(t, { gop: 2 });
+            const pipeline = await ctx.snapshot();
+            assert.equal(pipeline.input.keyframes.meanGapSec, 2);
+            assert.ok(!pipeline.alerts.some((a) => a.code === 'input-keyframe-interval'));
+            assert.equal(
+                ctx.diagnostics.events.find((e) => e.event === 'keyframe-interval').tooLong,
+                false,
+            );
+            assert.equal(ctx.db.logs.filter((l) => l.event === 'keyframe_interval').length, 0);
+            ctx.shutdown();
+        });
+
+        test('runs once per publisher, not on every poll, and again for a new publisher', async (t) => {
+            const ctx = await keyframes(t, { gop: 2 });
+            const count = () => ctx.calls.filter((a) => a.includes('-read_intervals')).length;
+            assert.equal(count(), 1);
+            await tickPoll(t);
+            await tickPoll(t);
+            await sleep(300);
+            assert.equal(count(), 1);
+            await ctx.reconnect('cid-2');
+            await ctx.settle();
+            assert.equal(count(), 2);
+            ctx.shutdown();
+        });
+
+        test('waits 60 s after the first successful probe before measuring', async (t) => {
+            const ctx = await keyframes(t, { gop: 2, settleFirst: false });
+            const count = () => ctx.calls.filter((a) => a.includes('-read_intervals')).length;
+            for (let i = 0; i < 11; i++) await tickPoll(t); // 55 s
+            await sleep(100);
+            assert.equal(count(), 0);
+            assert.equal((await ctx.snapshot()).input.keyframes, null);
+            await ctx.settle();
+            assert.equal(count(), 1);
+            assert.equal((await ctx.snapshot()).input.keyframes.maxGapSec, 2);
+            ctx.shutdown();
+        });
+
+        test('a publisher that changes during the wait is measured on its own clock', async (t) => {
+            const ctx = await keyframes(t, { gop: 2, settleFirst: false });
+            const count = () => ctx.calls.filter((a) => a.includes('-read_intervals')).length;
+            for (let i = 0; i < 9; i++) await tickPoll(t); // 45 s
+            await ctx.reconnect('cid-2'); // new publisher: its probe restarts the 60 s
+            for (let i = 0; i < 9; i++) await tickPoll(t); // 45 s later, 95 s after the first probe
+            await sleep(100);
+            assert.equal(count(), 0, 'the first publisher never got a check');
+            await ctx.settle();
+            assert.equal(count(), 1);
+            ctx.shutdown();
+        });
+
+        test('shutdown kills a check still in flight', async (t) => {
+            const kills = [];
+            const ctx = await keyframes(t, { gop: 2, hangKeyframe: (sig) => kills.push(sig) });
+            assert.equal(ctx.calls.filter((a) => a.includes('-read_intervals')).length, 1);
+            ctx.shutdown();
+            assert.deepEqual(kills, ['SIGKILL']);
+        });
+
+        test('after a mass reconnect only a few checks run at once, the rest queue', async (t) => {
+            const keys = ['key01', 'key02', 'key03', 'key04', 'key05', 'key06'];
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({
+                        code: 0,
+                        streams: keys.map((name, i) =>
+                            streamFixture({
+                                id: `s${i}`,
+                                name,
+                                publish: { active: true, cid: `c${i}` },
+                            }),
+                        ),
+                    });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            const started = [];
+            const waiting = [];
+            childProcess.execFile.mock.mockImplementation((_cmd, args, _opts, cb) => {
+                if (args.includes('-read_intervals')) {
+                    started.push(args.at(-1));
+                    waiting.push(cb); // each check reads its 12 s window until released
+                } else {
+                    queueMicrotask(() =>
+                        cb(
+                            null,
+                            JSON.stringify({
+                                streams: [
+                                    {
+                                        codec_type: 'video',
+                                        codec_name: 'h264',
+                                        width: 1920,
+                                        height: 1080,
+                                        r_frame_rate: '50/1',
+                                    },
+                                ],
+                            }),
+                            '',
+                        ),
+                    );
+                }
+                return { exitCode: null, signalCode: null, kill() {} };
+            });
+            const db = makeFakeDb(
+                keys.map((streamKey, i) => ({
+                    id: i + 1,
+                    name: `P${i + 1}`,
+                    streamKey,
+                    streamKeyId: i + 1,
+                })),
+            );
+            const service = createHealthService(
+                db,
+                makeFakeOutputService(),
+                makeFakeSrtRelay(),
+                makeFakeInputState(),
+            );
+            t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+            service.start();
+            await sleep(2000); // every pipeline's probe, 200 ms apart
+            for (let i = 0; i < 13; i++) await tickPoll(t); // 60 s after the probes
+            await sleep(100);
+            assert.equal(started.length, 4, 'four checks run, two wait');
+            waiting.shift()(null, packets(2), '');
+            await sleep(50);
+            assert.equal(started.length, 5, 'a finished check starts the next one');
+            service.shutdown();
+        });
+
+        test('a failed check is a diagnostics event, raises no alert and is not retried', async (t) => {
+            const ctx = await keyframes(t, {
+                gop: 2,
+                keyframeError: Object.assign(new Error('exit 1'), { code: 1 }),
+            });
+            t.mock.method(console, 'warn', () => {});
+            await tickPoll(t);
+            await tickPoll(t);
+            await sleep(300);
+            const pipeline = await ctx.snapshot();
+            assert.equal(pipeline.input.keyframes, null);
+            assert.equal(pipeline.input.mediaOk, true);
+            assert.ok(!pipeline.alerts.some((a) => a.code === 'input-keyframe-interval'));
+            const failed = ctx.diagnostics.events.filter(
+                (e) => e.event === 'keyframe-probe-failed',
+            );
+            assert.equal(failed.length, 1);
+            assert.equal(failed[0].reason, 'exit');
+            assert.equal(ctx.calls.filter((a) => a.includes('-read_intervals')).length, 1);
+            ctx.shutdown();
+        });
+    });
+
     describe('input format change on a new publisher', () => {
         // One pipeline whose publisher cid and ffprobe answer the test controls.
         async function format(t) {
@@ -1609,7 +1876,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             makeBondingStatus({ input: { legs: ips.map((ip) => makeLeg({ ip })) } });
         const legLines = (db) => db.logs.filter((l) => l.event === 'legs').map((l) => l.message);
 
-        async function startService(t, status, { db = null, withDate = false } = {}) {
+        async function startService(t, status, { db = null, withDate = false, now } = {}) {
             const stream = streamFixture();
             t.mock.method(globalThis, 'fetch', async (url) => {
                 if (String(url).includes('/streams/'))
@@ -1628,7 +1895,10 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 makeFakeInputState(),
                 diagnostics,
             );
-            t.mock.timers.enable({ apis: withDate ? ['setInterval', 'Date'] : ['setInterval'] });
+            t.mock.timers.enable({
+                apis: withDate ? ['setInterval', 'Date'] : ['setInterval'],
+                ...(now === undefined ? {} : { now }),
+            });
             service.start();
             await sleep(20);
             return { relay, diagnostics, db: fakeDb, service };
@@ -1693,6 +1963,80 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             assert.equal(srtBonding.output.recent.drop, 3);
             assert.equal(srtBonding.input.recvDropTotal, 42, 'the totals are still reported');
             service.shutdown();
+        });
+
+        describe('relay errors', () => {
+            const CLOCK = 1_800_000_000_000;
+            const publishError = (retryMs) =>
+                `Failed to publish to downstream output: srt_connect target=127.0.0.1:10080 streamid=#!::r=live/key01,m=publish: Connection setup failure; retrying in ${retryMs} ms`;
+            const withError = (message, at) =>
+                makeBondingStatus({
+                    inputActive: true,
+                    lastError: message,
+                    lastErrorAt: at,
+                    input: { legs: [makeLeg()] },
+                });
+            const errorLines = (db) => db.logs.filter((l) => l.event === 'relay_error');
+
+            test('writes the relay error to the pipeline log once and merges its retries', async (t) => {
+                const { relay, diagnostics, db, service } = await startService(
+                    t,
+                    withError(null, null),
+                    { withDate: true, now: CLOCK },
+                );
+                const at = Date.now();
+                relay.setStatus(withError(publishError(1000), at));
+                await tickPoll(t);
+                relay.setStatus(withError(publishError(2000), at + 3000));
+                await tickPoll(t);
+                relay.setStatus(withError(publishError(4000), at + 8000));
+                await tickPoll(t);
+                relay.setStatus(withError(publishError(4000), at + 8000));
+                await tickPoll(t); // the same error seen again is not a repeat
+
+                const lines = errorLines(db);
+                assert.equal(lines.length, 1, 'one line however often it retries');
+                assert.equal(
+                    lines[0].message,
+                    'Relay error: Failed to publish to downstream output: srt_connect target=127.0.0.1:10080: Connection setup failure (seen 3 times over 8 s)',
+                );
+                assert.doesNotMatch(lines[0].message, /key01/);
+                const events = diagnostics.events.filter((e) => e.event === 'relay-stream-error');
+                assert.equal(events.length, 1, 'diagnostics are bounded too');
+                assert.equal(events[0].pipelineId, 1);
+                assert.equal(events[0].repeat, false);
+                service.shutdown();
+            });
+
+            test('does not log an error the relay was already holding when the dashboard started', async (t) => {
+                const stale = CLOCK - 10 * 60 * 1000;
+                const { db, service } = await startService(
+                    t,
+                    withError(publishError(1000), stale),
+                    { withDate: true, now: CLOCK },
+                );
+                await tickPoll(t);
+                assert.equal(errorLines(db).length, 0);
+                service.shutdown();
+            });
+
+            test('a log write that fails does not stop the poll', async (t) => {
+                const { relay, db, service } = await startService(t, withError(null, null), {
+                    withDate: true,
+                    now: CLOCK,
+                });
+                db.appendLogThrows = true;
+                relay.setStatus(withError(publishError(1000), Date.now()));
+                await tickPoll(t);
+                assert.equal(errorLines(db).length, 0);
+                db.appendLogThrows = false;
+                relay.setStatus(
+                    withError('Input error from peer 203.0.113.9:4000: broken', Date.now()),
+                );
+                await tickPoll(t);
+                assert.equal(errorLines(db).length, 1, 'the next error is recorded');
+                service.shutdown();
+            });
         });
 
         test('a leg that returns from a new port is logged as lost and joined', async (t) => {

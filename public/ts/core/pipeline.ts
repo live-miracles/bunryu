@@ -16,6 +16,7 @@ const EMPTY_INPUT: InputHealth = {
     mediaProbeStartedAt: null,
     mediaCheckedAt: null,
     mediaError: null,
+    keyframes: null,
     recvBitrateKbps: null,
     sendBitrateKbps: null,
     readers: 0,
@@ -118,6 +119,7 @@ export const INPUT_ALERT_CODES = new Set([
     'input-flapping',
     'input-low-framerate',
     'input-high-framerate',
+    'input-keyframe-interval',
 ]);
 
 export function parsePipelines(

@@ -1,11 +1,5 @@
-import {
-    STATUS_COLOR_ERROR,
-    STATUS_COLOR_GOOD,
-    STATUS_COLOR_OFF,
-    STATUS_COLOR_WARN,
-    escapeHtml,
-    formatLocalTime,
-} from '../core/utils.js';
+import { escapeHtml, formatLocalTime } from '../core/utils.js';
+import { renderStatusTooltip, splitDotGradient, type StatusIssue } from './status-tooltip.js';
 import {
     ICON_HISTORY,
     ICON_ITERATION_CW,
@@ -60,21 +54,86 @@ export function sharedEncodeIssue(
     return { severity: 'warning', message: `Waiting for ${rendition.name}` };
 }
 
+export type SharedEncodeStatus = 'good' | 'warn' | 'error' | 'off';
+
+// One side of the status dot: its colour and the problems behind it.
+export interface SharedEncodeSide {
+    status: SharedEncodeStatus;
+    issues: StatusIssue[];
+}
+
+export interface SharedEncodeIndicator {
+    ffmpeg: SharedEncodeSide;
+    input: SharedEncodeSide;
+    // True while the encode is stopped because no output uses it: nothing is wrong,
+    // so both halves are grey whatever the input is doing.
+    idle: boolean;
+}
+
+// The status dot of a shared encode is split like the SRT Relay's: the left half is
+// the encode's own FFmpeg (its process, progress and errors), the right half is the
+// pipeline's input as SRS has it (no publisher, a failed probe, input alerts), which
+// is what the encode reads. The two have different causes and fixes, so one colour
+// would hide which side to look at.
+export function sharedEncodeIndicator(
+    rendition: OutputView,
+    ffmpeg: SharedEncodeSide,
+    input: SharedEncodeSide,
+): SharedEncodeIndicator {
+    if (rendition.desiredState === 'stopped') {
+        return {
+            ffmpeg: { status: 'off', issues: [] },
+            input: { status: 'off', issues: [] },
+            idle: true,
+        };
+    }
+    return { ffmpeg, input, idle: false };
+}
+
 function plural(n: number, one: string, many: string): string {
     return `${n} ${n === 1 ? one : many}`;
 }
 
+// The two-half dot and the tooltip that says what each half means.
+function renderStatusDot(
+    rendition: OutputView,
+    input: InputHealth,
+    deps: SharedEncodeCardDeps,
+): string {
+    const indicator = sharedEncodeIndicator(
+        rendition,
+        deps.ffmpegHealth(rendition),
+        deps.inputHealth(input),
+    );
+    const tooltip = renderStatusTooltip(
+        {
+            label: 'FFmpeg',
+            issues: indicator.ffmpeg.issues,
+            active: indicator.ffmpeg.status !== 'off',
+            ok: 'Encoding normally.',
+            off: 'Not running.',
+        },
+        {
+            label: 'SRS input',
+            issues: indicator.input.issues,
+            active: indicator.input.status !== 'off',
+            ok: 'Input is live.',
+            off: 'No input on this stream key.',
+        },
+        indicator.idle ? 'Idle: it starts with the first output that uses it.' : undefined,
+    );
+    const gradient = splitDotGradient(
+        deps.statusColor(indicator.ffmpeg.status),
+        deps.statusColor(indicator.input.status),
+    );
+    return `<span class="js-tooltip shrink-0 mx-1" tabindex="0">
+        <div aria-label="status" class="border-base-content/15 h-5 w-5 overflow-hidden rounded-full border" style="background-image: ${gradient}"></div>
+        <div class="js-tooltip-content hidden">${tooltip}</div>
+    </span>`;
+}
+
 function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncodeCardDeps): string {
     const isStopped = rendition.desiredState === 'stopped';
-    const status = deps.outStatus(rendition, input);
-    const statusHex =
-        status === 'good'
-            ? STATUS_COLOR_GOOD
-            : status === 'warn'
-              ? STATUS_COLOR_WARN
-              : status === 'error'
-                ? STATUS_COLOR_ERROR
-                : STATUS_COLOR_OFF;
     const uptimeMs = rendition.startedAtMs !== null ? Date.now() - rendition.startedAtMs : null;
     // The encoding as badges, like an output card: video unless copy, audio as T<n>.
     const encoding: string[] = [];
@@ -130,7 +189,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-shared-encode="${escapeHtml(rendition.id)}">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 shrink-0 font-semibold">
-                <div aria-label="status" class="status status-lg mx-1" style="background-color: ${statusHex}"></div>
+                ${renderStatusDot(rendition, input, deps)}
                 ${restartBtn}
             </div>
             <span class="js-tooltip inline-flex items-center gap-2" tabindex="0">
@@ -149,7 +208,10 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
 }
 
 export interface SharedEncodeCardDeps {
-    outStatus: (output: OutputView, input: InputHealth) => 'good' | 'warn' | 'error' | 'off';
+    // The problems on each side of the status dot (see sharedEncodeIndicator).
+    ffmpegHealth: (output: OutputView) => SharedEncodeSide;
+    inputHealth: (input: InputHealth) => SharedEncodeSide;
+    statusColor: (status: SharedEncodeStatus) => string;
     formatUptime: (ms: number | null) => string;
     restartLocked: (outputId: string) => boolean;
 }

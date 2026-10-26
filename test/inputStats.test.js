@@ -2,7 +2,7 @@
 
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
-const { videoSpec, audioSpecLines } = require('../public/ts/core/media-spec');
+const { videoSpec, audioSpecLines, keyframeSpec } = require('../public/ts/core/media-spec');
 const { renderInputStats } = require('../public/ts/features/input-stats-view');
 
 const video = {
@@ -41,6 +41,39 @@ describe('videoSpec', () => {
     test('is null until the size is known', () => {
         assert.equal(videoSpec({ ...video, width: 0 }), null);
         assert.equal(videoSpec(null), null);
+    });
+});
+
+describe('keyframeSpec', () => {
+    const kf = (over) => ({
+        windowSec: 12,
+        spanSec: 11.96,
+        keyframes: 6,
+        meanGapSec: 2,
+        maxGapSec: 2,
+        ...over,
+    });
+
+    test('a steady interval reads as "every N s"', () => {
+        assert.equal(keyframeSpec(kf({})), 'every 2.0 s');
+    });
+
+    test('an uneven interval gives the mean and the longest gap', () => {
+        assert.equal(
+            keyframeSpec(kf({ meanGapSec: 2.4, maxGapSec: 3.5 })),
+            'every 2.4 s on average, up to 3.5 s',
+        );
+    });
+
+    test('too few keyframes in the window say so', () => {
+        assert.equal(
+            keyframeSpec(kf({ keyframes: 1, meanGapSec: null, maxGapSec: 11.9 })),
+            '1 in 12 s',
+        );
+        assert.equal(
+            keyframeSpec(kf({ keyframes: 0, meanGapSec: null, maxGapSec: 11.9 })),
+            '0 in 12 s',
+        );
     });
 });
 
@@ -97,6 +130,30 @@ describe('renderInputStats', () => {
         assert.match(html, /h264 1920x1080p50 High L4\.2/);
         assert.match(html, /Track 1: aac LC 2ch 48kHz/);
         assert.match(html, /probed 12:03/);
+    });
+
+    test('shows the measured keyframe interval, in warning colour when it raised the alert', () => {
+        const keyframes = {
+            windowSec: 12,
+            spanSec: 11.96,
+            keyframes: 2,
+            meanGapSec: 6,
+            maxGapSec: 6,
+            checkedAt: 1,
+        };
+        const ok = renderInputStats(
+            input({ keyframes: { ...keyframes, meanGapSec: 2, maxGapSec: 2 } }),
+            deps(5200),
+        );
+        assert.match(ok, /Keyframes/);
+        assert.match(ok, /every 2\.0 s/);
+        assert.ok(!/text-warning[^>]*>every/.test(ok));
+        const bad = renderInputStats(
+            input({ keyframes, alerts: [{ code: 'input-keyframe-interval' }] }),
+            deps(5200),
+        );
+        assert.match(bad, /text-warning[^>]*>every 6\.0 s/);
+        assert.ok(!/Keyframes/.test(renderInputStats(input({ keyframes: null }), deps(5200))));
     });
 
     test('marks a starved input bitrate as a warning', () => {
