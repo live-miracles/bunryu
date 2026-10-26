@@ -312,7 +312,7 @@ describe('Shared encodes card', () => {
         assert.match(html, />T2</);
         assert.match(html, /2 outs · 2 reads/);
         assert.match(html, /1m 5s/);
-        assert.match(html, /3\.0 Mbps \| 41% \|/);
+        assert.match(html, /3\.0 Mbps \/ 41% \//);
     });
 
     test('shows the encoding as badges like an output card: video if not copy, audio as T<n>', () => {
@@ -471,8 +471,8 @@ describe('Shared encodes card', () => {
             at('data-action="restart-shared"'),
             at('>720p<'),
             at('>T2<'),
-            at('2 outs · 2 reads'),
             at('1m 5s'),
+            at('2 outs · 2 reads'),
             at('3.0 Mbps'),
             at('badge-error'),
             at('data-action="error-info"'),
@@ -485,7 +485,7 @@ describe('Shared encodes card', () => {
         assert.deepEqual(
             order,
             [...order].sort((a, b) => a - b),
-            'dot, Restart, encoding, counts, uptime, metrics, failures, then History',
+            'dot, Restart, encoding, uptime, counts, metrics, failures, then History',
         );
         // All of them are siblings in one wrapping flex row, so they only wrap when
         // the card is too narrow; History is the right-aligned item at the end.

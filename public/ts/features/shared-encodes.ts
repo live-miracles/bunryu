@@ -88,13 +88,11 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
             `<span class="badge badge-xs badge-accent badge-soft whitespace-nowrap">T${parseInt(rendition.audioEncoding) + 1}</span>`,
         );
     }
-    const badges: string[] = [];
-    if (uptimeMs !== null) {
-        badges.push(
-            `<span class="font-mono text-xs opacity-60 whitespace-nowrap">${escapeHtml(deps.formatUptime(uptimeMs))}</span>`,
-        );
-    }
-    badges.push(outputMetricsBadge(rendition));
+    const uptime =
+        uptimeMs !== null
+            ? `<span class="font-mono text-xs opacity-60 whitespace-nowrap">${escapeHtml(deps.formatUptime(uptimeMs))}</span>`
+            : '';
+    const badges: string[] = [outputMetricsBadge(rendition, input)];
     const readers = rendition.readers ?? 0;
     const counts = `<span class="badge badge-sm badge-soft whitespace-nowrap" title="Outputs that pull this encode, and clients currently reading it from SRS">${plural(rendition.dependents.length, 'out', 'outs')} · ${plural(readers, 'read', 'reads')}</span>`;
     if (rendition.failures > 0) {
@@ -139,6 +137,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
                 ${encoding.join('')}
                 <div class="js-tooltip-content hidden"><div class="text-xs leading-snug font-semibold mb-0.5">Used by:</div>${dependentLines}</div>
             </span>
+            ${uptime}
             ${counts}
             ${badges.join('')}
             <div class="flex items-center gap-1 ml-auto shrink-0">

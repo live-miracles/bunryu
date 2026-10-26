@@ -94,8 +94,9 @@ are not counted among your outputs.
 with one row per encode, laid out like an output card: status, a restart button
 (after a confirmation; its outputs reconnect), the encoding as badges (the video
 encoding unless it is `copy`, and the audio track as `T1`, `T2`, …, where `T1` is
-track 0), how many outputs use it and how many are reading it now ("2 outs · 1
-read"), uptime, bitrate, CPU, memory, the failure count and **History**, followed by the last error. While an output's encode is not up, the
+track 0), its uptime, how many outputs use it and how many are reading it now ("2 outs · 1
+read"), CPU, memory (and the bitrate when it is unusual, as on an output
+card), the failure count and **History**, followed by the last error. While an output's encode is not up, the
 output shows a warning ("Waiting for Shared encode …", or "Shared encode failed:
 …"), not an error. The pipeline's "N readers" counts only what reads the input
 itself, not outputs that read a shared encode.
@@ -142,8 +143,9 @@ comes back or the server restarts.
 With many outputs, use the bar above the list: the filter box matches an output's name
 or destination as you type, and **Problems** keeps only outputs with an error or a
 warning (the same ones the card colors red or yellow). The badges count the pipeline's
-outputs as errors, warnings, running and stopped, each output in the first that fits, and
-"8 of 44" shows how many the filter leaves. The filter is per browser, starts empty
+outputs: running and stopped are every output (so they add up to the total), while errors
+and warnings count the outputs with one, stopped or not. "8 of 44" shows how many the
+filter leaves. The filter is per browser, starts empty
 for each pipeline you select, and only changes what is listed: **Start all**, **Stop all**
 and Copy still act on every output of the pipeline. While it hides outputs the cards can't be
 dragged, because the saved order covers all of them.
@@ -158,11 +160,14 @@ you type. An input matches on its name, stream key or publish URL; an output on 
 name, its pipeline's name or its destination URL, so a full URL or a stream key finds it. The heading badge
 shows how many rows are left ("20 of 500").
 
-The output card shows status, uptime, bitrate, CPU and memory. When the output's speed
+The output card shows status, uptime, CPU and memory. It adds the bitrate only when it is
+unusual: below 60% or above 140% of the input's, when the output copies the video and the
+input's rate is known, or below 200 kbps. An output with a video encode always shows it
+(there is nothing to compare with). When the output's speed
 (media produced per second of wall time, 1.00x is realtime, measured over 30 s windows)
 is below 0.95x the badge adds it in yellow ("0.88x"); above 1.05x it adds it in the
-normal color, which is usually a backlog draining after a stall. In between, and
-always, the badge's tooltip shows it. The speed is not shown for the first minute after a
+normal color, which is usually a backlog draining after a stall. In between it is not
+shown. The badge's tooltip names the figures it shows. The speed is not shown for the first minute after a
 start. An output that failed
 shows its failed attempts since it was last started and, while it waits to try again,
 when the next attempt is due ("retry in 8 s"). Problems appear on

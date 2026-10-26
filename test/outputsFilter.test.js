@@ -11,17 +11,19 @@ const {
 const { outputSeverity } = require('../public/ts/features/output-card');
 
 describe('countOutputs', () => {
-    test('puts each output in one bucket, the most severe first', () => {
+    test('running and stopped are every output, whatever is wrong with it; errors and warnings overlap', () => {
         const counts = countOutputs([
-            { severity: 'error', status: 'error' },
-            { severity: 'warning', status: 'good' }, // running, with a shared-destination warning
-            { severity: 'warning', status: 'off' }, // stopped, with an encoding warning
-            { severity: null, status: 'good' },
-            { severity: null, status: 'good' },
-            { severity: null, status: 'off' },
+            { severity: 'error', stopped: true }, // stopped after repeated failures
+            { severity: 'error', stopped: false }, // crashing and being retried
+            { severity: 'warning', stopped: false }, // running, with a shared-destination warning
+            { severity: 'warning', stopped: true }, // stopped, with an encoding warning
+            { severity: null, stopped: false },
+            { severity: null, stopped: false },
+            { severity: null, stopped: true },
         ]);
 
-        assert.deepEqual(counts, { error: 1, warning: 2, running: 2, stopped: 1 });
+        assert.deepEqual(counts, { error: 2, warning: 2, running: 4, stopped: 3 });
+        assert.equal(counts.running + counts.stopped, 7, 'together they are all the outputs');
     });
 });
 

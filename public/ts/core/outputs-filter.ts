@@ -5,19 +5,20 @@ import { matchesName } from './overview-filter.js';
 
 export type OutputSeverity = 'error' | 'warning' | null;
 
-// What the summary counts: each output is in exactly one of these, the most
-// severe first, so the badges add up to the number of outputs.
+// What the summary counts. Running and stopped are the outputs' own state, so together
+// they are every output; errors and warnings count the outputs with one (the card's
+// rule, see outputSeverity) whatever their state, so they overlap with those two.
 export type OutputCounts = { error: number; warning: number; running: number; stopped: number };
 
 export function countOutputs(
-    items: Array<{ severity: OutputSeverity; status: 'good' | 'warn' | 'error' | 'off' }>,
+    items: Array<{ severity: OutputSeverity; stopped: boolean }>,
 ): OutputCounts {
     const counts: OutputCounts = { error: 0, warning: 0, running: 0, stopped: 0 };
-    for (const { severity, status } of items) {
+    for (const { severity, stopped } of items) {
         if (severity === 'error') counts.error += 1;
         else if (severity === 'warning') counts.warning += 1;
-        else if (status === 'good') counts.running += 1;
-        else counts.stopped += 1;
+        if (stopped) counts.stopped += 1;
+        else counts.running += 1;
     }
     return counts;
 }

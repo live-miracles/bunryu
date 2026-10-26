@@ -2131,7 +2131,16 @@ function renderOutputsList(pipeline: PipelineView): void {
     problemsBtn?.setAttribute('aria-pressed', String(problemsOnly));
     const summary = document.getElementById('outputs-summary');
     if (summary) {
-        summary.innerHTML = outputSummaryHtml(countOutputs(rows), visible.length, rows.length);
+        summary.innerHTML = outputSummaryHtml(
+            countOutputs(
+                rows.map(({ output, severity }) => ({
+                    severity,
+                    stopped: output.desiredState === 'stopped',
+                })),
+            ),
+            visible.length,
+            rows.length,
+        );
     }
 
     listEl.innerHTML =

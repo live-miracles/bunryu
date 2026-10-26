@@ -226,7 +226,7 @@ export function renderOutputCard(
             `<span class="font-mono text-xs opacity-60 whitespace-nowrap">${deps.formatUptime(uptimeMs)}</span>`,
         );
     }
-    const metricsBadge = outputMetricsBadge(output);
+    const metricsBadge = outputMetricsBadge(output, input);
     if (metricsBadge) badges.push(metricsBadge);
 
     let inlineSink = '';

@@ -914,11 +914,12 @@ worker.
 **Revisit** if push notifications or an offline page are wanted; both need a
 service worker and a cache policy that keeps deploys from going stale.
 
-### The Overview filters in the browser, and searches names only
+### The Overview filters in the browser, and searches names, keys and URLs
 
 **Decision:** each Overview table has its own search box on its heading line, matching
-the pipeline or output name as plain, case-insensitive text. It filters the rows already
-in the browser and combines with the All/Active/Issues tabs. The Issues tab also lists an
+as plain, case-insensitive text: an input's name, stream key and publish URLs, an output's
+own name, its pipeline's name and its destination URL. It filters the rows already in the
+browser and combines with the All/Active/Issues tabs. The Issues tab also lists an
 offline input when outputs of its pipeline are in trouble, and the heading badges show
 "shown of total".
 
@@ -937,15 +938,82 @@ offline input when outputs of its pipeline are in trouble, and the heading badge
   issues" while two inputs were down.
 - **A heading that says 500 above a list of 20** hid how much a filter had removed.
 
-**Not adopted:** matching destinations or statuses (the destination URL can hold a
-platform stream key), regular expressions, and a search that also covers the SRT Relay
-table.
+- **URLs and keys were added at the operators' request (October 2026).** The first
+  version matched names only, because a destination URL can hold a platform stream key.
+  But finding "the output that sends to this URL" or "the input with this key" is what
+  operators search for, and the search shows nothing new: the rows still display what
+  they did, and anyone who can type in the box can already open the output or input to
+  read the same URL. The match is local to the browser; nothing is sent.
+
+**Not adopted:** matching statuses, regular expressions, and a search that also covers
+the SRT Relay table.
 
 **Tested:** 50 pipelines and 500 outputs on the test stack, typing during the 5 s
 refresh (focus, text and caret survive it).
 
-**Revisit when:** operators ask to search by destination host or status, or the output
-limit rises.
+**Revisit when:** operators ask to search by status, or the output limit rises.
+
+### The Outputs list has a filter bar, and a pipeline's Problems filter means what the card shows
+
+**Decision (October 2026):** above a pipeline's outputs sit a filter box (name or
+destination URL), a **Problems** toggle and badges counting errors, warnings, running and
+stopped, with "8 of 44" while a filter hides outputs. **Problems** keeps an output with an
+error or any warning its card shows: a crash being retried, a stop after repeated
+failures, a warning from the running output, "Same destination as …" and the encoding
+advice. The filter is per browser, starts empty for each pipeline, and cards cannot be
+dragged while it hides any.
+
+**Why:**
+
+- **A failing output among 100 meant scrolling about 6 screens** (a healthy card is 56
+  px). The Overview already filters, but only across pipelines and without the card's
+  warnings.
+- **The sidebar's counts are not enough.** They count each output's live status, so they
+  leave out the card-only warnings (a same-destination warning on a running output, advice
+  on a stopped one). The badges and the filter use the card's rule, so what is yellow or
+  red is what Problems keeps. The two sets of counts differ for that reason.
+- **Running and stopped are the outputs' own state, and errors and warnings overlap
+  them.** A first version put each output in its most severe bucket only, so the badges
+  added up to the total, but a stopped output with a warning was missing from "stopped".
+  That read as lost outputs; the overlap is easier to read than the sum.
+- **No dragging while filtered:** the saved order lists every output, so a drag of only
+  the visible cards would drop the hidden ones from it.
+
+**Not adopted:** a one-line row mode (a healthy output is already one row in a normal
+width; the height is in warning lines), and a sort that puts problems first (the saved
+manual order stays).
+
+**Revisit when:** repeated warnings across many outputs keep filling the list (grouping
+identical warning lines was left out), or the sidebar counts confuse operators.
+
+### An output's bitrate is shown only when it is off the input's
+
+**Decision (October 2026):** the output badge (and a shared encode's) leaves out the
+bitrate while it is between 60% and 140% of the pipeline input's, when the output copies
+the video and the input's rate is known. Below 200 kbps it always shows, and an output
+with a video encode or without an input rate always shows it. The speed is shown only
+outside 0.95x to 1.05x, with no mention in the tooltip.
+
+**Why:**
+
+- **Every healthy copy output printed the same "8.0 Mbps"**, which carried no
+  information until it differed, and it was clutter on 100 rows.
+- **The band is wide because the numbers differ for normal reasons.** On an SRT input
+  SRS reported 8.9 Mbps and the goryu legs 9.2 (libsrt counts 44 header bytes in each
+  1316-byte packet, +3.3%), while copy outputs read 8.2 and 8.0: FLV carries less
+  container overhead than MPEG-TS. FFmpeg's `bitrate=` is also an average since the
+  output started, not the current rate.
+- **A faulty output is caught elsewhere too:** below the 200 kbps minimum or with no
+  bitrate the card warns, and the stall watchdog restarts a frozen output.
+
+**Limit:** because the figure is a lifetime average, a drop in a long-running output
+moves it slowly and may not leave the band. A rate over the last 30 s (the delta of
+`total_size`, as the speed already uses `out_time`) would react in seconds but changes
+what `bitrateKbps` means in the API, the Overview and the low-bitrate warning, so it was
+not done.
+
+**Revisit when:** operators miss a slow drop (switch to the windowed rate), or the band
+hides a real fault.
 
 ### Alert sound beeps for new problems only, in the browser
 

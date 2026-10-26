@@ -1,5 +1,5 @@
-import { formatBitrate, formatBytes, formatCpuPercent } from '../core/utils.js';
-import type { OutputView } from '../types.js';
+import { formatBitrate, formatBytes, formatCpuPercent, LOW_BITRATE_KBPS } from '../core/utils.js';
+import type { InputHealth, OutputView } from '../types.js';
 
 // Pieces shared by the output card and the Shared encodes card, kept in a leaf
 // module so the two can use each other's building blocks without importing in a
@@ -7,11 +7,17 @@ import type { OutputView } from '../types.js';
 
 const METRIC_WARN_PERCENT = 70;
 const METRIC_ERROR_PERCENT = 90;
-// Speed (x realtime) outside this band goes into the badge text; inside it only the
-// tooltip shows it. Below is the falling-behind signal (the server warns at 0.9); above
+// Speed (x realtime) is shown only outside this band; inside it, it is not shown at all.
+// Below is the falling-behind signal (the server warns at 0.9); above
 // is a backlog draining after a stall or a fast clock, informative rather than a fault.
 const SPEED_BADGE_LOW = 0.95;
 const SPEED_BADGE_HIGH = 1.05;
+// An output that copies the video carries about the input's bitrate, so its bitrate is
+// shown only outside this band around the input's. Wide on purpose: a copy output reads
+// 8 to 10% below an SRT input (FLV carries less container overhead than MPEG-TS), and
+// FFmpeg reports an average since the output started, not the current rate.
+const BITRATE_BADGE_LOW = 0.6;
+const BITRATE_BADGE_HIGH = 1.4;
 
 export const ICON_COPY = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 export const ICON_HISTORY = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3 2"/></svg>`;
@@ -41,9 +47,11 @@ function formatOutputMemory(output: OutputView): string | null {
     return formatBytes(output.memoryUsageBytes);
 }
 
-// "bitrate | CPU | RSS" badge of a running output (plus the speed when it is off
-// realtime); empty when nothing is known.
-export function outputMetricsBadge(output: OutputView): string {
+// "bitrate / CPU / RSS" badge of a running output (plus the speed when it is off
+// realtime); empty when nothing is known. The speed is otherwise not shown at all, and
+// neither is the bitrate while it is as expected (see BITRATE_BADGE_LOW): that needs the
+// input, an output with a video encode or without a known input bitrate always shows it.
+export function outputMetricsBadge(output: OutputView, input?: InputHealth): string {
     if (
         output.status !== 'running' ||
         (output.bitrateKbps === null &&
@@ -62,14 +70,33 @@ export function outputMetricsBadge(output: OutputView): string {
     const speed = output.speed ?? null;
     const slow = speed !== null && speed < SPEED_BADGE_LOW;
     const offRealtime = speed !== null && (slow || speed > SPEED_BADGE_HIGH);
-    const parts = [
-        output.bitrateKbps !== null ? formatBitrate(output.bitrateKbps) : null,
-        output.cpuPercent !== null ? formatCpuPercent(output.cpuPercent) : null,
-        output.memoryUsageBytes !== null ? formatOutputMemory(output) : null,
-        offRealtime ? `${speed.toFixed(2)}x` : null,
-    ].filter((value): value is string => value !== null);
+    const expected =
+        output.videoEncoding === 'copy' && input?.live && input.recvBitrateKbps
+            ? input.recvBitrateKbps
+            : null;
+    const bitrateAsExpected =
+        output.bitrateKbps !== null &&
+        expected !== null &&
+        output.bitrateKbps >= LOW_BITRATE_KBPS &&
+        output.bitrateKbps >= expected * BITRATE_BADGE_LOW &&
+        output.bitrateKbps <= expected * BITRATE_BADGE_HIGH;
+    const shown: Array<[text: string | null, label: string]> = [
+        [
+            output.bitrateKbps !== null && !bitrateAsExpected
+                ? formatBitrate(output.bitrateKbps)
+                : null,
+            'bitrate',
+        ],
+        [
+            output.cpuPercent !== null ? formatCpuPercent(output.cpuPercent) : null,
+            'CPU (% of a core)',
+        ],
+        [output.memoryUsageBytes !== null ? formatOutputMemory(output) : null, 'memory'],
+        [offRealtime ? `${speed.toFixed(2)}x` : null, 'speed (x realtime)'],
+    ];
+    const present = shown.filter(([text]) => text !== null);
+    if (present.length === 0) return '';
     const cls = memCls || (slow ? 'badge-warning' : '');
-    const speedTitle =
-        speed === null ? '' : ` / speed ${speed.toFixed(2)}x realtime (last 30 s window)`;
-    return `<span class="badge badge-sm whitespace-nowrap ${cls}" title="Bitrate / ffmpeg CPU (% of one core) / ffmpeg RSS${speedTitle}">${parts.join(' | ')}</span>`;
+    // The tooltip names only what the badge shows, in the same order.
+    return `<span class="badge badge-sm whitespace-nowrap ${cls}" title="${present.map(([, label]) => label).join(' / ')}">${present.map(([text]) => text).join(' / ')}</span>`;
 }
