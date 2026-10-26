@@ -139,13 +139,23 @@ starts them staggered at 200 ms intervals. An output's desired state is saved,
 so outputs that were running are started again automatically when the input
 comes back or the server restarts.
 
+With many outputs, use the bar above the list: the filter box matches an output's name
+or destination as you type, and **Problems** keeps only outputs with an error or a
+warning (the same ones the card colors red or yellow). The badges count the pipeline's
+outputs as errors, warnings, running and stopped, each output in the first that fits, and
+"8 of 44" shows how many the filter leaves. The filter is per browser, starts empty
+for each pipeline you select, and only changes what is listed: **Start all**, **Stop all**
+and Copy still act on every output of the pipeline. While it hides outputs the cards can't be
+dragged, because the saved order covers all of them.
+
 ### Overview
 
 The dashboard's **Overview** lists every input and every output in two tables. The
 **All**, **Active** and **Issues** tabs narrow both: Active hides what is offline or
 stopped, and Issues keeps only warnings and errors, plus an offline input whose outputs
-are affected, with the reason. The search box on each table's heading line filters it by
-name as you type; an output matches on its own name or its pipeline's. The heading badge
+are affected, with the reason. The search box on each table's heading line filters it as
+you type. An input matches on its name, stream key or publish URL; an output on its own
+name, its pipeline's name or its destination URL, so a full URL or a stream key finds it. The heading badge
 shows how many rows are left ("20 of 500").
 
 The output card shows status, uptime, bitrate, CPU and memory. When the output's speed

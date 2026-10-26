@@ -22,6 +22,20 @@ describe('matchesName (overview search)', () => {
         assert.equal(matchesName('hall', 'Studio 07'), false);
     });
 
+    test('finds an output by its full destination URL or the stream key inside it', () => {
+        const url = 'rtmp://a.rtmp.youtube.com/live2/abcd-1234-efgh';
+        assert.equal(matchesName(url, 'Studio 07', 'YouTube EN', url), true);
+        assert.equal(matchesName('abcd-1234', 'Studio 07', 'YouTube EN', url), true);
+        assert.equal(matchesName('abcd-9999', 'Studio 07', 'YouTube EN', url), false);
+    });
+
+    test('an input is found by its stream key or publish URL', () => {
+        const names = ['Studio 07', 'key07_ab12', 'rtmp://live.example:1935/live/key07_ab12'];
+        assert.equal(matchesName('KEY07_AB12', ...names), true);
+        assert.equal(matchesName('live.example:1935/live/key07', ...names), true);
+        assert.equal(matchesName('key08', ...names), false);
+    });
+
     test('matches when any one of the names matches', () => {
         // An output row shows "pipeline · output": either part is searchable.
         assert.equal(matchesName('youtube', 'Studio 07', 'YouTube EN'), true);

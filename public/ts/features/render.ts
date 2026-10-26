@@ -32,12 +32,24 @@ import type {
     VideoInfo,
 } from '../types.js';
 import { updateLayoutOrder, updatePipeline, updatePipelineGroups } from '../core/api.js';
-import { dupTooltip, formatOutputName, renderOutputCard, type DupRef } from './output-card.js';
+import {
+    dupTooltip,
+    formatOutputName,
+    outputSeverity,
+    renderOutputCard,
+    type DupRef,
+} from './output-card.js';
 import { outputStatusCounts } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
 import { recentFigure, renderBondedLegs, renderBondingStats } from './srt-bonding-view.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import { alertHint } from '../core/hints.js';
+import {
+    countOutputs,
+    matchesOutputFilter,
+    noMatchingOutputsText,
+    outputSummaryHtml,
+} from '../core/outputs-filter.js';
 import { INPUT_ALERT_CODES, srtPassphraseResetBlock } from '../core/pipeline.js';
 import {
     affectedOutputCount,
@@ -131,6 +143,10 @@ const METRIC_ERROR_PERCENT = 90;
 let draggingPipelineEl: HTMLElement | null = null;
 let draggingGroupEl: HTMLElement | null = null;
 let draggingOutputEl: HTMLElement | null = null;
+// The pipeline the Outputs list's filter was set for, and whether it hides anything.
+// The saved order covers every output, so cards cannot be dragged while it does.
+let outputsListPipelineId: string | null = null;
+let outputsListFiltered = false;
 // Updated on every dragover while a pipeline is being dragged, to whichever
 // group (or 'ungrouped') the cursor is currently over — read once at dragend
 // to decide whether the pipeline's group membership actually changed.
@@ -1337,7 +1353,16 @@ function renderOverview(): void {
             const isError = st === 'error';
             if (problemsOnly && !isWarn && !isError) continue;
             if (activeOnly && isOffline(st)) continue;
-            if (!matchesName(state.inputSearch, p.name)) continue;
+            if (
+                !matchesName(
+                    state.inputSearch,
+                    p.name,
+                    p.streamKey,
+                    p.rtmpPublishUrl,
+                    p.srtPublishUrl,
+                )
+            )
+                continue;
             inputsShown += 1;
             const protocolLabel = inp.connected
                 ? p.srtBonding.acceptedBySrs
@@ -1386,7 +1411,7 @@ function renderOverview(): void {
                 const st = outStatus(o, p.input);
                 if (problemsOnly && !isProblem(st)) continue;
                 if (activeOnly && isOffline(st)) continue;
-                if (!matchesName(state.outputSearch, p.name, o.name)) continue;
+                if (!matchesName(state.outputSearch, p.name, o.name, o.url ?? '')) continue;
                 outputsShown += 1;
                 const badge = overviewStatusBadge(st);
 
@@ -1672,7 +1697,7 @@ function renderOverview(): void {
         ${relaySectionHtml}
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 class="text-lg font-bold">Inputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(inputsShown, state.pipelines.length)}</span></h2>
-            ${searchBoxHtml('ov-search-inputs', 'Search inputs by name', state.inputSearch)}
+            ${searchBoxHtml('ov-search-inputs', 'Search by name, key or URL', state.inputSearch)}
         </div>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm">
@@ -1682,7 +1707,7 @@ function renderOverview(): void {
         </div>
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 class="text-lg font-bold">Outputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(outputsShown, totalOuts)}</span></h2>
-            ${searchBoxHtml('ov-search-outputs', 'Search outputs by name', state.outputSearch)}
+            ${searchBoxHtml('ov-search-outputs', 'Search by name or URL', state.outputSearch)}
         </div>
         <div class="overflow-x-auto">
             <table class="table table-sm">
@@ -2038,6 +2063,16 @@ function renderOutputsList(pipeline: PipelineView): void {
     stopAllBtn?.classList.toggle('opacity-40', allStopped);
     if (stopAllBtn) stopAllBtn.disabled = allStopped;
 
+    // The filter belongs to one pipeline: selecting another starts unfiltered.
+    if (outputsListPipelineId !== pipeline.id) {
+        outputsListPipelineId = pipeline.id;
+        state.outputsListSearch = '';
+        state.outputsListProblemsOnly = false;
+    }
+    const toolbar = document.getElementById('outputs-toolbar');
+    toolbar?.classList.toggle('hidden', pipeline.outs.length === 0);
+    toolbar?.classList.toggle('flex', pipeline.outs.length > 0);
+
     if (pipeline.outs.length === 0) {
         listEl.innerHTML = '<p class="text-sm opacity-50">No outputs yet.</p>';
         return;
@@ -2074,15 +2109,43 @@ function renderOutputsList(pipeline: PipelineView): void {
         if (refs.length > 1) dupUrls.set(url, refs);
     }
 
-    listEl.innerHTML = pipeline.outs
-        .map((o) =>
-            renderOutputCard(o, pipeline.input, dupUrls, {
-                pendingOutputs,
-                outStatus,
-                formatUptime,
-            }),
-        )
-        .join('');
+    const rows = pipeline.outs.map((output) => {
+        const status = outStatus(output, pipeline.input);
+        return {
+            output,
+            status,
+            severity: outputSeverity(output, pipeline.input, dupUrls, status),
+        };
+    });
+    const { outputsListSearch: query, outputsListProblemsOnly: problemsOnly } = state;
+    const visible = rows.filter((row) =>
+        matchesOutputFilter(row.output, row.severity, query, problemsOnly),
+    );
+    outputsListFiltered = visible.length !== rows.length || query.trim() !== '' || problemsOnly;
+
+    const searchBox = document.getElementById('outputs-search') as HTMLInputElement | null;
+    if (searchBox && searchBox.value !== query) searchBox.value = query;
+    const problemsBtn = document.getElementById('outputs-problems-btn');
+    problemsBtn?.classList.toggle('btn-primary', problemsOnly);
+    problemsBtn?.classList.toggle('btn-outline', !problemsOnly);
+    problemsBtn?.setAttribute('aria-pressed', String(problemsOnly));
+    const summary = document.getElementById('outputs-summary');
+    if (summary) {
+        summary.innerHTML = outputSummaryHtml(countOutputs(rows), visible.length, rows.length);
+    }
+
+    listEl.innerHTML =
+        visible.length === 0
+            ? `<p class="text-sm opacity-50">${escapeHtml(noMatchingOutputsText(query, problemsOnly))}</p>`
+            : visible
+                  .map(({ output }) =>
+                      renderOutputCard(output, pipeline.input, dupUrls, {
+                          pendingOutputs,
+                          outStatus,
+                          formatUptime,
+                      }),
+                  )
+                  .join('');
 
     listEl.onclick = (e) => {
         const btn = (e.target as Element).closest('[data-action]') as HTMLButtonElement | null;
@@ -2105,7 +2168,7 @@ function renderOutputsList(pipeline: PipelineView): void {
     listEl.ondragstart = (e) => {
         const target = e.target as Element;
         const card = target.closest('[data-output-card]') as HTMLElement | null;
-        if (!target.closest('.js-output-drag-handle') || !card) {
+        if (outputsListFiltered || !target.closest('.js-output-drag-handle') || !card) {
             e.preventDefault();
             return;
         }
@@ -2141,6 +2204,14 @@ function renderOutputsList(pipeline: PipelineView): void {
         );
         void persistOutputOrder(pipeline.id, order);
     };
+}
+
+// The Outputs list's filter box and "Problems only" toggle.
+export function setOutputsListFilter(change: { search?: string; problemsOnly?: boolean }): void {
+    if (change.search !== undefined) state.outputsListSearch = change.search;
+    if (change.problemsOnly !== undefined) state.outputsListProblemsOnly = change.problemsOnly;
+    const pipeline = state.pipelines.find((p) => p.id === getUrlParam('p'));
+    if (pipeline) renderOutputsList(pipeline);
 }
 
 // ── Entry point ───────────────────────────────────────

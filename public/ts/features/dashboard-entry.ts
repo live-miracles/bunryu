@@ -2,6 +2,7 @@ import { getUrlParam, setUrlParam, copyText } from '../core/utils.js';
 import { state } from '../core/state.js';
 import { refreshDashboard } from './dashboard.js';
 import { initSoundAlerts } from './sound-alerts.js';
+import { setOutputsListFilter } from './render.js';
 import {
     openSettings,
     addPipelineGroupRow,
@@ -54,6 +55,8 @@ declare global {
         addOutBtn: () => void;
         outputsCopyBtn: () => Promise<void>;
         outputsPasteBtn: () => Promise<void>;
+        outputsSearchInput: (value: string) => void;
+        outputsProblemsToggle: () => void;
         outputsStartAllBtn: () => Promise<void>;
         outputsStopAllBtn: () => Promise<void>;
         outFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
@@ -161,6 +164,11 @@ window.outputsPasteBtn = async () => {
     const btn = document.getElementById('outputs-paste-btn') as HTMLButtonElement | null;
     if (id && btn) await pasteOutputs(id, btn);
 };
+
+window.outputsSearchInput = (value) => setOutputsListFilter({ search: value });
+
+window.outputsProblemsToggle = () =>
+    setOutputsListFilter({ problemsOnly: !state.outputsListProblemsOnly });
 
 window.outputsStartAllBtn = async () => {
     const id = getUrlParam('p');

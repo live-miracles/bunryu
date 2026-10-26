@@ -117,6 +117,63 @@ function hintHtml(hint: string | null): string {
         : '';
 }
 
+// The last line of the output's current error, or '' when it has none (a stopped
+// output keeps one only when it was stopped after repeated failed attempts).
+function currentErrorLine(output: OutputView): string {
+    if (!output.lastError || output.lastErrorAt === null) return '';
+    return (
+        output.lastError
+            .split('\n')
+            .filter((line) => line.trim())
+            .slice(-1)[0] ?? ''
+    );
+}
+
+// Every warning the card shows, whether reported by the running output, a
+// destination shared with another output or advice about the encoding settings.
+function outputWarnings(
+    output: OutputView,
+    input: InputHealth,
+    dupUrls: Map<string, DupRef[]>,
+): Array<{ message: string; sinceMs?: number | null }> {
+    const otherDupRefs = (output.url ? (dupUrls.get(output.url) ?? []) : []).filter(
+        (ref) => ref.outputId !== output.id,
+    );
+    return [
+        ...(output.warningReason
+            ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
+            : []),
+        ...(otherDupRefs.length > 0
+            ? [
+                  {
+                      message: `Same destination as ${otherDupRefs
+                          .map((ref) =>
+                              ref.outputName
+                                  ? `${ref.pipelineName} → ${ref.outputName}`
+                                  : ref.pipelineName,
+                          )
+                          .join(', ')}`,
+                  },
+              ]
+            : []),
+        ...outputEncodingWarnings(output, input).map((message) => ({ message })),
+    ];
+}
+
+// What is wrong with the output right now, as the Outputs list's "Problems only"
+// filter and summary count it: an error (a crash being retried, or a stop after
+// repeated failures), a warning of any kind, or nothing.
+export function outputSeverity(
+    output: OutputView,
+    input: InputHealth,
+    dupUrls: Map<string, DupRef[]>,
+    status: OutputCardStatus,
+): 'error' | 'warning' | null {
+    if (status === 'error' || currentErrorLine(output)) return 'error';
+    if (status === 'warn' || outputWarnings(output, input, dupUrls).length > 0) return 'warning';
+    return null;
+}
+
 export function renderOutputCard(
     output: OutputView,
     input: InputHealth,
@@ -183,14 +240,7 @@ export function renderOutputCard(
         inlineSink = `<code class="text-xs font-normal opacity-60 min-w-0 flex-1 basis-24 truncate" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>`;
     }
 
-    const lastErrorIsCurrent = output.lastError !== null && output.lastErrorAt !== null;
-    const lastErrorLine =
-        output.lastError && lastErrorIsCurrent
-            ? (output.lastError
-                  .split('\n')
-                  .filter((line) => line.trim())
-                  .slice(-1)[0] ?? '')
-            : '';
+    const lastErrorLine = currentErrorLine(output);
     const lastErrorTs = output.lastErrorAt ? formatLocalTime(output.lastErrorAt) : '';
     const retryBadge =
         output.failures > 0
@@ -222,31 +272,7 @@ export function renderOutputCard(
     const historyBtn = output.hasErrorHistory
         ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
-    // Every warning, whether reported by the running output, a destination shared
-    // with another output or advice about the encoding settings, is one line of
-    // the same style.
-    const otherDupRefs = (output.url ? (dupUrls.get(output.url) ?? []) : []).filter(
-        (ref) => ref.outputId !== output.id,
-    );
-    const warnings: Array<{ message: string; sinceMs?: number | null }> = [
-        ...(output.warningReason
-            ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
-            : []),
-        ...(otherDupRefs.length > 0
-            ? [
-                  {
-                      message: `Same destination as ${otherDupRefs
-                          .map((ref) =>
-                              ref.outputName
-                                  ? `${ref.pipelineName} → ${ref.outputName}`
-                                  : ref.pipelineName,
-                          )
-                          .join(', ')}`,
-                  },
-              ]
-            : []),
-        ...outputEncodingWarnings(output, input).map((message) => ({ message })),
-    ];
+    const warnings = outputWarnings(output, input, dupUrls);
     const warningsHtml = warnings
         .map(
             ({

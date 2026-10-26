@@ -28,6 +28,10 @@ export interface AppState {
     // Overview search boxes (by name), one per table; per-browser and reset on reload.
     inputSearch: string;
     outputSearch: string;
+    // The Outputs list's filter box and "Problems only" toggle for the selected
+    // pipeline; per-browser, and reset when another pipeline is selected.
+    outputsListSearch: string;
+    outputsListProblemsOnly: boolean;
     // Which pipeline groups are collapsed in the left-column list. Per-browser
     // only (localStorage, see saveCollapsedGroups) — intentionally not stored
     // server-side, so it doesn't sync across viewers.
@@ -68,6 +72,8 @@ export const state: AppState = {
     overviewFilter: 'all',
     inputSearch: '',
     outputSearch: '',
+    outputsListSearch: '',
+    outputsListProblemsOnly: false,
     collapsedGroupIds: loadCollapsedGroups(),
 };
 

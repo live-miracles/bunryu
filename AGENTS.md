@@ -234,6 +234,8 @@ only for a new module.
   and the pipeline panel's input stats share.
   `core/audio-meter.ts` has the preview meter's level maths (peak dBFS, release
   fall-off), ported from live-gallery.
+  `core/outputs-filter.ts` has the Outputs list's filter, "Problems" test and summary
+  counts (`outputSeverity` in `features/output-card.ts` says what counts as a problem);
   `core/alert-sound.ts` decides which changes between polls beep;
   `features/sound-alerts.ts` is the navbar bell and volume and plays the beeps.
   `core/hints.ts` maps known FFmpeg errors, warnings and alert codes to the
