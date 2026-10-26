@@ -1,10 +1,16 @@
 # Publishing to a pipeline
 
 A **pipeline** is one live input. Creating a pipeline assigns it a stream key;
-the pipeline panel in the dashboard has a copy button for the full publish URL
-of every protocol, plus buttons to copy the server URL, key, stream ID or
-passphrase separately for encoders that ask for them in separate fields. The
-panel does not display the URLs themselves.
+the pipeline panel's **Publish to this input** card shows one input mode at a
+time (**RTMP**, **SRT** or **SRT Relay**), chosen with the buttons at its top. It
+follows the encoder: when a publisher connects the card switches to the mode it is
+using (marked with a green dot), and until the mode changes again a mode you picked
+stays. Each row shows a value, shortened with an ellipsis if it is long, and a
+copy button (two overlapping squares): server URL, key, stream ID or passphrase separately for encoders
+that ask for them in separate fields, and the full publish URL (SRT Relay has two: **Bonded URL** for an encoder that sends over several links, and **Single-link URL** for an ordinary one). The stream key and
+stream ID are masked after their `keyNN_` prefix (`key01_••••••••`) and the passphrase
+entirely; the eye button beside each shows the real value for 15 s, for typing it
+into an encoder by hand. Copy always copies the real value.
 
 | Protocol | Port | URL shape |
 |----------|------|-----------|
@@ -38,7 +44,7 @@ The trade-off is visibility: SRS does not expose packet loss, retransmit or drop
 counters for an SRT publisher, so a stream sent straight to 10080 has no link
 statistics or loss alerts in the dashboard (its input card says so). Through the
 relay you get them, so use the bonded port when you want to watch the link.
-The pipeline's SRT Relay card keeps a compact summary visible; select the **Detailed stats**
+With **SRT Relay** selected the pipeline also shows the SRT Relay card, which keeps a compact summary visible; select the **Detailed stats**
 icon (bars) beside the card's title to open a dialog sized to its input, per-leg, output and graph content, within the
 screen width. It refreshes live statistics with the dashboard's regular poll.
 

@@ -2,6 +2,7 @@ import {
     setInnerText,
     setBadgeCount,
     escapeHtml,
+    copyText,
     formatBitrate,
     formatBytes,
     formatCpuPercent,
@@ -18,6 +19,12 @@ import {
     STATUS_COLOR_OFF,
 } from '../core/utils.js';
 import { healthNowMs, saveCollapsedGroups, state } from '../core/state.js';
+import {
+    PUBLISH_MODES,
+    livePublishMode,
+    publishRows,
+    type PublishMode,
+} from '../core/publish-modes.js';
 import { rejectedVia, rejectedWhy } from '../core/rejected.js';
 import type {
     AudioInfo,
@@ -1888,36 +1895,10 @@ function renderPipelineInfo(selectedId: string | null): void {
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
     if (statsEl) statsEl.innerHTML = inputHtml;
     renderSharedEncodes(pipeline, { outStatus, formatUptime });
-    const rtmpEl = document.getElementById('rtmp-publish-url');
-    const srtEl = document.getElementById('srt-publish-url');
-    if (rtmpEl) {
-        rtmpEl.dataset.copy = pipeline.rtmpPublishUrl;
-        const lastSlash = pipeline.rtmpPublishUrl.lastIndexOf('/');
-        rtmpEl.dataset.serverUrl =
-            lastSlash > -1
-                ? pipeline.rtmpPublishUrl.substring(0, lastSlash)
-                : pipeline.rtmpPublishUrl;
-        rtmpEl.dataset.streamKey = pipeline.streamKey;
-    }
-    if (srtEl) {
-        srtEl.dataset.copy = pipeline.srtPublishUrl;
-        const hostStart = 6;
-        const colonAfterHost = pipeline.srtPublishUrl.indexOf(':', hostStart);
-        srtEl.dataset.ip = pipeline.srtPublishUrl.slice(hostStart, colonAfterHost);
-        const portEnd = pipeline.srtPublishUrl.indexOf('?', colonAfterHost);
-        srtEl.dataset.port =
-            portEnd > -1
-                ? pipeline.srtPublishUrl.slice(colonAfterHost + 1, portEnd)
-                : pipeline.srtPublishUrl.slice(colonAfterHost + 1);
-        srtEl.dataset.streamId = `#!::r=live/${pipeline.streamKey},m=publish`;
-        srtEl.dataset.passphrase = state.config.srtPassphrase || '';
-    }
-
     const bondingCard = document.getElementById('srt-bonding-card');
     const bondingDot = document.getElementById('srt-bonding-status-dot');
     const bondingDotFill = document.getElementById('srt-bonding-status-fill');
     const bondingTooltipContent = document.getElementById('srt-bonding-status-tooltip-content');
-    const bondingUrl = document.getElementById('srt-bonding-url');
     const bondingStats = document.getElementById('srt-bonding-stats');
     const bondingLegs = document.getElementById('srt-bonding-legs');
     const bondingErrWrap = document.getElementById('srt-bonding-last-error-wrap');
@@ -1931,12 +1912,12 @@ function renderPipelineInfo(selectedId: string | null): void {
     const bondingHost = state.config.publicHost || 'localhost';
     const bondingPortValue = state.health.srtRelay?.port ?? 10081;
     const bondingStreamId = `#!::r=live/${pipeline.streamKey},m=publish`;
-    const bondingUrlValue =
-        `srt://${bondingHost}:${bondingPortValue}?mode=caller&grouptype=broadcast` +
+    const relayUrlTail =
         `&streamid=${bondingStreamId}` +
         (state.config.srtPassphrase
             ? `&passphrase=${encodeURIComponent(state.config.srtPassphrase)}&pbkeylen=16`
             : '');
+    const relayUrlBase = `srt://${bondingHost}:${bondingPortValue}?mode=caller`;
     const bondingDetailsToggle = document.getElementById(
         'srt-bonding-details-toggle',
     ) as HTMLButtonElement | null;
@@ -1947,6 +1928,13 @@ function renderPipelineInfo(selectedId: string | null): void {
                 ed.showSrtBondingDetails(pipeline.id),
             );
     }
+    const publishMode = renderPublishCard(pipeline, {
+        passphrase: state.config.srtPassphrase || '',
+        relayPort: bondingPortValue,
+        relayUrl: relayUrlBase + relayUrlTail,
+        relayBondedUrl: `${relayUrlBase}&grouptype=broadcast${relayUrlTail}`,
+    });
+    bondingCard?.classList.toggle('hidden', publishMode !== 'relay');
     bondingCard?.classList.remove('opacity-60');
     if (bondingDot && bondingDotFill) {
         const indicator = getBondingIndicator(pipeline, relayProcessRunning);
@@ -1962,10 +1950,6 @@ function renderPipelineInfo(selectedId: string | null): void {
                 indicator.offMessage,
             );
         }
-    }
-    if (bondingUrl) {
-        bondingUrl.dataset.copy = bondingUrlValue;
-        bondingUrl.dataset.port = String(bondingPortValue);
     }
     if (bondingStats) {
         bondingStats.innerHTML = renderBondingStats(pipeline.srtBonding, relayProcessRunning, {
@@ -2022,6 +2006,105 @@ function renderPipelineInfo(selectedId: string | null): void {
 
     renderPreview(pipeline);
     renderOutputsList(pipeline);
+}
+
+// ── Publish card ──────────────────────────────────────
+
+const ICON_COPY = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+
+const ICON_EYE = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const ICON_EYE_OFF = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path d="m3 3 18 18"/></svg>`;
+
+// The mode each pipeline's card shows. It follows the encoder: when the live mode
+// changes the card switches to it, and until then a mode picked by hand stays.
+const publishModeChoice = new Map<string, PublishMode>();
+const publishModeLive = new Map<string, PublishMode | null>();
+let publishCopyValues: string[] = [];
+let publishCardWired = false;
+let publishCardPipelineId: string | null = null;
+// Secret rows revealed with the eye button, until the time given.
+const PUBLISH_REVEAL_MS = 15_000;
+const publishRevealUntil = new Map<string, number>();
+
+function renderPublishCard(
+    pipeline: PipelineView,
+    relay: { passphrase: string; relayPort: number; relayUrl: string; relayBondedUrl: string },
+): PublishMode {
+    publishCardPipelineId = pipeline.id;
+    const live = livePublishMode(pipeline);
+    if (live && live !== publishModeLive.get(pipeline.id)) publishModeChoice.set(pipeline.id, live);
+    publishModeLive.set(pipeline.id, live);
+    const mode = publishModeChoice.get(pipeline.id) ?? 'rtmp';
+
+    const modesEl = document.getElementById('publish-modes');
+    const rowsEl = document.getElementById('publish-rows');
+    if (!modesEl || !rowsEl) return mode;
+    if (!publishCardWired) {
+        publishCardWired = true;
+        modesEl.addEventListener('click', (e) => {
+            const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]');
+            if (!btn || !publishCardPipelineId) return;
+            publishModeChoice.set(publishCardPipelineId, btn.dataset.mode as PublishMode);
+            renderPipelineInfo(publishCardPipelineId);
+        });
+        rowsEl.addEventListener('click', (e) => {
+            const eye = (e.target as HTMLElement).closest<HTMLElement>('[data-reveal]');
+            if (eye && publishCardPipelineId) {
+                const rowKey = `${publishCardPipelineId}:${eye.dataset.reveal}`;
+                const open = (publishRevealUntil.get(rowKey) ?? 0) > Date.now();
+                if (open) publishRevealUntil.delete(rowKey);
+                else {
+                    publishRevealUntil.set(rowKey, Date.now() + PUBLISH_REVEAL_MS);
+                    const id = publishCardPipelineId;
+                    setTimeout(() => renderPipelineInfo(id), PUBLISH_REVEAL_MS + 50);
+                }
+                renderPipelineInfo(publishCardPipelineId);
+                return;
+            }
+            const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-copy-idx]');
+            const value = btn ? publishCopyValues[Number(btn.dataset.copyIdx)] : undefined;
+            if (value !== undefined) void copyText(value);
+        });
+    }
+
+    setHtmlKeepScroll(
+        modesEl,
+        PUBLISH_MODES.map(({ mode: m, label }) => {
+            const dot =
+                m === live
+                    ? `<div aria-label="live" class="status mr-1 shrink-0" style="background-color: ${STATUS_COLOR_GOOD}"></div>`
+                    : '';
+            return `<button type="button" role="tab" aria-selected="${m === mode}" data-mode="${m}" class="btn btn-xs join-item ${m === mode ? 'btn-accent btn-soft' : ''}">${dot}${label}</button>`;
+        }).join(''),
+    );
+
+    const rows = publishRows(mode, {
+        rtmpUrl: pipeline.rtmpPublishUrl,
+        srtUrl: pipeline.srtPublishUrl,
+        streamKey: pipeline.streamKey,
+        ...relay,
+    });
+    publishCopyValues = rows.map((r) => r.value);
+    setHtmlKeepScroll(
+        rowsEl,
+        rows
+            .map((r, i) => {
+                const rowKey = `${pipeline.id}:${mode}:${r.label}`;
+                const revealed = r.secret && (publishRevealUntil.get(rowKey) ?? 0) > Date.now();
+                const text = revealed ? r.value : r.shown;
+                const title = r.secret ? '' : ` title="${escapeHtml(r.shown)}"`;
+                const eye = r.secret
+                    ? `<button type="button" data-reveal="${mode}:${r.label}" class="btn btn-xs btn-ghost btn-square shrink-0" title="${revealed ? 'Hide' : 'Show'} ${r.label.toLowerCase()} for ${PUBLISH_REVEAL_MS / 1000} s" aria-label="${revealed ? 'Hide' : 'Show'} ${r.label.toLowerCase()}" aria-pressed="${revealed}">${revealed ? ICON_EYE_OFF : ICON_EYE}</button>`
+                    : '';
+                return `<div class="flex min-w-0 items-center gap-2">
+                    <span class="w-28 shrink-0 text-xs opacity-60">${r.label}</span>
+                    <code class="min-w-0 flex-1 truncate text-xs"${title}>${escapeHtml(text)}</code>${eye}
+                    <button type="button" data-copy-idx="${i}" class="btn btn-xs btn-square ${r.primary ? 'btn-accent' : 'btn-ghost'} btn-outline shrink-0" title="Copy ${r.label.toLowerCase()}" aria-label="Copy ${r.label.toLowerCase()}">${ICON_COPY}</button>
+                </div>`;
+            })
+            .join(''),
+    );
+    return mode;
 }
 
 // ── Outputs list (right column) ───────────────────────

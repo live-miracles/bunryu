@@ -230,6 +230,8 @@ only for a new module.
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
   `renditions` and decides which pipeline alerts belong to the input (`INPUT_ALERT_CODES`);
   `features/shared-encodes.ts` renders the Shared encodes card.
+  `core/publish-modes.ts` has the Publish card's modes (which one the live input is on) and
+  its rows, with the secrets masked.
   `core/media-spec.ts` formats the one-line video/audio descriptions the Overview
   and the pipeline panel's input stats share.
   `core/audio-meter.ts` has the preview meter's level maths (peak dBFS, release
