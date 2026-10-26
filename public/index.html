@@ -17,7 +17,7 @@
     <script src="vendor/hls.min.js"></script>
     <script type="module" src="js/features/dashboard-entry.js"></script>
   </head>
-  <body class="bg-base-100 text-base-content flex min-h-screen flex-col lg:h-screen">
+  <body class="bg-base-100 text-base-content flex min-h-screen flex-col md:h-screen">
     <!-- Navbar -->
     <div class="navbar bg-base-100 border-base-content/10 shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:flex-wrap">
       <div class="flex flex-1 items-center gap-3">
@@ -340,9 +340,10 @@
     </dialog>
 
     <!-- Main grid -->
-    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 pt-0 lg:h-screen lg:grid-cols-[clamp(14rem,24vw,23rem)_minmax(22rem,3fr)_minmax(0,4fr)]">
+    <div
+      class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 pt-0 md:h-screen md:grid-cols-[clamp(14rem,30vw,23rem)_minmax(0,1fr)] xl:grid-cols-[clamp(14rem,24vw,23rem)_minmax(22rem,3fr)_minmax(0,4fr)]">
       <!-- Left: Pipeline list -->
-      <div class="panel-waves bg-base-300 rounded-box mt-4 overflow-y-auto max-lg:max-h-[40vh]">
+      <div class="panel-waves bg-base-300 rounded-box mt-4 overflow-y-auto max-md:max-h-[40vh]">
         <div class="bg-base-300 sticky top-0 z-10 flex items-start justify-between gap-2 p-4">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="grid grid-cols-[5rem_auto] items-center gap-x-3 text-sm">
@@ -386,670 +387,516 @@
         <div class="hidden px-2 pb-4" id="rejected-publishes"></div>
       </div>
 
-      <!-- Middle: Pipeline info -->
-      <div
-        class="panel-waves bg-base-200 mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow"
-        id="pipe-info-col">
-        <div class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-xl px-4 pt-4 pb-3 text-xl font-bold">
-          <div class="flex min-w-0 items-center gap-2">
-            <span class="truncate" id="pipe-name"></span>
-            <span class="badge badge-sm badge-outline hidden shrink-0" id="pipe-readers-badge"></span>
-          </div>
-          <div class="flex shrink-0 items-center gap-2">
-            <button class="btn btn-xs btn-ghost" onclick="pipeHistoryBtn()" title="View pipeline history" aria-label="View pipeline history">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-                <path d="M12 7v5l4 2" />
-              </svg>
-            </button>
-            <button id="pipe-edit-btn" class="btn btn-xs btn-ghost" onclick="editPipeBtn()" title="Edit pipeline" aria-label="Edit pipeline">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round">
-                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                <path d="m15 5 4 4" />
-              </svg>
-            </button>
-            <button
-              id="pipe-delete-btn"
-              class="btn btn-xs btn-ghost text-error"
-              onclick="deletePipeBtn(this)"
-              title="Delete pipeline"
-              aria-label="Delete pipeline">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round">
-                <path d="M3 6h18" />
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                <line x1="10" x2="10" y1="11" y2="17" />
-                <line x1="14" x2="14" y1="11" y2="17" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Preview -->
-        <div id="preview-section" class="mb-4 hidden">
-          <div id="preview-card" class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
-            <div class="mb-2 flex items-center justify-between">
-              <span class="text-muted text-xs font-semibold">PREVIEW</span>
-              <div class="flex items-center gap-2">
-                <select id="preview-audio-select" class="select select-xs hidden max-w-44" onchange="previewTrackChange()"></select>
-                <button id="preview-stop-btn" class="btn btn-xs btn-ghost" onclick="previewToggleBtn()">
-                  <svg
-                    id="preview-btn-play-icon"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    stroke="none">
-                    <polygon points="5 3 19 12 5 21 5 3" />
-                  </svg>
-                  <svg
-                    id="preview-btn-stop-icon"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    stroke="none"
-                    class="hidden">
-                    <rect width="14" height="14" x="5" y="5" rx="2" />
-                  </svg>
-                  <span id="preview-btn-spinner" class="loading loading-spinner loading-xs hidden"></span>
-                  <span id="preview-btn-label">Preview</span>
-                </button>
-                <!-- Mute / unmute -->
-                <button
-                  id="preview-mute-btn"
-                  title="Unmute"
-                  onclick="previewMuteBtn()"
-                  class="btn btn-square btn-ghost btn-xs"
-                  disabled
-                  aria-label="Unmute">
-                  <svg
-                    id="preview-icon-muted"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <line x1="23" y1="9" x2="17" y2="15" />
-                    <line x1="17" y1="9" x2="23" y2="15" />
-                  </svg>
-                  <svg
-                    id="preview-icon-unmuted"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="hidden">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                  </svg>
-                </button>
-                <!-- Reload -->
-                <button
-                  id="preview-reload-btn"
-                  title="Reload"
-                  onclick="previewReloadBtn()"
-                  class="btn btn-square btn-ghost btn-xs"
-                  disabled
-                  aria-label="Reload">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round">
-                    <polyline points="23 4 23 10 17 10" />
-                    <polyline points="1 20 1 14 7 14" />
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                  </svg>
-                </button>
-                <!-- Maximize / restore (page-level modal) -->
-                <button
-                  id="preview-maximize-btn"
-                  title="Maximize"
-                  onclick="previewMaximizeBtn()"
-                  class="btn btn-square btn-ghost btn-xs"
-                  disabled
-                  aria-label="Maximize">
-                  <svg
-                    id="preview-icon-expand"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round">
-                    <polyline points="15 3 21 3 21 9" />
-                    <polyline points="9 21 3 21 3 15" />
-                    <line x1="21" y1="3" x2="14" y2="10" />
-                    <line x1="3" y1="21" x2="10" y2="14" />
-                  </svg>
-                  <svg
-                    id="preview-icon-compress"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="hidden">
-                    <polyline points="4 14 10 14 10 20" />
-                    <polyline points="20 10 14 10 14 4" />
-                    <line x1="10" y1="14" x2="3" y2="21" />
-                    <line x1="21" y1="3" x2="14" y2="10" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div id="preview-stage-host" class="hidden w-full">
-              <div id="preview-stage" class="flex items-stretch gap-1">
-                <div id="preview-player" class="hidden aspect-video w-full min-w-0 overflow-hidden">
-                  <video id="preview-video" class="h-full w-full rounded-lg bg-black object-contain" muted playsinline></video>
-                </div>
-                <canvas
-                  id="preview-meter"
-                  class="hidden h-full rounded-sm"
-                  style="width: 10px; flex-shrink: 0; background: rgba(0, 0, 0, 0.3)"></canvas>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Input stats -->
-        <div id="input-stats-container" class="border-base-content/10 bg-base-100/50 mb-4 hidden rounded-xl border p-3">
-          <div id="input-stats"></div>
-        </div>
-
-        <!-- Shared encodes: one FFmpeg encode used by several outputs of this pipeline -->
-        <div id="shared-encodes-card" class="border-base-content/10 bg-base-100/50 mb-4 hidden rounded-xl border p-3">
-          <div class="text-muted mb-1 text-xs font-semibold">Shared encodes</div>
-          <div id="shared-encodes-list" class="flex flex-col gap-2"></div>
-        </div>
-
-        <div id="srt-bonding-card" class="border-base-content/10 bg-base-100/50 order-last rounded-xl border p-3">
-          <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <div class="js-tooltip shrink-0" id="srt-bonding-status-tooltip">
-                <div id="srt-bonding-status-dot" aria-label="status" class="border-base-content/15 h-5 w-5 overflow-hidden rounded-full border">
-                  <div id="srt-bonding-status-fill" class="h-full w-full rounded-full"></div>
-                </div>
-                <div id="srt-bonding-status-tooltip-content" class="js-tooltip-content hidden"></div>
-              </div>
-              <span class="text-muted text-xs font-semibold">SRT Relay</span>
-              <button
-                id="srt-bonding-details-toggle"
-                class="btn btn-xs btn-square btn-ghost hidden shrink-0"
-                type="button"
-                aria-haspopup="dialog"
-                title="Detailed stats"
-                aria-label="Detailed stats">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <path d="M3 3v16a2 2 0 0 0 2 2h16" />
-                  <path d="M18 17V9" />
-                  <path d="M13 17V5" />
-                  <path d="M8 17v-3" />
-                </svg>
-              </button>
-              <button
-                id="srt-bonding-history-btn"
-                class="btn btn-xs btn-square btn-ghost hidden shrink-0"
-                type="button"
-                title="Error history"
-                aria-label="Error history">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true">
-                  <path d="M3 12a9 9 0 1 0 3-6.7" />
-                  <path d="M3 3v6h6" />
-                  <path d="M12 7v5l3 2" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div class="mt-1 min-w-0" id="srt-bonding-stats"></div>
-          <div class="mt-2" id="srt-bonding-legs"></div>
-          <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
+      <!-- Middle and right panels: separate columns from xl up; between md and xl one
+           scrolling column under the pipeline list, below md part of the single column. -->
+      <div class="contents md:-mx-2 md:flex md:min-h-0 md:flex-col md:overflow-y-auto md:px-2 xl:contents">
+        <!-- Middle: Pipeline info -->
+        <div
+          class="panel-waves bg-base-200 mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible"
+          id="pipe-info-col">
+          <div class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-xl px-4 pt-4 pb-3 text-xl font-bold">
             <div class="flex min-w-0 items-center gap-2">
-              <span class="text-error shrink-0 text-xs" id="srt-bonding-last-error-ts"></span>
-              <div class="text-error min-w-0 truncate text-xs" id="srt-bonding-last-error"></div>
+              <span class="truncate" id="pipe-name"></span>
+              <span class="badge badge-sm badge-outline hidden shrink-0" id="pipe-readers-badge"></span>
             </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <button class="btn btn-xs btn-ghost" onclick="pipeHistoryBtn()" title="View pipeline history" aria-label="View pipeline history">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                  <path d="M12 7v5l4 2" />
+                </svg>
+              </button>
+              <button id="pipe-edit-btn" class="btn btn-xs btn-ghost" onclick="editPipeBtn()" title="Edit pipeline" aria-label="Edit pipeline">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  <path d="m15 5 4 4" />
+                </svg>
+              </button>
+              <button
+                id="pipe-delete-btn"
+                class="btn btn-xs btn-ghost text-error"
+                onclick="deletePipeBtn(this)"
+                title="Delete pipeline"
+                aria-label="Delete pipeline">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  <line x1="10" x2="10" y1="11" y2="17" />
+                  <line x1="14" x2="14" y1="11" y2="17" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div id="preview-section" class="mb-4 hidden">
+            <div id="preview-card" class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
+              <div class="mb-2 flex items-center justify-between">
+                <span class="text-muted text-xs font-semibold">PREVIEW</span>
+                <div class="flex items-center gap-2">
+                  <select id="preview-audio-select" class="select select-xs hidden max-w-44" onchange="previewTrackChange()"></select>
+                  <button id="preview-stop-btn" class="btn btn-xs btn-ghost" onclick="previewToggleBtn()">
+                    <svg
+                      id="preview-btn-play-icon"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      stroke="none">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    <svg
+                      id="preview-btn-stop-icon"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      stroke="none"
+                      class="hidden">
+                      <rect width="14" height="14" x="5" y="5" rx="2" />
+                    </svg>
+                    <span id="preview-btn-spinner" class="loading loading-spinner loading-xs hidden"></span>
+                    <span id="preview-btn-label">Preview</span>
+                  </button>
+                  <!-- Mute / unmute -->
+                  <button
+                    id="preview-mute-btn"
+                    title="Unmute"
+                    onclick="previewMuteBtn()"
+                    class="btn btn-square btn-ghost btn-xs"
+                    disabled
+                    aria-label="Unmute">
+                    <svg
+                      id="preview-icon-muted"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <line x1="23" y1="9" x2="17" y2="15" />
+                      <line x1="17" y1="9" x2="23" y2="15" />
+                    </svg>
+                    <svg
+                      id="preview-icon-unmuted"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="hidden">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                    </svg>
+                  </button>
+                  <!-- Reload -->
+                  <button
+                    id="preview-reload-btn"
+                    title="Reload"
+                    onclick="previewReloadBtn()"
+                    class="btn btn-square btn-ghost btn-xs"
+                    disabled
+                    aria-label="Reload">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round">
+                      <polyline points="23 4 23 10 17 10" />
+                      <polyline points="1 20 1 14 7 14" />
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                  </button>
+                  <!-- Maximize / restore (page-level modal) -->
+                  <button
+                    id="preview-maximize-btn"
+                    title="Maximize"
+                    onclick="previewMaximizeBtn()"
+                    class="btn btn-square btn-ghost btn-xs"
+                    disabled
+                    aria-label="Maximize">
+                    <svg
+                      id="preview-icon-expand"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round">
+                      <polyline points="15 3 21 3 21 9" />
+                      <polyline points="9 21 3 21 3 15" />
+                      <line x1="21" y1="3" x2="14" y2="10" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                    <svg
+                      id="preview-icon-compress"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="hidden">
+                      <polyline points="4 14 10 14 10 20" />
+                      <polyline points="20 10 14 10 14 4" />
+                      <line x1="10" y1="14" x2="3" y2="21" />
+                      <line x1="21" y1="3" x2="14" y2="10" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div id="preview-stage-host" class="hidden w-full">
+                <div id="preview-stage" class="flex items-stretch gap-1">
+                  <div id="preview-player" class="hidden aspect-video w-full min-w-0 overflow-hidden">
+                    <video id="preview-video" class="h-full w-full rounded-lg bg-black object-contain" muted playsinline></video>
+                  </div>
+                  <canvas
+                    id="preview-meter"
+                    class="hidden h-full rounded-sm"
+                    style="width: 10px; flex-shrink: 0; background: rgba(0, 0, 0, 0.3)"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input stats -->
+          <div id="input-stats-container" class="border-base-content/10 bg-base-100/50 mb-4 hidden rounded-xl border p-3">
+            <div id="input-stats"></div>
+          </div>
+
+          <!-- Shared encodes: one FFmpeg encode used by several outputs of this pipeline -->
+          <div id="shared-encodes-card" class="border-base-content/10 bg-base-100/50 mb-4 hidden rounded-xl border p-3">
+            <div class="text-muted mb-1 text-xs font-semibold">Shared encodes</div>
+            <div id="shared-encodes-list" class="flex flex-col gap-2"></div>
+          </div>
+
+          <div id="srt-bonding-card" class="border-base-content/10 bg-base-100/50 order-last rounded-xl border p-3">
+            <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <div class="js-tooltip shrink-0" id="srt-bonding-status-tooltip">
+                  <div id="srt-bonding-status-dot" aria-label="status" class="border-base-content/15 h-5 w-5 overflow-hidden rounded-full border">
+                    <div id="srt-bonding-status-fill" class="h-full w-full rounded-full"></div>
+                  </div>
+                  <div id="srt-bonding-status-tooltip-content" class="js-tooltip-content hidden"></div>
+                </div>
+                <span class="text-muted text-xs font-semibold">SRT Relay</span>
+                <button
+                  id="srt-bonding-details-toggle"
+                  class="btn btn-xs btn-square btn-ghost hidden shrink-0"
+                  type="button"
+                  aria-haspopup="dialog"
+                  title="Detailed stats"
+                  aria-label="Detailed stats">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+                    <path d="M18 17V9" />
+                    <path d="M13 17V5" />
+                    <path d="M8 17v-3" />
+                  </svg>
+                </button>
+                <button
+                  id="srt-bonding-history-btn"
+                  class="btn btn-xs btn-square btn-ghost hidden shrink-0"
+                  type="button"
+                  title="Error history"
+                  aria-label="Error history">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true">
+                    <path d="M3 12a9 9 0 1 0 3-6.7" />
+                    <path d="M3 3v6h6" />
+                    <path d="M12 7v5l3 2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="mt-1 min-w-0" id="srt-bonding-stats"></div>
+            <div class="mt-2" id="srt-bonding-legs"></div>
+            <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="text-error shrink-0 text-xs" id="srt-bonding-last-error-ts"></span>
+                <div class="text-error min-w-0 truncate text-xs" id="srt-bonding-last-error"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Publish: one input mode at a time (RTMP, SRT or SRT Relay) -->
+          <div id="publish-card" class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <span class="text-muted text-xs font-semibold">Publish to this input</span>
+              <div class="join" id="publish-modes" role="tablist" aria-label="Input mode"></div>
+            </div>
+            <div class="flex flex-col gap-1" id="publish-rows"></div>
           </div>
         </div>
 
-        <!-- Publish: one input mode at a time (RTMP, SRT or SRT Relay) -->
-        <div id="publish-card" class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
-          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span class="text-muted text-xs font-semibold">Publish to this input</span>
-            <div class="join" id="publish-modes" role="tablist" aria-label="Input mode"></div>
+        <!-- Right: Outputs -->
+        <div
+          class="panel-waves bg-base-200 mt-4 hidden overflow-y-auto rounded-xl px-4 pb-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible"
+          id="outs-col">
+          <div class="bg-base-200 sticky top-0 z-10 -mx-4 rounded-t-xl px-4 pt-4 pb-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <h2 class="text-xl font-bold">Outputs</h2>
+                <button class="btn btn-xs btn-square btn-accent" onclick="addOutBtn()" title="Add Output" aria-label="Add Output">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+              </div>
+              <div class="flex items-center gap-1">
+                <button
+                  class="btn btn-xs btn-ghost"
+                  onclick="outputsCopyBtn()"
+                  title="Copy outputs to clipboard"
+                  aria-label="Copy outputs to clipboard">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                  </svg>
+                </button>
+                <button
+                  id="outputs-paste-btn"
+                  class="btn btn-xs btn-ghost"
+                  onclick="outputsPasteBtn()"
+                  title="Paste outputs from clipboard"
+                  aria-label="Paste outputs from clipboard">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                    <path d="M12 11h4" />
+                    <path d="M12 16h4" />
+                    <path d="M8 11h.01" />
+                    <path d="M8 16h.01" />
+                  </svg>
+                </button>
+                <div class="bg-base-content mx-1 h-3 w-px opacity-20"></div>
+                <button
+                  id="outputs-start-all-btn"
+                  class="btn btn-xs btn-ghost"
+                  onclick="outputsStartAllBtn()"
+                  title="Start all outputs"
+                  aria-label="Start all outputs">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <polygon points="6 3 20 12 6 21 6 3" />
+                  </svg>
+                </button>
+                <button
+                  id="outputs-stop-all-btn"
+                  class="btn btn-xs btn-ghost"
+                  onclick="outputsStopAllBtn()"
+                  title="Stop all outputs"
+                  aria-label="Stop all outputs">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div id="outputs-toolbar" class="mt-2 hidden flex-wrap items-center gap-2">
+              <input
+                id="outputs-search"
+                type="search"
+                class="input input-xs w-32 max-w-full"
+                placeholder="Filter outputs"
+                aria-label="Filter outputs by name or destination"
+                autocomplete="off"
+                oninput="outputsSearchInput(this.value)" />
+              <button
+                id="outputs-problems-btn"
+                type="button"
+                class="btn btn-xs btn-outline"
+                aria-pressed="false"
+                title="Show only outputs with an error or a warning"
+                onclick="outputsProblemsToggle()">
+                Problems
+              </button>
+              <div id="outputs-summary" class="ml-auto flex flex-wrap items-center gap-1 text-xs"></div>
+            </div>
           </div>
-          <div class="flex flex-col gap-1" id="publish-rows"></div>
+          <div class="flex flex-col gap-2 pb-4" id="outputs-list"></div>
         </div>
-      </div>
 
-      <!-- Right: Outputs -->
-      <div class="panel-waves bg-base-200 mt-4 hidden overflow-y-auto rounded-xl px-4 pb-4 shadow" id="outs-col">
-        <div class="bg-base-200 sticky top-0 z-10 -mx-4 rounded-t-xl px-4 pt-4 pb-3">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <h2 class="text-xl font-bold">Outputs</h2>
-              <button class="btn btn-xs btn-square btn-accent" onclick="addOutBtn()" title="Add Output" aria-label="Add Output">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-            </div>
-            <div class="flex items-center gap-1">
-              <button
-                class="btn btn-xs btn-ghost"
-                onclick="outputsCopyBtn()"
-                title="Copy outputs to clipboard"
-                aria-label="Copy outputs to clipboard">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                </svg>
-              </button>
-              <button
-                id="outputs-paste-btn"
-                class="btn btn-xs btn-ghost"
-                onclick="outputsPasteBtn()"
-                title="Paste outputs from clipboard"
-                aria-label="Paste outputs from clipboard">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                  <path d="M12 11h4" />
-                  <path d="M12 16h4" />
-                  <path d="M8 11h.01" />
-                  <path d="M8 16h.01" />
-                </svg>
-              </button>
-              <div class="bg-base-content mx-1 h-3 w-px opacity-20"></div>
-              <button
-                id="outputs-start-all-btn"
-                class="btn btn-xs btn-ghost"
-                onclick="outputsStartAllBtn()"
-                title="Start all outputs"
-                aria-label="Start all outputs">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <polygon points="6 3 20 12 6 21 6 3" />
-                </svg>
-              </button>
-              <button
-                id="outputs-stop-all-btn"
-                class="btn btn-xs btn-ghost"
-                onclick="outputsStopAllBtn()"
-                title="Stop all outputs"
-                aria-label="Stop all outputs">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div id="outputs-toolbar" class="mt-2 hidden flex-wrap items-center gap-2">
-            <input
-              id="outputs-search"
-              type="search"
-              class="input input-xs w-32 max-w-full"
-              placeholder="Filter outputs"
-              aria-label="Filter outputs by name or destination"
-              autocomplete="off"
-              oninput="outputsSearchInput(this.value)" />
+        <!-- Overview: all pipelines table (spans middle + right columns from xl up) -->
+        <div
+          class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          id="overview-col"></div>
+
+        <!-- Server Logs (spans middle + right columns from xl up) -->
+        <div
+          class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          id="srs-logs-col">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-xl font-bold">Server Logs</h2>
             <button
-              id="outputs-problems-btn"
+              id="srs-logs-refresh"
               type="button"
-              class="btn btn-xs btn-outline"
-              aria-pressed="false"
-              title="Show only outputs with an error or a warning"
-              onclick="outputsProblemsToggle()">
-              Problems
+              class="btn btn-sm btn-ghost btn-square inline-flex items-center justify-center leading-none"
+              onclick="refreshSrsLogsBtn()"
+              title="Refresh server logs"
+              aria-label="Refresh server logs">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="block h-4 w-4 shrink-0 fill-current" aria-hidden="true">
+                <path
+                  d="M10 3a7 7 0 0 1 6.56 4.57.75.75 0 1 1-1.4.53A5.5 5.5 0 1 0 14.5 13H12a.75.75 0 0 1 0-1.5h4.25A.75.75 0 0 1 17 12.25v4.25a.75.75 0 0 1-1.5 0v-1.77A7 7 0 1 1 10 3Z" />
+              </svg>
             </button>
-            <div id="outputs-summary" class="ml-auto flex flex-wrap items-center gap-1 text-xs"></div>
           </div>
+          <div id="srs-logs-content" class="mt-4 space-y-1 font-mono text-xs"></div>
         </div>
-        <div class="flex flex-col gap-2 pb-4" id="outputs-list"></div>
-      </div>
 
-      <!-- Overview: all pipelines table (spans middle + right columns) -->
-      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="overview-col"></div>
+        <!-- Settings (spans middle + right columns from xl up) -->
+        <div
+          class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          id="settings-col">
+          <div class="mx-auto max-w-4xl space-y-3">
+            <h2 class="text-xl font-bold">Settings</h2>
 
-      <!-- Server Logs (spans middle + right columns) -->
-      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="srs-logs-col">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-xl font-bold">Server Logs</h2>
-          <button
-            id="srs-logs-refresh"
-            type="button"
-            class="btn btn-sm btn-ghost btn-square inline-flex items-center justify-center leading-none"
-            onclick="refreshSrsLogsBtn()"
-            title="Refresh server logs"
-            aria-label="Refresh server logs">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="block h-4 w-4 shrink-0 fill-current" aria-hidden="true">
-              <path
-                d="M10 3a7 7 0 0 1 6.56 4.57.75.75 0 1 1-1.4.53A5.5 5.5 0 1 0 14.5 13H12a.75.75 0 0 1 0-1.5h4.25A.75.75 0 0 1 17 12.25v4.25a.75.75 0 0 1-1.5 0v-1.77A7 7 0 1 1 10 3Z" />
-            </svg>
-          </button>
-        </div>
-        <div id="srs-logs-content" class="mt-4 space-y-1 font-mono text-xs"></div>
-      </div>
-
-      <!-- Settings (spans middle + right columns) -->
-      <div class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow lg:col-span-2" id="settings-col">
-        <div class="mx-auto max-w-4xl space-y-3">
-          <h2 class="text-xl font-bold">Settings</h2>
-
-          <!-- Version info -->
-          <div
-            id="settings-version"
-            class="bg-base-300 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-0.5 rounded-lg px-3 py-2 font-mono text-xs opacity-70">
-            <span class="text-muted">Commit</span><span id="v-commit">—</span> <span class="text-muted">Bunryu</span><span id="v-app">—</span>
-            <span class="text-muted">SRS</span><span id="v-srs">—</span> <span class="text-muted">Relay</span><span id="v-relay">—</span>
-            <span class="text-muted">FFmpeg</span><span id="v-ffmpeg">—</span> <span class="text-muted">Node</span><span id="v-node">—</span>
-            <span class="text-muted">OS</span><span id="v-os">—</span> <span class="text-muted">Kernel</span><span id="v-kernel">—</span>
-            <span class="text-muted">CPU</span><span><span id="v-cpu">—</span><span id="v-cpu-model"></span></span> <span class="text-muted">RAM</span
-            ><span id="v-ram">—</span> <span class="text-muted">Disk</span><span id="v-disk">—</span>
-          </div>
-
-          <!-- Server Name + Public Host -->
-          <div class="space-y-2">
-            <div class="flex gap-3">
-              <fieldset class="fieldset min-w-0 flex-1">
-                <legend class="fieldset-legend">Server Name</legend>
-                <input
-                  type="text"
-                  id="settings-server-name-input"
-                  class="input w-full"
-                  placeholder="Bunryu"
-                  oninput="this.classList.remove('input-error')" />
-              </fieldset>
-              <fieldset class="fieldset min-w-0 flex-1">
-                <legend class="fieldset-legend">Public Host</legend>
-                <input
-                  type="text"
-                  id="settings-public-host-input"
-                  class="input w-full font-mono text-sm"
-                  placeholder="stream.example.com or 203.0.113.10" />
-              </fieldset>
+            <!-- Version info -->
+            <div
+              id="settings-version"
+              class="bg-base-300 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-0.5 rounded-lg px-3 py-2 font-mono text-xs opacity-70">
+              <span class="text-muted">Commit</span><span id="v-commit">—</span> <span class="text-muted">Bunryu</span><span id="v-app">—</span>
+              <span class="text-muted">SRS</span><span id="v-srs">—</span> <span class="text-muted">Relay</span><span id="v-relay">—</span>
+              <span class="text-muted">FFmpeg</span><span id="v-ffmpeg">—</span> <span class="text-muted">Node</span><span id="v-node">—</span>
+              <span class="text-muted">OS</span><span id="v-os">—</span> <span class="text-muted">Kernel</span><span id="v-kernel">—</span>
+              <span class="text-muted">CPU</span><span><span id="v-cpu">—</span><span id="v-cpu-model"></span></span>
+              <span class="text-muted">RAM</span><span id="v-ram">—</span> <span class="text-muted">Disk</span><span id="v-disk">—</span>
             </div>
-            <div class="flex items-center justify-end gap-2">
-              <span id="settings-general-save-success" class="text-primary hidden" aria-hidden="true">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <button type="button" class="btn btn-sm btn-accent" onclick="settingsGeneralFormBtn(this)">Save</button>
-            </div>
-          </div>
 
-          <!-- Change Password -->
-          <div class="space-y-2">
-            <div class="flex gap-3">
-              <fieldset class="fieldset min-w-0 flex-1">
-                <legend class="fieldset-legend">Current Password</legend>
-                <div class="relative">
+            <!-- Server Name + Public Host -->
+            <div class="space-y-2">
+              <div class="flex gap-3">
+                <fieldset class="fieldset min-w-0 flex-1">
+                  <legend class="fieldset-legend">Server Name</legend>
                   <input
-                    type="password"
-                    id="current-password-input"
-                    class="input w-full pr-10"
-                    placeholder="Current"
-                    autocomplete="current-password"
+                    type="text"
+                    id="settings-server-name-input"
+                    class="input w-full"
+                    placeholder="Bunryu"
                     oninput="this.classList.remove('input-error')" />
-                  <button
-                    type="button"
-                    class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-                    onclick="togglePwVisibility('current-password-input', this)"
-                    tabindex="-1"
-                    aria-label="Toggle password visibility">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round">
-                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      class="hidden">
-                      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-                      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-                      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-                      <line x1="2" x2="22" y1="2" y2="22" />
-                    </svg>
-                  </button>
-                </div>
-              </fieldset>
-              <fieldset class="fieldset min-w-0 flex-1">
-                <legend class="fieldset-legend">New Password</legend>
-                <div class="relative">
+                </fieldset>
+                <fieldset class="fieldset min-w-0 flex-1">
+                  <legend class="fieldset-legend">Public Host</legend>
                   <input
-                    type="password"
-                    id="new-password-input"
-                    class="input w-full pr-10"
-                    placeholder="New"
-                    autocomplete="new-password"
-                    oninput="
-                      this.classList.remove('input-error');
-                      document.getElementById('confirm-password-input').classList.remove('input-error');
-                    " />
-                  <button
-                    type="button"
-                    class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-                    onclick="togglePwVisibility('new-password-input', this)"
-                    tabindex="-1"
-                    aria-label="Toggle password visibility">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round">
-                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      class="hidden">
-                      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-                      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-                      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-                      <line x1="2" x2="22" y1="2" y2="22" />
-                    </svg>
-                  </button>
-                </div>
-              </fieldset>
-              <fieldset class="fieldset min-w-0 flex-1">
-                <legend class="fieldset-legend">Confirm</legend>
-                <div class="relative">
-                  <input
-                    type="password"
-                    id="confirm-password-input"
-                    class="input w-full pr-10"
-                    placeholder="Confirm"
-                    autocomplete="new-password"
-                    oninput="this.classList.remove('input-error')" />
-                  <button
-                    type="button"
-                    class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-                    onclick="togglePwVisibility('confirm-password-input', this)"
-                    tabindex="-1"
-                    aria-label="Toggle password visibility">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round">
-                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      class="hidden">
-                      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-                      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-                      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-                      <line x1="2" x2="22" y1="2" y2="22" />
-                    </svg>
-                  </button>
-                </div>
-              </fieldset>
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <p class="text-xs opacity-70">Leave password fields blank to keep current password.</p>
-              <div class="flex shrink-0 items-center gap-2">
-                <span id="settings-password-save-success" class="text-primary hidden" aria-hidden="true">
+                    type="text"
+                    id="settings-public-host-input"
+                    class="input w-full font-mono text-sm"
+                    placeholder="stream.example.com or 203.0.113.10" />
+                </fieldset>
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <span id="settings-general-save-success" class="text-primary hidden" aria-hidden="true">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -1063,80 +910,253 @@
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </span>
-                <button type="button" class="btn btn-sm btn-accent" onclick="settingsPasswordFormBtn(this)">Save</button>
+                <button type="button" class="btn btn-sm btn-accent" onclick="settingsGeneralFormBtn(this)">Save</button>
               </div>
             </div>
-          </div>
 
-          <!-- Regenerate Stream Keys -->
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-sm font-medium">Stream Keys</p>
-              <p id="regen-stream-keys-hint" class="hidden text-xs opacity-70">Remove all pipelines before regenerating.</p>
+            <!-- Change Password -->
+            <div class="space-y-2">
+              <div class="flex gap-3">
+                <fieldset class="fieldset min-w-0 flex-1">
+                  <legend class="fieldset-legend">Current Password</legend>
+                  <div class="relative">
+                    <input
+                      type="password"
+                      id="current-password-input"
+                      class="input w-full pr-10"
+                      placeholder="Current"
+                      autocomplete="current-password"
+                      oninput="this.classList.remove('input-error')" />
+                    <button
+                      type="button"
+                      class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                      onclick="togglePwVisibility('current-password-input', this)"
+                      tabindex="-1"
+                      aria-label="Toggle password visibility">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="hidden">
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                        <line x1="2" x2="22" y1="2" y2="22" />
+                      </svg>
+                    </button>
+                  </div>
+                </fieldset>
+                <fieldset class="fieldset min-w-0 flex-1">
+                  <legend class="fieldset-legend">New Password</legend>
+                  <div class="relative">
+                    <input
+                      type="password"
+                      id="new-password-input"
+                      class="input w-full pr-10"
+                      placeholder="New"
+                      autocomplete="new-password"
+                      oninput="
+                        this.classList.remove('input-error');
+                        document.getElementById('confirm-password-input').classList.remove('input-error');
+                      " />
+                    <button
+                      type="button"
+                      class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                      onclick="togglePwVisibility('new-password-input', this)"
+                      tabindex="-1"
+                      aria-label="Toggle password visibility">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="hidden">
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                        <line x1="2" x2="22" y1="2" y2="22" />
+                      </svg>
+                    </button>
+                  </div>
+                </fieldset>
+                <fieldset class="fieldset min-w-0 flex-1">
+                  <legend class="fieldset-legend">Confirm</legend>
+                  <div class="relative">
+                    <input
+                      type="password"
+                      id="confirm-password-input"
+                      class="input w-full pr-10"
+                      placeholder="Confirm"
+                      autocomplete="new-password"
+                      oninput="this.classList.remove('input-error')" />
+                    <button
+                      type="button"
+                      class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                      onclick="togglePwVisibility('confirm-password-input', this)"
+                      tabindex="-1"
+                      aria-label="Toggle password visibility">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="hidden">
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                        <line x1="2" x2="22" y1="2" y2="22" />
+                      </svg>
+                    </button>
+                  </div>
+                </fieldset>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-xs opacity-70">Leave password fields blank to keep current password.</p>
+                <div class="flex shrink-0 items-center gap-2">
+                  <span id="settings-password-save-success" class="text-primary hidden" aria-hidden="true">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                  <button type="button" class="btn btn-sm btn-accent" onclick="settingsPasswordFormBtn(this)">Save</button>
+                </div>
+              </div>
             </div>
-            <button id="regen-stream-keys-btn" type="button" class="btn btn-sm btn-warning shrink-0" onclick="regenerateStreamKeysBtn(this)">
-              Regenerate All
-            </button>
-          </div>
 
-          <!-- Reset SRT passphrase -->
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-sm font-medium">SRT Passphrase</p>
-              <p id="reset-srt-passphrase-hint" class="text-xs opacity-70">
-                A new one applies after the server or container restarts, and it can only be reset while nothing is live or running.
-              </p>
-            </div>
-            <button id="reset-srt-passphrase-btn" type="button" class="btn btn-sm btn-warning shrink-0" onclick="resetSrtPassphraseBtn(this)">
-              Reset
-            </button>
-          </div>
-
-          <div class="space-y-2">
-            <div class="flex items-center justify-between pt-1">
-              <span class="fieldset-legend">Pipeline Groups</span>
-              <button id="settings-add-pipeline-group-btn" type="button" class="btn btn-xs btn-ghost" onclick="addPipelineGroupRowBtn()">
-                + Add group
+            <!-- Regenerate Stream Keys -->
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-medium">Stream Keys</p>
+                <p id="regen-stream-keys-hint" class="hidden text-xs opacity-70">Remove all pipelines before regenerating.</p>
+              </div>
+              <button id="regen-stream-keys-btn" type="button" class="btn btn-sm btn-warning shrink-0" onclick="regenerateStreamKeysBtn(this)">
+                Regenerate All
               </button>
             </div>
-            <div class="border-base-content/10 overflow-x-auto rounded-lg border">
-              <table class="table-sm table">
-                <thead>
-                  <tr>
-                    <th class="w-8"></th>
-                    <th>Name</th>
-                    <th class="w-12"></th>
-                  </tr>
-                </thead>
-                <tbody id="settings-pipeline-group-rows"></tbody>
-              </table>
-            </div>
-            <div class="flex items-center justify-end gap-2">
-              <span id="settings-pipeline-groups-save-success" class="text-primary hidden" aria-hidden="true">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <button type="button" class="btn btn-sm btn-accent" onclick="settingsPipelineGroupsFormBtn(this)">Save</button>
-            </div>
-          </div>
 
-          <!-- Session -->
-          <div class="border-base-content/10 flex items-center justify-between gap-3 border-t pt-3">
-            <div>
-              <p class="text-sm font-medium">Session</p>
-              <p class="text-xs opacity-70">Sign out of this dashboard. Pipelines and outputs keep running.</p>
+            <!-- Reset SRT passphrase -->
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-medium">SRT Passphrase</p>
+                <p id="reset-srt-passphrase-hint" class="text-xs opacity-70">
+                  A new one applies after the server or container restarts, and it can only be reset while nothing is live or running.
+                </p>
+              </div>
+              <button id="reset-srt-passphrase-btn" type="button" class="btn btn-sm btn-warning shrink-0" onclick="resetSrtPassphraseBtn(this)">
+                Reset
+              </button>
             </div>
-            <button type="button" class="btn btn-sm btn-outline btn-error shrink-0" onclick="logoutBtn()">Log out</button>
+
+            <div class="space-y-2">
+              <div class="flex items-center justify-between pt-1">
+                <span class="fieldset-legend">Pipeline Groups</span>
+                <button id="settings-add-pipeline-group-btn" type="button" class="btn btn-xs btn-ghost" onclick="addPipelineGroupRowBtn()">
+                  + Add group
+                </button>
+              </div>
+              <div class="border-base-content/10 overflow-x-auto rounded-lg border">
+                <table class="table-sm table">
+                  <thead>
+                    <tr>
+                      <th class="w-8"></th>
+                      <th>Name</th>
+                      <th class="w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="settings-pipeline-group-rows"></tbody>
+                </table>
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <span id="settings-pipeline-groups-save-success" class="text-primary hidden" aria-hidden="true">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </span>
+                <button type="button" class="btn btn-sm btn-accent" onclick="settingsPipelineGroupsFormBtn(this)">Save</button>
+              </div>
+            </div>
+
+            <!-- Session -->
+            <div class="border-base-content/10 flex items-center justify-between gap-3 border-t pt-3">
+              <div>
+                <p class="text-sm font-medium">Session</p>
+                <p class="text-xs opacity-70">Sign out of this dashboard. Pipelines and outputs keep running.</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline btn-error shrink-0" onclick="logoutBtn()">Log out</button>
+            </div>
           </div>
         </div>
       </div>

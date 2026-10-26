@@ -76,9 +76,10 @@ config changes from another session are picked up through the health poll. About
 10 simultaneous clients is fine; more is not tuned or tested.
 
 **Dashboard on a phone.** The dashboard is designed for a desktop browser. Below
-1024 px wide the columns stack into one and wide tables scroll sideways. That is
-enough to check state or start and stop an output from a phone, not to edit
-(drag-to-reorder does not work on touch screens).
+1280 px wide the pipeline's panels (details and outputs) share one scrolling column
+next to the pipeline list, and below 768 px everything stacks into a single column
+and wide tables scroll sideways. That is enough to check state or start and stop an
+output from a phone, not to edit (drag-to-reorder does not work on touch screens).
 
 ## Is it a good fit?
 

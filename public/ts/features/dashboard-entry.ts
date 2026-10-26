@@ -83,9 +83,9 @@ window.showProblemsOverviewBtn = () => {
     window.selectPipeline(null);
 };
 
-// Below lg the columns stack under the pipeline list, so after picking a
+// Below xl the panels stack (under the list, or in one column beside it), so after picking a
 // pipeline or a view, scroll its panel into view.
-const stackedLayout = window.matchMedia('(max-width: 1023px)');
+const stackedLayout = window.matchMedia('(max-width: 1279px)');
 function showContentPanel(): void {
     if (!stackedLayout.matches) return;
     const panel = ['pipe-info-col', 'overview-col', 'srs-logs-col', 'settings-col']
