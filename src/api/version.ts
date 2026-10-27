@@ -6,6 +6,7 @@ import type { Express } from 'express';
 import { readAppConfig } from '../utils/appConfig.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
 import { ffmpegEnv } from '../utils/ffmpeg.js';
+import { readUdpBufferCeilings } from '../utils/procStats.js';
 
 const VERSION_EXEC_TIMEOUT_MS = 3000;
 const VERSION_FETCH_TIMEOUT_MS = 2000;
@@ -93,11 +94,18 @@ interface VersionResult {
     cpuModel: string;
 }
 
+// Read on every request, not cached with the rest: the sysctl can change while we run.
+type VersionResponse = VersionResult & ReturnType<typeof readUdpBufferCeilings>;
+
 let cached: VersionResult | null = null;
+
+function withLiveFields(result: VersionResult): VersionResponse {
+    return { ...result, ...readUdpBufferCeilings() };
+}
 
 export function registerVersionApi(app: Express): void {
     app.get('/api/version', async (_req, res) => {
-        if (cached) return res.json(cached);
+        if (cached) return res.json(withLiveFields(cached));
 
         const [commitLine, commitDate, srs, srtRelay, ffmpegOut] = await Promise.all([
             exec('git', ['log', '-1', '--format=%h %s']),
@@ -122,6 +130,6 @@ export function registerVersionApi(app: Express): void {
             kernel: os.release(),
             cpuModel: readCpuModel(),
         };
-        return res.json(cached);
+        return res.json(withLiveFields(cached));
     });
 }

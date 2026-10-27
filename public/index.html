@@ -877,7 +877,10 @@
                     </div>
                     <div class="flex items-baseline justify-between gap-3">
                       <dt class="text-muted shrink-0 text-xs">Commit</dt>
-                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-commit" class="block truncate">—</span></dd>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words" id="v-commit-cell">
+                        <span id="v-commit" class="block">—</span>
+                        <span id="v-commit-message" class="block truncate"></span>
+                      </dd>
                     </div>
                     <div class="flex items-baseline justify-between gap-3">
                       <dt class="text-muted shrink-0 text-xs">SRS</dt>
@@ -907,6 +910,14 @@
                     <div class="flex items-baseline justify-between gap-3">
                       <dt class="text-muted shrink-0 text-xs">Kernel</dt>
                       <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-kernel">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">UDP buffer cap</dt>
+                      <dd
+                        class="min-w-0 text-right font-mono text-xs break-words"
+                        title="Kernel ceiling for one socket's UDP buffer (net.core.rmem_max receive, wmem_max send). SRT asks for 12 MB per socket; a lower cap silently shrinks it.">
+                        <span id="v-udp-cap">—</span>
+                      </dd>
                     </div>
                   </dl>
                 </section>

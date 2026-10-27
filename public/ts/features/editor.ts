@@ -9,6 +9,7 @@ import {
     confirmDialog,
     flashSaveSuccess,
     formatLocalDateTime,
+    formatBytes,
 } from '../core/utils.js';
 import { refreshAfterMutation } from './dashboard.js';
 import { renderSrtPassphraseReset } from './render.js';
@@ -182,16 +183,26 @@ export function openSettings(): void {
     void api.getVersion().then((v) => {
         if (!v) return;
         (document.getElementById('v-app') as HTMLElement).textContent = `v${v.app}`;
-        // The commit subject can be long: the row shows an ellipsis, the tooltip the whole line.
-        const commitEl = document.getElementById('v-commit') as HTMLElement;
-        commitEl.textContent = v.commit;
-        commitEl.title = v.commit;
+        // "<date> <time> <id> <subject>": the date and id on one line, the subject (which can
+        // be long) on a second line that ends in an ellipsis; the tooltip has it all.
+        const commit = /^(?:(\d{4}-\d\d-\d\d \d\d:\d\d) )?(\S+)(?: (.+))?$/.exec(v.commit);
+        (document.getElementById('v-commit') as HTMLElement).textContent = commit
+            ? [commit[1], commit[2]].filter(Boolean).join(' ')
+            : v.commit;
+        (document.getElementById('v-commit-message') as HTMLElement).textContent =
+            commit?.[3] ?? '';
+        (document.getElementById('v-commit-cell') as HTMLElement).title = v.commit;
         (document.getElementById('v-srs') as HTMLElement).textContent = v.srs;
         (document.getElementById('v-relay') as HTMLElement).textContent = v.srtRelay;
         (document.getElementById('v-ffmpeg') as HTMLElement).textContent = v.ffmpeg;
         (document.getElementById('v-node') as HTMLElement).textContent = v.node;
         (document.getElementById('v-os') as HTMLElement).textContent = v.os;
         (document.getElementById('v-kernel') as HTMLElement).textContent = v.kernel;
+        const cap = (bytes: number | null) => (bytes == null ? '—' : formatBytes(bytes));
+        (document.getElementById('v-udp-cap') as HTMLElement).textContent =
+            v.rmemMaxBytes === v.wmemMaxBytes
+                ? cap(v.rmemMaxBytes)
+                : `${cap(v.rmemMaxBytes)} recv · ${cap(v.wmemMaxBytes)} send`;
         // Shown after the core count; omitted when the platform doesn't report a model.
         (document.getElementById('v-cpu-model') as HTMLElement).textContent =
             v.cpuModel && v.cpuModel !== 'unknown' ? ` · ${v.cpuModel}` : '';

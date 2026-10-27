@@ -214,6 +214,9 @@ export const getVersion = () =>
         os: string;
         kernel: string;
         cpuModel: string;
+        // Kernel ceilings for a socket's UDP buffers; null when unreadable.
+        rmemMaxBytes: number | null;
+        wmemMaxBytes: number | null;
     }>('/api/version');
 
 export const changePassword = (currentPassword: string, newPassword: string) =>

@@ -132,7 +132,8 @@ The installer writes `/etc/sysctl.d/90-bunryu.conf`, which raises
 for a 12 MB UDP buffer per socket and the kernel caps the request at that
 ceiling; sockets that ask for nothing keep the default size. The services read it
 when they create their sockets, so a change needs a restart of SRS and goryu.
-The ceilings the control plane started under are in its `server-started` diagnostics event.
+The current ceilings are shown in Settings under Server information (UDP buffer cap), and the
+ones the control plane started under are in its `server-started` diagnostics event.
 The ingest sockets are the ones to check, because they keep the size they got when
 created. The per-minute `health-snapshot` diagnostics event lists each one under
 `host.udp.sockets` with its buffer (`rcvbufBytes`, 24576000 for SRS on 10080 and goryu

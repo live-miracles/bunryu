@@ -300,6 +300,30 @@ describe('Version API integration', () => {
         assert.equal(res.body.cpuModel, 'Intel(R) Xeon(R) CPU @ 2.20GHz');
     });
 
+    test('reports the kernel UDP buffer caps, read again on every request', async (t) => {
+        const caps = { rmem_max: '16777216\n', wmem_max: '212992\n' };
+        const realReadFileSync = fs.readFileSync;
+        t.mock.method(fs, 'readFileSync', (file, ...rest) => {
+            const name = String(file).replace('/proc/sys/net/core/', '');
+            if (!String(file).startsWith('/proc/sys/net/core/')) {
+                return realReadFileSync(file, ...rest);
+            }
+            if (caps[name] == null) throw new Error('ENOENT');
+            return caps[name];
+        });
+        const { get } = loadHarness(t);
+
+        const first = await get();
+        assert.equal(first.body.rmemMaxBytes, 16777216);
+        assert.equal(first.body.wmemMaxBytes, 212992);
+
+        caps.rmem_max = '1048576\n';
+        caps.wmem_max = null; // unreadable
+        const second = await get();
+        assert.equal(second.body.rmemMaxBytes, 1048576, 'a cached response shows the live cap');
+        assert.equal(second.body.wmemMaxBytes, null);
+    });
+
     test('a platform that reports no CPUs gets "unknown" instead of an error', async (t) => {
         t.mock.method(os, 'cpus', () => []);
         const { get } = loadHarness(t);
