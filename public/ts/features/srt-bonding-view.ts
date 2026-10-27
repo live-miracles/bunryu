@@ -131,7 +131,7 @@ export function renderBondingStats(
     const labelFor = (base: string, recent: SrtRecent | null): string =>
         recent ? `${base} ${recentSpanLabel(recent.spanMs)}` : base;
     const inputItem = {
-        label: labelFor(inputStatsAreDropOnly ? 'Drop' : 'L / R / D', status.input.recent),
+        label: labelFor(inputStatsAreDropOnly ? 'In Drop' : 'In L / R / D', status.input.recent),
         labelTitle: inputStatsAreDropOnly ? BONDED_MEANING : INPUT_MEANING,
         value: inputFigure.text,
         valueTitle: inputFigure.title,

@@ -1731,6 +1731,16 @@ function renderOverview(): void {
         : relayLegIps.includes(false)
           ? 'Leg / Source IP'
           : 'Leg IP';
+    // Named for what the rows hold, as the card does: a bonded group's input shows only
+    // its Drop count.
+    const dropOnly = activeRelayPipelines.map((p) =>
+        inputAggregateStatsAreDropOnly(p.srtBonding.input),
+    );
+    const inHeader = !dropOnly.includes(false)
+        ? 'In Drop'
+        : dropOnly.includes(true)
+          ? 'In Drop / L / R / D'
+          : 'In L / R / D';
     const relaySectionHtml =
         activeRelayPipelines.length === 0
             ? ''
@@ -1738,7 +1748,7 @@ function renderOverview(): void {
         <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm table-relay">
-                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D <span class="font-normal text-muted">10 min</span></span>', 'State', legIpHeader, '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal text-muted">10 min</span></span>', 'RTT', 'Rate', 'Buffer', 'Latency'])}
+                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', `<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">${inHeader} <span class="font-normal text-muted">10 min</span></span>`, 'State', legIpHeader, '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal text-muted">10 min</span></span>', 'RTT', 'Rate', 'Buffer', 'Latency'])}
                 <tbody>${relayRows}</tbody>
             </table>
         </div>`;

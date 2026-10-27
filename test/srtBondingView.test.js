@@ -157,7 +157,7 @@ describe('relay stats row', () => {
 
     test('labels the window and shows only drops for a bonded group', () => {
         const html = renderBondingStats(status(), true, deps);
-        assert.match(html, />Drop 10 min</);
+        assert.match(html, />In Drop 10 min</);
         assert.match(html, />Out L \/ R \/ D 10 min</);
         assert.match(html, /input-meta-value[^>]*title="Last 10 min: 0 dropped"/);
         assert.doesNotMatch(html, />286</, 'the session total is not on the card');
@@ -167,7 +167,7 @@ describe('relay stats row', () => {
         const html = renderBondingStats(status(), true, deps);
         assert.doesNotMatch(html, />Rx</);
         const labels = [...html.matchAll(/input-meta-label[^>]*>([^<]+)</g)].map((m) => m[1]);
-        assert.deepEqual(labels, ['Drop 10 min', 'Out L / R / D 10 min', 'Latency']);
+        assert.deepEqual(labels, ['In Drop 10 min', 'Out L / R / D 10 min', 'Latency']);
     });
 
     test('marks packets missing from the delivered stream', () => {
