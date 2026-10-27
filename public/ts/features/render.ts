@@ -1315,7 +1315,8 @@ function renderOverview(): void {
             !isOffline(relayOutputStatus(p, relayProcessRunning)),
     ).length;
     const legCells = (leg: SrtBondingLeg | null): string => {
-        if (!leg) return `${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}`;
+        if (!leg)
+            return `${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}`;
         const color = legHealthColor(leg);
         const health = legHealthLabel(leg);
         const title = leg.healthReason ?? `Transport state: ${leg.state}`;
@@ -1326,10 +1327,11 @@ function renderOverview(): void {
         return `
             <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}<span class="text-muted">(${escapeHtml(leg.state)})</span></span></td>
             <td class="font-mono text-xs">${escapeHtml(leg.ip)}</td>
-            <td class="font-mono text-xs">${fmtMs(leg.latencyMs)}</td>
+            <td class="font-mono text-xs${legFigure.quiet ? ' opacity-50' : ''}" title="${escapeHtml(legFigure.title)}">${legFigure.text}</td>
             <td class="font-mono text-xs">${fmtMs(leg.rttMs)}</td>
             <td class="font-mono text-xs">${fmtMbpsValue(leg.recvRateMbps)}</td>
-            <td class="font-mono text-xs${legFigure.quiet ? ' opacity-50' : ''}" title="${escapeHtml(legFigure.title)}">${legFigure.text}</td>`;
+            <td class="font-mono text-xs">${fmtMs(leg.rcvBufMs)}</td>
+            <td class="font-mono text-xs">${fmtMs(leg.latencyMs)}</td>`;
     };
 
     let relayRows = '';
@@ -1376,9 +1378,9 @@ function renderOverview(): void {
             }
         }
         if (problemsOnly && relayRows === '') {
-            relayRows = `<tr><td colspan="12" class="py-4 text-center text-muted">No relay issues.</td></tr>`;
+            relayRows = `<tr><td colspan="13" class="py-4 text-center text-muted">No relay issues.</td></tr>`;
         } else if (activeOnly && relayRows === '') {
-            relayRows = `<tr><td colspan="12" class="py-4 text-center text-muted">No active relay sessions.</td></tr>`;
+            relayRows = `<tr><td colspan="13" class="py-4 text-center text-muted">No active relay sessions.</td></tr>`;
         }
     }
 
@@ -1722,6 +1724,13 @@ function renderOverview(): void {
 
     // No relay pipelines at all: omit the section instead of an empty table. A
     // filter that merely hides every row keeps it, so its message still shows.
+    // The Detailed stats table's wording: a bonded input's links are legs.
+    const relayLegIps = activeRelayPipelines.map((p) => p.srtBonding.input.bonded);
+    const legIpHeader = !relayLegIps.includes(true)
+        ? 'Source IP'
+        : relayLegIps.includes(false)
+          ? 'Leg / Source IP'
+          : 'Leg IP';
     const relaySectionHtml =
         activeRelayPipelines.length === 0
             ? ''
@@ -1729,7 +1738,7 @@ function renderOverview(): void {
         <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm table-relay">
-                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D <span class="font-normal text-muted">10 min</span></span>', 'State', 'Source IP', 'Latency', 'RTT', 'Rate', '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal text-muted">10 min</span></span>'])}
+                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">Input L / R / D <span class="font-normal text-muted">10 min</span></span>', 'State', legIpHeader, '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal text-muted">10 min</span></span>', 'RTT', 'Rate', 'Buffer', 'Latency'])}
                 <tbody>${relayRows}</tbody>
             </table>
         </div>`;
