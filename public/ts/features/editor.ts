@@ -182,7 +182,10 @@ export function openSettings(): void {
     void api.getVersion().then((v) => {
         if (!v) return;
         (document.getElementById('v-app') as HTMLElement).textContent = `v${v.app}`;
-        (document.getElementById('v-commit') as HTMLElement).textContent = v.commit;
+        // The commit subject can be long: the row shows an ellipsis, the tooltip the whole line.
+        const commitEl = document.getElementById('v-commit') as HTMLElement;
+        commitEl.textContent = v.commit;
+        commitEl.title = v.commit;
         (document.getElementById('v-srs') as HTMLElement).textContent = v.srs;
         (document.getElementById('v-relay') as HTMLElement).textContent = v.srtRelay;
         (document.getElementById('v-ffmpeg') as HTMLElement).textContent = v.ffmpeg;
