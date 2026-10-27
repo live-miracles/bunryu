@@ -16,12 +16,7 @@ const LEG_HISTORY_PAGE_TTL_MS = 60 * 1000;
 const legHistoryPageCache = new Map<string, { data: LegHistoryData; fetchedAt: number }>();
 const legHistoryPrefetching = new Set<string>();
 
-// Legs unchecked in the chart legend, by pipeline, as source IPs (the relay's key for
-// a leg). Two legs with very different counts squash the smaller one flat, so the
-// charts can show just the legs picked. Colors follow the leg, not the selection.
 const LEG_COLORS = ['#38bdf8', '#a78bfa', '#f59e0b', '#34d399', '#fb7185', '#f97316'];
-const legHistoryHidden = new Map<string, Set<string>>();
-const legHistoryShown = new Map<string, LegHistoryData>();
 
 function formatLegChartTimeTick(ts: number): string {
     const date = new Date(ts);
@@ -43,10 +38,13 @@ export function chartValueRange(values: number[]): { min: number; max: number } 
     return { min, max: min + span };
 }
 
+// One leg's chart. Each leg has its own, with its own value axis: two legs with very
+// different counts on one axis would flatten the quieter one.
 function legHistoryChart(
     canvasId: string,
-    series: Array<{ leg: LegHistoryData['legs'][number]; color: string }>,
-    // Every leg, so the time axis does not move when one is unchecked.
+    leg: LegHistoryData['legs'][number],
+    color: string,
+    // Every leg, so all the charts cover the same time range.
     allLegs: LegHistoryData['legs'],
     value: (sample: LegHistorySample) => number | null,
     formatValue: (value: number) => string,
@@ -56,20 +54,17 @@ function legHistoryChart(
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const width = canvas.clientWidth || 640;
-    const height = canvas.clientHeight || 130;
+    const height = canvas.clientHeight || 96;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
-    const styles = getComputedStyle(canvas);
-    const color = styles.color || '#9ca3af';
+    const textColor = getComputedStyle(canvas).color || '#9ca3af';
     const grid = 'rgba(156, 163, 175, 0.18)';
     ctx.font = '10px sans-serif';
     const timeSamples = allLegs.flatMap((leg) => leg.samples);
     const { min: yMin, max: yMax } = chartValueRange(
-        series.flatMap(({ leg }) =>
-            leg.samples.map(value).filter((current): current is number => current !== null),
-        ),
+        leg.samples.map(value).filter((current): current is number => current !== null),
     );
     const yLabels = [0, 1, 2].map((i) => formatValue(yMax - ((yMax - yMin) * i) / 2));
     // Wide enough for the longest label, which grows with the counts.
@@ -83,7 +78,7 @@ function legHistoryChart(
     const maxTs = Math.max(...timeSamples.map((sample) => sample.ts));
     const range = Math.max(1, maxTs - minTs);
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = color;
+    ctx.fillStyle = textColor;
     ctx.globalAlpha = 0.65;
     const tickMinutes = 1;
     const tickIntervalMs = tickMinutes * 60_000;
@@ -109,35 +104,31 @@ function legHistoryChart(
         ctx.fillText(yLabels[i], 2, y + 3);
     }
     ctx.globalAlpha = 1;
-    series.forEach(({ leg, color: legColor }) => {
-        const points = leg.samples
-            .map((sample) => {
-                const current = value(sample);
-                if (current === null) return null;
-                return {
-                    x: left + ((sample.ts - minTs) / range) * plotW,
-                    y:
-                        top +
-                        (1 - Math.min(1, Math.max(0, (current - yMin) / (yMax - yMin)))) * plotH,
-                };
-            })
-            .filter((point): point is { x: number; y: number } => point !== null);
-        if (points.length === 0) return;
-        ctx.strokeStyle = legColor;
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        points.forEach((point, index) => {
-            if (index === 0) ctx.moveTo(point.x, point.y);
-            else ctx.lineTo(point.x, point.y);
-        });
-        ctx.stroke();
-        if (points.length === 1) {
-            ctx.fillStyle = ctx.strokeStyle;
-            ctx.beginPath();
-            ctx.arc(points[0].x, points[0].y, 2.5, 0, Math.PI * 2);
-            ctx.fill();
-        }
+    const points = leg.samples
+        .map((sample) => {
+            const current = value(sample);
+            if (current === null) return null;
+            return {
+                x: left + ((sample.ts - minTs) / range) * plotW,
+                y: top + (1 - Math.min(1, Math.max(0, (current - yMin) / (yMax - yMin)))) * plotH,
+            };
+        })
+        .filter((point): point is { x: number; y: number } => point !== null);
+    if (points.length === 0) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
     });
+    ctx.stroke();
+    if (points.length === 1) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(points[0].x, points[0].y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
 }
 
 function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void {
@@ -162,66 +153,58 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
         delete wrap.dataset.chartMode;
         return;
     }
-    const chartMode = `${hasLossTotals ? 'loss' : ''}${hasDropTotals ? 'drop' : ''}`;
-    const hidden = legHistoryHidden.get(pipelineId) ?? new Set<string>();
-    const colored = data.legs.map((leg, index) => ({
-        leg,
-        color: LEG_COLORS[index % LEG_COLORS.length],
-    }));
-    const shown = colored.filter(({ leg }) => !hidden.has(leg.ip));
-    // A leg ticked off earlier may be gone; never leave the charts with nothing.
-    const series = shown.length > 0 ? shown : colored;
-    const legend = colored
-        .map((entry) => {
-            const { leg, color } = entry;
-            const swatch = `<span class="inline-block h-2 w-2 rounded-full" style="background:${color}"></span>${escapeHtml(leg.ip)}`;
-            // A single leg has nothing to choose between.
-            if (colored.length === 1)
-                return `<span class="inline-flex items-center gap-1 text-xs">${swatch}</span>`;
-            const checked = series.includes(entry);
-            const last = checked && series.length === 1;
-            return `<label class="inline-flex cursor-pointer items-center gap-1 text-xs"><input type="checkbox" class="checkbox checkbox-xs" data-leg-ip="${escapeHtml(leg.ip)}" ${checked ? 'checked' : ''} ${last ? 'disabled title="At least one leg stays on the charts"' : ''} />${swatch}</label>`;
-        })
-        .join('');
+    // The canvases are rebuilt only when the set of charts changes (a leg appears or a
+    // counter starts being reported), not on every poll.
+    const chartMode = `${hasLossTotals ? 'loss' : ''}${hasDropTotals ? 'drop' : ''}:${data.legs.map((leg) => leg.ip).join(',')}`;
+    const kinds = [
+        ...(hasLossTotals
+            ? [
+                  {
+                      id: 'loss',
+                      title: 'Cumulative packet loss',
+                      value: (sample: LegHistorySample) => sample.lossTotal ?? null,
+                  },
+              ]
+            : []),
+        ...(hasDropTotals
+            ? [
+                  {
+                      id: 'drop',
+                      title: 'Cumulative packet drops',
+                      value: (sample: LegHistorySample) => sample.dropTotal ?? null,
+                  },
+              ]
+            : []),
+    ];
+    const colorOf = (index: number): string => LEG_COLORS[index % LEG_COLORS.length];
     if (wrap.dataset.chartMode !== chartMode) {
-        const lossChart = hasLossTotals
-            ? '<div><div class="text-xs text-muted mb-1">Cumulative packet loss</div><canvas id="srt-leg-loss-chart" class="w-full h-32 text-base-content"></canvas></div>'
-            : '';
-        const dropChart = hasDropTotals
-            ? '<div><div class="text-xs text-muted mb-1">Cumulative packet drops</div><canvas id="srt-leg-drop-chart" class="w-full h-32 text-base-content"></canvas></div>'
-            : '';
-        wrap.innerHTML = `<div id="srt-leg-history-legend" class="flex flex-wrap gap-x-3 gap-y-1 mb-2"></div>
-            <div class="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
-                ${lossChart}
-                ${dropChart}
-            </div>`;
+        wrap.innerHTML = data.legs
+            .map(
+                (leg, index) => `<div class="mb-3">
+            <div class="mb-1 inline-flex items-center gap-1 text-xs font-semibold"><span class="inline-block h-2 w-2 rounded-full" style="background:${colorOf(index)}"></span>${escapeHtml(leg.ip)}</div>
+            <div class="grid grid-cols-1 gap-x-4 gap-y-2 @2xl:grid-cols-2">${kinds
+                .map(
+                    (kind) =>
+                        `<div><div class="text-xs text-muted mb-1">${kind.title}</div><canvas id="srt-leg-${kind.id}-chart-${index}" class="w-full h-24 text-base-content"></canvas></div>`,
+                )
+                .join('')}</div>
+        </div>`,
+            )
+            .join('');
         wrap.dataset.chartMode = chartMode;
     }
-    // Only rewritten when it changed, so a click on a checkbox is not lost to a poll.
-    const legendEl = document.getElementById('srt-leg-history-legend');
-    if (legendEl && legendEl.dataset.html !== legend) {
-        legendEl.innerHTML = legend;
-        legendEl.dataset.html = legend;
-    }
-    legHistoryShown.set(pipelineId, data);
-    if (hasLossTotals) {
-        legHistoryChart(
-            'srt-leg-loss-chart',
-            series,
-            data.legs,
-            (sample) => sample.lossTotal ?? null,
-            (value) => fmt(value),
-        );
-    }
-    if (hasDropTotals) {
-        legHistoryChart(
-            'srt-leg-drop-chart',
-            series,
-            data.legs,
-            (sample) => sample.dropTotal ?? null,
-            (value) => fmt(value),
-        );
-    }
+    data.legs.forEach((leg, index) => {
+        for (const kind of kinds) {
+            legHistoryChart(
+                `srt-leg-${kind.id}-chart-${index}`,
+                leg,
+                colorOf(index),
+                data.legs,
+                kind.value,
+                fmt,
+            );
+        }
+    });
 }
 
 function mergeLegHistory(
@@ -595,17 +578,6 @@ function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement
             Math.max(0, (legHistoryOffsets.get(pipelineId) ?? 0) - LEG_HISTORY_PAGE_STEP_MS),
         );
         void loadLegHistory(pipelineId);
-    });
-    // Ticking a leg off redraws the charts from the data already on screen.
-    document.getElementById('srt-leg-history-content')?.addEventListener('change', (event) => {
-        const box = (event.target as HTMLElement).closest<HTMLInputElement>('[data-leg-ip]');
-        const data = legHistoryShown.get(pipelineId);
-        if (!box?.dataset.legIp || !data) return;
-        const hidden = legHistoryHidden.get(pipelineId) ?? new Set<string>();
-        if (box.checked) hidden.delete(box.dataset.legIp);
-        else hidden.add(box.dataset.legIp);
-        legHistoryHidden.set(pipelineId, hidden);
-        renderLegHistoryCharts(pipelineId, data);
     });
     void loadLegHistory(pipelineId);
 }
