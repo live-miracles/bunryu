@@ -49,7 +49,8 @@ under the input's video and audio details, whichever Publish mode is selected. I
 visible; select the **Detailed stats** icon (bars) in the card's top right corner to open a dialog sized to its
 input, per-leg, output and graph content, within the screen width. It refreshes live statistics with the dashboard's regular poll.
 The loss and drop charts draw one line per leg; untick a leg above them to hide it, so a
-leg with far larger counts does not flatten the others. The charts sit side by side when the
+leg with far larger counts does not flatten the others. The value axis spans the counts in the
+window, not zero up, so a new drop stands out even after hours of accumulated ones. The charts sit side by side when the
 dialog is wide enough.
 
 The card's **L / R / D** figures (packets lost, retransmitted and dropped) count the

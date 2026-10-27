@@ -32,13 +32,23 @@ function formatLegChartTimeTick(ts: number): string {
     return `${date.getHours().toString().padStart(2, '0')}:${minuteLabel}`;
 }
 
+// The value axis of a cumulative-counter chart. It spans what the window holds, not
+// zero up: after hours of accumulated drops the next step would be a hair on a scale
+// starting at zero. The span is a whole, even number so the middle label is whole too,
+// and at least 2 so a flat line still has an axis.
+export function chartValueRange(values: number[]): { min: number; max: number } {
+    if (values.length === 0) return { min: 0, max: 2 };
+    const min = Math.max(0, Math.floor(Math.min(...values)));
+    const span = Math.max(2, 2 * Math.ceil((Math.max(...values) - min) / 2));
+    return { min, max: min + span };
+}
+
 function legHistoryChart(
     canvasId: string,
     series: Array<{ leg: LegHistoryData['legs'][number]; color: string }>,
     // Every leg, so the time axis does not move when one is unchecked.
     allLegs: LegHistoryData['legs'],
     value: (sample: LegHistorySample) => number | null,
-    maxValue: number,
     formatValue: (value: number) => string,
 ): void {
     const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
@@ -54,25 +64,25 @@ function legHistoryChart(
     const styles = getComputedStyle(canvas);
     const color = styles.color || '#9ca3af';
     const grid = 'rgba(156, 163, 175, 0.18)';
-    const left = 42;
+    ctx.font = '10px sans-serif';
+    const timeSamples = allLegs.flatMap((leg) => leg.samples);
+    const { min: yMin, max: yMax } = chartValueRange(
+        series.flatMap(({ leg }) =>
+            leg.samples.map(value).filter((current): current is number => current !== null),
+        ),
+    );
+    const yLabels = [0, 1, 2].map((i) => formatValue(yMax - ((yMax - yMin) * i) / 2));
+    // Wide enough for the longest label, which grows with the counts.
+    const left = Math.max(42, ...yLabels.map((label) => ctx.measureText(label).width + 8));
     const right = 8;
     const top = 8;
     const bottom = 22;
     const plotW = Math.max(1, width - left - right);
     const plotH = Math.max(1, height - top - bottom);
-    const timeSamples = allLegs.flatMap((leg) => leg.samples);
     const minTs = Math.min(...timeSamples.map((sample) => sample.ts));
     const maxTs = Math.max(...timeSamples.map((sample) => sample.ts));
     const range = Math.max(1, maxTs - minTs);
-    const observedMax = Math.max(
-        0,
-        ...series.flatMap(({ leg }) => leg.samples.map((sample) => value(sample) ?? 0)),
-    );
-    // Keep a configured ceiling for charts that need one, but let sparse or
-    // low-valued series use their own range so small loss spikes are visible.
-    const yMax = maxValue > 0 ? maxValue : observedMax > 0 ? observedMax * 1.2 : 1;
     ctx.clearRect(0, 0, width, height);
-    ctx.font = '10px sans-serif';
     ctx.fillStyle = color;
     ctx.globalAlpha = 0.65;
     const tickMinutes = 1;
@@ -96,7 +106,7 @@ function legHistoryChart(
         ctx.moveTo(left, y);
         ctx.lineTo(width - right, y);
         ctx.stroke();
-        ctx.fillText(formatValue(yMax * (1 - i / 2)), 2, y + 3);
+        ctx.fillText(yLabels[i], 2, y + 3);
     }
     ctx.globalAlpha = 1;
     series.forEach(({ leg, color: legColor }) => {
@@ -106,7 +116,9 @@ function legHistoryChart(
                 if (current === null) return null;
                 return {
                     x: left + ((sample.ts - minTs) / range) * plotW,
-                    y: top + (1 - Math.min(1, Math.max(0, current / yMax))) * plotH,
+                    y:
+                        top +
+                        (1 - Math.min(1, Math.max(0, (current - yMin) / (yMax - yMin)))) * plotH,
                 };
             })
             .filter((point): point is { x: number; y: number } => point !== null);
@@ -137,7 +149,7 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
         delete wrap.dataset.chartMode;
         return;
     }
-    const fmt = (value: number) => (value >= 10 ? value.toFixed(0) : value.toFixed(1));
+    const fmt = (value: number) => value.toLocaleString();
     const hasLossTotals = data.legs.some((leg) =>
         leg.samples.some((sample) => sample.lossTotal != null),
     );
@@ -198,7 +210,6 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
             series,
             data.legs,
             (sample) => sample.lossTotal ?? null,
-            0,
             (value) => fmt(value),
         );
     }
@@ -208,7 +219,6 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
             series,
             data.legs,
             (sample) => sample.dropTotal ?? null,
-            0,
             (value) => fmt(value),
         );
     }
