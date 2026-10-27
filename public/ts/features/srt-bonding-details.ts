@@ -16,6 +16,13 @@ const LEG_HISTORY_PAGE_TTL_MS = 60 * 1000;
 const legHistoryPageCache = new Map<string, { data: LegHistoryData; fetchedAt: number }>();
 const legHistoryPrefetching = new Set<string>();
 
+// Legs unchecked in the chart legend, by pipeline, as source IPs (the relay's key for
+// a leg). Two legs with very different counts squash the smaller one flat, so the
+// charts can show just the legs picked. Colors follow the leg, not the selection.
+const LEG_COLORS = ['#38bdf8', '#a78bfa', '#f59e0b', '#34d399', '#fb7185', '#f97316'];
+const legHistoryHidden = new Map<string, Set<string>>();
+const legHistoryShown = new Map<string, LegHistoryData>();
+
 function formatLegChartTimeTick(ts: number): string {
     const date = new Date(ts);
     const minutes = date.getMinutes();
@@ -27,7 +34,9 @@ function formatLegChartTimeTick(ts: number): string {
 
 function legHistoryChart(
     canvasId: string,
-    series: LegHistoryData['legs'],
+    series: Array<{ leg: LegHistoryData['legs'][number]; color: string }>,
+    // Every leg, so the time axis does not move when one is unchecked.
+    allLegs: LegHistoryData['legs'],
     value: (sample: LegHistorySample) => number | null,
     maxValue: number,
     formatValue: (value: number) => string,
@@ -51,11 +60,14 @@ function legHistoryChart(
     const bottom = 22;
     const plotW = Math.max(1, width - left - right);
     const plotH = Math.max(1, height - top - bottom);
-    const allSamples = series.flatMap((leg) => leg.samples);
-    const minTs = Math.min(...allSamples.map((sample) => sample.ts));
-    const maxTs = Math.max(...allSamples.map((sample) => sample.ts));
+    const timeSamples = allLegs.flatMap((leg) => leg.samples);
+    const minTs = Math.min(...timeSamples.map((sample) => sample.ts));
+    const maxTs = Math.max(...timeSamples.map((sample) => sample.ts));
     const range = Math.max(1, maxTs - minTs);
-    const observedMax = Math.max(...allSamples.map((sample) => value(sample) ?? 0));
+    const observedMax = Math.max(
+        0,
+        ...series.flatMap(({ leg }) => leg.samples.map((sample) => value(sample) ?? 0)),
+    );
     // Keep a configured ceiling for charts that need one, but let sparse or
     // low-valued series use their own range so small loss spikes are visible.
     const yMax = maxValue > 0 ? maxValue : observedMax > 0 ? observedMax * 1.2 : 1;
@@ -87,8 +99,7 @@ function legHistoryChart(
         ctx.fillText(formatValue(yMax * (1 - i / 2)), 2, y + 3);
     }
     ctx.globalAlpha = 1;
-    const colors = ['#38bdf8', '#a78bfa', '#f59e0b', '#34d399', '#fb7185', '#f97316'];
-    series.forEach((leg, legIndex) => {
+    series.forEach(({ leg, color: legColor }) => {
         const points = leg.samples
             .map((sample) => {
                 const current = value(sample);
@@ -100,7 +111,7 @@ function legHistoryChart(
             })
             .filter((point): point is { x: number; y: number } => point !== null);
         if (points.length === 0) return;
-        ctx.strokeStyle = colors[legIndex % colors.length];
+        ctx.strokeStyle = legColor;
         ctx.lineWidth = 1.8;
         ctx.beginPath();
         points.forEach((point, index) => {
@@ -140,11 +151,25 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
         return;
     }
     const chartMode = `${hasLossTotals ? 'loss' : ''}${hasDropTotals ? 'drop' : ''}`;
-    const legend = data.legs
-        .map(
-            (leg, index) =>
-                `<span class="inline-flex items-center gap-1 text-xs"><span class="inline-block h-2 w-2 rounded-full" style="background:${['#38bdf8', '#a78bfa', '#f59e0b', '#34d399', '#fb7185', '#f97316'][index % 6]}"></span>${escapeHtml(leg.ip)}</span>`,
-        )
+    const hidden = legHistoryHidden.get(pipelineId) ?? new Set<string>();
+    const colored = data.legs.map((leg, index) => ({
+        leg,
+        color: LEG_COLORS[index % LEG_COLORS.length],
+    }));
+    const shown = colored.filter(({ leg }) => !hidden.has(leg.ip));
+    // A leg ticked off earlier may be gone; never leave the charts with nothing.
+    const series = shown.length > 0 ? shown : colored;
+    const legend = colored
+        .map((entry) => {
+            const { leg, color } = entry;
+            const swatch = `<span class="inline-block h-2 w-2 rounded-full" style="background:${color}"></span>${escapeHtml(leg.ip)}`;
+            // A single leg has nothing to choose between.
+            if (colored.length === 1)
+                return `<span class="inline-flex items-center gap-1 text-xs">${swatch}</span>`;
+            const checked = series.includes(entry);
+            const last = checked && series.length === 1;
+            return `<label class="inline-flex cursor-pointer items-center gap-1 text-xs"><input type="checkbox" class="checkbox checkbox-xs" data-leg-ip="${escapeHtml(leg.ip)}" ${checked ? 'checked' : ''} ${last ? 'disabled title="At least one leg stays on the charts"' : ''} />${swatch}</label>`;
+        })
         .join('');
     if (wrap.dataset.chartMode !== chartMode) {
         const lossChart = hasLossTotals
@@ -153,16 +178,24 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
         const dropChart = hasDropTotals
             ? '<div><div class="text-xs text-muted mb-1">Cumulative packet drops</div><canvas id="srt-leg-drop-chart" class="w-full h-32 text-base-content"></canvas></div>'
             : '';
-        wrap.innerHTML = `<div class="flex flex-wrap gap-x-3 gap-y-1 mb-2">${legend}</div>
-            <div class="grid grid-cols-1 gap-4">
+        wrap.innerHTML = `<div id="srt-leg-history-legend" class="flex flex-wrap gap-x-3 gap-y-1 mb-2"></div>
+            <div class="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
                 ${lossChart}
                 ${dropChart}
             </div>`;
         wrap.dataset.chartMode = chartMode;
     }
+    // Only rewritten when it changed, so a click on a checkbox is not lost to a poll.
+    const legendEl = document.getElementById('srt-leg-history-legend');
+    if (legendEl && legendEl.dataset.html !== legend) {
+        legendEl.innerHTML = legend;
+        legendEl.dataset.html = legend;
+    }
+    legHistoryShown.set(pipelineId, data);
     if (hasLossTotals) {
         legHistoryChart(
             'srt-leg-loss-chart',
+            series,
             data.legs,
             (sample) => sample.lossTotal ?? null,
             0,
@@ -172,6 +205,7 @@ function renderLegHistoryCharts(pipelineId: string, data: LegHistoryData): void 
     if (hasDropTotals) {
         legHistoryChart(
             'srt-leg-drop-chart',
+            series,
             data.legs,
             (sample) => sample.dropTotal ?? null,
             0,
@@ -344,7 +378,7 @@ function renderLegHistorySection(): string {
                 <button id="srt-leg-history-forward" type="button" class="btn btn-xs btn-ghost" disabled>10 min &#8594;</button>
             </div>
         </div>
-        <div id="srt-leg-history-content"><p class="text-sm text-muted">Loading leg history…</p></div>
+        <div id="srt-leg-history-content" class="@container"><p class="text-sm text-muted">Loading leg history…</p></div>
     </div>`;
 }
 
@@ -551,6 +585,17 @@ function renderSrtBondingDetailsContent(pipelineId: string, target?: HTMLElement
             Math.max(0, (legHistoryOffsets.get(pipelineId) ?? 0) - LEG_HISTORY_PAGE_STEP_MS),
         );
         void loadLegHistory(pipelineId);
+    });
+    // Ticking a leg off redraws the charts from the data already on screen.
+    document.getElementById('srt-leg-history-content')?.addEventListener('change', (event) => {
+        const box = (event.target as HTMLElement).closest<HTMLInputElement>('[data-leg-ip]');
+        const data = legHistoryShown.get(pipelineId);
+        if (!box?.dataset.legIp || !data) return;
+        const hidden = legHistoryHidden.get(pipelineId) ?? new Set<string>();
+        if (box.checked) hidden.delete(box.dataset.legIp);
+        else hidden.add(box.dataset.legIp);
+        legHistoryHidden.set(pipelineId, hidden);
+        renderLegHistoryCharts(pipelineId, data);
     });
     void loadLegHistory(pipelineId);
 }

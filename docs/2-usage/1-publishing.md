@@ -48,6 +48,9 @@ While an encoder is publishing through the relay, the pipeline shows the SRT Rel
 under the input's video and audio details, whichever Publish mode is selected. It keeps a compact summary
 visible; select the **Detailed stats** icon (bars) in the card's top right corner to open a dialog sized to its
 input, per-leg, output and graph content, within the screen width. It refreshes live statistics with the dashboard's regular poll.
+The loss and drop charts draw one line per leg; untick a leg above them to hide it, so a
+leg with far larger counts does not flatten the others. The charts sit side by side when the
+dialog is wide enough.
 
 The card's **L / R / D** figures (packets lost, retransmitted and dropped) count the
 **last 10 minutes**, not the whole session; the label shows the window (less than 10 min
