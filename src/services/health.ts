@@ -30,7 +30,6 @@ import {
     readCpuPressure,
     readDiskUsage,
     readHostMemory,
-    readUdpRcvbufs,
     readUdpStats,
     topProcessesByRss,
 } from '../utils/procStats.js';
@@ -420,10 +419,6 @@ export function createHealthService(
     let prevRelayFailed = false;
     let lastDiagnosticsSnapshotAt = 0;
     let lastRcvbufErrors: number | null = null;
-    // Receive buffer sizes of the ingest sockets, refreshed in the background by the
-    // snapshot (a socket keeps its size for life, so one minute of age does not matter).
-    let udpRcvbufs: Map<number, number> | null = null;
-    let udpRcvbufsRefreshing = false;
 
     function pushSrsEvent(
         source: SrsEvent['source'],
@@ -2097,25 +2092,6 @@ export function createHealthService(
                 }
             }
             const udp = readUdpStats(ingestPorts);
-            if (!udpRcvbufsRefreshing) {
-                udpRcvbufsRefreshing = true;
-                readUdpRcvbufs(ingestPorts)
-                    .then((sizes) => {
-                        udpRcvbufs = sizes;
-                    })
-                    .catch((err) => {
-                        udpRcvbufs = null; // the snapshot records rcvbufBytes null
-                        console.warn(
-                            `[host] ss could not read the UDP receive buffers: ${err instanceof Error ? err.message : String(err)}`,
-                        );
-                    })
-                    .finally(() => {
-                        udpRcvbufsRefreshing = false;
-                    });
-            }
-            for (const socket of udp.sockets) {
-                socket.rcvbufBytes = udpRcvbufs?.get(socket.port) ?? null;
-            }
             const rcvbufErrorsDelta =
                 udp.rcvbufErrors != null && lastRcvbufErrors != null
                     ? Math.max(0, udp.rcvbufErrors - lastRcvbufErrors)

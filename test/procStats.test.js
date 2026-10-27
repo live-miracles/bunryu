@@ -11,8 +11,6 @@ const {
     readUdpBufferCeilings,
     readCpuPressure,
     readUdpStats,
-    parseUdpRcvbufs,
-    readUdpRcvbufs,
     topProcessesByRss,
     findPidsByExecutable,
     createProcCpuTracker,
@@ -26,57 +24,6 @@ function fakeStatLine(pid, comm, utime, stime) {
     const fields = ['S', '1', '1', '1', '0', '-1', '0', '0', '0', '0', '0', utime, stime];
     return `${pid} (${comm}) ${fields.join(' ')}`;
 }
-
-const SS_UDP = [
-    'ESTAB  0      0      10.0.0.5:49776 142.251.223.234:443',
-    '\t skmem:(r0,rb2097152,t0,tb58080,f4096,w0,o0,bl0,d0)',
-    'UNCONN 0      0            0.0.0.0:10080      0.0.0.0:*',
-    '\t skmem:(r0,rb24576000,t0,tb212992,f0,w0,o0,bl0,d3)',
-    'UNCONN 0      0               [::]:10081         [::]:*',
-    '\t skmem:(r0,rb212992,t0,tb212992,f0,w0,o0,bl0,d0)',
-    'UNCONN 0      0               [::]:10081         [::]:*',
-    '\t skmem:(r0,rb425984,t0,tb212992,f0,w0,o0,bl0,d0)',
-    'UNCONN 0      0            0.0.0.0:5000       0.0.0.0:*',
-    '\t skmem:(r0,rb111,t0,tb212992,f0,w0,o0,bl0,d0)',
-    '',
-].join('\n');
-
-describe('parseUdpRcvbufs', () => {
-    test('reads rb of the listed ports, the largest when a port has several sockets', () => {
-        assert.deepEqual(
-            [...parseUdpRcvbufs(SS_UDP, [10080, 10081, 10082])],
-            [
-                [10080, 24576000],
-                [10081, 425984],
-            ],
-        );
-    });
-
-    test('returns nothing for empty or unrecognised output', () => {
-        assert.equal(parseUdpRcvbufs('', [10080]).size, 0);
-        assert.equal(parseUdpRcvbufs('garbage\n', [10080]).size, 0);
-    });
-});
-
-describe('readUdpRcvbufs', () => {
-    test('runs ss and parses its output', async (t) => {
-        const childProcess = require('node:child_process');
-        t.mock.method(childProcess, 'execFile', (cmd, args, _opts, cb) => {
-            assert.equal(cmd, 'ss');
-            assert.deepEqual(args, ['-uanmH']);
-            queueMicrotask(() => cb(null, SS_UDP, ''));
-        });
-        assert.deepEqual([...(await readUdpRcvbufs([10080]))], [[10080, 24576000]]);
-    });
-
-    test('rejects when ss fails', async (t) => {
-        const childProcess = require('node:child_process');
-        t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
-            queueMicrotask(() => cb(new Error('spawn ss ENOENT'), '', ''));
-        });
-        await assert.rejects(readUdpRcvbufs([10080]), /ENOENT/);
-    });
-});
 
 describe('formatMb', () => {
     test('keeps MB below 1 GB and switches to GB with one decimal from 1024 MB', () => {
@@ -412,8 +359,8 @@ describe('readUdpStats', () => {
         assert.deepEqual(readUdpStats([10080, 10081]), {
             rcvbufErrors: 17093,
             sockets: [
-                { port: 10080, rxQueueBytes: 40960, drops: 7, rcvbufBytes: null },
-                { port: 10081, rxQueueBytes: 16, drops: 2, rcvbufBytes: null },
+                { port: 10080, rxQueueBytes: 40960, drops: 7 },
+                { port: 10081, rxQueueBytes: 16, drops: 2 },
             ],
         });
     });
@@ -422,7 +369,7 @@ describe('readUdpStats', () => {
         t.mock.method(fs, 'readFileSync', files({ '/proc/net/snmp': undefined }));
         assert.deepEqual(readUdpStats([5000]), {
             rcvbufErrors: null,
-            sockets: [{ port: 5000, rxQueueBytes: 0, drops: 9, rcvbufBytes: null }],
+            sockets: [{ port: 5000, rxQueueBytes: 0, drops: 9 }],
         });
         t.mock.restoreAll();
         t.mock.method(fs, 'readFileSync', () => {

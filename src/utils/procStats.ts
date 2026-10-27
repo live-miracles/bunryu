@@ -1,4 +1,3 @@
-import { execFile } from 'child_process';
 import fs from 'fs';
 
 const CLK_TCK = 100; // USER_HZ; the near-universal Linux default (no portable sysconf() from Node)
@@ -118,42 +117,10 @@ export function readCpuPressure(): CpuPressure | null {
 
 export interface UdpSocketStats {
     port: number;
-    // The socket's receive buffer as the kernel set it (`rb` in `ss -m`, already doubled
-    // from the requested size); null until the first `ss` read, or when it fails.
-    rcvbufBytes: number | null;
     // Bytes waiting in the socket's kernel receive queue and datagrams the kernel
     // dropped because it was full (cumulative since the socket was created).
     rxQueueBytes: number;
     drops: number;
-}
-
-// Receive buffer size per local port from `ss -uanmH`: a socket line (`UNCONN 0 0
-// 0.0.0.0:10080 0.0.0.0:*`) followed by an indented `skmem:(r0,rb24576000,...)` line.
-// A port with several sockets reports the largest.
-export function parseUdpRcvbufs(stdout: string, ports: number[]): Map<number, number> {
-    const wanted = new Set(ports);
-    const sizes = new Map<number, number>();
-    let port: number | null = null;
-    for (const line of stdout.split('\n')) {
-        if (/^\s/.test(line)) {
-            const rb = port != null ? /\brb(\d+)\b/.exec(line) : null;
-            if (port != null && rb) sizes.set(port, Math.max(sizes.get(port) ?? 0, Number(rb[1])));
-            continue;
-        }
-        const local = line.trim().split(/\s+/)[3] ?? '';
-        const parsed = parseInt(local.slice(local.lastIndexOf(':') + 1), 10);
-        port = wanted.has(parsed) ? parsed : null;
-    }
-    return sizes;
-}
-
-// Runs `ss` for the listed ports; rejects when it cannot (missing binary, timeout).
-export function readUdpRcvbufs(ports: number[]): Promise<Map<number, number>> {
-    return new Promise((resolve, reject) => {
-        execFile('ss', ['-uanmH'], { timeout: 2000, maxBuffer: 2 * 1024 * 1024 }, (err, stdout) =>
-            err ? reject(err) : resolve(parseUdpRcvbufs(stdout, ports)),
-        );
-    });
 }
 
 export interface UdpStats {
@@ -197,7 +164,7 @@ export function readUdpStats(ports: number[]): UdpStats {
             const rxQueue = parseInt(f[4].split(':')[1] ?? '', 16);
             const drops = parseInt(f[12], 10);
             if (!wanted.has(port) || !Number.isFinite(rxQueue) || !Number.isFinite(drops)) continue;
-            sockets.push({ port, rxQueueBytes: rxQueue, drops, rcvbufBytes: null });
+            sockets.push({ port, rxQueueBytes: rxQueue, drops });
         }
     }
     return { rcvbufErrors, sockets };

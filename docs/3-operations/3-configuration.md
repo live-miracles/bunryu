@@ -134,12 +134,9 @@ ceiling; sockets that ask for nothing keep the default size. The services read i
 when they create their sockets, so a change needs a restart of SRS and goryu.
 The current ceilings are shown in Settings under Server information (UDP buffer cap), and the
 ones the control plane started under are in its `server-started` diagnostics event.
-The ingest sockets are the ones to check, because they keep the size they got when
-created. The per-minute `health-snapshot` diagnostics event lists each one under
-`host.udp.sockets` with its buffer (`rcvbufBytes`, 24576000 for SRS on 10080 and goryu
-on 10081), queued bytes and drops, plus the host-wide `rcvbufErrorsDelta`; the first
-snapshot after a start has `rcvbufBytes` null. By hand, `sudo ss -uanmp` shows the buffer as
-`rb` and the drops as `d`, and `nstat -az UdpRcvbufErrors` counts drops host-wide. In Docker the
+The ingest sockets are the ones to check: `sudo ss -uanmp` shows each socket's
+buffer as `rb` (24576000 for SRS on 10080 and goryu on 10081) and its drops as
+`d`, and `nstat -az UdpRcvbufErrors` counts drops host-wide. In Docker the
 container uses the host's kernel setting; set it on the Docker host.
 
 ### Database schema version

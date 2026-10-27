@@ -423,7 +423,7 @@ after a reboot, so the sysctl file is applied at boot.
 there is nothing to calibrate it against.
 
 **Revisit when:** `UdpRcvbufErrors` rises or an ingest socket shows `d` above 0
-(the per-minute `health-snapshot` records both as `host.udp`, with each socket's buffer size as `rcvbufBytes` and `host.cpuPressure`
+(the per-minute `health-snapshot` records both as `host.udp`, with `host.cpuPressure`
 to tell whether the host was starved at the time; then add a health check for the
 ceiling and the counter), or inputs carry
 4K SRT at 50 Mbps or more with encodes running on the same host.

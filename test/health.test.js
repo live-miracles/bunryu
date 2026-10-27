@@ -2708,7 +2708,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             cpuPressure: { some10: 0.88, some60: 0.38 },
             udp: {
                 rcvbufErrors: 5,
-                sockets: [{ port: 10080, rxQueueBytes: 40960, drops: 7, rcvbufBytes: null }],
+                sockets: [{ port: 10080, rxQueueBytes: 40960, drops: 7 }],
                 rcvbufErrorsDelta: null,
             },
         });
@@ -2747,54 +2747,6 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         for (let i = 0; i < 12; i++) await tickPoll(t);
 
         assert.deepEqual(deltas(), [null, 7, 0]);
-
-        service.shutdown();
-    });
-
-    test('health-snapshot reports the ingest sockets receive buffer once ss has been read', async (t) => {
-        mockHostMemory(t, { availableKb: 400_000 });
-        t.mock.method(globalThis, 'fetch', async (url) => {
-            if (String(url).includes('/streams/'))
-                return jsonResponse({ code: 0, streams: [streamFixture()] });
-            return jsonResponse({ code: 0, clients: [] });
-        });
-        const createHealthService = loadHealthService(t);
-        const ssCalls = [];
-        childProcess.execFile.mock.mockImplementation((cmd, args, _opts, cb) => {
-            if (cmd !== 'ss')
-                return queueMicrotask(() => cb(new Error('ffprobe disabled'), '', ''));
-            ssCalls.push([cmd, ...args]);
-            queueMicrotask(() =>
-                cb(
-                    null,
-                    'UNCONN 0 0 0.0.0.0:10080 0.0.0.0:*\n\t skmem:(r0,rb24576000,t0,tb212992,f0,w0,o0,bl0,d0)\n',
-                    '',
-                ),
-            );
-        });
-        const diagnostics = makeDiagnosticsSpy();
-        const service = createHealthService(
-            makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
-            makeFakeOutputService(),
-            makeFakeSrtRelay(),
-            makeFakeInputState(),
-            diagnostics,
-        );
-        const buffers = () =>
-            diagnostics.events
-                .filter((e) => e.event === 'health-snapshot')
-                .map((e) => e.host.udp.sockets.map((s) => s.rcvbufBytes));
-
-        t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
-        service.start();
-        await sleep(20);
-        for (let i = 0; i < 12; i++) await tickPoll(t); // one minute: the next snapshot
-
-        assert.deepEqual(buffers(), [[null], [24576000]]);
-        assert.deepEqual(ssCalls, [
-            ['ss', '-uanmH'],
-            ['ss', '-uanmH'],
-        ]);
 
         service.shutdown();
     });
