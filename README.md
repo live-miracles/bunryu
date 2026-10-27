@@ -75,6 +75,10 @@ The installer needs the initial dashboard password on a fresh install and never 
 - **Operations:** [Security](docs/3-operations/1-security.md) · [Remote access](docs/3-operations/2-remote-access.md) · [Configuration](docs/3-operations/3-configuration.md) · [Reliability](docs/3-operations/4-reliability.md) · [Known issues](docs/3-operations/5-known-issues.md)
 - **Reference:** [REST API](docs/4-reference/1-api.md) · [Development](docs/4-reference/2-development.md)
 
+## Help
+
+Ask questions and share ideas in [Discussions](https://github.com/live-miracles/bunryu/discussions). Report bugs as [issues](https://github.com/live-miracles/bunryu/issues/new/choose).
+
 ## License
 
 [MIT](LICENSE). SRS, goryu and FFmpeg are separate projects under their own licenses.

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+    - name: Ask a question
+      url: https://github.com/live-miracles/bunryu/discussions/new?category=q-a
+      about: Setup help and how-to questions belong in Discussions. Use an issue for bugs.
