@@ -864,16 +864,70 @@
           <div class="mx-auto max-w-4xl space-y-3">
             <h2 class="text-xl font-bold">Settings</h2>
 
-            <!-- Version info -->
-            <div
-              id="settings-version"
-              class="bg-base-300 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-0.5 rounded-lg px-3 py-2 font-mono text-xs opacity-70">
-              <span class="text-muted">Commit</span><span id="v-commit">—</span> <span class="text-muted">Bunryu</span><span id="v-app">—</span>
-              <span class="text-muted">SRS</span><span id="v-srs">—</span> <span class="text-muted">Relay</span><span id="v-relay">—</span>
-              <span class="text-muted">FFmpeg</span><span id="v-ffmpeg">—</span> <span class="text-muted">Node</span><span id="v-node">—</span>
-              <span class="text-muted">OS</span><span id="v-os">—</span> <span class="text-muted">Kernel</span><span id="v-kernel">—</span>
-              <span class="text-muted">CPU</span><span><span id="v-cpu">—</span><span id="v-cpu-model"></span></span>
-              <span class="text-muted">RAM</span><span id="v-ram">—</span> <span class="text-muted">Disk</span><span id="v-disk">—</span>
+            <!-- Server information -->
+            <div id="settings-version">
+              <h3 class="mb-2 text-sm font-bold">Server information</h3>
+              <div class="grid gap-3 sm:grid-cols-3">
+                <section class="border-base-content/10 bg-base-100/50 min-w-0 rounded-xl border p-3">
+                  <h3 class="text-muted mb-1.5 text-xs font-semibold tracking-wide uppercase">Software</h3>
+                  <dl class="space-y-1">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">Bunryu</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-app">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">Commit</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-commit">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">SRS</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-srs">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">Relay</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-relay">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">FFmpeg</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-ffmpeg">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">Node</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-node">—</span></dd>
+                    </div>
+                  </dl>
+                </section>
+                <section class="border-base-content/10 bg-base-100/50 min-w-0 rounded-xl border p-3">
+                  <h3 class="text-muted mb-1.5 text-xs font-semibold tracking-wide uppercase">System</h3>
+                  <dl class="space-y-1">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">OS</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-os">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">Kernel</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-kernel">—</span></dd>
+                    </div>
+                  </dl>
+                </section>
+                <section class="border-base-content/10 bg-base-100/50 min-w-0 rounded-xl border p-3">
+                  <h3 class="text-muted mb-1.5 text-xs font-semibold tracking-wide uppercase">Hardware</h3>
+                  <dl class="space-y-1">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">CPU</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-cpu">—</span><span id="v-cpu-model"></span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">RAM</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-ram">—</span></dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class="text-muted shrink-0 text-xs">Disk</dt>
+                      <dd class="min-w-0 text-right font-mono text-xs break-words"><span id="v-disk">—</span></dd>
+                    </div>
+                  </dl>
+                </section>
+              </div>
             </div>
 
             <!-- Server Name + Public Host -->
