@@ -1528,7 +1528,7 @@ export async function showSrsLogs(): Promise<void> {
                     : `${label} log output is empty — no log output yet.`;
             section += `<p class="text-sm text-muted mb-4">${msg}</p>`;
         } else {
-            section += `<div id="${elId}" class="h-72 overflow-y-auto rounded-xl border border-white/10 bg-black p-3">
+            section += `<div id="${elId}" class="h-72 overflow-y-auto rounded-xl border border-white/10 bg-black p-2 sm:p-3">
                 <pre class="text-gray-300 whitespace-pre-wrap break-all">${tail.lines.map((l) => ansiLineToHtml(l)).join('\n')}</pre>
             </div>`;
         }
@@ -1556,11 +1556,11 @@ export async function showSrsLogs(): Promise<void> {
                 .reverse()
                 .map(
                     (e) =>
-                        `<div class="flex items-center gap-3 border-b border-base-200 py-1.5 last:border-0">
+                        `<div class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-base-200 py-1.5 last:border-0 sm:gap-x-3">
                             <span class="badge badge-xs leading-none shrink-0 uppercase ${e.type === 'recovered' ? 'badge-success' : 'badge-error'}">${e.type}</span>
                             <span class="badge badge-xs badge-outline shrink-0">${EVENT_SOURCE_LABEL[e.source]}</span>
                             <span class="opacity-70 shrink-0">${formatLocalDateTime(e.ts)}</span>
-                            <span class="opacity-80">${escapeHtml(e.message)}</span>
+                            <span class="min-w-0 basis-full break-words opacity-80 sm:basis-0 sm:flex-1">${escapeHtml(e.message)}</span>
                         </div>`,
                 )
                 .join('') +
