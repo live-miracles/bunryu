@@ -9,6 +9,7 @@ import {
 } from '../utils/ffmpeg.js';
 import { readAppConfig, outputMemoryLimitBytes } from '../utils/appConfig.js';
 import {
+    formatMb,
     readProcRssBytes,
     createProcCpuTracker,
     findPidsByExecutable,
@@ -143,9 +144,12 @@ function timestampWarningKind(line: string): string {
 const WARNING_KINDS = ['memory', 'socket', 'media-clock', 'falling-behind'] as const;
 type WarningKind = (typeof WARNING_KINDS)[number];
 
-function formatDuration(ms: number): string {
+export function formatDuration(ms: number): string {
     const totalSec = Math.round(ms / 1000);
-    return totalSec < 60 ? `${totalSec}s` : `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`;
+    if (totalSec < 60) return `${totalSec}s`;
+    const minutes = Math.floor(totalSec / 60) % 60;
+    const hours = Math.floor(totalSec / 3600);
+    return `${hours > 0 ? `${hours}h ` : ''}${minutes}m ${totalSec % 60}s`;
 }
 
 function memoryLimitBytesFor(videoEncoding: string, highRes: boolean): number {
@@ -973,9 +977,9 @@ export function createOutputService(
 
     function updateMemoryWarning(outputId: string, rssBytes: number | null, limitBytes: number) {
         if (rssBytes != null && rssBytes >= limitBytes * MEMORY_WARNING_RATIO) {
-            const message = `High memory usage: ${Math.round(rssBytes / (1024 * 1024))}MB / ${Math.round(
+            const message = `High memory usage: ${formatMb(rssBytes / (1024 * 1024))} / ${formatMb(
                 limitBytes / (1024 * 1024),
-            )}MB limit (${Math.round((rssBytes / limitBytes) * 100)}%)`;
+            )} limit (${Math.round((rssBytes / limitBytes) * 100)}%)`;
             memoryWarnings.set(outputId, message);
             warningStarted(outputId, 'memory', message);
         } else {
@@ -1152,9 +1156,9 @@ export function createOutputService(
             p?.stderrTail.trim()
                 ? `ffmpeg stderr tail:\n${p.stderrTail.trim()}`
                 : 'ffmpeg stderr tail: <empty>',
-            `Restarting output: RSS ${Math.round(rssBytes / (1024 * 1024))}MB exceeded ${Math.round(
+            `Restarting output: RSS ${formatMb(rssBytes / (1024 * 1024))} exceeded ${formatMb(
                 limitBytes / (1024 * 1024),
-            )}MB limit`,
+            )} limit`,
         ].join('\n');
     }
 
@@ -1491,7 +1495,7 @@ export function createOutputService(
         if (retry) retry.failures = 0;
         console.log(
             green(
-                `[outputs] ${output.id} (${output.name}) recovered: running for ${Math.round((now - startedAtMs) / 1000)}s after ${crashes} crash${crashes === 1 ? '' : 'es'}`,
+                `[outputs] ${output.id} (${output.name}) recovered: running for ${formatDuration(now - startedAtMs)} after ${crashes} crash${crashes === 1 ? '' : 'es'}`,
             ),
         );
         logEvent('output-recovered', {
@@ -1588,11 +1592,11 @@ export function createOutputService(
                     }
                     console.warn(
                         yellow(
-                            `[outputs] ${outputId} (${output.name}) memory limit exceeded: rss=${Math.round(
+                            `[outputs] ${outputId} (${output.name}) memory limit exceeded: rss=${formatMb(
                                 rssBytes / (1024 * 1024),
-                            )}MB (limit ${Math.round(
+                            )} (limit ${formatMb(
                                 limitBytes / (1024 * 1024),
-                            )}MB), killing pid=${proc.pid} for retry`,
+                            )}), killing pid=${proc.pid} for retry`,
                         ),
                     );
                     logEvent('ffmpeg-restart', {

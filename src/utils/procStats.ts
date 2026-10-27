@@ -2,6 +2,12 @@ import fs from 'fs';
 
 const CLK_TCK = 100; // USER_HZ; the near-universal Linux default (no portable sysconf() from Node)
 
+// Megabytes for a log or alert message: GB from 1024 MB up, so "2275MB" reads
+// "2.2GB" and "15282MB" reads "14.9GB". Structured fields keep plain MB.
+export function formatMb(mb: number): string {
+    return mb >= 1024 ? `${Number((mb / 1024).toFixed(1))}GB` : `${Math.round(mb)}MB`;
+}
+
 // procfs reads of small single files; cheap enough for a 5-10s poll per process
 // (page-cache hit, no real disk I/O).
 export function readProcRssBytes(pid: number): number | null {

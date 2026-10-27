@@ -26,6 +26,7 @@ import { inputPullUrl, type InputProtocol, type InputState } from './inputState.
 import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
 import { createHostAlertTracker } from '../utils/hostAlerts.js';
 import {
+    formatMb,
     readCpuPressure,
     readDiskUsage,
     readHostMemory,
@@ -374,6 +375,11 @@ function formatDuration(totalSeconds: number): string {
     if (h > 0 || m > 0) parts.push(`${m}m`);
     parts.push(`${s}s`);
     return parts.join(' ');
+}
+
+// A bitrate for an alert message: Mb/s from 1000 kb/s up.
+function formatKbps(kbps: number): string {
+    return kbps >= 1000 ? `${Number((kbps / 1000).toFixed(1))} Mb/s` : `${Math.round(kbps)} kb/s`;
 }
 
 interface ProcessUsage {
@@ -1079,8 +1085,8 @@ export function createHealthService(
             }));
             hostEvent(
                 'problem',
-                `Memory low: ${fields.availableMb}MB of ${fields.totalMb}MB available; top: ${top
-                    .map((p) => `${p.name}(${p.pid})=${p.rssMb}MB`)
+                `Memory low: ${formatMb(fields.availableMb)} of ${formatMb(fields.totalMb)} available; top: ${top
+                    .map((p) => `${p.name}(${p.pid})=${formatMb(p.rssMb)}`)
                     .join(' ')}`,
                 'host-memory-low',
                 { ...fields, topProcesses: top },
@@ -1088,7 +1094,7 @@ export function createHealthService(
         } else {
             hostEvent(
                 'recovered',
-                `Memory recovered: ${fields.availableMb}MB available`,
+                `Memory recovered: ${formatMb(fields.availableMb)} available`,
                 'host-memory-recovered',
                 fields,
             );
@@ -1118,7 +1124,7 @@ export function createHealthService(
         } else {
             hostEvent(
                 'recovered',
-                `CPU recovered: pressure ${pressure.some10}% (10 s), peak ${change.worst}% over ${Math.round((change.polls * POLL_INTERVAL_MS) / 1000)}s`,
+                `CPU recovered: pressure ${pressure.some10}% (10 s), peak ${change.worst}% over ${formatDuration(Math.round((change.polls * POLL_INTERVAL_MS) / 1000))}`,
                 'host-cpu-recovered',
                 {
                     pressure10: pressure.some10,
@@ -1163,8 +1169,8 @@ export function createHealthService(
             hostEvent(
                 started ? 'problem' : 'recovered',
                 started
-                    ? `Disk space low on ${dir}: ${fields.availableMb}MB of ${fields.totalMb}MB free`
-                    : `Disk space recovered on ${dir}: ${fields.availableMb}MB free`,
+                    ? `Disk space low on ${dir}: ${formatMb(fields.availableMb)} of ${formatMb(fields.totalMb)} free`
+                    : `Disk space recovered on ${dir}: ${formatMb(fields.availableMb)} free`,
                 started ? 'host-disk-low' : 'host-disk-recovered',
                 fields,
             );
@@ -1635,7 +1641,7 @@ export function createHealthService(
                     alerts.push({
                         severity: 'warning',
                         code: 'input-bitrate-collapse',
-                        message: `Input bitrate dropped from ${Math.round(previousRelaySample.recvBitrateKbps)} to ${Math.round(currentRelaySample.recvBitrateKbps)} kb/s.`,
+                        message: `Input bitrate dropped from ${formatKbps(previousRelaySample.recvBitrateKbps)} to ${formatKbps(currentRelaySample.recvBitrateKbps)}.`,
                         sinceMs: now,
                     });
                 }

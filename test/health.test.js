@@ -923,6 +923,10 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 'relay-forwarding-stalled',
             ],
         );
+        assert.equal(
+            alerts.find((a) => a.code === 'input-bitrate-collapse').message,
+            'Input bitrate dropped from 1 Mb/s to 300 kb/s.',
+        );
 
         service.shutdown();
     });
@@ -2494,6 +2498,10 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         assert.equal(memoryEvents()[0].event, 'host-memory-low');
         assert.equal(memoryEvents()[0].availableMb, 98);
         assert.equal(memoryEvents()[0].totalMb, 1000);
+        assert.equal(
+            memoryEvents()[0].message,
+            'Memory low: 98MB of 1000MB available; top: ffmpeg(77)=97MB',
+        );
         assert.deepEqual(memoryEvents()[0].topProcesses, [{ pid: 77, name: 'ffmpeg', rssMb: 97 }]);
 
         state.availableKb = 150_000; // ~14.6%: still low, must not flap

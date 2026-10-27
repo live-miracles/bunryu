@@ -14,6 +14,7 @@ const {
     topProcessesByRss,
     findPidsByExecutable,
     createProcCpuTracker,
+    formatMb,
 } = require('../src/utils/procStats');
 
 // Builds a minimal /proc/<pid>/stat line. `comm` may contain spaces/parens to
@@ -23,6 +24,18 @@ function fakeStatLine(pid, comm, utime, stime) {
     const fields = ['S', '1', '1', '1', '0', '-1', '0', '0', '0', '0', '0', utime, stime];
     return `${pid} (${comm}) ${fields.join(' ')}`;
 }
+
+describe('formatMb', () => {
+    test('keeps MB below 1 GB and switches to GB with one decimal from 1024 MB', () => {
+        assert.equal(formatMb(97), '97MB');
+        assert.equal(formatMb(96.6), '97MB');
+        assert.equal(formatMb(1023), '1023MB');
+        assert.equal(formatMb(1024), '1GB');
+        assert.equal(formatMb(2275), '2.2GB');
+        assert.equal(formatMb(15282), '14.9GB');
+        assert.equal(formatMb(51200), '50GB');
+    });
+});
 
 describe('readProcRssBytes', () => {
     test('parses VmRSS in kB into bytes', (t) => {
