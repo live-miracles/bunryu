@@ -1982,13 +1982,14 @@ function renderPipelineInfo(selectedId: string | null): void {
                 ed.showSrtBondingDetails(pipeline.id),
             );
     }
-    const publishMode = renderPublishCard(pipeline, {
+    renderPublishCard(pipeline, {
         passphrase: state.config.srtPassphrase || '',
         relayPort: bondingPortValue,
         relayUrl: relayUrlBase + relayUrlTail,
         relayBondedUrl: `${relayUrlBase}&grouptype=broadcast${relayUrlTail}`,
     });
-    bondingCard?.classList.toggle('hidden', publishMode !== 'relay');
+    // Shown whenever relay input is arriving, whichever Publish mode is selected.
+    bondingCard?.classList.toggle('hidden', !bondingInputActive);
     bondingCard?.classList.remove('text-muted');
     if (bondingDot && bondingDotFill) {
         const indicator = getBondingIndicator(pipeline, relayProcessRunning);
