@@ -62,7 +62,7 @@ describe('recentFigure', () => {
 
     test('a bonded group shows only the packets still missing', () => {
         const figure = recentFigure(recent({ drop: 3 }), true, deps);
-        assert.equal(figure.text, '3');
+        assert.equal(figure.text, '— / — / 3');
         assert.match(figure.title, /^Last 10 min: 3 dropped$/);
         assert.doesNotMatch(figure.title, /lost|rexmit/);
     });
@@ -157,7 +157,7 @@ describe('relay stats row', () => {
 
     test('labels the window and shows only drops for a bonded group', () => {
         const html = renderBondingStats(status(), true, deps);
-        assert.match(html, />In Drop 10 min</);
+        assert.match(html, />In L \/ R \/ D 10 min</);
         assert.match(html, />Out L \/ R \/ D 10 min</);
         assert.match(html, /input-meta-value[^>]*title="Last 10 min: 0 dropped"/);
         assert.doesNotMatch(html, />286</, 'the session total is not on the card');
@@ -167,7 +167,7 @@ describe('relay stats row', () => {
         const html = renderBondingStats(status(), true, deps);
         assert.doesNotMatch(html, />Rx</);
         const labels = [...html.matchAll(/input-meta-label[^>]*>([^<]+)</g)].map((m) => m[1]);
-        assert.deepEqual(labels, ['In Drop 10 min', 'Out L / R / D 10 min', 'Latency']);
+        assert.deepEqual(labels, ['In L / R / D 10 min', 'Out L / R / D 10 min', 'Latency']);
     });
 
     test('marks packets missing from the delivered stream', () => {
@@ -176,7 +176,10 @@ describe('relay stats row', () => {
             true,
             deps,
         );
-        assert.match(html, /input-meta-value text-warning font-semibold" title="[^"]*">3</);
+        assert.match(
+            html,
+            /input-meta-value text-warning font-semibold" title="[^"]*">— \/ — \/ 3</,
+        );
     });
 });
 

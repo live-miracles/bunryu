@@ -56,8 +56,8 @@ charts sit side by side when the dialog is wide enough.
 The card's **L / R / D** figures (packets lost, retransmitted and dropped) count the
 **last 10 minutes**, not the whole session; the label shows the window (less than 10 min
 for the first minutes after a link connects), and hovering a figure names the
-counts. A link with nothing lately is dimmed so a burst stands out. A bonded input as a whole shows
-only **Drop**, the packets still missing after the legs backed each other up; that is
+counts. A link with nothing lately is dimmed so a burst stands out. A bonded input as a whole fills in
+only **D** (Drop; L and R show a dash), the packets still missing after the legs backed each other up; that is
 what actually damages the stream, so it turns amber when it is above zero. A drop on one
 leg does not: the other leg usually delivered the packet. The Overview's SRT Relay table
 uses the same figures; the dialog's detailed rows (the totals since the stream connected) and graphs are cumulative.

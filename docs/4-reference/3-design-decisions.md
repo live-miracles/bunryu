@@ -308,7 +308,7 @@ itself.
 **Decision:** the SRT Relay card and the Overview table show loss / retransmit / drop
 as growth over the last 10 minutes (`recent` in `/api/health`, computed from the 5 s
 poll's cumulative counters). The totals since connect stay in the
-details dialog. A bonded group shows only its Drop, marked when above zero; per-leg
+details dialog. A bonded group fills in only its Drop (L and R show a dash), marked when above zero; per-leg
 drops are not marked.
 
 **Why:** the relay's counters only grow, so on a long event they say nothing about the

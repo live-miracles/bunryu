@@ -75,7 +75,7 @@ export interface RecentFigure {
 }
 
 // `dropOnly`: a bonded group reports only the packets still missing after the
-// legs back each other up, so just that count is shown.
+// legs back each other up, so only the Drop is filled in and the rest show a dash.
 export function recentFigure(
     recent: SrtRecent | null | undefined,
     dropOnly: boolean,
@@ -93,9 +93,7 @@ export function recentFigure(
     const shown = dropOnly ? { loss: null, retrans: null, drop: recent.drop } : recent;
     return {
         text: dropOnly
-            ? recent.drop != null
-                ? deps.formatCompactCount(recent.drop)
-                : '—'
+            ? deps.fmtLossRexmitDrop(null, null, recent.drop)
             : deps.fmtLossRexmitDrop(recent.loss, recent.retrans, recent.drop),
         title: `Last ${recentSpanLabel(recent.spanMs)}: ${countList(shown, units)}`,
         quiet: !recent.loss && !recent.retrans && !recent.drop,
@@ -131,7 +129,7 @@ export function renderBondingStats(
     const labelFor = (base: string, recent: SrtRecent | null): string =>
         recent ? `${base} ${recentSpanLabel(recent.spanMs)}` : base;
     const inputItem = {
-        label: labelFor(inputStatsAreDropOnly ? 'In Drop' : 'In L / R / D', status.input.recent),
+        label: labelFor('In L / R / D', status.input.recent),
         labelTitle: inputStatsAreDropOnly ? BONDED_MEANING : INPUT_MEANING,
         value: inputFigure.text,
         valueTitle: inputFigure.title,
