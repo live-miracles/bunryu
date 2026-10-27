@@ -104,6 +104,13 @@ describe('bonded legs table', () => {
         assert.match(html, /title="Last 10 min: 2 lost, 3 rexmit, 0 dropped"/);
     });
 
+    test('puts L / R / D right after the IP column', () => {
+        const html = renderBondedLegs(input([leg()]), deps);
+        const heads = [...html.matchAll(/<th>(?:<span[^>]*>)?([^<]+)/g)].map((m) => m[1]);
+        assert.deepEqual(heads, ['State', 'Leg IP', 'L / R / D', 'RTT', 'Rate', 'Buffer']);
+        assert.match(html, /203\.0\.113\.10<\/td>\s*<td[^>]*>2 \/ 3 \/ 0<\/td>/);
+    });
+
     test('dims a leg with nothing lately and marks none as an error', () => {
         const html = renderBondedLegs(
             input([leg({ recent: recent({ drop: 40 }) }), leg({ recent: recent() })]),
@@ -154,6 +161,13 @@ describe('relay stats row', () => {
         assert.match(html, />Out L \/ R \/ D 10 min</);
         assert.match(html, /input-meta-value[^>]*title="Last 10 min: 0 dropped"/);
         assert.doesNotMatch(html, />286</, 'the session total is not on the card');
+    });
+
+    test('has no Rx figure and ends with the latency', () => {
+        const html = renderBondingStats(status(), true, deps);
+        assert.doesNotMatch(html, />Rx</);
+        const labels = [...html.matchAll(/input-meta-label[^>]*>([^<]+)</g)].map((m) => m[1]);
+        assert.deepEqual(labels, ['Drop 10 min', 'Out L / R / D 10 min', 'Latency']);
     });
 
     test('marks packets missing from the delivered stream', () => {

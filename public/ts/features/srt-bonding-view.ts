@@ -144,25 +144,16 @@ export function renderBondingStats(
         valueTitle: outputFigure.title,
         valueClass: figureClass(outputFigure, true),
     };
+    const latencyItem = {
+        label: 'Latency',
+        labelTitle:
+            'Negotiated SRT buffering latency for the input. For a bonded group this is the max latency negotiated across legs.',
+        value: deps.fmtMs(status.input.latencyMs),
+    };
     const items = [
-        ...(hasSessionStats
-            ? [
-                  {
-                      label: 'Rx',
-                      labelTitle:
-                          'Unique data packets received from the upstream bonded SRT input, with a fallback to total received packets when needed.',
-                      value: deps.formatCompactCount(rxPkts),
-                  },
-                  {
-                      label: 'Latency',
-                      labelTitle:
-                          'Negotiated SRT buffering latency for the input. For a bonded group this is the max latency negotiated across legs.',
-                      value: deps.fmtMs(status.input.latencyMs),
-                  },
-                  inputItem,
-              ]
-            : []),
+        ...(hasSessionStats ? [inputItem] : []),
         ...(hasOutputStats ? [outputItem] : []),
+        ...(hasSessionStats ? [latencyItem] : []),
     ];
     return items.length > 0 ? deps.renderCompactMetaRow(items, 'input-meta-row-sm') : '';
 }
@@ -179,9 +170,9 @@ export function renderBondedLegs(input: SrtBondingStatus['input'], deps: Bonding
                    <div class="overflow-x-auto">
                    <table class="table table-xs">
                        <thead><tr>
-                           <th>State</th><th>${input.bonded ? 'Leg IP' : 'Source IP'}</th><th>RTT</th>
-                           <th>Rate</th><th>Buffer</th>
+                           <th>State</th><th>${input.bonded ? 'Leg IP' : 'Source IP'}</th>
                            <th><span title="${escapeHtml(LEG_MEANING)}">L / R / D</span>${legSpanMs > 0 ? ` <span class="font-normal text-muted">${recentSpanLabel(legSpanMs)}</span>` : ''}</th>
+                           <th>RTT</th><th>Rate</th><th>Buffer</th>
                        </tr></thead>
                        <tbody>${legs
                            .map((leg) => {
@@ -192,10 +183,10 @@ export function renderBondedLegs(input: SrtBondingStatus['input'], deps: Bonding
                                return `<tr>
                                    <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}${leg.state === 'running' ? '' : `<span class="text-muted">(${escapeHtml(leg.state)})</span>`}</span></td>
                                    <td class="font-mono text-xs">${escapeHtml(leg.ip)}</td>
+                                   <td class="font-mono text-xs whitespace-nowrap ${figureClass(figure, false)}" title="${escapeHtml(figure.title)}">${figure.text}</td>
                                    <td class="font-mono text-xs whitespace-nowrap">${deps.fmtMs(leg.rttMs)}</td>
                                    <td class="font-mono text-xs whitespace-nowrap">${deps.fmtMbpsValue(leg.recvRateMbps)}</td>
                                    <td class="font-mono text-xs whitespace-nowrap">${deps.fmtMs(leg.rcvBufMs)}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap ${figureClass(figure, false)}" title="${escapeHtml(figure.title)}">${figure.text}</td>
                                </tr>`;
                            })
                            .join('')}</tbody>
