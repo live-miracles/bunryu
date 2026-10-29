@@ -51,7 +51,8 @@ $H stop           # kills app, SRS, Chrome, publisher; prints "all test ports cl
 dashboard, optionally evals `js`, and writes the PNG; `MOVE=x,y` hovers first
 (46,194 is the pipeline status icon in the sidebar, whose tooltip lists every
 issue). `VIEWPORT=WxH` resizes the screen (default 1500x1000; widths under 1024
-emulate a phone, where the columns stack). **Look at the PNG.** Open `/?p=1` for the pipeline detail view with the
+emulate a phone, where the columns stack). `SCALE=2` doubles the pixel density for
+README images. **Look at the PNG.** Open `/?p=1` for the pipeline detail view with the
 output cards.
 
 Typical timestamp-fault check: `start`, `flood on`, wait ~12 s, `status` shows
