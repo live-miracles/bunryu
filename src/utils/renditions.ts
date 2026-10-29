@@ -35,7 +35,7 @@ function makeRecipe(videoEncoding: string, audioEncoding: string): Recipe {
 }
 
 // The recipe an output needs an encode for, or null when it never goes through
-// one: plain copy, translation (owned by the mixer), multi-track selections
+// one: plain copy, multi-track selections
 // (RTMP/FLV carries one audio track, so they cannot go through an internal RTMP
 // stream), and the rendition rows themselves.
 export function encodeRecipe(output: RecipeFields & Pick<Output, 'url'>): Recipe | null {

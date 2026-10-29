@@ -38,7 +38,7 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | POST | `/api/pipelines/:id/outputs/stop-all` | Stop all outputs |
 | POST | `/api/pipelines/:id/outputs/:outId/start` | Start output |
 | POST | `/api/pipelines/:id/outputs/:outId/stop` | Stop output |
-| POST | `/api/pipelines/:id/outputs/:outId/restart` | Stop a running output and start it again; works for any output including a shared encode, whose outputs reconnect with it. Returns `{ ok: true }`, or 409 when the output is not running, is a translation output, or was restarted less than 5 s ago. Recorded in its History as "Restarted by user" (not a failure) |
+| POST | `/api/pipelines/:id/outputs/:outId/restart` | Stop a running output and start it again; works for any output including a shared encode, whose outputs reconnect with it. Returns `{ ok: true }`, or 409 when the output is not running or was restarted less than 5 s ago. Recorded in its History as "Restarted by user" (not a failure) |
 | GET | `/api/pipelines/:id/outputs/:outId/errors` | Output History, oldest first (also for a shared encode). A repeated crash is one record with `count` and `lastTs`; `recoveredTs` is set once the output ran steadily again |
 | POST | `/api/settings/general` | Update the server name and public host `{ name, publicHost? }` |
 | POST | `/api/settings/layout-order` | Save the dashboard's pipeline and output order `{ order: [{ id, outs: [outputId] }] }` |
@@ -71,7 +71,7 @@ desired state is `running`) until a publisher connects.
 ## Shared encodes
 
 Outputs of one pipeline that need the same encode (the same `videoEncoding` plus
-the same single audio track, and not plain copy, multi-track or translation)
+the same single audio track, and not plain copy or multi-track)
 share one upstream FFmpeg, a *shared encode* (internally a rendition). It is an
 ordinary output row owned by the server, so the API exposes it as one:
 

@@ -1,12 +1,6 @@
 import type { Express } from 'express';
-import {
-    validateOutputUrl,
-    validateAudioEncoding,
-    isTranslationAudio,
-    ENCODINGS,
-    MIN_VOLUME_DB,
-} from '../utils/ffmpeg.js';
-import type { Db, TranslationInput } from '../types.js';
+import { validateOutputUrl, validateAudioEncoding, ENCODINGS } from '../utils/ffmpeg.js';
+import type { Db } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
@@ -40,60 +34,12 @@ const RESTART_LOCKOUT_MS = 5000;
 const MANAGED_ERROR = { error: 'Shared encodes are managed automatically' };
 const RESERVED_APP_ERROR = 'the internal app is reserved for shared encodes';
 
-function parseTranslation(body: unknown): TranslationInput | null | undefined | { error: string } {
-    const raw = (body as Record<string, unknown> | null | undefined)?.translation;
-    if (raw === undefined) return undefined;
-    if (raw === null || raw === false) return null;
-    if (typeof raw !== 'object') return { error: 'translation must be an object or null' };
-    const value = raw as Record<string, unknown>;
-    const translatorStreamKey = (value.translatorStreamKey as string | undefined)?.trim();
-    if (!translatorStreamKey) {
-        return { error: 'translation translatorStreamKey is required' };
-    }
-    // undefined = field omitted (the db fills its default); a string = error text.
-    const numeric = (key: string, min: number, max: number): number | string | undefined => {
-        if (value[key] === undefined) return undefined;
-        const n = Number(value[key]);
-        return Number.isFinite(n) && n >= min && n <= max ? n : `${key} is invalid`;
-    };
-    const sourceTrackIndex = numeric('sourceTrackIndex', 0, 49);
-    const translatorTrackIndex = numeric('translatorTrackIndex', 0, 49);
-    const delay = numeric('translationDelayMs', 0, 5000);
-    const thresholdDb = numeric('voiceThresholdDb', -100, 0);
-    const duckVolumeDb = numeric('duckVolumeDb', MIN_VOLUME_DB, 0);
-    const duckDurationMs = numeric('duckDurationMs', 0, 30000);
-    const restoreSilenceMs = numeric('restoreSilenceMs', 0, 30000);
-    const restoreVolumeDb = numeric('restoreVolumeDb', MIN_VOLUME_DB, 0);
-    const restoreDurationMs = numeric('restoreDurationMs', 0, 30000);
-    if (typeof sourceTrackIndex === 'string') return { error: sourceTrackIndex };
-    if (typeof translatorTrackIndex === 'string') return { error: translatorTrackIndex };
-    if (typeof delay === 'string') return { error: delay };
-    if (typeof thresholdDb === 'string') return { error: thresholdDb };
-    if (typeof duckVolumeDb === 'string') return { error: duckVolumeDb };
-    if (typeof duckDurationMs === 'string') return { error: duckDurationMs };
-    if (typeof restoreSilenceMs === 'string') return { error: restoreSilenceMs };
-    if (typeof restoreVolumeDb === 'string') return { error: restoreVolumeDb };
-    if (typeof restoreDurationMs === 'string') return { error: restoreDurationMs };
-    return {
-        translatorStreamKey,
-        ...(value.sourceTrackIndex === undefined ? {} : { sourceTrackIndex }),
-        ...(value.translatorTrackIndex === undefined ? {} : { translatorTrackIndex }),
-        ...(value.translationDelayMs === undefined ? {} : { translationDelayMs: delay }),
-        ...(value.voiceThresholdDb === undefined ? {} : { voiceThresholdDb: thresholdDb }),
-        ...(value.duckVolumeDb === undefined ? {} : { duckVolumeDb }),
-        ...(value.duckDurationMs === undefined ? {} : { duckDurationMs }),
-        ...(value.restoreSilenceMs === undefined ? {} : { restoreSilenceMs }),
-        ...(value.restoreVolumeDb === undefined ? {} : { restoreVolumeDb }),
-        ...(value.restoreDurationMs === undefined ? {} : { restoreDurationMs }),
-    };
-}
-
 export function registerOutputApi(app: Express, db: Db, outputService: OutputService): void {
     app.post('/api/pipelines/:pipelineId/outputs', async (req, res) => {
         const pipelineId = parseInt(req.params.pipelineId);
         if (isNaN(pipelineId)) return res.status(400).json({ error: 'invalid pipelineId' });
-        const ownPipeline = db.getPipeline(pipelineId);
-        if (!ownPipeline) return res.status(404).json({ error: 'Pipeline not found' });
+        if (!db.getPipeline(pipelineId))
+            return res.status(404).json({ error: 'Pipeline not found' });
 
         const parsedName = parseName(req.body?.name);
         const name = 'name' in parsedName ? parsedName.name : '';
@@ -109,26 +55,6 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         }
         const blockedReason = await checkOutputDestination(parsed.url);
         if (blockedReason) return res.status(400).json({ error: blockedReason });
-        const translation = parseTranslation(req.body);
-        if (translation && 'error' in translation) return res.status(400).json(translation);
-        if (translation && !db.getPipelineByStreamKey(translation.translatorStreamKey)) {
-            return res.status(400).json({ error: 'translation translator pipeline not found' });
-        }
-        if (translation && translation.translatorStreamKey === ownPipeline.streamKey) {
-            return res
-                .status(400)
-                .json({ error: 'translation translator must be another pipeline' });
-        }
-        if (isTranslationAudio(parsed.audioEncoding) && !translation) {
-            return res
-                .status(400)
-                .json({ error: 'translation audio requires translation settings' });
-        }
-        if (!isTranslationAudio(parsed.audioEncoding) && translation) {
-            return res
-                .status(400)
-                .json({ error: 'translation settings require translation audio' });
-        }
 
         let output: ReturnType<Db['createOutput']>;
         try {
@@ -138,7 +64,6 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
                 videoEncoding,
                 url: parsed.url,
                 audioEncoding: parsed.audioEncoding,
-                translation,
             });
         } catch (error) {
             console.error('[outputs] failed to create output:', error);
@@ -294,34 +219,6 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         }
         const blockedReason = await checkOutputDestination(parsed.url);
         if (blockedReason) return res.status(400).json({ error: blockedReason });
-        const parsedTranslation = parseTranslation(req.body);
-        if (parsedTranslation && 'error' in parsedTranslation)
-            return res.status(400).json(parsedTranslation);
-        // Preserve an existing translation when an older client omits the
-        // optional field, but always clear it when switching to normal audio.
-        const translation =
-            parsedTranslation === undefined && isTranslationAudio(parsed.audioEncoding)
-                ? output.translation
-                : parsedTranslation;
-        const ownPipeline = db.getPipeline(output.pipelineId);
-        if (translation && !db.getPipelineByStreamKey(translation.translatorStreamKey)) {
-            return res.status(400).json({ error: 'translation translator pipeline not found' });
-        }
-        if (translation && translation.translatorStreamKey === ownPipeline?.streamKey) {
-            return res
-                .status(400)
-                .json({ error: 'translation translator must be another pipeline' });
-        }
-        if (isTranslationAudio(parsed.audioEncoding) && !translation) {
-            return res
-                .status(400)
-                .json({ error: 'translation audio requires translation settings' });
-        }
-        if (!isTranslationAudio(parsed.audioEncoding) && translation) {
-            return res
-                .status(400)
-                .json({ error: 'translation settings require translation audio' });
-        }
 
         let updated: ReturnType<Db['updateOutput']>;
         try {
@@ -330,7 +227,6 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
                 videoEncoding,
                 url: parsed.url,
                 audioEncoding: parsed.audioEncoding,
-                translation,
             });
         } catch (error) {
             console.error('[outputs] failed to update output:', error);
@@ -431,13 +327,6 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         const output = db.getOutput(outId);
         if (!output || output.pipelineId !== parseInt(pipelineId)) {
             return res.status(404).json({ error: 'Output not found' });
-        }
-        // Translation outputs are published by the translation mixer, which has its
-        // own restart logic; this service has no process to restart for them.
-        if (isTranslationAudio(output.audioEncoding)) {
-            return res
-                .status(409)
-                .json({ error: 'Translation outputs are restarted by the translation mixer' });
         }
         if (outputService.getStats(outId).status !== 'running') {
             return res.status(409).json({ error: 'Output is not running' });

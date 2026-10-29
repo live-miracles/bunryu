@@ -14,9 +14,8 @@ The app runs these recovery loops:
 | Health poll / input recovery | SRS reachability, live pipeline inputs, desired running outputs | When SRS and the pipeline input become ready, outputs whose desired state is `running` are started or restarted with staggered timing | Computed once every 5s and shared by dashboard clients. Inputs become live from SRS publisher presence; ffprobe fills in media/track metadata and retries every `FFPROBE_FAILED_REFRESH_MS` until it succeeds, then stops for that publisher. |
 | Output progress watchdog | Every running FFmpeg output process | After warmup, if the input is ready but FFmpeg `total_size` / `out_time_ms` stop advancing for the configured stall window | Protocol-agnostic backstop; covers SRT outputs and local RTMP relays |
 | Remote RTMP socket watchdog | Running outputs with a remote RTMP/RTMPS destination | After socket warmup and grace, if the destination socket is missing or remains in a closing state such as `CLOSE-WAIT` | Uses one `ss -H -tanp` snapshot per watchdog interval; a local RTMP/RTMPS destination is ignored because local input/output sockets are ambiguous. A missing socket on an output that has written nothing yet is reported as "No input data" instead (see below) |
-| Output memory watchdog | Every running FFmpeg output process, including translation mixers (checked every 5 s; a mixer over its limit is restarted with a `translation-mixer-restart` event, reason `memory limit exceeded`) | After warmup, if process RSS crosses `memory_limit_mb` (or its per-encoding override) | Reads `/proc/<pid>/status`; unconditional — a leaking process can still show advancing `total_size`/healthy sockets, so this doesn't wait on the other two. Once RSS crosses 70% of the limit the output surfaces a yellow "High memory usage" warning in the dashboard, before the watchdog actually restarts it at 100%. The limit is doubled for outputs on a 4K (≥3840px on either dimension) input — the 2x multiplier was checked against measured 4K baselines (RSS: copy with AAC audio 56 MB and 129 MB at start, `vertical_rotate` 472 MB, `720p` 608 MB, `1080p` 940 MB), so the doubled limits sit about 3x above copy and 1.9–2.1x above the encodes |
+| Output memory watchdog | Every running FFmpeg output process | After warmup, if process RSS crosses `memory_limit_mb` (or its per-encoding override) | Reads `/proc/<pid>/status`; unconditional — a leaking process can still show advancing `total_size`/healthy sockets, so this doesn't wait on the other two. Once RSS crosses 70% of the limit the output surfaces a yellow "High memory usage" warning in the dashboard, before the watchdog actually restarts it at 100%. The limit is doubled for outputs on a 4K (≥3840px on either dimension) input — the 2x multiplier was checked against measured 4K baselines (RSS: copy with AAC audio 56 MB and 129 MB at start, `vertical_rotate` 472 MB, `720p` 608 MB, `1080p` 940 MB), so the doubled limits sit about 3x above copy and 1.9–2.1x above the encodes |
 | Shared encode reconciler | One row per recipe (video encoding + single audio selection) that at least two outputs of a pipeline are configured with | Every second: creates missing rows, removes rows no output uses, starts a shared encode with its first running output, stops it 15 s after the last one | See [Shared encodes](#shared-encodes) below. Start is only requested on the stopped-to-running edge, so it never resets the output's retry back-off; a failing start is retried at most every 30 s |
-| Translator audio meter watchdog | Running translation-mixer outputs | After the same startup warmup grace as the output progress watchdog, if the translator audio meter has gone quiet for `translator_meter_stale_ms` (including a translator that never delivered a single sample) | Watches independently of the SRS live-state poll, so a translator that connects but sends a dead/silent track is still caught. Valid translator silence is not treated as a disconnect — FFmpeg continues emitting silent meter samples in that case — so this only fires when the meter itself stops updating. Restarts the mixer so it attaches to the current translator session. |
 
 All output watchdogs above use the same restart path: they write a detailed
 `last_error`, kill the stuck FFmpeg process, and let the normal retry loop start a
@@ -138,9 +137,9 @@ so it is fixed or restored before the next start. Any other read error (an I/O e
 not treated that way: the process crashes and is restarted after 2 s like any crash.
 
 **FFmpeg build check.** At startup the app runs the configured `ffmpeg` with
-`-protocols`, `-encoders` and `-filters`, and `ffprobe -version`, and checks for
-everything it uses: RTMP, RTMPS and SRT for both input and output, the `aac` and
-`libx264` encoders, and the `amix` and `azmq` filters (translation mixing). The result
+`-protocols` and `-encoders`, and `ffprobe -version`, and checks for everything
+it uses: RTMP, RTMPS and SRT for both input and output, and the `aac` and
+`libx264` encoders. The result
 goes to the journal and to diagnostics as `ffmpeg-check`, with the version and what is
 missing. Unlike a schema mismatch this is not fatal: ingest, the dashboard and every
 output that does not need the missing piece keep working. Without the check, a missing
@@ -313,8 +312,7 @@ A crash that repeats with the same first and last line (numbers blanked) is not 
 record but a count on the last one, so one failure that repeats for an hour takes one
 of the 10 slots, not all of them. When an output with a current crash has run for 60 s
 (the same limit that ends a failed-attempt streak) and is writing data, the watchdog
-tick marks that crash recovered (for outputs run by the translation mixer too, from
-the status and progress it reports) and logs an `output-recovered` event; the crash stops
+tick marks that crash recovered and logs an `output-recovered` event; the crash stops
 being the current error, and a later crash of the same kind is a new record.
 
 The warnings that otherwise only show on the output card are recorded the same way,

@@ -22,7 +22,6 @@ import {
     openAddOutput,
     submitOutputForm,
     onOutServerChange,
-    onTranslationPipelineChange,
     onSinkKeyPaste,
     copyOutput,
     pasteOutputIntoForm,
@@ -61,7 +60,6 @@ declare global {
         outputsStopAllBtn: () => Promise<void>;
         outFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         outServerChange: (select: HTMLSelectElement) => void;
-        onTranslationPipelineChange: (select: HTMLSelectElement) => void;
         srtModeChange: () => void;
         onSinkKeyPaste: (event: ClipboardEvent) => void;
         outCopyBtn: () => Promise<void>;
@@ -184,7 +182,6 @@ window.outputsStopAllBtn = async () => {
 
 window.outFormBtn = (btn) => submitOutputForm(btn);
 window.outServerChange = (select) => onOutServerChange(select);
-window.onTranslationPipelineChange = (select) => onTranslationPipelineChange(select);
 window.srtModeChange = () => syncSrtHostVisibility();
 window.onSinkKeyPaste = (event) => onSinkKeyPaste(event);
 window.outCopyBtn = () => copyOutput();

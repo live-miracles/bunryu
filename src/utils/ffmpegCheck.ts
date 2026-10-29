@@ -3,12 +3,11 @@ import { ffmpegEnv } from './ffmpeg.js';
 
 const CHECK_TIMEOUT_MS = 10_000;
 
-// What the outputs, previews and translation mixer need from the ffmpeg build.
+// What the outputs and previews need from the ffmpeg build.
 // A build without one of them still starts, so without this check the gap shows
 // up only as every output of that kind failing.
 const REQUIRED_PROTOCOLS = ['rtmp', 'rtmps', 'srt'];
 const REQUIRED_ENCODERS = ['aac', 'libx264'];
-const REQUIRED_FILTERS = ['azmq', 'amix'];
 
 export interface FfmpegCheckResult {
     ok: boolean;
@@ -32,8 +31,7 @@ export function parseProtocols(text: string): { input: Set<string>; output: Set<
     return { input, output };
 }
 
-// `ffmpeg -encoders` / `-filters`: " V....D libx264  ..." / " ..C amix  N->A ...";
-// the name is the second column. Legend lines ("V..... = Video") are skipped.
+// `ffmpeg -encoders`: " V....D libx264  ..."; the name is the second column. Legend lines ("V..... = Video") are skipped.
 export function parseNames(text: string): Set<string> {
     const names = new Set<string>();
     for (const line of text.split('\n')) {
@@ -45,11 +43,7 @@ export function parseNames(text: string): Set<string> {
     return names;
 }
 
-export function missingFeatures(listings: {
-    protocols: string;
-    encoders: string;
-    filters: string;
-}): string[] {
+export function missingFeatures(listings: { protocols: string; encoders: string }): string[] {
     const missing: string[] = [];
     const protocols = parseProtocols(listings.protocols);
     for (const name of REQUIRED_PROTOCOLS) {
@@ -59,10 +53,6 @@ export function missingFeatures(listings: {
     const encoders = parseNames(listings.encoders);
     for (const name of REQUIRED_ENCODERS) {
         if (!encoders.has(name)) missing.push(`${name} encoder`);
-    }
-    const filters = parseNames(listings.filters);
-    for (const name of REQUIRED_FILTERS) {
-        if (!filters.has(name)) missing.push(`${name} filter`);
     }
     return missing;
 }
@@ -89,12 +79,11 @@ export async function checkFfmpeg(
     try {
         const versionOut = await run(ffmpegPath, ['-hide_banner', '-version']);
         version = /^ffmpeg version (\S+)/.exec(versionOut)?.[1] ?? null;
-        const [protocols, encoders, filters] = await Promise.all([
+        const [protocols, encoders] = await Promise.all([
             run(ffmpegPath, ['-hide_banner', '-protocols']),
             run(ffmpegPath, ['-hide_banner', '-encoders']),
-            run(ffmpegPath, ['-hide_banner', '-filters']),
         ]);
-        missing = missingFeatures({ protocols, encoders, filters });
+        missing = missingFeatures({ protocols, encoders });
     } catch (err) {
         const error = `ffmpeg (${ffmpegPath}) did not run: ${err instanceof Error ? err.message : String(err)}`;
         return { ok: false, version, missing: [], error };

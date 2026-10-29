@@ -11,8 +11,8 @@ RUN apt-get update -q \
     && apt-get install -y -q --no-install-recommends python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
-# No dependency lifecycle scripts: only the two native modules are built.
-RUN npm ci --ignore-scripts && npm rebuild better-sqlite3 zeromq
+# No dependency lifecycle scripts: only the native module is built.
+RUN npm ci --ignore-scripts && npm rebuild better-sqlite3
 COPY . .
 RUN npm run build && npm prune --omit=dev
 

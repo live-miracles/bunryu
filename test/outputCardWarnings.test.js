@@ -17,7 +17,6 @@ const output = (over) => ({
     hasErrorHistory: false,
     warningReason: null,
     startedAtMs: null,
-    translation: null,
     url: 'rtmp://a.example/live/key',
     ...over,
 });

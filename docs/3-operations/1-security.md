@@ -31,8 +31,8 @@ Hardening that is on by default:
   destination URLs, stream keys and SRT passphrases. They are private to the
   server and its operators; redact before copying any of it into a commit or
   issue.
-- **FFmpeg gets a minimal environment:** output, preview, translation-mixer and
-  probe processes receive only `PATH`, `LANG`, `LC_ALL`, `TZ`, `SSL_CERT_FILE`,
+- **FFmpeg gets a minimal environment:** output, preview and probe
+  processes receive only `PATH`, `LANG`, `LC_ALL`, `TZ`, `SSL_CERT_FILE`,
   `SSL_CERT_DIR` and `LD_LIBRARY_PATH`. The app's own variables, such as
   `BUNRYU_DASHBOARD_PASSWORD`, stay out of the `/proc/<pid>/environ` of every
   FFmpeg process.

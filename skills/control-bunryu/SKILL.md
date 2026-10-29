@@ -95,8 +95,7 @@ Output fields: `videoEncoding` is `copy` (default, almost always right) or one o
 the encodings in `/api/config` `.encodings`; `audioEncoding` is `copy`, a track
 number such as `1`, or a list such as `0,1` (SRT destinations only). For an RTMP
 destination fed by an SRT input, pick a track instead of `copy`. See
-[Outputs](../../docs/2-usage/2-outputs.md). Translation outputs need a
-`translation` object, see the [API reference](../../docs/4-reference/1-api.md).
+[Outputs](../../docs/2-usage/2-outputs.md).
 
 After a change that starts something, confirm it: poll `/api/health` every few
 seconds until the output is `running` (or `failed`, then read its errors) instead

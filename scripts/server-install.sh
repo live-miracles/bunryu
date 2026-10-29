@@ -268,10 +268,10 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR" "$DATA_DIR/objs" "$CONF_DIR"
 
 step "7/9 Application"
 cd "$APP_DIR"
-# No dependency lifecycle scripts run as root: only the two native modules the
-# app needs are built, explicitly.
+# No dependency lifecycle scripts run as root: only the native module the app
+# needs is built, explicitly.
 npm ci --ignore-scripts
-npm rebuild better-sqlite3 zeromq
+npm rebuild better-sqlite3
 npm run build
 npm prune --omit=dev
 chown -R root:root "$APP_DIR"

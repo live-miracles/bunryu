@@ -35,7 +35,6 @@ import { EXIT_NEEDS_OPERATOR } from './utils/configCheck.js';
 import { createDiagnosticsLogger, runLogged } from './utils/diagnostics.js';
 import { checkFfmpeg } from './utils/ffmpegCheck.js';
 import { jsonErrorHandler } from './api/errors.js';
-import { createTranslationMixerService } from './services/translationMixer.js';
 import { createRenditionReconciler } from './services/renditions.js';
 import { enforceDestinationPolicy } from './services/destinationPolicy.js';
 import { readSrsConfigValues } from './utils/srsConfig.js';
@@ -125,12 +124,6 @@ const rejectedPublishes = createRejectedPublishes();
 const outputService = createOutputService(db, inputState, diagnostics);
 const srtRelayService = createSrtRelayService(diagnostics);
 const previewService = createPreviewService(db, inputState);
-const translationMixerService = createTranslationMixerService(
-    db,
-    inputState,
-    outputService,
-    diagnostics,
-);
 const renditionReconciler = createRenditionReconciler(db, outputService, diagnostics);
 const healthService = createHealthService(
     db,
@@ -138,7 +131,6 @@ const healthService = createHealthService(
     srtRelayService,
     inputState,
     diagnostics,
-    translationMixerService,
     getProcessUsage,
 );
 
@@ -266,7 +258,6 @@ async function main(): Promise<void> {
     warnOnWeakSrtPassphrase();
     void reportFfmpegCheck();
     srtRelayService.start();
-    translationMixerService.start();
     renditionReconciler.start();
     healthService.start();
 
@@ -308,7 +299,6 @@ function shutdown(signal: string): void {
         runLogged(`shutdown-${name}`, fn, diagnostics);
     step('renditions', () => renditionReconciler.shutdown());
     const killedOutputIds = step('outputs', () => outputService.shutdown()) ?? [];
-    step('translation', () => translationMixerService.shutdown());
     step('health', () => healthService.shutdown());
     step('relay', () => srtRelayService.shutdown());
     step('preview', () => previewService.shutdown());

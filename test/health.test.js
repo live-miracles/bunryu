@@ -1581,7 +1581,6 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                         videoEncoding: 'copy',
                         url: 'rtmp://dest.example/live/k',
                         audioEncoding: 'copy',
-                        translation: null,
                         lastError: null,
                         hasErrorHistory: false,
                     },
@@ -2536,7 +2535,6 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             makeFakeSrtRelay(),
             makeFakeInputState(),
             diagnostics,
-            undefined,
             () => ({
                 node: { cpuPercent: 4, ramBytes: 1 },
                 srs: { cpuPercent: 31.5, ramBytes: 1 },
@@ -2675,7 +2673,6 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             makeFakeSrtRelay(),
             makeFakeInputState(),
             diagnostics,
-            undefined,
             () => ({
                 node: { cpuPercent: 7, ramBytes: 1 }, // node RSS is read fresh, not from here
                 srs: { cpuPercent: 12, ramBytes: 48 * MB },
@@ -2881,7 +2878,6 @@ describe('shared encodes (renditions) in the health snapshot', () => {
         videoEncoding: 'copy',
         url: 'rtmp://dest.example/live/k',
         audioEncoding: 'copy',
-        translation: null,
         lastError: null,
         hasErrorHistory: false,
         ...overrides,

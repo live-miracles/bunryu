@@ -26,7 +26,6 @@ _The preview plays Hokusai's The Great Wave (public domain, [The Met Open Access
 - [Ingest](docs/2-usage/1-publishing.md) over RTMP, SRT and bonded SRT, with stream-key authorization and passphrase-protected SRT.
 - [Forward](docs/2-usage/2-outputs.md) each input to many RTMP, RTMPS or SRT destinations: no fixed limit, tested with 50 inputs and 500 outputs per server. Copy-mode (passthrough) outputs cost almost no CPU.
 - [Transcode](docs/2-usage/2-outputs.md#video-encoding) a few outputs to 720p, 1080p or a rotated vertical feed for Shorts/Reels, and [select audio tracks](docs/2-usage/2-outputs.md#audio) per output, including multi-track SRT outputs. Outputs that need the same encode [share one FFmpeg](docs/2-usage/2-outputs.md#shared-encodes), so ten 720p outputs cost one encode, not ten.
-- [Mix translation audio](docs/2-usage/3-translation.md) (beta) from an interpreter's pipeline over the source, with speech detection, ducking, delay and restore timing. If the translator drops, the output continues with source audio.
 - Watch everything in a live dashboard: HLS preview, ffprobe media details, bitrates, host and per-process CPU/RAM/network charts, and copy-ready publish URLs, and it stays readable with 50 inputs and 500 outputs ([measured](docs/1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling)).
 - Stay reliable through long events: [watchdogs, isolated outputs, safe restarts and post-incident evidence](#built-for-reliability).
 
@@ -77,7 +76,7 @@ The installer needs the initial dashboard password on a fresh install and never 
 ## Documentation
 
 - **Getting started:** [Introduction](docs/1-getting-started/1-introduction.md) · [Docker](docs/1-getting-started/2-docker.md) · [Native install](docs/1-getting-started/3-install.md) · [Comparison with alternatives](docs/1-getting-started/5-comparison.md)
-- **Usage:** [Publishing](docs/2-usage/1-publishing.md) · [Outputs](docs/2-usage/2-outputs.md) · [Translation outputs](docs/2-usage/3-translation.md) (beta)
+- **Usage:** [Publishing](docs/2-usage/1-publishing.md) · [Outputs](docs/2-usage/2-outputs.md)
 - **Operations:** [Security](docs/3-operations/1-security.md) · [Remote access](docs/3-operations/2-remote-access.md) · [Configuration](docs/3-operations/3-configuration.md) · [Reliability](docs/3-operations/4-reliability.md) · [Known issues](docs/3-operations/5-known-issues.md)
 - **Reference:** [REST API](docs/4-reference/1-api.md) · [Development](docs/4-reference/2-development.md)
 

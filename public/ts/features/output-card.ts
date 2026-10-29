@@ -73,17 +73,6 @@ function outputEncodingWarnings(output: OutputView, input: InputHealth): string[
             'SRT-to-RTMP output should not use copy audio — it can cause audio jitter; select a track instead.',
         );
     }
-    if (output.audioEncoding === 'translation' && output.translation) {
-        if (!input.isSrt) {
-            warnings.push('Translation source is RTMP — use SRT for fixed, predictable latency.');
-        }
-        const translatorPipeline = state.pipelines.find(
-            (p) => p.streamKey === output.translation!.translatorStreamKey,
-        );
-        if (translatorPipeline?.input.connected && !translatorPipeline.input.isSrt) {
-            warnings.push('Translator input is RTMP — use SRT for fixed, predictable latency.');
-        }
-    }
     if (input.isSrt && input.audioTracks.length > 0) {
         const outOfRange = output.audioEncoding
             .split(',')
@@ -181,7 +170,6 @@ export function renderOutputCard(
     deps: OutputCardDeps,
 ): string {
     const isStopped = output.desiredState === 'stopped';
-    const isRunning = output.status === 'running';
     const status = deps.outStatus(output, input);
     const statusHex =
         status === 'good'
@@ -199,26 +187,12 @@ export function renderOutputCard(
         );
     }
     if (output.audioEncoding !== 'copy') {
-        const label =
-            output.audioEncoding === 'translation'
-                ? 'translation'
-                : output.audioEncoding
-                      .split(',')
-                      .map((track) => `T${parseInt(track) + 1}`)
-                      .join('+');
+        const label = output.audioEncoding
+            .split(',')
+            .map((track) => `T${parseInt(track) + 1}`)
+            .join('+');
         badges.push(
             `<span class="badge badge-xs badge-accent badge-soft whitespace-nowrap">${label}</span>`,
-        );
-    }
-    if (isRunning && output.translationHealth) {
-        const th = output.translationHealth;
-        const duckCls = th.duckState === 'ducked' ? 'badge-warning' : 'badge-success';
-        const meterLabel =
-            th.lastTranslatorMeterDb !== null && Number.isFinite(th.lastTranslatorMeterDb)
-                ? `${th.lastTranslatorMeterDb.toFixed(1)}dB`
-                : 'n/a';
-        badges.push(
-            `<span class="badge badge-xs ${duckCls} badge-soft whitespace-nowrap" title="Source volume — ${th.duckState}, translator meter ${meterLabel}">vol ${th.sourceVolumePercent}%</span>`,
         );
     }
     if (uptimeMs !== null) {

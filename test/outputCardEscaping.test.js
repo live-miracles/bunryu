@@ -18,7 +18,6 @@ const output = (url) => ({
     hasErrorHistory: false,
     warningReason: null,
     startedAtMs: null,
-    translation: null,
     url,
 });
 const input = { connected: false, isSrt: false, audioTracks: [] };

@@ -183,161 +183,11 @@ export function buildFfmpegArgs(
     return args;
 }
 
-export interface TranslationMixerConfig {
-    videoEncoding: string;
-    // Which audio track of each input to use in the mix. Both default to 0
-    // (the input's first track) when omitted.
-    sourceTrackIndex?: number;
-    translatorTrackIndex?: number;
-    translationDelayMs: number;
-    voiceThresholdDb: number;
-    controlPort: number;
-    duckVolumeDb: number;
-    duckDurationMs: number;
-    restoreSilenceMs: number;
-    restoreVolumeDb: number;
-    restoreDurationMs: number;
-}
-
-// Source-volume settings are in dB relative to the source (0 dB = unchanged,
-// never a boost). At or below MIN_VOLUME_DB the source is muted outright
-// instead of left at a barely audible 0.001. A missing or NaN value leaves the
-// source untouched: a silent program is worse than one that is not ducked.
-export const MIN_VOLUME_DB = -60;
-
-export function dbToAmplitude(volumeDb: number): number {
-    if (typeof volumeDb !== 'number' || Number.isNaN(volumeDb)) return 1;
-    if (volumeDb <= MIN_VOLUME_DB) return 0;
-    return 10 ** (Math.min(0, volumeDb) / 20);
-}
-
-// Build one upstream program stream for a translation mix. The source input
-// owns the video; the translator input contributes audio only (see below for
-// why the translator is input 0 and the source input 1). The translator
-// is split so its immediate copy drives the sidechain while its audible copy
-// is delayed to compensate for the translator's lead/arrival timing.
-export function buildTranslationMixerArgs(
-    sourceInputUrl: string,
-    translatorInputUrl: string | null,
-    outputUrl: string,
-    config: TranslationMixerConfig,
-): string[] {
-    const common = [
-        '-nostats',
-        '-loglevel',
-        'warning',
-        '-stats_period',
-        '3',
-        '-fflags',
-        '+discardcorrupt',
-        '-err_detect',
-        'crccheck+bitstream',
-        '-rw_timeout',
-        String(INPUT_TIMEOUT_US),
-    ];
-    const args = [...common];
-    const videoArgs = (ENCODINGS[config.videoEncoding] ?? ENCODINGS.copy).args;
-    const formatArgs = outputUrl.startsWith('srt://') ? ['-f', 'mpegts'] : ['-f', 'flv'];
-    const sourceTrackIndex = config.sourceTrackIndex ?? 0;
-    const translatorTrackIndex = config.translatorTrackIndex ?? 0;
-
-    if (!translatorInputUrl) {
-        if (sourceInputUrl.startsWith('srt://')) args.push('-readrate', '1');
-        args.push('-i', sourceInputUrl);
-        args.push(
-            '-map',
-            '0:v:0?',
-            '-map',
-            `0:a:${sourceTrackIndex}?`,
-            ...videoArgs,
-            '-c:a',
-            'aac',
-            '-b:a',
-            '128k',
-            '-ar',
-            '48000',
-            '-ac',
-            '2',
-            '-progress',
-            'pipe:1',
-            ...formatArgs,
-            ...outputTimeoutArgs(outputUrl),
-            outputUrl,
-        );
-        return args;
-    }
-
-    // Input order is load-bearing for A/V sync. FFmpeg opens inputs one after
-    // another and starts each input's timeline at its own first packet, so
-    // whatever time the first-opened input spends probing (analyzeduration
-    // defaults to 5 s) becomes a fixed offset between the two legs. With the
-    // source first, the source ended up ~2 s (RTMP) to ~6 s (SRT) behind the
-    // translation. The translator is therefore opened first (input 0) with a
-    // short probe — it is our own audio-only pull, so 0.5 s is plenty — and
-    // the source (input 1) keeps FFmpeg's default probe so its video codec
-    // parameters are still found reliably. Measured residual over SRT: ~0 s
-    // (up to ~0.7 s translator-behind if the translator also carries video).
-    // Over RTMP, SRS's GOP cache starts the source up to one GOP in the past,
-    // so an RTMP source can still trail the translation by up to its keyframe
-    // interval; this ordering cannot remove that.
-    if (translatorInputUrl.startsWith('srt://')) args.push('-readrate', '1');
-    args.push('-analyzeduration', '500000', '-probesize', '500000', '-i', translatorInputUrl);
-    if (sourceInputUrl.startsWith('srt://')) args.push('-readrate', '1');
-    args.push('-i', sourceInputUrl);
-    const delay = Math.max(0, Math.round(config.translationDelayMs));
-    args.push(
-        '-filter_complex',
-        `[1:a:${sourceTrackIndex}]aresample=48000:async=1:first_pts=0[source];` +
-            `[source]volume@source_gain=1,azmq=bind_address=tcp\\\\://127.0.0.1\\\\:${config.controlPort}[source_controlled];` +
-            `[0:a:${translatorTrackIndex}]aresample=48000:async=1:first_pts=0,asplit=2[translator_audio][translator_meter];` +
-            `[translator_audio]adelay=${delay}:all=1[translator_delayed];` +
-            // astats' `reset` is a frame count, not seconds — 0 (or a value
-            // that rounds/truncates to it) disables periodic reset entirely,
-            // making Overall.Peak_level a cumulative high-water mark for the
-            // whole stream instead of a live reading. That silently wedges
-            // voice detection: once the translator has ever spoken, the
-            // reported peak never comes back down on its own, so the source
-            // stays ducked/low even through real silence until the mixer is
-            // restarted. reset=1 recomputes every frame (~20ms at 48kHz),
-            // giving a genuinely live reading.
-            `[translator_meter]astats=metadata=1:reset=1,ametadata=mode=print:file=pipe\\\\:3,anullsink;` +
-            `[source_controlled][translator_delayed]amix=inputs=2:duration=longest:dropout_transition=0.2[mixed_audio]`,
-        '-map',
-        '1:v:0?',
-        '-map',
-        '[mixed_audio]',
-        ...videoArgs,
-        '-c:a',
-        'aac',
-        '-b:a',
-        '128k',
-        '-ar',
-        '48000',
-        '-ac',
-        '2',
-        '-progress',
-        'pipe:1',
-        ...formatArgs,
-        ...outputTimeoutArgs(outputUrl),
-        outputUrl,
-    );
-    return args;
-}
-
 export function validateOutputUrl(url: string): boolean {
     return (
         isCleanUrlText(url) &&
         (url.startsWith('rtmp://') || url.startsWith('rtmps://') || url.startsWith('srt://'))
     );
-}
-
-const TRANSLATION_AUDIO = 'translation';
-
-// A translation output is published by the translation mixer (its own ffmpeg),
-// never by the output service, so every output-service entry point that would
-// spawn or restart a process must skip it. Check through this, not the string.
-export function isTranslationAudio(audioEncoding: string): boolean {
-    return audioEncoding === TRANSLATION_AUDIO;
 }
 
 export function validateAudioEncoding(value: unknown): string | null {
@@ -346,7 +196,6 @@ export function validateAudioEncoding(value: unknown): string | null {
     // by a raw API call and silently reinterpret them as 'copy' rather than
     // rejecting them.
     if (value === undefined || value === null || value === '' || value === 'copy') return 'copy';
-    if (value === TRANSLATION_AUDIO) return TRANSLATION_AUDIO;
     if (typeof value !== 'string') return null;
     const parts = value.split(',').map((s) => s.trim());
     if (parts.length > MAX_AUDIO_TRACKS) return null;

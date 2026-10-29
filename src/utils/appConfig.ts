@@ -30,10 +30,6 @@ export interface OutputWatchdogConfig {
     socketGraceMs: number;
     memoryLimitMb: number;
     memoryLimitMbByEncoding: Record<string, number>;
-    // How long a translation-mixer output's translator audio meter can go
-    // quiet (including never having produced a single sample) before the
-    // mixer is restarted. See src/services/translationMixer.ts.
-    translatorMeterStaleMs: number;
 }
 
 interface RawAppConfig {
@@ -77,7 +73,6 @@ const DEFAULT_WATCHDOG_CONFIG: OutputWatchdogConfig = {
         '720p': 650,
         '1080p': 950,
     },
-    translatorMeterStaleMs: 10_000,
 };
 const DEFAULT_RAW_CONFIG = {
     port: 8080,
@@ -144,10 +139,6 @@ function readWatchdogConfig(value: unknown): OutputWatchdogConfig {
         socketGraceMs: asPositiveNumber(raw.socket_grace_ms, DEFAULT_WATCHDOG_CONFIG.socketGraceMs),
         memoryLimitMb: asPositiveNumber(raw.memory_limit_mb, DEFAULT_WATCHDOG_CONFIG.memoryLimitMb),
         memoryLimitMbByEncoding: asMemoryLimitMbByEncoding(raw.memory_limit_mb_by_encoding),
-        translatorMeterStaleMs: asPositiveNumber(
-            raw.translator_meter_stale_ms,
-            DEFAULT_WATCHDOG_CONFIG.translatorMeterStaleMs,
-        ),
     };
 }
 
@@ -176,8 +167,6 @@ function resolveCommand(value: string, configDir: string): string {
 // and 1.9-2.1x above the encodes, about the margin of the HD limits above.
 const HIGH_RES_MEMORY_MULTIPLIER = 2;
 
-// Shared by the output service and the translation mixer so both apply the same
-// per-encoding limit.
 export function outputMemoryLimitBytes(
     watchdog: OutputWatchdogConfig,
     videoEncoding: string,

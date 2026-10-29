@@ -18,40 +18,6 @@ export interface PipelineGroup {
     position: number;
 }
 
-export interface TranslationConfig {
-    // The translator pipeline's own stream key, not its id — resolved once at
-    // save time, same as a Restream SRT/RTMP destination stores the resolved
-    // publish URL rather than a live foreign key to the target pipeline. This
-    // means it keeps working if the translator pipeline is deleted and its
-    // stream key slot is reassigned to a new pipeline (see
-    // Db.getPipelineByStreamKey), matching Restream's behavior.
-    translatorStreamKey: string;
-    // Which audio track of the source/translator input to mix. Both default
-    // to 0 (the first track) since most inputs are single-track.
-    sourceTrackIndex: number;
-    translatorTrackIndex: number;
-    translationDelayMs: number;
-    voiceThresholdDb: number;
-    duckVolumeDb: number;
-    duckDurationMs: number;
-    restoreSilenceMs: number;
-    restoreVolumeDb: number;
-    restoreDurationMs: number;
-}
-
-export interface TranslationInput {
-    translatorStreamKey: string;
-    sourceTrackIndex?: number;
-    translatorTrackIndex?: number;
-    translationDelayMs?: number;
-    voiceThresholdDb?: number;
-    duckVolumeDb?: number;
-    duckDurationMs?: number;
-    restoreSilenceMs?: number;
-    restoreVolumeDb?: number;
-    restoreDurationMs?: number;
-}
-
 export interface PipelineLog {
     id: number;
     pipelineId: number;
@@ -101,7 +67,6 @@ export interface Output {
     videoEncoding: string;
     url: string;
     audioEncoding: string;
-    translation: TranslationConfig | null;
     lastError: string | null;
     hasErrorHistory: boolean;
 }
@@ -125,11 +90,6 @@ export interface Db {
 
     createPipeline(): Pipeline;
     getPipeline(id: number): Pipeline | undefined;
-    // Resolves a translator selection back to its owning pipeline. Stream
-    // keys can intentionally be shared by more than one pipeline (see
-    // updatePipeline) — this returns whichever pipeline currently holds the
-    // key, same ambiguity Restream destinations already accept.
-    getPipelineByStreamKey(streamKey: string): Pipeline | undefined;
     listPipelines(): Pipeline[];
     // groupId is tri-state: omitted leaves the pipeline's group untouched,
     // null clears it, a number reassigns it.
@@ -147,7 +107,6 @@ export interface Db {
         videoEncoding?: string;
         url: string;
         audioEncoding?: string;
-        translation?: TranslationInput | null;
     }): Output;
     // All-or-nothing batch create (single transaction, single configRev bump).
     createOutputs(
@@ -175,7 +134,6 @@ export interface Db {
             videoEncoding: string;
             url: string;
             audioEncoding: string;
-            translation?: TranslationInput | null;
         },
     ): Output | null;
     setOutputDesiredState(id: string, desiredState: 'running' | 'stopped'): Output | null;

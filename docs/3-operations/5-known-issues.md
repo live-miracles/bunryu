@@ -1,8 +1,5 @@
 # Known issues
 
-Translation-specific limitations are listed on the
-[Translation outputs](../2-usage/3-translation.md#known-limitations) page.
-
 ## The Overview is one long page
 
 The Overview lists every input and then every output in one scrolling page (about 32

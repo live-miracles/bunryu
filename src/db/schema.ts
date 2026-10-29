@@ -5,7 +5,7 @@ import type Database from 'better-sqlite3';
 // and has to be recreated. Databases from before the stamp existed carry user
 // version 0 and differ from version 2 only by an unused table, so they are
 // accepted and stamped.
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export class DatabaseSchemaError extends Error {}
 
@@ -61,7 +61,6 @@ export function setupDatabaseSchema(db: Database.Database): void {
             url             TEXT NOT NULL DEFAULT '',
             audio_encoding  TEXT NOT NULL DEFAULT 'copy',
             last_error      TEXT,
-            translation_config TEXT,
             FOREIGN KEY(pipeline_id) REFERENCES pipelines(id) ON DELETE CASCADE
         )`,
     ).run();

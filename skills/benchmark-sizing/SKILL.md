@@ -102,6 +102,6 @@ version. Do not commit raw logs with hostnames or zone names.
 
 ## Not measured
 
-Previews, translation mixers, several inputs at once, ingest cost on its own,
+Previews, several inputs at once, ingest cost on its own,
 4K or 60 fps input, real destinations (RTMPS and WAN), and machine families other
 than `n2`.

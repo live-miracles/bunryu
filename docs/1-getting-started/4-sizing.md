@@ -130,7 +130,7 @@ Each table has a search box for names; the page itself is long, see [Known issue
 - **4K:** an audio re-encode output measured 0.17–0.18 vCPU and 56–61 MB, and SRS spent
   about 0.03 vCPU per 20 Mbps reader. The memory watchdog allows twice the RAM for a 4K
   input ([Reliability](../3-operations/4-reliability.md)).
-- **Not measured:** previews and translation mixers.
+- **Not measured:** previews.
 
 Why this is a table and not a calculator in the dashboard:
 [Design decisions](../4-reference/3-design-decisions.md#sizing-guidance-is-a-measured-table-not-a-calculator).

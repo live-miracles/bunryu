@@ -22,7 +22,6 @@ const outputRow = (id, overrides = {}) => ({
     videoEncoding: 'copy',
     url: `rtmp://dest.example/live/${id}`,
     audioEncoding: 'copy',
-    translation: null,
     lastError: null,
     hasErrorHistory: false,
     ...overrides,
@@ -48,7 +47,6 @@ const outputHealth = (overrides = {}) => ({
     memoryUsageBytes: null,
     memoryLimitBytes: null,
     cpuPercent: null,
-    translation: null,
     role: 'output',
     renditionId: null,
     ready: null,
@@ -78,7 +76,6 @@ const FLEET = () => [
         audioEncoding: '0,1',
         url: 'srt://dest.example:9000?mode=caller',
     }),
-    outputRow('1-6', { name: 'Translated', audioEncoding: 'translation' }),
     outputRow('1-7', { name: 'No encode yet', videoEncoding: '1080p', audioEncoding: 'copy' }),
 ];
 
@@ -88,7 +85,7 @@ describe('parsePipelines: shared encodes', () => {
 
         assert.deepEqual(
             p.outs.map((o) => o.id),
-            ['1-1', '1-3', '1-4', '1-5', '1-6', '1-7'],
+            ['1-1', '1-3', '1-4', '1-5', '1-7'],
         );
         assert.deepEqual(
             p.renditions.map((o) => o.id),
@@ -110,7 +107,6 @@ describe('parsePipelines: shared encodes', () => {
         assert.equal(byId['1-4'].sharedEncode.id, '1-2');
         assert.equal(byId['1-1'].sharedEncode, null, 'plain copy');
         assert.equal(byId['1-5'].sharedEncode, null, 'multi-track');
-        assert.equal(byId['1-6'].sharedEncode, null, 'translation');
         assert.equal(byId['1-7'].sharedEncode, null, 'rendition not created yet');
     });
 
@@ -143,7 +139,7 @@ describe('parsePipelines: shared encodes', () => {
 
         assert.deepEqual(
             p.outs.map((o) => o.id),
-            ['1-4', '1-3', '1-1', '1-5', '1-6', '1-7'],
+            ['1-4', '1-3', '1-1', '1-5', '1-7'],
         );
         assert.deepEqual(
             p.renditions.map((o) => o.id),

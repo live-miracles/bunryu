@@ -12,7 +12,6 @@ import {
 } from '../utils/srs.js';
 import { readAppConfig } from '../utils/appConfig.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
-import { isTranslationAudio } from '../utils/ffmpeg.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
@@ -60,7 +59,6 @@ import {
     type ProbeFailure,
     type ProbeResult,
 } from './mediaProbe.js';
-import type { TranslationMixerService, TranslationOutputState } from './translationMixer.js';
 
 export { isProbeUsable };
 
@@ -196,10 +194,6 @@ interface OutputHealth {
     renditionId: string | null;
     ready: boolean | null;
     readers: number | null;
-    // Only present for audioEncoding === 'translation' outputs — null bitrate
-    // above is expected for these until ffmpeg progress arrives, but the duck
-    // state below is what actually answers "why is the source quiet right now".
-    translation: TranslationOutputState | null;
 }
 
 interface PipelineHealth {
@@ -399,7 +393,6 @@ export function createHealthService(
     srtRelayService: SrtRelayService,
     inputState: InputState,
     diagnostics?: DiagnosticsLogger,
-    translationMixerService?: TranslationMixerService,
     getProcessUsage?: ProcessUsageSource,
 ) {
     let snapshot: HealthSnapshot = {
@@ -1456,7 +1449,6 @@ export function createHealthService(
             for (const outId of outputsByPipeline.get(pipeline.id) ?? []) {
                 const stats = outputService.getStats(outId);
                 const outputRow = outputById.get(outId);
-                const isTranslation = !!outputRow && isTranslationAudio(outputRow.audioEncoding);
                 // Internal streams never feed pipeline liveness (that looks up
                 // live/<key> only); they are read here, for a rendition's readers.
                 const isRendition = !!outputRow && isRenditionOutput(outputRow);
@@ -1469,9 +1461,6 @@ export function createHealthService(
                     failures: stats.failures,
                     lastError: lastErrorById.get(outId) ?? null,
                     hasErrorHistory: hasErrorHistoryById.get(outId) ?? false,
-                    translation: isTranslation
-                        ? (translationMixerService?.getState(outId) ?? null)
-                        : null,
                 };
             }
 

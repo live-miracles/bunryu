@@ -93,7 +93,6 @@ describe('outputSeverity', () => {
         lastError: null,
         lastErrorAt: null,
         warningReason: null,
-        translation: null,
         url: 'rtmp://a.example/live/key',
         ...over,
     });

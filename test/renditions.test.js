@@ -91,11 +91,6 @@ describe('encodeRecipe', () => {
         assert.equal(encodeRecipe(out('720p', '0,1', 'srt://h:1?mode=caller')), null);
     });
 
-    test('translation outputs never go through an encode', () => {
-        assert.equal(encodeRecipe(out('copy', 'translation')), null);
-        assert.equal(encodeRecipe(out('720p', 'translation')), null);
-    });
-
     test('a rendition output is not itself a recipe', () => {
         const url = 'rtmp://127.0.0.1:21935/internal/r12_720p_a1';
         assert.equal(encodeRecipe(out('720p', '1', url)), null);
@@ -132,12 +127,11 @@ describe('sharedRecipe (needs two configured outputs with the recipe)', () => {
         assert.equal(sharedRecipe(a, [a, u('720p', 'copy', 2)]), null);
     });
 
-    test('outputs that never share are not counted: plain copy, multi-track, translation, renditions', () => {
+    test('outputs that never share are not counted: plain copy, multi-track, renditions', () => {
         const a = u('copy', '1', 1);
         const others = [
             u('copy', 'copy', 2),
             u('copy', '0,1', 3),
-            u('copy', 'translation', 4),
             out('copy', '1', 'rtmp://127.0.0.1:21935/internal/r12_copy_a1'),
         ];
         assert.equal(sharedRecipe(a, [a, ...others]), null);
@@ -236,7 +230,7 @@ describe('rendition recognition', () => {
 describe('frontend sharedRecipeKey twin', () => {
     test('agrees with the backend encodeRecipe on every combination', () => {
         const videos = [...Object.keys(ENCODINGS), 'bogus'];
-        const audios = ['copy', '0', '1', '12', '0,1', 'translation', '', 'x'];
+        const audios = ['copy', '0', '1', '12', '0,1', '', 'x'];
         const urls = [
             'rtmp://example.com/live/x',
             'srt://h:1?mode=caller',

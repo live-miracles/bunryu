@@ -157,55 +157,22 @@ describe('Outputs API integration', () => {
             assert.equal(harness.db.listOutputsForPipeline(p.id).length, 1);
         });
 
-        test('stores translation source volumes in dB and defaults them when omitted', async () => {
+        test('rejects the removed translation audio encoding, one at a time and in bulk', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
-            const translator = harness.db.createPipeline();
-            const body = (translation) => ({
+            const item = {
                 name: 'T',
                 url: 'rtmp://a.rtmp.youtube.com/live2/key',
                 audioEncoding: 'translation',
-                translation: { translatorStreamKey: translator.streamKey, ...translation },
+            };
+            const single = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, item);
+            assert.equal(single.status, 400);
+            assert.match(single.body.error, /audioEncoding/);
+            const bulk = await harness.request('POST', `/api/pipelines/${p.id}/outputs/bulk`, {
+                outputs: [item],
             });
-
-            const explicit = await harness.request(
-                'POST',
-                `/api/pipelines/${p.id}/outputs`,
-                body({ duckVolumeDb: -30, restoreVolumeDb: -3 }),
-            );
-            assert.equal(explicit.status, 201);
-            assert.equal(explicit.body.translation.duckVolumeDb, -30);
-            assert.equal(explicit.body.translation.restoreVolumeDb, -3);
-
-            const defaults = await harness.request(
-                'POST',
-                `/api/pipelines/${p.id}/outputs`,
-                body({}),
-            );
-            assert.equal(defaults.status, 201);
-            assert.equal(defaults.body.translation.duckVolumeDb, -24);
-            assert.equal(defaults.body.translation.restoreVolumeDb, -6);
-        });
-
-        test('rejects translation source volumes outside -60..0 dB', async () => {
-            const harness = createHarness();
-            const p = harness.db.createPipeline();
-            const translator = harness.db.createPipeline();
-            for (const [field, value] of [
-                ['duckVolumeDb', 6],
-                ['duckVolumeDb', -61],
-                ['restoreVolumeDb', 50],
-                ['restoreVolumeDb', -100],
-            ]) {
-                const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
-                    name: 'T',
-                    url: 'rtmp://a.rtmp.youtube.com/live2/key',
-                    audioEncoding: 'translation',
-                    translation: { translatorStreamKey: translator.streamKey, [field]: value },
-                });
-                assert.equal(res.status, 400, `${field}=${value}`);
-                assert.match(res.body.error, new RegExp(field));
-            }
+            assert.equal(bulk.status, 400);
+            assert.match(bulk.body.error, /audioEncoding/);
             assert.equal(harness.db.listOutputsForPipeline(p.id).length, 0);
         });
 
@@ -744,7 +711,6 @@ describe('Outputs API integration', () => {
                 ['url', { url: 'rtmp://new' }],
                 ['videoEncoding', { videoEncoding: '720p' }],
                 ['audioEncoding', { audioEncoding: 'copy' }],
-                ['translation', { translation: null }],
             ]) {
                 test(`an edit that carries ${label} is still refused with 409, even with the same value`, async () => {
                     const { harness, p, o } = runningOutput();
@@ -1022,27 +988,6 @@ describe('Outputs API integration', () => {
             t.mock.timers.tick(1);
             assert.equal((await restart(a)).status, 200);
             assert.deepEqual(harness.outputService.restarted, [a.id, b.id, a.id]);
-        });
-
-        test('translation outputs are restarted by the mixer, not here', async () => {
-            const harness = createHarness();
-            const p = harness.db.createPipeline();
-            const o = harness.db.createOutput({
-                pipelineId: p.id,
-                name: 'T',
-                url: 'rtmp://t',
-                audioEncoding: 'translation',
-            });
-            await harness.outputService.start(o.id);
-
-            const res = await harness.request(
-                'POST',
-                `/api/pipelines/${p.id}/outputs/${o.id}/restart`,
-            );
-
-            assert.equal(res.status, 409);
-            assert.match(res.body.error, /translation/i);
-            assert.deepEqual(harness.outputService.restarted, []);
         });
 
         test('404s for an unknown output and for a mismatched pipeline', async () => {

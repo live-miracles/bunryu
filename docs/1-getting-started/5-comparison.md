@@ -72,7 +72,6 @@ and we chose it over writing our own.
 | Bonded SRT ingest           | Yes, through [Goryu](https://github.com/live-miracles/goryu) | Not documented                                        | No ([ossrs/srs#4771](https://github.com/ossrs/srs/issues/4771)) | Not found in its docs or code                          |
 | SRT library | libsrt (Haivision), through SRS, FFmpeg and Goryu | gosrt (datarhei's Go implementation) in its built-in SRT server | libsrt | gosrt |
 | Recovery                    | Per-output watchdogs, bounded retries, History   | Restart after a fixed delay, progress stall timeout, optional CPU and memory limits | Not compared                         | Not compared                                       |
-| Translation audio mixing    | Yes (beta): ducking, delay and restore                 | Can mux a separate audio channel                            | No                                         | No                                                     |
 | Viewer-facing playback      | Dashboard preview only                                 | Built-in player and publication page                        | HLS, WebRTC and more                       | WebRTC, HLS, RTSP and more                             |
 | Where it runs               | Linux x86_64 (ARM only emulated, for development)      | Docker on AMD64, ARMv7 and ARM64                            | Linux and macOS on many CPU types          | Linux, Windows and macOS, one binary                   |
 | License                     | MIT                                                    | Apache-2.0                                                  | MIT                                        | MIT                                                    |
@@ -85,7 +84,7 @@ and we chose it over writing our own.
   viewers, hardware encoding (Raspberry Pi, NVIDIA, Intel), or to run on ARM.
 - Pick Bunryu for a Linux server that forwards many pipelines to many destinations
   through long events, where per-output recovery, a History with FFmpeg's
-  last output, bonded SRT ingest or translation mixing matter.
+  last output or bonded SRT ingest matter.
 
 Its built-in SRT server uses gosrt, not libsrt, and in our trial its interface did not
 suit many outputs ([why we did not use it](#why-bunryu-exists)).
@@ -131,8 +130,7 @@ input.
   connected ([details](../4-reference/3-design-decisions.md#dont-use-mediamtx-for-srt-ingest-or-srtrtmp-conversion)).
   As a forwarding hub for copy outputs it used about 10x less RAM but about 1.5x
   more CPU than FFmpeg, and FFmpeg would still be needed for transcodes, SRT
-  destinations and translation mixes
-  ([details](../4-reference/3-design-decisions.md#one-ffmpeg-process-per-output)).
+  destinations ([details](../4-reference/3-design-decisions.md#one-ffmpeg-process-per-output)).
 - Its SRT is gosrt, like Restreamer's built-in server, not libsrt. We measured its
   conversion, not its SRT ingest on its own.
 - Pick MediaMTX for protocol conversion, WebRTC or RTSP, recording, running on

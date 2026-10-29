@@ -438,7 +438,7 @@ ceiling and the counter), or inputs carry
 - A stalled destination, a corrupt input frame or a memory blow-up affects only
   that output, and it can be restarted on its own (see
   [Reliability](../3-operations/4-reliability.md)).
-- FFmpeg also does every transcode, audio-track selection and translation mix.
+- FFmpeg also does every transcode and audio-track selection.
 
 **Cost:** about 35 MB of RAM and, on production, about 4% of a vCPU per 8 Mbps
 copy-mode output (0.4% per Mbps sent), and about 1.2–2 vCPUs per custom video encoding of a
@@ -451,7 +451,7 @@ That's acceptable within the supported envelope
 **Not planned: a MediaMTX forwarding hub for copy outputs.** It used about 10x
 less RAM but about 1.5x more CPU than FFmpeg for RTMP→RTMP copy outputs. It
 would mean a second media server in the output path, while FFmpeg would still be
-needed for every transcode, SRT destination and translation mix. Outputs stay on
+needed for every transcode and SRT destination. Outputs stay on
 FFmpeg.
 
 ### Outputs with the same encode share one FFmpeg (shared encodes)
@@ -482,7 +482,7 @@ outputs pull that stream in copy mode.
   wiped. A hidden pipeline or a new table would have needed new supervision,
   health and history paths for the same behaviour.
 - **Which outputs share:** not plain copy, not multi-track (`0,1`, since RTMP/FLV
-  carries one audio track) and not translation (owned by the mixer). And only when
+  carries one audio track). And only when
   at least two outputs of the pipeline are configured with the same recipe (desired
   state does not matter, so the rule is a pure function of the saved configuration).
   A first version shared even a lone output, for one code path; a lone output then
@@ -567,7 +567,7 @@ when no viewer remains.
 
 **Decision (October 2026):** every RTMP and RTMPS destination gets `-rw_timeout
 10000000` (10 s) as an output option, placed directly before the destination URL
-(`buildFfmpegArgs` and the translation mixer). SRT destinations do not.
+(`buildFfmpegArgs`). SRT destinations do not.
 
 **Why:** a destination that accepts the TCP connection and then goes quiet leaves the
 socket ESTABLISHED. The socket watchdog treats that as healthy, and FFmpeg waits
@@ -708,10 +708,6 @@ output that crashes again seconds after restarting does not flash normal in betw
 The retry count starts over at recovery. A crash after a recovery is a new record even
 with the same text, so a flapping output is still visible as separate episodes.
 
-**Translation outputs** run in the translation mixer's own process and only report
-their status and progress to the output service, so the watchdog tick visits them
-separately (by what they reported) and applies the same recovery rule.
-
 **Revisit when:** distinct failures are being merged (widen the signature) or a
 flapping output fills the History with episodes.
 
@@ -798,6 +794,46 @@ only), and a libsrt version other than the one built into the pinned FFmpeg.
 
 **Revisit when:** SRT outputs hang or restart late against a real destination.
 
+### Translation outputs were removed
+
+**Decision (October 2026):** the beta translation output (mixing a translator
+pipeline's audio over the source, with speech detection, ducking, delay and
+restore timing) is removed: the code, the `translation_config` column (schema
+version 3), the `translator_meter_stale_ms` setting and the `zeromq` npm
+dependency, together with the `amix` and `azmq` filters the FFmpeg build check
+asked for.
+
+**Why:**
+- It was a beta that no production event used, and it was not clear that one would.
+- It was a second path through the system. Its own module (868 lines) ran and
+  supervised a separate FFmpeg per output, copying the output service's kill
+  escalation, memory watchdog, stall watchdog and exit handling. `outputs.ts` had
+  six places that skipped translation outputs, and its interface carried three
+  methods only the mixer called. The two supervisors had already drifted.
+- Reading the mixer before removal turned up two faults the regular output path does
+  not have. A mixer that crashed was started again by its 1 s reconcile tick with no
+  back-off, so a destination that refused connections would cost one FFmpeg spawn per
+  second, indefinitely (regular outputs back off from 1 s to 16 s). And the bulk
+  create route accepted translation audio without translation settings, which saved
+  an output that nothing would ever run and nothing reported.
+- It tied one pipeline's output to another pipeline's live state, a coupling no other
+  output has.
+- Keeping it meant keeping and testing all of that for no user: about 830 lines of
+  tests of its own plus cases inside the output, health, database and API tests.
+
+**Restoring it:** the last commit that has it is `55a7c40`
+(`git show 55a7c40:src/services/translationMixer.ts`; its usage page was
+`docs/2-usage/3-translation.md`). A restored version should supervise its FFmpeg
+through the same code as regular outputs, with the same retry back-off, instead of a
+second supervisor.
+
+**Moving a database:** schema version 2 databases are moved by the one-off
+`scripts/migrate-db-2-to-3.mjs` (backup, delete translation outputs, drop the column,
+stamp version 3) before running the installer, which would otherwise ask to wipe it.
+Delete the script once every deployment is on version 3.
+
+**Revisit when:** a real event needs interpreter audio mixed into the program.
+
 ## Sizing
 
 ### Sizing guidance is a measured table, not a calculator
@@ -874,7 +910,7 @@ measurements.
 measured on the production feeds, `1080p` from 4K only for speed and memory (it does
 not keep up on 4 vCPUs), and the benchmark input was 1080p30. Copy outputs on an SRT
 input and audio re-encodes on an RTMP input have no clean production observation.
-They exclude previews and translation mixers.
+They exclude previews.
 
 **Revisit when:**
 - FFmpeg, x264 or an encoding profile changes, since every cost above depends on

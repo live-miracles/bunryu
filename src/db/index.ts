@@ -11,8 +11,6 @@ import type {
     OutputErrorRecord,
     OutputErrorKind,
     Db,
-    TranslationConfig,
-    TranslationInput,
 } from '../types.js';
 
 const PIPELINE_SELECT = `
@@ -160,21 +158,6 @@ function rowToPipelineGroup(row: Record<string, unknown>): PipelineGroup {
     };
 }
 
-function normalizeTranslationConfig(input: TranslationInput): TranslationConfig {
-    return {
-        translatorStreamKey: input.translatorStreamKey,
-        sourceTrackIndex: input.sourceTrackIndex ?? 0,
-        translatorTrackIndex: input.translatorTrackIndex ?? 0,
-        translationDelayMs: input.translationDelayMs ?? 800,
-        voiceThresholdDb: input.voiceThresholdDb ?? -20,
-        duckVolumeDb: input.duckVolumeDb ?? -24,
-        duckDurationMs: input.duckDurationMs ?? 900,
-        restoreSilenceMs: input.restoreSilenceMs ?? 2000,
-        restoreVolumeDb: input.restoreVolumeDb ?? -6,
-        restoreDurationMs: input.restoreDurationMs ?? 5000,
-    };
-}
-
 function rowToStreamKey(row: Record<string, unknown>): StreamKey {
     return { id: row.id as number, slot: row.slot as number, key: row.key as string };
 }
@@ -221,11 +204,6 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
     );
     // Targeted single-row lookups for the hot retry / process-exit paths.
     const stmtGetPipeline = sqlite.prepare(`${PIPELINE_SELECT} WHERE p.id = ?`);
-    // Slot collisions are intentional (see updatePipeline) — order by p.id so
-    // the pick is at least deterministic when more than one pipeline shares a key.
-    const stmtGetPipelineByStreamKey = sqlite.prepare(
-        `${PIPELINE_SELECT} WHERE sk.key = ? ORDER BY p.id LIMIT 1`,
-    );
     const stmtGetOutput = sqlite.prepare('SELECT * FROM outputs WHERE id = ?');
     // Targeted per-pipeline lookups — avoids full-table scans in the hot restart
     // path where restartPipelineOutputs is called once per reconnecting pipeline.
@@ -299,18 +277,6 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
 
     function rowToOutput(row: Record<string, unknown>): Output {
         const errorHistory = parseOutputErrorHistory(row.last_error as string | null);
-        let translation: TranslationConfig | null = null;
-        if (typeof row.translation_config === 'string' && row.translation_config) {
-            try {
-                // Through the normalizer so a stored config missing a setting (e.g. the
-                // pre-dB volume fields) gets that setting's default, never NaN gain.
-                translation = normalizeTranslationConfig(
-                    JSON.parse(row.translation_config) as TranslationInput,
-                );
-            } catch {
-                translation = null;
-            }
-        }
         return {
             id: row.id as string,
             pipelineId: row.pipeline_id as number,
@@ -320,7 +286,6 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             videoEncoding: (row.encoding as string) || 'copy',
             url: row.url as string,
             audioEncoding: (row.audio_encoding as string) || 'copy',
-            translation,
             ...deriveOutputErrorFields(errorHistory, row.desired_state as string),
         };
     }
@@ -373,14 +338,12 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
         videoEncoding = 'copy',
         url,
         audioEncoding = 'copy',
-        translation,
     }: {
         pipelineId: number;
         name: string;
         videoEncoding?: string;
         url: string;
         audioEncoding?: string;
-        translation?: TranslationInput | null;
     }): string {
         const seqRow = sqlite
             .prepare(
@@ -391,19 +354,9 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
         const id = `${pipelineId}-${seq}`;
         sqlite
             .prepare(
-                'INSERT INTO outputs (id, pipeline_id, seq, name, desired_state, encoding, url, audio_encoding, translation_config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO outputs (id, pipeline_id, seq, name, desired_state, encoding, url, audio_encoding) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             )
-            .run(
-                id,
-                pipelineId,
-                seq,
-                name,
-                'stopped',
-                videoEncoding,
-                url,
-                audioEncoding,
-                translation ? JSON.stringify(normalizeTranslationConfig(translation)) : null,
-            );
+            .run(id, pipelineId, seq, name, 'stopped', videoEncoding, url, audioEncoding);
         return id;
     }
 
@@ -494,13 +447,6 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             return row ? rowToPipeline(row) : undefined;
         },
 
-        getPipelineByStreamKey(streamKey: string): Pipeline | undefined {
-            const row = stmtGetPipelineByStreamKey.get(streamKey) as
-                | Record<string, unknown>
-                | undefined;
-            return row ? rowToPipeline(row) : undefined;
-        },
-
         listPipelines(): Pipeline[] {
             return loadAllPipelines();
         },
@@ -584,30 +530,13 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             return getOutputsByPipeline(pipelineId);
         },
 
-        updateOutput(
-            id: string,
-            { name, videoEncoding, url, audioEncoding, translation },
-        ): Output | null {
-            const existing = getOutputById(id);
-            if (!existing) return null;
+        updateOutput(id: string, { name, videoEncoding, url, audioEncoding }): Output | null {
+            if (!getOutputById(id)) return null;
             sqlite
                 .prepare(
-                    'UPDATE outputs SET name = ?, encoding = ?, url = ?, audio_encoding = ?, translation_config = ? WHERE id = ?',
+                    'UPDATE outputs SET name = ?, encoding = ?, url = ?, audio_encoding = ? WHERE id = ?',
                 )
-                .run(
-                    name,
-                    videoEncoding,
-                    url,
-                    audioEncoding,
-                    translation === undefined
-                        ? existing.translation
-                            ? JSON.stringify(existing.translation)
-                            : null
-                        : translation
-                          ? JSON.stringify(normalizeTranslationConfig(translation))
-                          : null,
-                    id,
-                );
+                .run(name, videoEncoding, url, audioEncoding, id);
             bumpConfigRev();
             return getOutputById(id);
         },

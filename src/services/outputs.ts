@@ -4,7 +4,6 @@ import {
     INPUT_TIMEOUT_US,
     buildFfmpegArgs,
     ffmpegEnv,
-    isTranslationAudio,
     validateOutputUrl,
 } from '../utils/ffmpeg.js';
 import { readAppConfig, outputMemoryLimitBytes } from '../utils/appConfig.js';
@@ -259,35 +258,6 @@ export interface OutputService {
     readersOf(renditionId: string): number;
     restartPipelineOutputs(pipelineId: number, staggerBase?: number): number;
     clearRetryState(outputId: string): void;
-    // Lets a service that publishes an output outside this service's own
-    // process management (the translation mixer) report that output's real
-    // status, so getStats() reflects reality instead of always 'stopped'.
-    reportExternalStatus(
-        outputId: string,
-        status: 'running' | 'stopped' | 'failed',
-        pid: number | null,
-    ): void;
-    // Same idea as reportExternalStatus, but for the ffmpeg progress fields
-    // (bitrate/out_time/total_size) getStats() otherwise only gets from this
-    // service's own startJob(). The translation mixer owns its ffmpeg process
-    // directly and calls this from its own '-progress pipe:1' parsing so its
-    // outputs show real bitrate instead of null forever.
-    reportExternalProgress(
-        outputId: string,
-        progress: {
-            bitrateKbps: number | null;
-            lastOutTimeUs: number | null;
-            lastTotalSizeBytes: number | null;
-        },
-    ): void;
-    // Same idea again for process usage: the mixer owns its ffmpeg process, so it
-    // samples RSS/CPU itself (and enforces the limit) and reports them here so
-    // getStats() shows real numbers and the usual high-memory warning instead
-    // of null.
-    reportExternalUsage(
-        outputId: string,
-        usage: { rssBytes: number | null; limitBytes: number; cpuPercent: number | null },
-    ): void;
     // Kills every ffmpeg without waiting; returns the ids that were running.
     shutdown(): string[];
 }
@@ -525,55 +495,6 @@ export function createOutputService(
         }
     }
 
-    function reportExternalProgress(
-        outputId: string,
-        update: {
-            bitrateKbps: number | null;
-            lastOutTimeUs: number | null;
-            lastTotalSizeBytes: number | null;
-        },
-    ): void {
-        const existing = progress.get(outputId);
-        const now = Date.now();
-        progress.set(outputId, {
-            lastProgressAtMs: now,
-            lastOutputProgressAtMs: now,
-            lastOutTimeMs: update.lastOutTimeUs,
-            lastOutTimeWallMs: existing?.lastOutTimeWallMs ?? null,
-            lastTotalSize: update.lastTotalSizeBytes,
-            lastBitrateKbps: update.bitrateKbps,
-            stderrTail: existing?.stderrTail ?? '',
-            monitorMediaClock: false,
-            fastMediaSinceMs: null,
-            mediaClockWarning: null,
-            speedWindow: null,
-            speedSettled: false,
-            lastSpeed: null,
-            slowWindows: 0,
-            fallingBehindWarning: null,
-            lastTimestampWarningAtMs: existing?.lastTimestampWarningAtMs ?? null,
-            lastTimestampWarning: existing?.lastTimestampWarning ?? null,
-            timestampBurst: existing?.timestampBurst ?? null,
-        });
-    }
-
-    function reportExternalUsage(
-        outputId: string,
-        usage: { rssBytes: number | null; limitBytes: number; cpuPercent: number | null },
-    ): void {
-        // A sample that raced with the process exiting must not resurrect the
-        // usage entries setStatus() just cleared.
-        if (statuses.get(outputId)?.status !== 'running') return;
-        if (usage.rssBytes != null) {
-            memoryUsage.set(outputId, { rssBytes: usage.rssBytes, limitBytes: usage.limitBytes });
-        } else {
-            memoryUsage.delete(outputId);
-        }
-        updateMemoryWarning(outputId, usage.rssBytes, usage.limitBytes);
-        if (usage.cpuPercent != null) cpuUsage.set(outputId, usage.cpuPercent);
-        else cpuUsage.delete(outputId);
-    }
-
     function getRetry(outputId: string) {
         if (!retryState.has(outputId)) {
             retryState.set(outputId, {
@@ -725,11 +646,6 @@ export function createOutputService(
         try {
             const output = db.getOutput(outputId);
             if (!output || output.desiredState !== 'running') return;
-            // Translation outputs are published by the translation mixer, not by this
-            // service — see the same check in start(). Without it, a retry/reconnect
-            // (e.g. restartPipelineOutputs() after the source comes back online) would
-            // spawn a second ffmpeg pushing to the same destination as the mixer.
-            if (isTranslationAudio(output.audioEncoding)) return;
             if (statuses.get(outputId)?.status === 'running') return;
             // Don't spawn a doomed ffmpeg against a dead input; re-check until ready.
             const gate = sourceGate(output);
@@ -1439,7 +1355,7 @@ export function createOutputService(
         let kicked = 0;
         for (const output of db.listOutputs()) {
             if (output.desiredState !== 'running') continue;
-            if (isTranslationAudio(output.audioEncoding) || isRenditionOutput(output)) continue;
+            if (isRenditionOutput(output)) continue;
             if (processes.has(output.id) || startLocks.has(output.id)) continue;
             if (retryState.get(output.id)?.timer) continue;
             if (!inputState.isReady(output.pipelineId)) continue;
@@ -1508,26 +1424,10 @@ export function createOutputService(
         });
     }
 
-    // The same for outputs another service runs (the translation mixer's) and
-    // reports here: they have no process of this service, so the loop below
-    // never visits them.
-    function noteExternalRecoveries(now: number): void {
-        for (const [outputId, status] of statuses) {
-            if (status.status !== 'running' || processes.has(outputId)) continue;
-            const startedAtMs = startTimes.get(outputId);
-            const p = progress.get(outputId);
-            if (!startedAtMs || !p) continue;
-            const output = db.getOutput(outputId);
-            if (output?.desiredState !== 'running') continue;
-            noteRecovery(output, startedAtMs, p, now);
-        }
-    }
-
     function checkOutputWatchdog(): void {
         const now = Date.now();
         refreshTcpSocketSnapshot();
         for (const [outputId, p] of progress) evaluateTimestampBurst(outputId, p, now);
-        noteExternalRecoveries(now);
         for (const [outputId, proc] of processes) {
             if (watchdogKills.has(outputId) || watchdogRestarting.has(outputId)) continue;
             const output = db.getOutput(outputId);
@@ -1725,12 +1625,7 @@ export function createOutputService(
             : inputState.pullUrl(sourcePipeline.id, sourcePipeline.streamKey);
         const args = rendition
             ? buildFfmpegArgs(inputUrl, output.url, 'copy', 'copy')
-            : buildFfmpegArgs(
-                  inputUrl,
-                  output.url,
-                  isTranslationAudio(output.audioEncoding) ? 'copy' : output.audioEncoding,
-                  output.videoEncoding,
-              );
+            : buildFfmpegArgs(inputUrl, output.url, output.audioEncoding, output.videoEncoding);
 
         // The one place that spawns, so the one place that can promise a single
         // ffmpeg per output whichever caller got here (start(), tryStart(), the
@@ -1968,10 +1863,6 @@ export function createOutputService(
     const service: OutputService = {
         getStats,
 
-        reportExternalStatus: setStatus,
-        reportExternalProgress,
-        reportExternalUsage,
-
         // The status check below is the cheap early exit. What guarantees a single
         // ffmpeg per output is the processes check inside startJob(), right before
         // the spawn, so it holds even if an await is added before it.
@@ -1981,12 +1872,6 @@ export function createOutputService(
             const output = db.getOutput(outputId);
             if (!output) throw new Error('Output not found');
             if (!validateOutputUrl(output.url)) throw new Error('Invalid output URL');
-            // Translation outputs are published by the translation mixer
-            // directly to this output URL; they do not need a second pull.
-            if (isTranslationAudio(output.audioEncoding)) {
-                if (options?.byUser) noteUserStart(output, true);
-                return;
-            }
             clearRetry(outputId);
             getRetry(outputId).failures = 0;
             // Input not live yet — keep the output "running" (desiredState) but
@@ -2089,7 +1974,6 @@ export function createOutputService(
             let scheduled = 0;
             for (const output of db.listOutputsForPipeline(pipelineId)) {
                 if (output.desiredState !== 'running') continue;
-                if (isTranslationAudio(output.audioEncoding)) continue;
                 // A reader goes down with its shared encode (see restart()).
                 if (renditionOf.has(output.id)) continue;
                 if ((startTimes.get(output.id) ?? Infinity) >= startedBeforeMs) continue;
@@ -2112,9 +1996,6 @@ export function createOutputService(
             let scheduled = 0;
             for (const output of outputs) {
                 if (output.desiredState !== 'running') continue;
-                // Translation outputs are restarted by the translation mixer's own
-                // reconcile loop, not by this service.
-                if (isTranslationAudio(output.audioEncoding)) continue;
                 if (statuses.get(output.id)?.status === 'running') {
                     continue;
                 }

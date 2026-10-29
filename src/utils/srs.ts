@@ -163,12 +163,10 @@ export function rtmpPullUrl(streamKey: string): string {
 // `-rw_timeout` CLI flag used elsewhere does NOT apply to the srt:// protocol
 // (confirmed against ffmpeg's own protocol option list; libsrt has its own
 // `-timeout`), so without this the pull can block indefinitely. Defaults to
-// the same bound as `-rw_timeout` elsewhere; callers pulling audio that must
-// recover quickly (e.g. a translation mixer's translator leg) can pass a much
-// shorter override.
-export function srtPullUrl(streamKey: string, timeoutUs: number = INPUT_TIMEOUT_US): string {
+// the same bound as `-rw_timeout` elsewhere.
+export function srtPullUrl(streamKey: string): string {
     const srs = readSrsConfigValues();
-    let url = `srt://${srs.rtmpHost}:${srs.srtPort}?streamid=#!::r=live/${streamKey},m=request&latency=200000&transtype=live&timeout=${timeoutUs}`;
+    let url = `srt://${srs.rtmpHost}:${srs.srtPort}?streamid=#!::r=live/${streamKey},m=request&latency=200000&transtype=live&timeout=${INPUT_TIMEOUT_US}`;
     if (srs.srtPassphrase) {
         url += `&passphrase=${encodeURIComponent(srs.srtPassphrase)}&pbkeylen=16`;
     }

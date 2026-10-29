@@ -158,7 +158,7 @@ describe('rendition reconciler: rows', () => {
         assert.deepEqual(h.eventNames(), []);
     });
 
-    test('plain copy, multi-track and translation outputs get no rendition', async (t) => {
+    test('plain copy and multi-track outputs get no rendition', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
         h.addUser(p.id, { video: 'copy', audio: 'copy' });

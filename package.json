@@ -33,8 +33,7 @@
     "dependencies": {
         "better-sqlite3": "13.0.3",
         "compression": "^1.8.1",
-        "express": "5.1.0",
-        "zeromq": "^6.5.0"
+        "express": "5.1.0"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",

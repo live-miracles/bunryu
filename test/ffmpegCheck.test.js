@@ -37,15 +37,9 @@ const ENCODERS = `Encoders:
  V....D libx264              libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (codec h264)
  A....D aac                  AAC (Advanced Audio Coding)
 `;
-const FILTERS = `Filters:
-  T.. = Timeline support
-  A = Audio input/output
- ..C amix              N->A       Audio mixing.
- ... azmq              A->A       Receive commands through ZMQ and broker them to filters.
-`;
 
 // A stand-in ffmpeg that prints the given listings, like the real one does.
-function fakeFfmpeg(name, { protocols = PROTOCOLS, encoders = ENCODERS, filters = FILTERS } = {}) {
+function fakeFfmpeg(name, { protocols = PROTOCOLS, encoders = ENCODERS } = {}) {
     const file = path.join(tempDir, name);
     const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
     fs.writeFileSync(
@@ -55,7 +49,6 @@ case "$2" in
   -version) echo 'ffmpeg version n7.1.4 Copyright (c) 2000-2026 the FFmpeg developers' ;;
   -protocols) printf '%s' ${quote(protocols)} ;;
   -encoders) printf '%s' ${quote(encoders)} ;;
-  -filters) printf '%s' ${quote(filters)} ;;
 esac
 `,
         { mode: 0o755 },
@@ -70,25 +63,20 @@ describe('ffmpeg listing parsers', () => {
         assert.deepEqual([...output], ['rtmp']);
     });
 
-    test('encoder and filter names come from the second column, not the legend', () => {
+    test('encoder names come from the second column, not the legend', () => {
         assert.deepEqual([...parseNames(ENCODERS)], ['libx264', 'aac']);
-        assert.deepEqual([...parseNames(FILTERS)], ['amix', 'azmq']);
     });
 
     test('a complete build is missing nothing', () => {
-        assert.deepEqual(
-            missingFeatures({ protocols: PROTOCOLS, encoders: ENCODERS, filters: FILTERS }),
-            [],
-        );
+        assert.deepEqual(missingFeatures({ protocols: PROTOCOLS, encoders: ENCODERS }), []);
     });
 
-    test('names each missing protocol direction, encoder and filter', () => {
+    test('names each missing protocol direction and encoder', () => {
         const missing = missingFeatures({
             protocols: 'Input:\n  rtmp\n  rtmps\nOutput:\n  rtmp\n  rtmps\n  srt\n',
             encoders: ENCODERS.replace(/.*libx264.*\n/, ''),
-            filters: FILTERS.replace(/.*azmq.*\n/, ''),
         });
-        assert.deepEqual(missing, ['srt input protocol', 'libx264 encoder', 'azmq filter']);
+        assert.deepEqual(missing, ['srt input protocol', 'libx264 encoder']);
     });
 });
 

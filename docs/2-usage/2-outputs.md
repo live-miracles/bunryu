@@ -40,7 +40,6 @@ measured on a GCP `n2` and depend on the content; see
 | `copy` | Forwards the input's default audio track unchanged |
 | Track number (`0`, `1`, ...) | Forwards that track, re-encoded to AAC 128 kbps stereo 48 kHz. Outputs on the same track (and video encoding) share the encode |
 | Several tracks (`0,1`) | Forwards each listed track; SRT destinations only, since RTMP carries a single audio track. Never shared: each output encodes on its own |
-| `translation` | Beta. Mixes a translator pipeline's audio over the source; see [Translation outputs](3-translation.md). Never shared |
 
 When an SRT input is forwarded to an RTMP destination, select a track instead of
 `copy`: re-encoding absorbs the timestamp jitter that SRT inputs can carry, and
@@ -75,7 +74,6 @@ the pipeline are configured with it**, whether they are running or not.
 | Any video encoding (`720p`, `1080p`, `vertical_rotate`) with audio `copy` or one track | Yes, once a second output of the pipeline has the same recipe |
 | Video `copy` with one audio track | Yes, once a second output of the pipeline has the same recipe |
 | Several audio tracks (`0,1`) | No: RTMP/FLV carries one audio track, so these keep their own encode |
-| `translation` | No: owned by the translation mixer |
 
 A recipe used by a single output is **not** shared: that output encodes on its
 own, as it always did, because an encode with one reader would only add a process
@@ -111,8 +109,8 @@ affected. See [Reliability](../3-operations/4-reliability.md#shared-encodes).
 
 **Changing the configuration while outputs are running.** An output decides how it
 runs when it *starts* and never switches while running. For that reason the
-editor of a running output disables the destination, encodings and translation
-settings and lets you change only its name; stop the output to change the rest.
+editor of a running output disables the destination and encodings and lets you
+change only its name; stop the output to change the rest.
 - If an output was already running alone and you add a second output with the same
   recipe, the shared encode starts at once, but the first output keeps encoding on
   its own until it is next started or restarted; the new output reads the shared

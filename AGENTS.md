@@ -24,9 +24,6 @@ use them in examples; copy mode and audio track selection are the common cases.
 When they are used, `720p` down-converts a 1080p input, `1080p` down-converts a 4K
 input and `vertical_rotate` is applied to a 1080p input, so measure and document
 them with those inputs.
-Translation outputs can mix audio from a separate translator pipeline with the
-source audio, including speech detection, source ducking, delay, and configurable
-restore timing.
 
 ## Intended capacity
 
@@ -80,9 +77,6 @@ In particular:
 - Output and input state should remain accurate across disconnects, crashes,
   restarts, and reconnects. Do not leave stale running state in the database
   or dashboard.
-- A temporary translator or source failure should degrade gracefully when the
-  design permits it—for example, translation output can continue with source
-  audio when translator audio is unavailable.
 
 ## Diagnostics and logging
 
@@ -144,8 +138,7 @@ behavior, architecture, capacity, supported protocols or operational guarantees,
 find every doc page that describes it and update it in the same change. Search
 `docs/` and `README.md` for the feature's name, and check these places:
 
-- **`docs/2-usage/`** for what users see and do: publishing, outputs, preview,
-  translation.
+- **`docs/2-usage/`** for what users see and do: publishing, outputs, preview.
 - **`docs/3-operations/`**:
   - security, configuration (`bunryu.json` keys), reliability (watchdogs and
     recovery);
@@ -214,8 +207,8 @@ only for a new module.
   the 10-minute rolling SRT loss/retransmit/drop counts behind `recent` in the health
   payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError` into merged
   pipeline-log lines.
-- `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `translationMixer.ts`
-  (translation output mixer), `preview.ts` (HLS previews with a keepalive TTL),
+- `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `preview.ts`
+  (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.
 - `src/api/*` - REST routes; `errors.ts` is the JSON error handler (also on the hook app). `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.

@@ -33,8 +33,6 @@ fs.writeFileSync(
 
 const {
     buildFfmpegArgs,
-    buildTranslationMixerArgs,
-    dbToAmplitude,
     validateOutputUrl,
     validateAudioEncoding,
 } = require('../src/utils/ffmpeg');
@@ -249,203 +247,6 @@ describe('buildFfmpegArgs', () => {
     });
 });
 
-describe('buildTranslationMixerArgs', () => {
-    test('maps dB source-volume settings to linear amplitude', () => {
-        assert.equal(dbToAmplitude(0), 1);
-        assert.ok(Math.abs(dbToAmplitude(-6) - 0.5012) < 0.0001);
-        assert.ok(Math.abs(dbToAmplitude(-20) - 0.1) < 0.0001);
-        assert.ok(Math.abs(dbToAmplitude(-24) - 0.0631) < 0.0001);
-    });
-
-    test('never boosts the source and mutes at or below the -60 dB floor', () => {
-        assert.equal(dbToAmplitude(6), 1);
-        assert.equal(dbToAmplitude(-60), 0);
-        assert.equal(dbToAmplitude(-80), 0);
-        assert.ok(dbToAmplitude(-59) > 0);
-    });
-
-    test('leaves the source untouched for a missing or NaN dB value instead of sending NaN gain', () => {
-        assert.equal(dbToAmplitude(undefined), 1);
-        assert.equal(dbToAmplitude(NaN), 1);
-        assert.equal(dbToAmplitude(-Infinity), 0);
-    });
-
-    describe('output write timeout', () => {
-        const config = {
-            videoEncoding: 'copy',
-            translationDelayMs: 800,
-            voiceThresholdDb: -45,
-            controlPort: 5555,
-            duckVolumeDb: -24,
-            duckDurationMs: 100,
-            restoreSilenceMs: 1000,
-            restoreVolumeDb: 0,
-            restoreDurationMs: 500,
-        };
-        for (const [mode, translator] of [
-            ['source only', null],
-            ['source and translator', 'rtmp://translator'],
-        ]) {
-            for (const url of ['rtmp://mixed', 'rtmps://mixed']) {
-                test(`${mode}: ${url.split(':')[0]} destination gets a 10 s -rw_timeout`, () => {
-                    const args = buildTranslationMixerArgs(
-                        'rtmp://source',
-                        translator,
-                        url,
-                        config,
-                    );
-                    const i = args.lastIndexOf('-rw_timeout');
-                    assert.equal(args[i + 1], String(10 * 1_000_000));
-                    assert.equal(i, args.length - 3);
-                    assert.equal(args.at(-1), url);
-                });
-            }
-            test(`${mode}: SRT destination does not`, () => {
-                const args = buildTranslationMixerArgs(
-                    'rtmp://source',
-                    translator,
-                    'srt://mixed:9000',
-                    config,
-                );
-                assert.equal(args.filter((a) => a === '-rw_timeout').length, 1);
-            });
-        }
-    });
-
-    test('publishes source-only audio/video when translator is unavailable', () => {
-        const args = buildTranslationMixerArgs('rtmp://source', null, 'rtmp://mixed', {
-            videoEncoding: 'copy',
-            translationDelayMs: 800,
-            voiceThresholdDb: -20,
-            controlPort: 31001,
-            duckVolumeDb: -24,
-            duckDurationMs: 900,
-            restoreSilenceMs: 2000,
-            restoreVolumeDb: -10,
-            restoreDurationMs: 1000,
-        });
-        assert.deepEqual(
-            args.filter((value, index) => value === '-map' || args[index - 1] === '-map'),
-            ['-map', '0:v:0?', '-map', '0:a:0?'],
-        );
-        assert.ok(args.includes('-c:v'));
-        assert.equal(args[args.indexOf('-c:v') + 1], 'copy');
-        assert.equal(args[args.indexOf('-c:a') + 1], 'aac');
-        assert.equal(args.at(-1), 'rtmp://mixed');
-    });
-
-    test('builds a two-input sidechain mix with delayed translator audio', () => {
-        const args = buildTranslationMixerArgs('srt://source', 'srt://translator', 'rtmp://mixed', {
-            videoEncoding: 'copy',
-            translationDelayMs: 800,
-            voiceThresholdDb: -20,
-            controlPort: 31001,
-            duckVolumeDb: -24,
-            duckDurationMs: 900,
-            restoreSilenceMs: 2000,
-            restoreVolumeDb: -10,
-            restoreDurationMs: 1000,
-        });
-        assert.equal(args.filter((value) => value === '-i').length, 2);
-        assert.deepEqual(
-            args.slice(args.indexOf('srt://source') - 3, args.indexOf('srt://source') - 1),
-            ['-readrate', '1'],
-        );
-        assert.deepEqual(
-            args.slice(args.indexOf('srt://translator') - 7, args.indexOf('srt://translator') - 5),
-            ['-readrate', '1'],
-        );
-        const filter = args[args.indexOf('-filter_complex') + 1];
-        assert.match(filter, /adelay=800:all=1/);
-        assert.match(filter, /volume@source_gain=1/);
-        assert.match(filter, /azmq=bind_address/);
-        assert.match(filter, /ametadata=mode=print/);
-        assert.match(filter, /amix=inputs=2/);
-        assert.equal(args[args.indexOf('-map', args.indexOf('-filter_complex')) + 1], '1:v:0?');
-    });
-
-    test('opens the translator first with a short probe and leaves the source probe at defaults', () => {
-        const args = buildTranslationMixerArgs('srt://source', 'srt://translator', 'rtmp://mixed', {
-            videoEncoding: 'copy',
-            translationDelayMs: 800,
-            voiceThresholdDb: -20,
-            controlPort: 31001,
-            duckVolumeDb: -24,
-            duckDurationMs: 900,
-            restoreSilenceMs: 2000,
-            restoreVolumeDb: -10,
-            restoreDurationMs: 1000,
-        });
-        const inputs = args.filter((value, index) => args[index - 1] === '-i');
-        assert.deepEqual(inputs, ['srt://translator', 'srt://source']);
-        const translatorAt = args.indexOf('srt://translator');
-        assert.deepEqual(args.slice(translatorAt - 5, translatorAt - 1), [
-            '-analyzeduration',
-            '500000',
-            '-probesize',
-            '500000',
-        ]);
-        const sourceArgs = args.slice(translatorAt + 1, args.indexOf('srt://source'));
-        assert.ok(!sourceArgs.includes('-analyzeduration'));
-        assert.ok(!sourceArgs.includes('-probesize'));
-    });
-
-    test("defaults to each input's first track when no track index is given", () => {
-        const args = buildTranslationMixerArgs('srt://source', 'srt://translator', 'rtmp://mixed', {
-            videoEncoding: 'copy',
-            translationDelayMs: 800,
-            voiceThresholdDb: -20,
-            controlPort: 31001,
-            duckVolumeDb: -24,
-            duckDurationMs: 900,
-            restoreSilenceMs: 2000,
-            restoreVolumeDb: -10,
-            restoreDurationMs: 1000,
-        });
-        const filter = args[args.indexOf('-filter_complex') + 1];
-        assert.match(filter, /^\[1:a:0\]aresample[^;]*\[source\]/);
-        assert.match(filter, /\[0:a:0\]aresample[^;]*\[translator_audio\]/);
-    });
-
-    test('selects the configured source/translator track in the sidechain mix', () => {
-        const args = buildTranslationMixerArgs('srt://source', 'srt://translator', 'rtmp://mixed', {
-            videoEncoding: 'copy',
-            sourceTrackIndex: 2,
-            translatorTrackIndex: 3,
-            translationDelayMs: 800,
-            voiceThresholdDb: -20,
-            controlPort: 31001,
-            duckVolumeDb: -24,
-            duckDurationMs: 900,
-            restoreSilenceMs: 2000,
-            restoreVolumeDb: -10,
-            restoreDurationMs: 1000,
-        });
-        const filter = args[args.indexOf('-filter_complex') + 1];
-        assert.match(filter, /^\[1:a:2\]aresample[^;]*\[source\]/);
-        assert.match(filter, /\[0:a:3\]aresample[^;]*\[translator_audio\]/);
-    });
-
-    test('selects the configured source track when the translator is unavailable', () => {
-        const args = buildTranslationMixerArgs('rtmp://source', null, 'rtmp://mixed', {
-            videoEncoding: 'copy',
-            sourceTrackIndex: 1,
-            translationDelayMs: 800,
-            voiceThresholdDb: -20,
-            controlPort: 31001,
-            duckVolumeDb: -24,
-            duckDurationMs: 900,
-            restoreSilenceMs: 2000,
-            restoreVolumeDb: -10,
-            restoreDurationMs: 1000,
-        });
-        assert.deepEqual(
-            args.filter((value, index) => value === '-map' || args[index - 1] === '-map'),
-            ['-map', '0:v:0?', '-map', '0:a:1?'],
-        );
-    });
-});
-
 // ── validateAudioEncoding ─────────────────────────────
 
 describe('validateAudioEncoding', () => {
@@ -460,6 +261,9 @@ describe('validateAudioEncoding', () => {
     });
     test("rejects 'aac' (retired in favor of explicit track selection)", () => {
         assert.equal(validateAudioEncoding('aac'), null);
+    });
+    test("rejects 'translation' (the translation output was removed)", () => {
+        assert.equal(validateAudioEncoding('translation'), null);
     });
     test('rejects non-numeric values', () => {
         assert.equal(validateAudioEncoding('a'), null);
@@ -502,17 +306,6 @@ describe('URL builders', () => {
         assert.equal(
             srtPullUrl('mykey'),
             'srt://127.0.0.1:10080?streamid=#!::r=live/mykey,m=request&latency=200000&transtype=live&timeout=600000000',
-        );
-    });
-
-    // libsrt's own `-timeout` doesn't apply automatically like the generic
-    // `-rw_timeout` CLI flag does for other protocols — it has to be this
-    // URL parameter. Callers that need a shorter bound (e.g. the translation
-    // mixer's translator leg) can override the default.
-    test('srtPullUrl accepts a shorter timeout override', () => {
-        assert.equal(
-            srtPullUrl('mykey', 5_000_000),
-            'srt://127.0.0.1:10080?streamid=#!::r=live/mykey,m=request&latency=200000&transtype=live&timeout=5000000',
         );
     });
 

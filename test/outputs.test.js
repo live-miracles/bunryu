@@ -1028,28 +1028,42 @@ describe('output stop/start race', () => {
     });
 
     test('a run that stays up for a minute breaks the streak of failed attempts', async (t) => {
-        const proc = new FakeFfmpeg();
+        const procs = [];
         const db = makeDb();
         const output = db.getOutput('out1');
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
+        );
+        t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+        const settle = () => new Promise((resolve) => setImmediate(resolve));
         const service = createOutputService(db, makeReadyInputState());
 
         await service.start('out1');
-        for (let i = 0; i < 4; i++) proc.emit('close', 1, null);
+        for (const delayMs of [1000, 2000, 4000, 8000]) {
+            procs.at(-1).emit('close', 1, null);
+            t.mock.timers.tick(delayMs);
+            await settle();
+        }
 
-        // The next attempt runs for over a minute before it dies, then one more
+        // The fifth attempt runs for over a minute before it dies, then one more
         // quick failure: the streak restarts, so 4 + 1 does not reach 5.
-        const realNow = Date.now;
-        let now = realNow();
-        t.mock.method(Date, 'now', () => now);
-        service.reportExternalStatus('out1', 'running', 4321);
-        now += 61_000;
-        proc.emit('close', 1, null);
-        proc.emit('close', 1, null);
+        t.mock.timers.tick(61_000);
+        procs.at(-1).emit('close', 1, null);
+        t.mock.timers.tick(1000);
+        await settle();
+        procs.at(-1).emit('close', 1, null);
 
         output.desiredState = 'stopped';
         service.stop('out1');
+        await settle();
 
+        assert.equal(db.errorRecords.at(-1).kind, 'stopped');
         assert.equal(db.errorRecords.at(-1).failedAttempts, undefined);
 
         service.shutdown();
@@ -1229,31 +1243,6 @@ describe('output stop/start race', () => {
         service.shutdown();
     });
 
-    test('never spawns a second ffmpeg while one is registered for the output', async (t) => {
-        const procs = [];
-        const createOutputService = loadOutputService(
-            t,
-            () => {
-                const proc = new ManualExitFfmpeg(1000 + procs.length);
-                procs.push(proc);
-                return proc;
-            },
-            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
-        );
-        const service = createOutputService(makeDb(), makeReadyInputState());
-
-        await service.start('out1');
-        assert.equal(procs.length, 1);
-
-        // The status check in start() and tryStart() is what normally stops a
-        // second spawn; with it defeated, the spawn itself must still refuse.
-        service.reportExternalStatus('out1', 'stopped', null);
-        await service.start('out1');
-        assert.equal(procs.length, 1, 'a second ffmpeg would orphan the first');
-
-        service.shutdown();
-    });
-
     test('stopping a live attempt after repeated failed attempts records the count and the last failure', async (t) => {
         const procs = [];
         const db = makeDb();
@@ -1309,23 +1298,37 @@ describe('output stop/start race', () => {
     });
 
     test('stopping an output that recovered and has stayed up for a minute is a plain stop', async (t) => {
-        const proc = new FakeFfmpeg();
+        const procs = [];
         const db = makeDb();
         const output = db.getOutput('out1');
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                const proc = new FakeFfmpeg(1000 + procs.length);
+                procs.push(proc);
+                return proc;
+            },
+            { progressStallMs: 1e9, socketWarmupMs: 1e9 },
+        );
+        t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+        const settle = () => new Promise((resolve) => setImmediate(resolve));
         const service = createOutputService(db, makeReadyInputState());
 
         await service.start('out1');
-        for (let i = 0; i < 5; i++) proc.emit('close', 1, null);
+        for (const delayMs of [1000, 2000, 4000, 8000, 16_000]) {
+            procs.at(-1).emit('close', 1, null);
+            t.mock.timers.tick(delayMs);
+            await settle();
+        }
 
-        // It then connects and runs healthily; the failed attempts are behind it.
-        let now = Date.now();
-        t.mock.method(Date, 'now', () => now);
-        service.reportExternalStatus('out1', 'running', 4321);
-        now += 61_000;
+        // The sixth attempt connects and runs healthily; the failed attempts are
+        // behind it.
+        assert.equal(procs.length, 6);
+        t.mock.timers.tick(61_000);
 
         output.desiredState = 'stopped';
         service.stop('out1');
+        await settle();
 
         assert.equal(db.errorRecords.at(-1).kind, 'stopped');
         assert.equal(db.errorRecords.at(-1).failedAttempts, undefined);
@@ -1407,122 +1410,57 @@ describe('output service control surface', () => {
         delete require.cache[require.resolve('../src/utils/appConfig')];
     });
 
-    test('start() never spawns for a translation-audio output', async (t) => {
-        const proc = new FakeFfmpeg();
-        const db = makeDb();
-        db.getOutput('out1').audioEncoding = 'translation';
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
-        const service = createOutputService(db, makeReadyInputState());
-
-        await service.start('out1');
-        assert.equal(service.getStats('out1').status, 'stopped');
-
-        service.shutdown();
-    });
-
-    test('reportExternalStatus lets another service (the translation mixer) report real status', async (t) => {
-        const proc = new FakeFfmpeg();
-        const db = makeDb();
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
-        const service = createOutputService(db, makeReadyInputState());
-
-        service.reportExternalStatus('out1', 'running', 4242);
-        assert.equal(service.getStats('out1').status, 'running');
-        assert.equal(service.getStats('out1').pid, 4242);
-        assert.ok(service.getStats('out1').startedAtMs);
-
-        service.reportExternalStatus('out1', 'stopped', null);
-        assert.equal(service.getStats('out1').status, 'stopped');
-        assert.equal(service.getStats('out1').pid, null);
-
-        service.shutdown();
-    });
-
-    test('reportExternalUsage surfaces mixer RSS/CPU and the high-memory warning, and clears on stop', async (t) => {
-        const proc = new FakeFfmpeg();
-        const db = makeDb();
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
-        const service = createOutputService(db, makeReadyInputState());
-        const mb = 1024 * 1024;
-
-        // A late sample for an output that isn't running must not create state.
-        service.reportExternalUsage('out1', {
-            rssBytes: 10 * mb,
-            limitBytes: 200 * mb,
-            cpuPercent: 5,
-        });
-        assert.equal(service.getStats('out1').memoryUsageBytes, null);
-
-        service.reportExternalStatus('out1', 'running', 4242);
-        service.reportExternalUsage('out1', {
-            rssBytes: 100 * mb,
-            limitBytes: 200 * mb,
-            cpuPercent: 12,
-        });
-        let stats = service.getStats('out1');
-        assert.equal(stats.memoryUsageBytes, 100 * mb);
-        assert.equal(stats.memoryLimitBytes, 200 * mb);
-        assert.equal(stats.cpuPercent, 12);
-        assert.equal(stats.warningReason, null);
-
-        service.reportExternalUsage('out1', {
-            rssBytes: 150 * mb,
-            limitBytes: 200 * mb,
-            cpuPercent: 12,
-        });
-        assert.match(
-            service.getStats('out1').warningReason,
-            /High memory usage: 150MB \/ 200MB limit \(75%\)/,
-        );
-
-        service.reportExternalUsage('out1', {
-            rssBytes: 100 * mb,
-            limitBytes: 200 * mb,
-            cpuPercent: null,
-        });
-        stats = service.getStats('out1');
-        assert.equal(stats.warningReason, null);
-        assert.equal(stats.cpuPercent, null);
-
-        service.reportExternalStatus('out1', 'stopped', null);
-        assert.equal(service.getStats('out1').memoryUsageBytes, null);
-
-        service.shutdown();
-    });
-
     test('a high-memory episode is recorded once, in the output History, when it clears', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
+        const output = db.getOutput('out1');
         const diagnostics = makeDiagnosticsSpy();
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 60_000,
+            memoryLimitMb: 200,
+        });
+        let rssKb = 150000; // ~73% of the 200MB limit
+        const originalReadFileSync = fs.readFileSync;
+        t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
+            if (String(filePath) === `/proc/${proc.pid}/status`) {
+                return `VmRSS:  ${rssKb} kB\n`;
+            }
+            return originalReadFileSync(filePath, ...rest);
+        });
         const service = createOutputService(db, makeReadyInputState(), diagnostics);
-        const mb = 1024 * 1024;
-        const usage = (rss) => ({ rssBytes: rss * mb, limitBytes: 200 * mb, cpuPercent: 1 });
 
-        service.reportExternalStatus('out1', 'running', 4242);
-        service.reportExternalUsage('out1', usage(150));
-        service.reportExternalUsage('out1', usage(160));
+        await service.start('out1');
+        await sleep(40);
+        assert.match(service.getStats('out1').warningReason || '', /High memory usage/);
         assert.equal(db.errorRecords.length, 0, 'nothing is recorded while the episode is open');
 
-        service.reportExternalUsage('out1', usage(100));
+        rssKb = 50000; // ~24% of the limit: the episode ends
+        await sleep(40);
         assert.deepEqual(
             db.errorRecords.map((r) => r.kind),
             ['warning'],
         );
-        assert.match(db.errorRecords[0].message, /High memory usage: 150MB.*lasted \d+s\)/);
+        assert.match(db.errorRecords[0].message, /High memory usage: \d+MB.*lasted \d+s\)/);
         assert.deepEqual(
-            diagnostics.events.map((e) => [e.event, e.kind]),
+            diagnostics.events
+                .filter((e) => e.event.startsWith('ffmpeg-warning-'))
+                .map((e) => [e.event, e.kind]),
             [
                 ['ffmpeg-warning-started', 'memory'],
                 ['ffmpeg-warning-ended', 'memory'],
             ],
         );
 
-        // An episode still open when the process stops is recorded on exit.
-        service.reportExternalUsage('out1', usage(150));
-        service.reportExternalStatus('out1', 'stopped', null);
-        assert.equal(db.errorRecords.length, 1, 'second episode is inside the 10 min limit');
-        assert.equal(diagnostics.events.at(-1).reason, 'ended with ffmpeg exit');
+        // An episode still open when the process stops is closed on exit, and a
+        // second one inside the 10 min limit is not recorded as another warning.
+        rssKb = 150000;
+        await sleep(40);
+        output.desiredState = 'stopped';
+        service.stop('out1');
+        await sleep(15);
+        assert.equal(db.errorRecords.filter((r) => r.kind === 'warning').length, 1);
+        const ended = diagnostics.events.filter((e) => e.event === 'ffmpeg-warning-ended');
+        assert.equal(ended.at(-1).reason, 'ended with ffmpeg exit');
 
         service.shutdown();
     });
@@ -2013,48 +1951,6 @@ describe('restartPipelineOutputs', () => {
         assert.equal(service.getStats('a').failures, 0);
         assert.equal(service.getStats('b').status, 'running');
         assert.equal(service.getStats('b').failures, 0);
-
-        service.shutdown();
-    });
-
-    test('never spawns ffmpeg for a translation-audio output — the mixer owns those', async (t) => {
-        // Regression test: restartPipelineOutputs() runs on every source-pipeline
-        // reconnect (see health.ts) and previously reached startJob() for
-        // translation outputs too, since only start() (not tryStart()) carried the
-        // audioEncoding === 'translation' guard. That spawned a second ffmpeg
-        // pushing straight to the same destination the translation mixer already
-        // publishes to.
-        const spawned = [];
-        const createOutputService = loadOutputService(
-            t,
-            () => {
-                const p = new FakeFfmpeg(1000 + spawned.length);
-                spawned.push(p);
-                return p;
-            },
-            { progressStallMs: 60_000 },
-        );
-        const db = makeMultiDb([
-            makeOutput('a', { desiredState: 'running' }),
-            makeOutput('mix', { desiredState: 'running', audioEncoding: 'translation' }),
-        ]);
-        const service = createOutputService(db, makeReadyInputState());
-
-        const scheduled = service.restartPipelineOutputs(1, 0);
-        assert.equal(
-            scheduled,
-            1,
-            'the translation output must not count toward scheduled restarts',
-        );
-
-        await sleep(700);
-        assert.equal(spawned.length, 1, 'only the plain output should have spawned ffmpeg');
-        assert.equal(service.getStats('a').status, 'running');
-        assert.equal(
-            service.getStats('mix').status,
-            'stopped',
-            'translation outputs are not tracked by this service at all',
-        );
 
         service.shutdown();
     });
@@ -2571,7 +2467,6 @@ describe('shared renditions', () => {
                 desiredState: 'running',
                 videoEncoding: 'copy',
                 audioEncoding: 'copy',
-                translation: null,
                 lastError: null,
                 ...o,
             });
@@ -2723,25 +2618,6 @@ describe('shared renditions', () => {
 
             service.shutdown();
             srtService.shutdown();
-        });
-
-        test('a translation output is never started by this service, shared recipe or not', async (t) => {
-            const fleet = makeFleet(t);
-            const db = makeFleetDb([
-                {
-                    id: '1-1',
-                    name: 'tr',
-                    url: YOUTUBE,
-                    videoEncoding: '720p',
-                    audioEncoding: 'translation',
-                },
-            ]);
-            const service = fleet.createOutputService(db, makeReadyInputState());
-
-            await service.start('1-1');
-
-            assert.equal(fleet.spawned.length, 0);
-            service.shutdown();
         });
 
         test('a shared output copies the rendition stream and nothing else', async (t) => {
@@ -3651,23 +3527,6 @@ describe('manual start', () => {
         service.shutdown();
     });
 
-    test('a manual start of a translation output is recorded too', async (t) => {
-        const proc = new FakeFfmpeg();
-        const db = makeDb();
-        db.getOutput('out1').audioEncoding = 'translation';
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
-        const service = createOutputService(db, makeReadyInputState());
-
-        await service.start('out1', { byUser: true });
-
-        assert.deepEqual(
-            db.errorRecords.map((r) => [r.kind, r.message]),
-            [['started', 'Started manually']],
-        );
-
-        service.shutdown();
-    });
-
     test('a start while the input is not live says the output is waiting', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
@@ -3753,36 +3612,6 @@ describe('recovery from a crash', () => {
 
         await sleep(40);
         assert.deepEqual(db.recovered, ['out1'], 'only once');
-
-        service.shutdown();
-    });
-
-    test('an output run by the translation mixer is marked recovered too', async (t) => {
-        const proc = new FakeFfmpeg();
-        const db = crashedDb(Date.now() - 120_000);
-        const createOutputService = loadOutputService(t, proc, {
-            progressStallMs: 1e9,
-            ssError: new Error('no ss'),
-        });
-        const service = createOutputService(db, makeReadyInputState());
-
-        // The mixer owns the process and only reports its status and progress.
-        service.reportExternalStatus('out1', 'running', 4321);
-        service.reportExternalProgress('out1', {
-            bitrateKbps: 3200,
-            lastOutTimeUs: 1_000_000,
-            lastTotalSizeBytes: 4096,
-        });
-        await sleep(40);
-        assert.deepEqual(db.recovered, [], 'not yet a minute');
-
-        const realNow = Date.now;
-        let now = realNow();
-        t.mock.method(Date, 'now', () => now);
-        now += 61_000;
-        await sleep(40);
-
-        assert.deepEqual(db.recovered, ['out1']);
 
         service.shutdown();
     });
