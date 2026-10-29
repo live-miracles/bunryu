@@ -199,10 +199,11 @@ only for a new module.
   recipe), naming and URL recognition; the dashboard twins are in
   `public/ts/core/renditions.ts`.
 - `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay
-  state, input live/media state (schedules ffprobe via `mediaProbe.ts`, which also
-  measures the keyframe interval once per publisher, and
-  restarts running outputs when a new publisher's probed format differs from the
-  last one), alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
+  state, input live/media state (`probeScheduler.ts` owns each publisher's ffprobe
+  lifecycle: when to probe, the retries, the once-per-publisher keyframe check, and
+  cancelling it all when the publisher changes, with `mediaProbe.ts` as the runner and
+  parser; health restarts running outputs when a new publisher's probed format differs
+  from the last one), alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
   readiness/protocol and builds the pull URL outputs read. `utils/srtRecent.ts` keeps
   the 10-minute rolling SRT loss/retransmit/drop counts behind `recent` in the health
   payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError` into merged
