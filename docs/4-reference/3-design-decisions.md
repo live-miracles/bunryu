@@ -827,10 +827,10 @@ asked for.
 through the same code as regular outputs, with the same retry back-off, instead of a
 second supervisor.
 
-**Moving a database:** schema version 2 databases are moved by the one-off
-`scripts/migrate-db-2-to-3.mjs` (backup, delete translation outputs, drop the column,
-stamp version 3) before running the installer, which would otherwise ask to wipe it.
-Delete the script once every deployment is on version 3.
+**Moving a database:** production was moved from schema version 2 to 3 on 2026-10-29
+with a one-off script (back up, delete translation outputs, drop the column, stamp
+version 3), then deleted. Another version 2 database is wiped by the installer, or
+migrated with `git show 79d20ce:scripts/migrate-db-2-to-3.mjs`.
 
 **Revisit when:** a real event needs interpreter audio mixed into the program.
 
