@@ -223,6 +223,9 @@ only for a new module.
 - `src/db/` - SQLite schema and access (output History lives in
   `outputs.last_error` as JSON).
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
+  `core/status.ts` is the verdict on an output or input (`outputHealth`, `inputHealth`:
+  a status plus the issues behind it, and the error helpers); the Overview, the pipeline
+  panel, the output cards and the Problems filter all call it.
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
   `renditions` and decides which pipeline alerts belong to the input (`INPUT_ALERT_CODES`);
   `features/shared-encodes.ts` renders the Shared encodes card.

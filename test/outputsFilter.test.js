@@ -93,30 +93,32 @@ describe('outputSeverity', () => {
         lastError: null,
         lastErrorAt: null,
         warningReason: null,
+        bitrateKbps: 5000,
         url: 'rtmp://a.example/live/key',
         ...over,
     });
-    const rtmpInput = { connected: true, isSrt: false, audioTracks: [] };
-    const severity = (over, status = 'good', dupUrls = new Map()) =>
-        outputSeverity(output(over), rtmpInput, dupUrls, status);
+    const rtmpInput = { connected: true, live: true, isSrt: false, audioTracks: [] };
+    const severity = (over, dupUrls = new Map()) =>
+        outputSeverity(output(over), rtmpInput, dupUrls);
+    const stopped = { desiredState: 'stopped', status: 'stopped' };
 
     test('a healthy output has none', () => {
         assert.equal(severity({}), null);
     });
 
     test('an error status or a current error line is an error', () => {
-        assert.equal(severity({}, 'error'), 'error');
-        assert.equal(severity({ lastError: 'boom', lastErrorAt: 1 }, 'off'), 'error');
+        assert.equal(severity({ status: 'failed' }), 'error');
+        assert.equal(severity({ ...stopped, lastError: 'boom', lastErrorAt: 1 }), 'error');
     });
 
     test('an old error that is no longer current is not a problem', () => {
-        assert.equal(severity({ lastError: 'boom', lastErrorAt: null }, 'off'), null);
+        assert.equal(severity({ ...stopped, lastError: 'boom', lastErrorAt: null }), null);
     });
 
     test('every warning the card shows counts, even on a stopped output', () => {
-        assert.equal(severity({}, 'warn'), 'warning');
+        assert.equal(severity({ bitrateKbps: 100 }), 'warning');
         assert.equal(severity({ warningReason: 'timestamps' }), 'warning');
-        assert.equal(severity({ audioEncoding: '1' }, 'off'), 'warning');
+        assert.equal(severity({ ...stopped, audioEncoding: '1' }), 'warning');
         const dup = new Map([
             [
                 'rtmp://a.example/live/key',
@@ -126,7 +128,7 @@ describe('outputSeverity', () => {
                 ],
             ],
         ]);
-        assert.equal(severity({}, 'good', dup), 'warning');
+        assert.equal(severity({}, dup), 'warning');
     });
 
     test('an error outranks a warning', () => {

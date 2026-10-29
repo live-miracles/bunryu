@@ -1,18 +1,12 @@
 import { healthNowMs } from '../core/state.js';
 import { escapeHtml, formatAgo, formatLocalDateTime } from '../core/utils.js';
+import type { StatusIssue } from '../core/status.js';
+
+export type { StatusIssue };
 
 // The hover text of a two-half status dot, shared by the pipeline list, the SRT Relay
 // card and a shared encode row, so all three read the same way: each half has a
 // heading, then what is wrong with it, or why nothing is.
-
-export interface StatusIssue {
-    severity: 'warning' | 'error';
-    message: string;
-    // What to do about it, when known (see core/hints.ts).
-    hint?: string;
-    // When it began, for an issue that is still going on.
-    sinceMs?: number;
-}
 
 export function issueLinesHtml(issues: StatusIssue[]): string {
     return issues

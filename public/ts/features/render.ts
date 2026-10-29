@@ -14,7 +14,6 @@ import {
     formatClockTime,
     formatLocalDateTime,
     setHtmlKeepScroll,
-    LOW_BITRATE_KBPS,
     STATUS_COLOR_GOOD,
     STATUS_COLOR_WARN,
     STATUS_COLOR_ERROR,
@@ -49,7 +48,7 @@ import {
     type DupRef,
 } from './output-card.js';
 import { outputStatusCounts } from './output-badges.js';
-import { renderSharedEncodes, sharedEncodeIssue } from './shared-encodes.js';
+import { renderSharedEncodes } from './shared-encodes.js';
 import {
     hasCurrentRelayError,
     recentFigure,
@@ -59,11 +58,15 @@ import {
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import { alertHint } from '../core/hints.js';
 import {
-    issueLinesHtml,
-    renderStatusTooltip,
-    splitDotGradient,
+    inputBitrateStatsReady,
+    inputHealth,
+    outputHealth,
+    summarizeOutputError,
+    type InputStatus,
+    type OutStatus,
     type StatusIssue,
-} from './status-tooltip.js';
+} from '../core/status.js';
+import { issueLinesHtml, renderStatusTooltip, splitDotGradient } from './status-tooltip.js';
 import {
     countOutputs,
     matchesOutputFilter,
@@ -79,12 +82,7 @@ import {
     searchBoxHtml,
 } from '../core/overview-filter.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
-import {
-    formatUptime,
-    inputStatusMessage,
-    renderCompactMetaRow,
-    renderInputStats,
-} from './input-stats-view.js';
+import { formatUptime, renderCompactMetaRow, renderInputStats } from './input-stats-view.js';
 import { renderMetrics as renderMetricsView, renderPreview } from './metrics-view.js';
 
 declare global {
@@ -93,8 +91,6 @@ declare global {
     }
 }
 
-type OutStatus = 'good' | 'warn' | 'error' | 'off';
-type InputStatus = 'good' | 'warn' | 'error' | 'off';
 const STATUS_RANK: Record<OutStatus, number> = { error: 3, warn: 2, good: 1, off: 0 };
 function worstStatus(a: OutStatus, b: OutStatus): OutStatus {
     return STATUS_RANK[b] > STATUS_RANK[a] ? b : a;
@@ -273,30 +269,6 @@ function setMetricSeverity(id: string, percent: number | null): void {
     el.classList.toggle('font-semibold', isError || isWarning);
 }
 
-// True if the most recent error is still relevant to what's on screen right
-// now. A watchdog/exit path always records the error before the process dies,
-// so once a fresh restart happens (o.startedAtMs moves past lastErrorAt) the
-// error belongs to a prior, already-resolved incarnation. When there's no
-// current process at all (startedAtMs null), that's either an actual
-// between-retries gap after a real ffmpeg failure (failures > 0 — keep
-// showing it) or a manual start that hasn't spawned yet / is waiting on the
-// input to come ready (start() resets failures to 0 before attempting to
-// spawn) — in that case any old error is a stale prior incarnation, not the
-// reason ffmpeg isn't running yet, so don't resurrect it.
-function hasCurrentOutputError(o: OutputView): boolean {
-    if (o.lastError === null || o.lastErrorAt === null) return false;
-    if (o.startedAtMs === null) return o.failures > 0;
-    return o.lastErrorAt >= o.startedAtMs;
-}
-
-// SRS reports a zero receive bitrate until its rolling bitrate statistics are
-// populated. Do not turn that startup placeholder into a low-bitrate warning.
-const INPUT_BITRATE_STATS_WARMUP_MS = 30_000;
-
-function inputBitrateStatsReady(input: InputHealth): boolean {
-    return input.uptimeMs !== null && input.uptimeMs >= INPUT_BITRATE_STATS_WARMUP_MS;
-}
-
 function displayInputBitrateKbps(input: InputHealth): number | null {
     if (input.live && input.recvBitrateKbps === 0 && !inputBitrateStatsReady(input)) {
         return null;
@@ -304,173 +276,8 @@ function displayInputBitrateKbps(input: InputHealth): number | null {
     return input.recvBitrateKbps;
 }
 
-interface OutputHealth {
-    status: OutStatus;
-    issues: OverviewIssue[];
-}
-
-interface DerivedInputHealth {
-    status: InputStatus;
-    issues: OverviewIssue[];
-}
-
-// `includeInput` false leaves out "the input is not live", which a shared encode's
-// status shows on its own side of the dot (see sharedEncodeIndicator).
-function outputHealth(o: OutputView, input: InputHealth, includeInput = true): OutputHealth {
-    if (o.desiredState === 'stopped') return { status: 'off', issues: [] };
-
-    // An output that pulls a shared encode which is not up yet is waiting, not
-    // failing: it restarts by itself once the encode is ready.
-    const sharedIssue = sharedEncodeIssue(o);
-    if (sharedIssue) return { status: 'warn', issues: [sharedIssue] };
-
-    const withFailures = (message: string): string =>
-        o.failures > 0
-            ? `${o.failures} error${o.failures === 1 ? '' : 's'} since last start. ${message}`
-            : message;
-
-    if (o.status === 'failed') {
-        return {
-            status: 'error',
-            issues: [
-                {
-                    severity: 'error',
-                    message: withFailures(
-                        summarizeOutputError(o.lastError, 'Output process failed.'),
-                    ),
-                },
-            ],
-        };
-    }
-
-    if (o.status === 'running') {
-        if (includeInput && !input.live) {
-            return {
-                status: 'warn',
-                issues: [
-                    { severity: 'warning', message: 'Output is running but input is not live.' },
-                ],
-            };
-        }
-        if (o.warningReason !== null) {
-            return { status: 'warn', issues: [{ severity: 'warning', message: o.warningReason }] };
-        }
-        if (o.bitrateKbps !== null && o.bitrateKbps >= LOW_BITRATE_KBPS) {
-            return { status: 'good', issues: [] };
-        }
-        if (o.bitrateKbps === null && hasCurrentOutputError(o)) {
-            return {
-                status: 'error',
-                issues: [
-                    {
-                        severity: 'error',
-                        message: withFailures(
-                            summarizeOutputError(
-                                o.lastError,
-                                'Output has no bitrate after an error.',
-                            ),
-                        ),
-                    },
-                ],
-            };
-        }
-        if (o.bitrateKbps === null) {
-            return {
-                status: 'warn',
-                issues: [
-                    {
-                        severity: 'warning',
-                        message: 'Output is running but no bitrate is reported yet.',
-                    },
-                ],
-            };
-        }
-        return {
-            status: 'warn',
-            issues: [
-                {
-                    severity: 'warning',
-                    message: `Output bitrate is below ${LOW_BITRATE_KBPS} kb/s.`,
-                },
-            ],
-        };
-    }
-
-    // status === 'stopped' but desiredState === 'running': between retries
-    if (hasCurrentOutputError(o)) {
-        return {
-            status: 'error',
-            issues: [
-                {
-                    severity: 'error',
-                    message: withFailures(
-                        summarizeOutputError(o.lastError, 'Output failed and is waiting to retry.'),
-                    ),
-                },
-            ],
-        };
-    }
-    return {
-        status: 'warn',
-        issues: [{ severity: 'warning', message: 'Output is waiting to start or retry.' }],
-    };
-}
-
 function outStatus(o: OutputView, input: InputHealth): OutStatus {
     return outputHealth(o, input).status;
-}
-
-function inputHealth(input: InputHealth): DerivedInputHealth {
-    if (!input.connected) return { status: 'off', issues: [] };
-    // A failed probe takes precedence over the transient pending state. This
-    // also keeps an error visible if a later retry has not begun or completed.
-    if (input.mediaOk === false || input.mediaError) {
-        return {
-            status: 'error',
-            issues: [{ severity: 'error', message: inputStatusMessage(input) }],
-        };
-    }
-    // A connected publisher is not fully ready until ffprobe has returned the
-    // media details used to validate and display its encoding.
-    if (input.mediaOk === null) {
-        return {
-            status: 'warn',
-            issues: [{ severity: 'warning', message: inputStatusMessage(input) }],
-        };
-    }
-    if (!input.live) {
-        return {
-            status: 'warn',
-            issues: [{ severity: 'warning', message: inputStatusMessage(input) }],
-        };
-    }
-
-    const issues: OverviewIssue[] = [];
-    if (
-        inputBitrateStatsReady(input) &&
-        input.recvBitrateKbps !== null &&
-        input.recvBitrateKbps < LOW_BITRATE_KBPS
-    ) {
-        issues.push({
-            severity: 'warning',
-            message: `Input bitrate is below ${LOW_BITRATE_KBPS} kb/s.`,
-        });
-    }
-    // Only report missing audio after ffprobe has confirmed usable media;
-    // otherwise every new input briefly appears unhealthy during startup.
-    if (input.audioTracks.length === 0 && input.audio === null) {
-        issues.push({ severity: 'warning', message: 'No audio track detected in input.' });
-    }
-    for (const alert of input.alerts ?? []) {
-        issues.push({
-            severity: alert.severity,
-            message: alert.message,
-            hint: alertHint(alert.code) ?? undefined,
-            sinceMs: alert.sinceMs,
-        });
-    }
-    if (issues.some((issue) => issue.severity === 'error')) return { status: 'error', issues };
-    return { status: issues.length > 0 ? 'warn' : 'good', issues };
 }
 
 function inputStatus(input: InputHealth): InputStatus {
@@ -499,21 +306,6 @@ function renderOverviewIssues(issues: OverviewIssue[]): string {
 
 function inputIssues(input: InputHealth): OverviewIssue[] {
     return inputHealth(input).issues;
-}
-
-function summarizeOutputError(error: string | null | undefined, fallback: string): string {
-    if (!error) return fallback;
-
-    const lastLine =
-        error
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .pop() ?? '';
-    if (!lastLine) return fallback;
-
-    const singleLine = lastLine.replace(/\s+/g, ' ');
-    return singleLine.length > 160 ? `${singleLine.slice(0, 157)}...` : singleLine;
 }
 
 // A relay problem and the half of the status dot it belongs to: `input` is the SRT
@@ -2257,7 +2049,7 @@ function renderOutputsList(pipeline: PipelineView): void {
         return {
             output,
             status,
-            severity: outputSeverity(output, pipeline.input, dupUrls, status),
+            severity: outputSeverity(output, pipeline.input, dupUrls),
         };
     });
     const { outputsListSearch: query, outputsListProblemsOnly: problemsOnly } = state;
@@ -2293,7 +2085,6 @@ function renderOutputsList(pipeline: PipelineView): void {
                   .map(({ output }) =>
                       renderOutputCard(output, pipeline.input, dupUrls, {
                           pendingOutputs,
-                          outStatus,
                           formatUptime,
                       }),
                   )

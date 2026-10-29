@@ -17,11 +17,12 @@ const output = (over) => ({
     hasErrorHistory: false,
     warningReason: null,
     startedAtMs: null,
+    bitrateKbps: 5000,
     url: 'rtmp://a.example/live/key',
     ...over,
 });
-const rtmpInput = { connected: true, isSrt: false, audioTracks: [] };
-const deps = { outStatus: () => 'good', pendingOutputs: new Set(), formatUptime: () => '' };
+const rtmpInput = { connected: true, live: true, isSrt: false, audioTracks: [] };
+const deps = { pendingOutputs: new Set(), formatUptime: () => '' };
 const render = (over, input = rtmpInput) => renderOutputCard(output(over), input, new Map(), deps);
 
 describe('RTMP input with Track 1 audio on an RTMP output', () => {
@@ -243,10 +244,7 @@ describe('card tint follows the most severe problem', () => {
     });
 
     test('an error status with no error text still tints it red', () => {
-        const html = renderOutputCard(output({}), rtmpInput, new Map(), {
-            ...deps,
-            outStatus: () => 'error',
-        });
+        const html = render({ status: 'failed' });
         assert.equal(tintOf(html), 'error');
     });
 

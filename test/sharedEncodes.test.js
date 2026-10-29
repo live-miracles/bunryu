@@ -6,9 +6,9 @@ const { parsePipelines } = require('../public/ts/core/pipeline');
 const {
     renderSharedEncodeRows,
     sharedEncodeIndicator,
-    sharedEncodeIssue,
     SHARED_ENCODE_RESTART_LOCKOUT_MS,
 } = require('../public/ts/features/shared-encodes');
+const { sharedEncodeIssue } = require('../public/ts/core/status');
 
 const ENCODINGS = ['copy', '720p', '1080p', 'vertical_rotate'];
 const R720 = 'rtmp://127.0.0.1:21935/internal/r1_720p_a1';

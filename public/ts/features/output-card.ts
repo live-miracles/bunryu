@@ -17,14 +17,13 @@ import {
     outputMetricsBadge,
 } from './output-badges.js';
 import { errorHint } from '../core/hints.js';
+import { lastErrorLine, outputHealth } from '../core/status.js';
 
-export type OutputCardStatus = 'good' | 'warn' | 'error' | 'off';
 // outputId lets an output card leave itself out of its own duplicate list.
 export type DupRef = { pipelineName: string; outputName?: string; outputId?: string };
 
 type OutputCardDeps = {
     pendingOutputs: Map<string, 'start' | 'stop'>;
-    outStatus: (output: OutputView, input: InputHealth) => OutputCardStatus;
     formatUptime: (ms: number | null) => string;
 };
 
@@ -109,13 +108,7 @@ function hintHtml(hint: string | null): string {
 // The last line of the output's current error, or '' when it has none (a stopped
 // output keeps one only when it was stopped after repeated failed attempts).
 function currentErrorLine(output: OutputView): string {
-    if (!output.lastError || output.lastErrorAt === null) return '';
-    return (
-        output.lastError
-            .split('\n')
-            .filter((line) => line.trim())
-            .slice(-1)[0] ?? ''
-    );
+    return output.lastErrorAt === null ? '' : lastErrorLine(output);
 }
 
 // Every warning the card shows, whether reported by the running output, a
@@ -156,8 +149,8 @@ export function outputSeverity(
     output: OutputView,
     input: InputHealth,
     dupUrls: Map<string, DupRef[]>,
-    status: OutputCardStatus,
 ): 'error' | 'warning' | null {
+    const status = outputHealth(output, input).status;
     if (status === 'error' || currentErrorLine(output)) return 'error';
     if (status === 'warn' || outputWarnings(output, input, dupUrls).length > 0) return 'warning';
     return null;
@@ -170,7 +163,7 @@ export function renderOutputCard(
     deps: OutputCardDeps,
 ): string {
     const isStopped = output.desiredState === 'stopped';
-    const status = deps.outStatus(output, input);
+    const status = outputHealth(output, input).status;
     const statusHex =
         status === 'good'
             ? STATUS_COLOR_GOOD

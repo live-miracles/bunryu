@@ -7,6 +7,7 @@ import {
     formatBitrate,
     formatLocalTime,
 } from '../core/utils.js';
+import { inputStatusMessage } from '../core/status.js';
 import type { InputHealth } from '../types.js';
 
 type InputStatsDeps = {
@@ -37,13 +38,6 @@ function formatMediaProbeStatus(input: InputHealth): string | null {
     }
     if (input.connected && !input.live) return 'ffprobe not run yet';
     return null;
-}
-
-export function inputStatusMessage(input: InputHealth): string {
-    if (input.mediaError) return input.mediaError;
-    if (input.mediaOk === null)
-        return 'Waiting for ffprobe to finish and return the input encoding.';
-    return 'Input connected, waiting for valid media.';
 }
 
 function renderMediaProbeNotice(input: InputHealth): string {

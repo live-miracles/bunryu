@@ -1,6 +1,8 @@
 import { healthNowMs } from '../core/state.js';
 import { escapeHtml, formatAgo, formatLocalDateTime } from '../core/utils.js';
-import { renderStatusTooltip, splitDotGradient, type StatusIssue } from './status-tooltip.js';
+import { lastErrorLine } from '../core/status.js';
+import type { StatusIssue } from '../core/status.js';
+import { renderStatusTooltip, splitDotGradient } from './status-tooltip.js';
 import {
     ICON_HISTORY,
     ICON_ITERATION_CW,
@@ -15,45 +17,6 @@ import type { InputHealth, OutputView, PipelineView } from '../types.js';
 // its rendition (`sharedEncode`) and keeps the rows apart in `renditions`.
 
 export const SHARED_ENCODE_RESTART_LOCKOUT_MS = 5000;
-
-function lastErrorLine(output: OutputView): string {
-    return (
-        (output.lastError ?? '')
-            .split('\n')
-            .filter((line) => line.trim())
-            .slice(-1)[0] ?? ''
-    );
-}
-
-// Same rule as for an output card (render.ts hasCurrentOutputError): an error
-// counts while it belongs to the current run, or while the output waits to retry
-// after a real failure.
-function hasCurrentError(o: OutputView): boolean {
-    if (o.lastError === null || o.lastErrorAt === null) return false;
-    if (o.startedAtMs === null) return o.failures > 0;
-    return o.lastErrorAt >= o.startedAtMs;
-}
-
-// What an output that pulls a shared encode should say while it is not running
-// because the encode is not up yet. The output restarts by itself once the
-// encode is ready, so this is a warning, not an error.
-export function sharedEncodeIssue(
-    output: OutputView,
-): { severity: 'warning'; message: string } | null {
-    const rendition = output.sharedEncode;
-    if (!rendition || output.desiredState !== 'running' || output.status === 'running') {
-        return null;
-    }
-    if (rendition.ready) return null;
-    if (rendition.status === 'failed' || hasCurrentError(rendition)) {
-        const line = lastErrorLine(rendition);
-        return {
-            severity: 'warning',
-            message: line ? `Shared encode failed: ${line}` : 'Shared encode failed.',
-        };
-    }
-    return { severity: 'warning', message: `Waiting for ${rendition.name}` };
-}
 
 export type SharedEncodeStatus = 'good' | 'warn' | 'error' | 'off';
 
