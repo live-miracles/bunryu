@@ -35,6 +35,9 @@ const {
     buildFfmpegArgs,
     validateOutputUrl,
     validateAudioEncoding,
+    isOutputFfmpegArgs,
+    ENCODINGS,
+    INPUT_TIMEOUT_US,
 } = require('../src/utils/ffmpeg');
 const { rtmpPullUrl, srtPullUrl, rtmpPublishUrl, srtPublishUrl } = require('../src/utils/srs');
 const { red, yellow, green, cyan } = require('../src/utils/ansiColor');
@@ -244,6 +247,51 @@ describe('buildFfmpegArgs', () => {
         const url = 'srt://host:10080?mode=caller&latency=240000&streamid=x';
         const args = buildFfmpegArgs('rtmp://in', url, 'copy');
         assert.ok(args.includes(url));
+    });
+});
+
+// ── isOutputFfmpegArgs ────────────────────────────────
+
+// The orphan sweep at startup finds our output FFmpegs by their command line. If a
+// change to buildFfmpegArgs drops one of the flags it looks for, the sweep stops
+// finding them without any other test failing.
+describe('isOutputFfmpegArgs', () => {
+    test('recognises everything buildFfmpegArgs builds', () => {
+        const inputs = ['rtmp://127.0.0.1:21935/live/key', 'srt://127.0.0.1:10080?streamid=x'];
+        const destinations = [
+            'rtmp://a.example/live/key',
+            'rtmps://a.example/live/key',
+            'srt://b.example:9000',
+        ];
+        const audio = ['copy', '0', '1', '0,1'];
+        let checked = 0;
+        for (const input of inputs) {
+            for (const url of destinations) {
+                for (const audioEncoding of audio) {
+                    for (const videoEncoding of Object.keys(ENCODINGS)) {
+                        const args = buildFfmpegArgs(input, url, audioEncoding, videoEncoding);
+                        assert.ok(
+                            isOutputFfmpegArgs(args),
+                            `${input} -> ${url} audio=${audioEncoding} video=${videoEncoding}`,
+                        );
+                        checked++;
+                    }
+                }
+            }
+        }
+        assert.ok(checked >= 40);
+    });
+
+    test('does not recognise an FFmpeg that is not an output', () => {
+        const output = buildFfmpegArgs('rtmp://in', 'rtmp://out', 'copy');
+        // A preview reads with the same timeout but has no progress pipe.
+        const preview = ['-rw_timeout', String(INPUT_TIMEOUT_US), '-i', 'rtmp://in', 'out.m3u8'];
+        assert.equal(isOutputFfmpegArgs(preview), false);
+        assert.equal(isOutputFfmpegArgs(['-i', 'a.mp4', 'b.mp4']), false);
+        assert.equal(isOutputFfmpegArgs([]), false);
+        // Someone else's FFmpeg with a different timeout.
+        const other = output.map((a) => (a === String(INPUT_TIMEOUT_US) ? '1000000' : a));
+        assert.equal(isOutputFfmpegArgs(other), false);
     });
 });
 

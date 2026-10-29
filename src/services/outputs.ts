@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import {
-    INPUT_TIMEOUT_US,
+    isOutputFfmpegArgs,
     buildFfmpegArgs,
     ffmpegEnv,
     validateOutputUrl,
@@ -268,16 +268,7 @@ export interface OutputService {
 // escalate to SIGKILL — an orphan that ignores SIGTERM is no worse off than
 // before this ran, and the next restart will sweep it again.
 function killOrphanedFfmpeg(): void {
-    for (const pid of findPidsByExecutable(FFMPEG_CMD, (args) => {
-        const progressIdx = args.indexOf('-progress');
-        const timeoutIdx = args.indexOf('-rw_timeout');
-        return (
-            progressIdx >= 0 &&
-            args[progressIdx + 1] === 'pipe:1' &&
-            timeoutIdx >= 0 &&
-            args[timeoutIdx + 1] === String(INPUT_TIMEOUT_US)
-        );
-    })) {
+    for (const pid of findPidsByExecutable(FFMPEG_CMD, isOutputFfmpegArgs)) {
         console.warn(
             yellow(`[outputs] killing orphaned ffmpeg pid=${pid} left by a previous instance`),
         );

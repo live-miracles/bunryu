@@ -119,6 +119,21 @@ function outputTimeoutArgs(url: string): string[] {
         : [];
 }
 
+// True for the command line of an FFmpeg that buildFfmpegArgs built: it always reads
+// its input with the long `-rw_timeout` and reports `-progress pipe:1`, which no
+// other FFmpeg of ours (a preview has no progress pipe) does together. Used to find
+// the ones a previous instance left behind; a test keeps the builder and this in step.
+export function isOutputFfmpegArgs(args: readonly string[]): boolean {
+    const progressIdx = args.indexOf('-progress');
+    const timeoutIdx = args.indexOf('-rw_timeout');
+    return (
+        progressIdx >= 0 &&
+        args[progressIdx + 1] === 'pipe:1' &&
+        timeoutIdx >= 0 &&
+        args[timeoutIdx + 1] === String(INPUT_TIMEOUT_US)
+    );
+}
+
 // Build a single ffmpeg command that pulls the input once and pushes it to one
 // destination. The destination's audio track(s) are selected via -map; SRT
 // destinations use mpegts, everything else uses flv.
