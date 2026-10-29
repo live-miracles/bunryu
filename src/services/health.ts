@@ -55,6 +55,15 @@ import {
     type ProbeResult,
 } from './mediaProbe.js';
 import { createProbeScheduler } from './probeScheduler.js';
+import {
+    counterDelta,
+    legQualityHealth,
+    srtIntervalAlerts,
+    type PipelineAlert,
+    type RelayInputSample,
+} from '../utils/srtLinkAlerts.js';
+
+export type { PipelineAlert };
 
 export { isProbeUsable };
 
@@ -75,10 +84,6 @@ const MAX_SRS_EVENTS = 200;
 const LEG_HISTORY_MAX_SAMPLES = (60 * 60 * 1000) / POLL_INTERVAL_MS;
 const LEG_HISTORY_MAX_WINDOW_MS = 30 * 60 * 1000;
 const LEG_HEALTH_WINDOW_MS = 60 * 1000;
-// One second is a reasonable buffering target for long-distance or bonded
-// SRT, so warn only when the negotiated latency exceeds it with some margin.
-// Sudden latency spikes are still reported independently below.
-const SRT_HIGH_LATENCY_WARN_MS = 1500;
 // SRS adds RTMP video frames to its counter in ~5 s batches (and starts
 // ~20 s after the connect), so a window's rate is off by up to one batch at each
 // end: ±5 s / window, about ±4 % over 2 minutes. The ±10 % band sits clear of
@@ -113,11 +118,6 @@ function inputFormatOf(result: ProbeResult): string {
         : 'no video';
     const n = result.audioTracks.length;
     return `${video}, ${n} audio track${n === 1 ? '' : 's'}`;
-}
-
-function counterDelta(current: number | null, previous: number | null | undefined): number | null {
-    if (current === null || previous === null || previous === undefined) return null;
-    return current >= previous ? current - previous : current;
 }
 
 export interface InputHealth {
@@ -190,13 +190,6 @@ interface PipelineHealth {
         };
         output: { recent: SrtRecent | null };
     };
-}
-
-export interface PipelineAlert {
-    severity: 'warning' | 'error';
-    code: string;
-    message: string;
-    sinceMs: number;
 }
 
 export interface LegHistorySample {
@@ -340,10 +333,6 @@ function formatDuration(totalSeconds: number): string {
 }
 
 // A bitrate for an alert message: Mb/s from 1000 kb/s up.
-function formatKbps(kbps: number): string {
-    return kbps >= 1000 ? `${Number((kbps / 1000).toFixed(1))} Mb/s` : `${Math.round(kbps)} kb/s`;
-}
-
 interface ProcessUsage {
     cpuPercent: number | null;
     ramBytes: number | null;
@@ -501,19 +490,7 @@ export function createHealthService(
         if (elapsedMs < INPUT_FPS_WINDOW_MS) return null;
         return ((frames - oldest.frames) * 1000) / elapsedMs;
     }
-    const relayInputSamples = new Map<
-        number,
-        {
-            recvLossTotal: number | null;
-            recvDropTotal: number | null;
-            recvUniquePacketsTotal: number;
-            retransTotal: number | null;
-            belatedTotal: number | null;
-            latencyMs: number | null;
-            recvBitrateKbps: number | null;
-            forwardedPackets: number;
-        }
-    >();
+    const relayInputSamples = new Map<number, RelayInputSample>();
     const legPacketSamples = new Map<
         number,
         Map<
@@ -1199,102 +1176,7 @@ export function createHealthService(
                 publisherChangedAt.delete(pipeline.id);
             }
             if (previousRelaySample && rawBondingStatus.inputActive) {
-                const dropped = counterDelta(
-                    currentRelaySample.recvDropTotal,
-                    previousRelaySample.recvDropTotal,
-                );
-                const lost = counterDelta(
-                    currentRelaySample.recvLossTotal,
-                    previousRelaySample.recvLossTotal,
-                );
-                const received = Math.max(
-                    0,
-                    currentRelaySample.recvUniquePacketsTotal -
-                        previousRelaySample.recvUniquePacketsTotal,
-                );
-                const lossRatio = received > 0 && lost !== null ? lost / received : 0;
-                const retransmitted = counterDelta(
-                    currentRelaySample.retransTotal,
-                    previousRelaySample.retransTotal,
-                );
-                const forwarded = Math.max(
-                    0,
-                    currentRelaySample.forwardedPackets - previousRelaySample.forwardedPackets,
-                );
-                if (dropped !== null && dropped > 0) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'srt-packets-dropped',
-                        message: `SRT input dropped ${dropped} packet${dropped === 1 ? '' : 's'} in the last health interval.`,
-                        sinceMs: now,
-                    });
-                } else if (lossRatio >= 0.01) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'srt-packet-loss',
-                        message: `SRT input packet loss is ${(lossRatio * 100).toFixed(1)}% in the last health interval.`,
-                        sinceMs: now,
-                    });
-                }
-                if (received > 0 && retransmitted !== null && retransmitted / received >= 0.05) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'srt-retransmissions',
-                        message: `SRT retransmissions reached ${((retransmitted / received) * 100).toFixed(1)}% in the last health interval.`,
-                        sinceMs: now,
-                    });
-                }
-                const belated =
-                    currentRelaySample.belatedTotal !== null &&
-                    previousRelaySample.belatedTotal !== null
-                        ? Math.max(
-                              0,
-                              currentRelaySample.belatedTotal - previousRelaySample.belatedTotal,
-                          )
-                        : 0;
-                if (belated > 100) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'srt-belated-packets',
-                        message: `SRT received ${belated} belated packets in the last health interval.`,
-                        sinceMs: now,
-                    });
-                }
-                if (
-                    currentRelaySample.latencyMs !== null &&
-                    (currentRelaySample.latencyMs >= SRT_HIGH_LATENCY_WARN_MS ||
-                        (previousRelaySample.latencyMs !== null &&
-                            currentRelaySample.latencyMs >=
-                                previousRelaySample.latencyMs * 1.5 + 100))
-                ) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'srt-latency-spike',
-                        message: `SRT latency is high (${Math.round(currentRelaySample.latencyMs)} ms).`,
-                        sinceMs: now,
-                    });
-                }
-                if (
-                    currentRelaySample.recvBitrateKbps !== null &&
-                    previousRelaySample.recvBitrateKbps !== null &&
-                    previousRelaySample.recvBitrateKbps >= 500 &&
-                    currentRelaySample.recvBitrateKbps <= previousRelaySample.recvBitrateKbps * 0.6
-                ) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'input-bitrate-collapse',
-                        message: `Input bitrate dropped from ${formatKbps(previousRelaySample.recvBitrateKbps)} to ${formatKbps(currentRelaySample.recvBitrateKbps)}.`,
-                        sinceMs: now,
-                    });
-                }
-                if (received > 0 && forwarded === 0) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'relay-forwarding-stalled',
-                        message: 'Relay is receiving SRT packets but forwarding no packets to SRS.',
-                        sinceMs: now,
-                    });
-                }
+                alerts.push(...srtIntervalAlerts(previousRelaySample, currentRelaySample, now));
             }
             let expectedLegs = relayInput.legs.length;
             if (rawBondingStatus.inputActive && relayInput.bonded) {
@@ -1464,29 +1346,12 @@ export function createHealthService(
                     (total, historySample) => total + (historySample.retransmittedPackets ?? 0),
                     0,
                 );
-                const lossPct = receivedPackets > 0 ? (lossPackets / receivedPackets) * 100 : 0;
-                const dropPct = receivedPackets > 0 ? (dropPackets / receivedPackets) * 100 : 0;
-                const retransmissionPct =
-                    receivedPackets > 0 ? (retransmittedPackets / receivedPackets) * 100 : 0;
-                let health = legHealth.get(transportKey)?.health ?? 'ok';
-                let reason = legHealth.get(transportKey)?.reason ?? null;
-                if (receivedPackets >= 100 && (dropPct >= 5 || dropPackets >= 1000)) {
-                    health = 'error';
-                    reason = `${linkNoun} packet drops are ${dropPct.toFixed(1)}% over the last minute (${dropPackets} packets).`;
-                } else if (
-                    receivedPackets >= 100 &&
-                    (dropPct >= 1 || lossPct >= 1 || dropPackets >= 100 || lossPackets >= 100)
-                ) {
-                    health = health === 'error' ? health : 'warn';
-                    reason = `${linkNoun} packet quality is degraded over the last minute (${lossPct.toFixed(1)}% loss, ${dropPct.toFixed(1)}% drop).`;
-                } else if (receivedPackets >= 100 && retransmissionPct >= 5) {
-                    health = health === 'error' ? health : 'warn';
-                    reason = `${linkNoun} retransmissions are ${retransmissionPct.toFixed(1)}% over the last minute.`;
-                }
-                if (leg.latencyMs !== null && leg.latencyMs >= SRT_HIGH_LATENCY_WARN_MS) {
-                    health = health === 'error' ? health : 'warn';
-                    reason = `${linkNoun} latency is high (${Math.round(leg.latencyMs)} ms).`;
-                }
+                const { health, reason } = legQualityHealth(
+                    { receivedPackets, lossPackets, dropPackets, retransmittedPackets },
+                    leg.latencyMs,
+                    linkNoun,
+                    legHealth.get(transportKey) ?? { health: 'ok', reason: null },
+                );
                 sample.health = health;
                 legHealth.set(transportKey, { health, reason });
                 if (health !== 'ok' && reason) {
