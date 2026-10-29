@@ -17,7 +17,9 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](http
 | [Install](docs/1-getting-started/3-install.md) | [Try with Docker](docs/1-getting-started/2-docker.md) | [Documentation](docs/README.md) |
 | --- | --- | --- |
 
-![Bunryu dashboard: a pipeline with live preview and seven running outputs](.github/assets/pipeline-view.png)
+![Bunryu dashboard: a pipeline with live preview and seven running outputs](.github/assets/pipeline-view.jpg)
+
+_The preview plays Hokusai's The Great Wave (public domain, [The Met Open Access](https://www.metmuseum.org/art/collection/search/45434)) animated for this screenshot. The outputs are simulated._
 
 ## Features
 
@@ -28,7 +30,7 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](http
 - Watch everything in a live dashboard: HLS preview, ffprobe media details, bitrates, host and per-process CPU/RAM/network charts, and copy-ready publish URLs, and it stays readable with 50 inputs and 500 outputs ([measured](docs/1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling)).
 - Stay reliable through long events: [watchdogs, isolated outputs, safe restarts and post-incident evidence](#built-for-reliability).
 
-![Overview page with host charts and per-process resources](.github/assets/overview.png)
+![Overview page with host charts and per-process resources](.github/assets/overview.jpg)
 
 ![The dashboard with 50 inputs and 500 outputs: two inputs drop, and the totals, the affected pipelines and the Issues tab show it](.github/assets/dashboard-problems.gif)
 
@@ -37,6 +39,10 @@ _50 inputs and 500 outputs in one dashboard. The control plane, SRS and inputs a
 ## Built for reliability
 
 A live event can't be restarted. Bunryu assumes something will go wrong (a destination stalls, an encoder drops, a process runs out of memory) and is built so the failure stays small, fixes itself where that is safe, and is explained afterwards.
+
+![A publisher disconnects and returns: the dashboard flags the seven affected outputs, then they recover on their own](.github/assets/outage-recovery.gif)
+
+_Main Stage's publisher drops for 16 seconds. The other pipelines keep running, and the affected outputs recover by themselves when the input returns. The control plane, SRS and inputs are real; the outputs are simulated._
 
 - **Isolated:** each output is its own FFmpeg process. A frozen, refusing or non-reading destination, a dropped input or a crashed FFmpeg doesn't touch the other outputs or pipelines.
 - **Bounded recovery:** [watchdogs](docs/3-operations/4-reliability.md) restart stuck outputs with limits, so a bad destination can't cause a restart storm.
