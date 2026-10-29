@@ -1178,6 +1178,23 @@ could not be told from the output's own error. Then log one TCP connect check to
 that destination in the output's existing failure event, which needs no
 configuration, loop, table or UI.
 
+### The dashboard keeps its own copy of the shared-encode recipe rule
+
+**Decision (October 2026):** `public/ts/core/renditions.ts` stays a hand-kept twin of
+`encodeRecipe` and `RENDITION_URL_RE` in `src/utils/renditions.ts`. `test/renditions.test.js`
+runs both over every video and audio combination and fails if they disagree.
+
+**Why:** the twin is about 25 lines. Removing it means either publishing each output's
+shared encode to the browser (a new field in the API, which the dashboard could not
+otherwise do without) or compiling one source file into both the server and the
+browser (a build change across two tsconfigs). Either costs more than the test that
+keeps the copies equal. The two server-side `dependentsOf` functions are not the same
+rule written twice: one asks which outputs are reading a rendition now (running state),
+the other which outputs need one (saved configuration).
+
+**Revisit when:** the recipe rule changes again, or the API gains a field that already
+carries each output's shared encode.
+
 ## Tooling
 
 ### ESLint checks promise handling; Prettier stays the formatter
