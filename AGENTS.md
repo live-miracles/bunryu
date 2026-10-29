@@ -276,6 +276,20 @@ tool folder.
 - `benchmark-sizing` - re-measure output CPU/RAM costs on a private loopback SRS
   pair to refresh `docs/1-getting-started/4-sizing.md`.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`live-miracles/bunryu`, via `gh`). See `agent-docs/issue-tracker.md`.
+
+### Triage labels
+
+Default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `agent-docs/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` at the repo root. Design decisions are recorded in `docs/4-reference/3-design-decisions.md` rather than a separate `docs/adr/`. See `agent-docs/domain.md`.
+
 ## Data model and compatibility
 
 This project does not require database migrations or legacy schema support.
