@@ -24,12 +24,12 @@
     --accent: light-dark(#1b5fb0, #6db3ff);
     --on-accent: light-dark(#ffffff, #06142b);
     --ok: light-dark(#1a7f37, #30d158);
-    --warn: light-dark(#a15c00, #ff9f0a);
+    --warn: light-dark(#946200, #ffd60a);
     --bad: light-dark(#d1242f, #ff453a);
     --on-status: light-dark(#ffffff, #000000);
     /* Brighter than the text colours above: status dots, split dots and card tints. */
     --dot-ok: light-dark(#34c759, #30d158);
-    --dot-warn: light-dark(#ff9500, #ff9f0a);
+    --dot-warn: light-dark(#ffb800, #ffd60a);
     --dot-bad: light-dark(#ff3b30, #ff453a);
     --dot-off: light-dark(#aeaeb2, #636366);
     --chart-cpu: light-dark(#0a84ff, #0a84ff);
@@ -352,7 +352,8 @@
     .badge-error,
     .badge-info,
     .badge-accent {
-        background: color-mix(in oklab, var(--c) 15%, transparent);
+        background: color-mix(in oklab, var(--c) 18%, transparent);
+        border-color: color-mix(in oklab, var(--c) 35%, transparent);
         color: var(--c);
     }
 
