@@ -174,18 +174,20 @@
       old passphrase still works.
     </div>
 
-    <!-- Error banner -->
-    <div class="fixed left-1/2 z-50 -translate-x-1/2" style="top: 0.5rem; pointer-events: none">
-      <div role="alert" id="error-alert" class="alert alert-error hidden max-w-xl opacity-90" style="pointer-events: auto">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 stroke-current" fill="none" viewBox="0 0 24 24">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span id="error-msg"></span>
-      </div>
+    <!-- Error banner. A popover, so it shows above an open modal dialog (see showError). -->
+    <div
+      role="alert"
+      id="error-alert"
+      popover="manual"
+      class="alert alert-error fixed inset-auto top-2 left-1/2 z-50 m-0 hidden max-w-xl -translate-x-1/2 opacity-90">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 stroke-current" fill="none" viewBox="0 0 24 24">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span id="error-msg"></span>
     </div>
 
     <!-- Copy notification -->
@@ -346,7 +348,7 @@
     <div
       class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 pt-0 md:h-screen md:grid-cols-[clamp(14rem,30vw,23rem)_minmax(0,1fr)] xl:grid-cols-[clamp(14rem,24vw,23rem)_minmax(22rem,3fr)_minmax(0,4fr)]">
       <!-- Left: Pipeline list -->
-      <div class="panel mt-4 overflow-y-auto max-md:max-h-[40vh]">
+      <div class="panel panel-waves tint-sea mt-4 overflow-y-auto max-md:max-h-[40vh]">
         <div class="bg-base-300 sticky top-0 z-10 flex items-start justify-between gap-2 p-4">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="grid grid-cols-[5rem_auto] items-center gap-x-3 text-sm">
@@ -395,7 +397,7 @@
       <div class="contents md:-mx-2 md:flex md:min-h-0 md:flex-col md:overflow-y-auto md:px-2 xl:contents">
         <!-- Middle: Pipeline info -->
         <div
-          class="panel mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto px-4 pb-4 md:max-xl:shrink-0 md:max-xl:overflow-visible"
+          class="panel tint-dusk mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto px-4 pb-4 md:max-xl:shrink-0 md:max-xl:overflow-visible"
           id="pipe-info-col">
           <div
             class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-[calc(var(--radius-card)-1px)] px-4 pt-4 pb-3 text-xl font-bold">
@@ -705,7 +707,7 @@
         </div>
 
         <!-- Right: Outputs -->
-        <div class="panel mt-4 hidden overflow-y-auto px-4 pb-4 md:max-xl:shrink-0 md:max-xl:overflow-visible" id="outs-col">
+        <div class="panel tint-gold mt-4 hidden overflow-y-auto px-4 pb-4 md:max-xl:shrink-0 md:max-xl:overflow-visible" id="outs-col">
           <div class="bg-base-200 sticky top-0 z-10 -mx-4 rounded-t-[calc(var(--radius-card)-1px)] px-4 pt-4 pb-3">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
@@ -834,12 +836,12 @@
 
         <!-- Overview: all pipelines table (spans middle + right columns from xl up) -->
         <div
-          class="panel panel-calm mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          class="panel tint-mist mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
           id="overview-col"></div>
 
         <!-- Server Logs (spans middle + right columns from xl up) -->
         <div
-          class="panel panel-calm mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          class="panel tint-ember mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
           id="srs-logs-col">
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-xl font-bold">Server Logs</h2>
@@ -861,7 +863,7 @@
 
         <!-- Settings (spans middle + right columns from xl up) -->
         <div
-          class="panel panel-calm mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          class="panel tint-dawn mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
           id="settings-col">
           <div class="mx-auto max-w-4xl space-y-3">
             <h2 class="text-xl font-bold">Settings</h2>
@@ -1235,7 +1237,8 @@
          scrollable columns so it isn't clipped by their overflow-y-auto. -->
     <div
       id="hover-tooltip"
-      class="bg-neutral text-neutral-content rounded-field fixed z-50 hidden max-w-[40rem] px-2 py-1 text-left shadow-lg"
+      popover="manual"
+      class="rounded-field fixed inset-auto z-50 m-0 hidden max-w-[40rem] px-2 py-1 text-left shadow-lg"
       style="pointer-events: none"></div>
 
     <script>

@@ -145,18 +145,81 @@
 
 @layer components {
     /* Surfaces: the three working columns are flat white (dark grey) cards with a hairline. */
-    /* The panel's own layers do not scroll with its content: warm and cool glows in the
-       bottom corners and seigaiha waves rising from the bottom edge, under a fade of the
-       panel colour, so empty space below the content looks like water. */
+    /* The panel's own layers do not scroll with its content: two glows from the print's
+       palette. Each panel sets where they sit and which colours they use (the tint-*
+       classes), so neighbouring panels do not repeat each other. */
     .panel {
+        --glow-size: 300px;
+        --g1: var(--glow-a);
+        --g1-at: 0% 100%;
+        --g2: var(--glow-b);
+        --g2-at: 100% 100%;
         background:
-            linear-gradient(to bottom, var(--panel) 40%, transparent 100%) no-repeat,
-            url('patterns/waves-tile.svg') 0 100% / 60px 30px repeat,
-            radial-gradient(ellipse 70% 30% at 0% 100%, var(--glow-a), transparent 70%) no-repeat,
-            radial-gradient(ellipse 70% 30% at 100% 100%, var(--glow-b), transparent 70%) no-repeat,
+            radial-gradient(circle var(--glow-size) at var(--g1-at), var(--g1), transparent 70%)
+                no-repeat,
+            radial-gradient(circle var(--glow-size) at var(--g2-at), var(--g2), transparent 70%)
+                no-repeat,
             var(--panel);
         border: 1px solid var(--line);
         border-radius: var(--radius-card);
+    }
+
+    /* Seigaiha waves rising from the bottom edge, under a fade of the panel colour, so empty
+       space below the content looks like water. Only where there is room for them: the dense
+       tables and forms go without. */
+    .panel-waves {
+        background:
+            linear-gradient(to bottom, var(--panel) 40%, transparent 100%) no-repeat,
+            url('patterns/waves-tile.svg') 0 100% / 60px 30px repeat,
+            radial-gradient(circle var(--glow-size) at var(--g1-at), var(--g1), transparent 70%)
+                no-repeat,
+            radial-gradient(circle var(--glow-size) at var(--g2-at), var(--g2), transparent 70%)
+                no-repeat,
+            var(--panel);
+    }
+
+    .tint-sea {
+        --g1: var(--glow-a);
+        --g1-at: 0% 100%;
+        --g2: var(--glow-c);
+        --g2-at: 100% 100%;
+    }
+
+    .tint-dawn {
+        --g1: var(--glow-b);
+        --g1-at: 100% 0%;
+        --g2: var(--glow-c);
+        --g2-at: 0% 100%;
+    }
+
+    /* For a panel with a sticky header: no glow at the top, where the header's solid
+       background would stop at the scrollbar and leave the glow showing beside it. */
+    .tint-dusk {
+        --g1: var(--glow-b);
+        --g1-at: 100% 65%;
+        --g2: var(--glow-c);
+        --g2-at: 0% 90%;
+    }
+
+    .tint-gold {
+        --g1: var(--glow-c);
+        --g1-at: 50% 100%;
+        --g2: var(--glow-b);
+        --g2-at: 100% 100%;
+    }
+
+    .tint-mist {
+        --g1: var(--glow-a);
+        --g1-at: 0% 0%;
+        --g2: var(--glow-b);
+        --g2-at: 100% 100%;
+    }
+
+    .tint-ember {
+        --g1: var(--glow-b);
+        --g1-at: 100% 0%;
+        --g2: var(--glow-a);
+        --g2-at: 0% 100%;
     }
 
     /* Secondary text (labels, units, timestamps). Dimmed far enough to recede but not
@@ -171,15 +234,6 @@
         to {
             transform: rotate(360deg);
         }
-    }
-
-    /* The full-width views (Overview, Settings, server logs) are dense with text, so they
-       keep the glows and lose the waves. */
-    .panel-calm {
-        background:
-            radial-gradient(ellipse 70% 30% at 0% 100%, var(--glow-a), transparent 70%) no-repeat,
-            radial-gradient(ellipse 70% 30% at 100% 100%, var(--glow-b), transparent 70%) no-repeat,
-            var(--panel);
     }
 
     /* ── Buttons ───────────────────────────────────────────── */
@@ -892,18 +946,12 @@
     font-size: 0.8rem;
 }
 
-/* The hover tooltip is dark in both themes, so the text colours made for the panels
-   (dark amber and red, mid grey in light mode) would not read on it. */
-#hover-tooltip .text-warning {
-    color: var(--dot-warn);
-}
-
-#hover-tooltip .text-error {
-    color: var(--dot-bad);
-}
-
-#hover-tooltip .text-muted {
-    color: color-mix(in oklab, var(--on-tip) 65%, transparent);
+/* The hover tooltip follows the theme like a panel, with a hairline border to lift it off
+   the page; its text colours are the normal ones. */
+#hover-tooltip {
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--line);
 }
 
 /* Login page only: a stylized wave crest rising from the bottom-left corner, drawn in the

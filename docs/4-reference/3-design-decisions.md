@@ -1204,11 +1204,12 @@ banners) on top of Tailwind's utilities. daisyUI is removed. The tokens match th
 site (`live-miracles.github.io/ui/styles.css`): the palette of Hokusai's Great Wave (indigo
 ink on warm paper by day, the same sea at night), one blue accent, hairline dividers and
 no shadows, with Apple's restraint in type, spacing and radii. The Japanese motifs stay,
-quietly: glows in the print's blue, coral and cream behind the page and in the bottom corners
-of each panel, seigaiha waves rising from the bottom of the three working columns, an
-asanoha corner on the page, the blue-to-coral gradient on the wordmark and under the navbar,
-and the wave crest on the login page. The dense full-width views (Overview, Settings, server
-logs) keep the glows and drop the waves, so no pattern runs behind a table. All of it is
+quietly: glows in the print's blue, coral and cream behind the page and in each panel
+(every panel places and colours them differently, so neighbouring panels do not repeat
+each other), seigaiha waves rising from the bottom of the sidebar only, an asanoha corner on
+the page, the blue-to-coral gradient on the wordmark and under the navbar, and the wave
+crest on the login page. The dense views keep to glows, so no pattern runs behind a table.
+All of it is
 static (no animation cost on a dashboard open for hours) and is background layers or SVG
 masks filled with the accent, so one file serves both themes. Green, amber and red mean
 status and nothing else, and warnings and destructive buttons are tinted, not solid. Each

@@ -1957,7 +1957,14 @@ function initHoverTooltips(): void {
     if (!portal) return;
     let activeTrigger: Element | null = null;
 
+    // A popover, so it shows above an open modal dialog (the SRT bonding details have
+    // tooltips of their own); a dialog's top layer would otherwise cover it.
     const hide = (): void => {
+        try {
+            portal.hidePopover?.();
+        } catch {
+            /* already hidden */
+        }
         portal.classList.add('hidden');
         activeTrigger = null;
     };
@@ -1966,6 +1973,11 @@ function initHoverTooltips(): void {
         if (!content.innerHTML.trim()) return;
         portal.innerHTML = content.innerHTML;
         portal.classList.remove('hidden');
+        try {
+            portal.showPopover?.();
+        } catch {
+            /* already showing */
+        }
         const rect = trigger.getBoundingClientRect();
         const pw = portal.offsetWidth;
         const ph = portal.offsetHeight;

@@ -43,12 +43,29 @@ function setLoading(active: boolean): void {
     }
 }
 
+// A modal dialog is in the browser's top layer, above any z-index, so a message raised while
+// one is open (a failed paste or save in the output form) would show under its backdrop. The
+// banner is a popover, which joins the top layer later and so shows above an open dialog.
+let errorTimer: ReturnType<typeof setTimeout> | undefined;
 export function showError(msg: unknown): void {
     const el = document.getElementById('error-msg');
     const alert = document.getElementById('error-alert');
     if (el) el.textContent = String(msg);
     alert?.classList.remove('hidden');
-    setTimeout(() => alert?.classList.add('hidden'), 5000);
+    try {
+        alert?.showPopover?.();
+    } catch {
+        /* already showing */
+    }
+    clearTimeout(errorTimer);
+    errorTimer = setTimeout(() => {
+        try {
+            alert?.hidePopover?.();
+        } catch {
+            /* already hidden */
+        }
+        alert?.classList.add('hidden');
+    }, 5000);
 }
 
 const isMutating = (method: string) => !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
