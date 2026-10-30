@@ -236,9 +236,12 @@ only for a new module.
       into merged pipeline-log lines.
     - `hostMonitor.ts` turns the host's memory, CPU pressure and disk readings into host
       alerts and Server events (readings are injectable).
+    - `healthDiagnostics.ts` trims each pipeline's health for the per-minute snapshot event.
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `preview.ts`
   (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.
+  `src/utils/logThrottle.ts` is the shared "log the first, count the rest" rule (rejected
+  publishes, cross-protocol refusals, shared-encode reconcile errors).
 - `src/api/*` - REST routes; `errors.ts` is the JSON error handler (also on the hook app). `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments and the minimal environment every
