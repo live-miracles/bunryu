@@ -34,6 +34,40 @@ const RESTART_LOCKOUT_MS = 5000;
 const MANAGED_ERROR = { error: 'Shared encodes are managed automatically' };
 const RESERVED_APP_ERROR = 'the internal app is reserved for shared encodes';
 
+interface OutputConfig {
+    name: string;
+    videoEncoding: string;
+    url: string;
+    audioEncoding: string;
+}
+
+// An output's settings from a request body, checked in the order the dashboard
+// reports them. `kind` says which check failed, for the bulk route's messages:
+// 'policy' errors (reserved app, blocked destination) are about the destination
+// an operator pasted, so a bulk request names the output they belong to.
+type ParsedOutputConfig =
+    | { config: OutputConfig }
+    | { error: string; kind: 'name' | 'policy' | 'field'; name: string };
+
+async function parseOutputConfig(body: unknown): Promise<ParsedOutputConfig> {
+    const b = body as Record<string, unknown> | null | undefined;
+    const parsedName = parseName(b?.name);
+    if ('error' in parsedName) return { error: parsedName.error, kind: 'name', name: '' };
+    const { name } = parsedName;
+    const videoEncoding = (b?.videoEncoding as string | undefined)?.trim() || 'copy';
+    if (!ENCODINGS[videoEncoding]) {
+        return { error: `unknown videoEncoding: ${videoEncoding}`, kind: 'field', name };
+    }
+    const destination = parseDestination(b);
+    if ('error' in destination) return { error: destination.error, kind: 'field', name };
+    if (await isInternalAppDestination(destination.url)) {
+        return { error: RESERVED_APP_ERROR, kind: 'policy', name };
+    }
+    const blockedReason = await checkOutputDestination(destination.url);
+    if (blockedReason) return { error: blockedReason, kind: 'policy', name };
+    return { config: { name, videoEncoding, ...destination } };
+}
+
 export function registerOutputApi(app: Express, db: Db, outputService: OutputService): void {
     app.post('/api/pipelines/:pipelineId/outputs', async (req, res) => {
         const pipelineId = parseInt(req.params.pipelineId);
@@ -41,30 +75,12 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (!db.getPipeline(pipelineId))
             return res.status(404).json({ error: 'Pipeline not found' });
 
-        const parsedName = parseName(req.body?.name);
-        const name = 'name' in parsedName ? parsedName.name : '';
-        const videoEncoding = (req.body?.videoEncoding as string | undefined)?.trim() || 'copy';
-        const parsed = parseDestination(req.body);
-
-        if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
-        if (!ENCODINGS[videoEncoding])
-            return res.status(400).json({ error: `unknown videoEncoding: ${videoEncoding}` });
+        const parsed = await parseOutputConfig(req.body);
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-        if (await isInternalAppDestination(parsed.url)) {
-            return res.status(400).json({ error: RESERVED_APP_ERROR });
-        }
-        const blockedReason = await checkOutputDestination(parsed.url);
-        if (blockedReason) return res.status(400).json({ error: blockedReason });
 
         let output: ReturnType<Db['createOutput']>;
         try {
-            output = db.createOutput({
-                pipelineId,
-                name,
-                videoEncoding,
-                url: parsed.url,
-                audioEncoding: parsed.audioEncoding,
-            });
+            output = db.createOutput({ pipelineId, ...parsed.config });
         } catch (error) {
             console.error('[outputs] failed to create output:', error);
             return res.status(500).json({
@@ -85,38 +101,19 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (!Array.isArray(rawOutputs) || rawOutputs.length === 0)
             return res.status(400).json({ error: 'outputs array is required' });
 
-        const validated: {
-            name: string;
-            videoEncoding: string;
-            url: string;
-            audioEncoding: string;
-        }[] = [];
+        const validated: OutputConfig[] = [];
         for (const item of rawOutputs) {
-            const parsedName = parseName(item?.name);
-            const name = 'name' in parsedName ? parsedName.name : '';
-            const videoEncoding = (item?.videoEncoding as string | undefined)?.trim() || 'copy';
-            const parsed = parseDestination(item);
-
-            if ('error' in parsedName) {
-                return res
-                    .status(400)
-                    .json({ error: `each output needs a valid name: ${parsedName.error}` });
+            const parsed = await parseOutputConfig(item);
+            if ('error' in parsed) {
+                const error =
+                    parsed.kind === 'name'
+                        ? `each output needs a valid name: ${parsed.error}`
+                        : parsed.kind === 'policy'
+                          ? `${parsed.name}: ${parsed.error}`
+                          : parsed.error;
+                return res.status(400).json({ error });
             }
-            if (!ENCODINGS[videoEncoding])
-                return res.status(400).json({ error: `unknown videoEncoding: ${videoEncoding}` });
-            if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-            if (await isInternalAppDestination(parsed.url)) {
-                return res.status(400).json({ error: `${name}: ${RESERVED_APP_ERROR}` });
-            }
-            const blockedReason = await checkOutputDestination(parsed.url);
-            if (blockedReason) return res.status(400).json({ error: `${name}: ${blockedReason}` });
-
-            validated.push({
-                name,
-                videoEncoding,
-                url: parsed.url,
-                audioEncoding: parsed.audioEncoding,
-            });
+            validated.push(parsed.config);
         }
 
         let created: ReturnType<Db['createOutputs']>;
@@ -196,38 +193,23 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             return res.json(updated);
         }
 
-        const parsedName =
-            req.body?.name === undefined ? { name: output.name } : parseName(req.body.name);
-        const name = 'name' in parsedName ? parsedName.name : '';
-        const videoEncoding =
-            (req.body?.videoEncoding as string | undefined)?.trim() ?? output.videoEncoding;
         // Like name and videoEncoding, a field left out keeps its stored value,
         // so a script sending only { name } can't silently reset the audio tracks.
         const body = (req.body ?? {}) as Record<string, unknown>;
-        const parsed = parseDestination({
+        const parsed = await parseOutputConfig({
+            name: body.name === undefined ? output.name : body.name,
+            videoEncoding:
+                (body.videoEncoding as string | undefined)?.trim() ?? output.videoEncoding,
             url: body.url === undefined ? output.url : body.url,
             audioEncoding:
                 body.audioEncoding === undefined ? output.audioEncoding : body.audioEncoding,
         });
-
-        if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
-        if (!ENCODINGS[videoEncoding])
-            return res.status(400).json({ error: `unknown videoEncoding: ${videoEncoding}` });
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-        if (await isInternalAppDestination(parsed.url)) {
-            return res.status(400).json({ error: RESERVED_APP_ERROR });
-        }
-        const blockedReason = await checkOutputDestination(parsed.url);
-        if (blockedReason) return res.status(400).json({ error: blockedReason });
+        const { name } = parsed.config;
 
         let updated: ReturnType<Db['updateOutput']>;
         try {
-            updated = db.updateOutput(outId, {
-                name,
-                videoEncoding,
-                url: parsed.url,
-                audioEncoding: parsed.audioEncoding,
-            });
+            updated = db.updateOutput(outId, parsed.config);
         } catch (error) {
             console.error('[outputs] failed to update output:', error);
             return res.status(500).json({
