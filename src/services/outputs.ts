@@ -144,6 +144,23 @@ function timestampWarningKind(line: string): string {
 const WARNING_KINDS = ['memory', 'socket', 'media-clock', 'falling-behind'] as const;
 type WarningKind = (typeof WARNING_KINDS)[number];
 
+// `bitrate=3200.0kbits/s` from -progress; null for "N/A" and for FFmpeg's 0.0 before it
+// has measured anything.
+function parseBitrateKbps(line: string): number | null {
+    const val = line.slice('bitrate='.length).trim();
+    if (val === 'N/A' || val === '0.0kbits/s') return null;
+    const match = val.match(/^([\d.]+)kbits\/s$/);
+    return match ? parseFloat(match[1]) : null;
+}
+
+// The number after `prefix` on a -progress line; null when the line is another key or
+// the value is not a finite number (FFmpeg writes "N/A" until it knows).
+function parseProgressNumber(line: string, prefix: string): number | null {
+    if (!line.startsWith(prefix)) return null;
+    const val = Number(line.slice(prefix.length).trim());
+    return Number.isFinite(val) ? val : null;
+}
+
 function memoryLimitBytesFor(videoEncoding: string, highRes: boolean): number {
     return outputMemoryLimitBytes(appConfig.outputWatchdog, videoEncoding, highRes);
 }
@@ -652,19 +669,6 @@ export function createOutputService(
         } finally {
             startLocks.delete(outputId);
         }
-    }
-
-    function parseBitrateKbps(line: string): number | null {
-        const val = line.slice('bitrate='.length).trim();
-        if (val === 'N/A' || val === '0.0kbits/s') return null;
-        const match = val.match(/^([\d.]+)kbits\/s$/);
-        return match ? parseFloat(match[1]) : null;
-    }
-
-    function parseProgressNumber(line: string, prefix: string): number | null {
-        if (!line.startsWith(prefix)) return null;
-        const val = Number(line.slice(prefix.length).trim());
-        return Number.isFinite(val) ? val : null;
     }
 
     function trackSpeed(outputId: string, p: OutputProgress, now: number, outTimeUs: number): void {

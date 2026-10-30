@@ -1530,6 +1530,69 @@ describe('output service control surface', () => {
         service.shutdown();
     });
 
+    test('the card shows the last measured bitrate, and none while FFmpeg reports N/A or 0', async (t) => {
+        const proc = new FakeFfmpeg();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        const service = createOutputService(makeDb(), makeReadyInputState({ srt: true }));
+
+        await service.start('out1');
+        const bitrate = async (value) => {
+            proc.stdout.write(`bitrate=${value}\n`);
+            await sleep(10);
+            return service.getStats('out1').bitrateKbps;
+        };
+        assert.equal(await bitrate('3200.5kbits/s'), 3200.5);
+        assert.equal(await bitrate('N/A'), null);
+        assert.equal(await bitrate('4100.0kbits/s'), 4100);
+        assert.equal(await bitrate('0.0kbits/s'), null);
+        assert.equal(await bitrate('garbage'), null);
+
+        service.shutdown();
+    });
+
+    test('a total_size that goes back or is N/A is not progress, so the stall error keeps the largest', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc);
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.start('out1');
+        proc.stdout.write('total_size=8192\nout_time_ms=1000000\n');
+        proc.stdout.write('total_size=4096\ntotal_size=N/A\nout_time_ms=500000\n');
+
+        await sleep(80);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.match(db.lastError, /last_total_size=8192/);
+        assert.match(db.lastError, /last_out_time_us=1000000/);
+
+        service.shutdown();
+    });
+
+    test('a media clock that stops for 15 s shows a stalled warning with its age', async (t) => {
+        const clock = { now: Date.now() };
+        t.mock.method(Date, 'now', () => clock.now);
+        const proc = new FakeFfmpeg();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        const service = createOutputService(makeDb(), makeReadyInputState({ srt: true }));
+
+        await service.start('out1');
+        proc.stdout.write('out_time_ms=1000000\n');
+        await sleep(10);
+        clock.now += 14_000;
+        assert.equal(service.getStats('out1').warningReason, null);
+        clock.now += 2_000;
+        assert.match(
+            service.getStats('out1').warningReason,
+            /FFmpeg media progress has stalled for 16s\./,
+        );
+        proc.stdout.write('out_time_ms=2000000\n');
+        await sleep(10);
+        assert.equal(service.getStats('out1').warningReason, null);
+
+        service.shutdown();
+    });
+
     describe('falling behind realtime', () => {
         // Feeds -progress lines on a fake clock: `wallMs` of wall time passes and
         // the output's media clock advances by `mediaUs`.

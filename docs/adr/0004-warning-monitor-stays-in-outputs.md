@@ -1,6 +1,6 @@
 # The FFmpeg warning and progress monitor stays inside `outputs.ts`
 
-Status: accepted, 2026-10-30. Nothing was changed; this records why not.
+Status: accepted, 2026-10-30. The monitor was not extracted; only the two pure parsers moved out of the closure (same file) and the gaps below were tested.
 
 An architecture review proposed moving the per-run monitoring in `src/services/outputs.ts` (timestamp-warning bursts, warning episodes, progress and speed parsing, the card warning) into its own module. About 330 lines would move, which looks like an easy win for testability.
 
@@ -8,4 +8,4 @@ It is not separable, because the monitor does not own its state. The per-output 
 
 Only the pure part separates cleanly: the constants, the line patterns, the bitrate and progress parsers and, at most, the burst counter as a function of a line and the time. That is about 120 to 150 lines and gains little. The behaviour is already tested through the real service with a fake `spawn`.
 
-Revisit when a change has to touch the monitor independently of the lifecycle, and write characterization tests first for what is untested today: bitrate parsing, `total_size` never going backwards, the 15 s stall reason, and which warning wins on the card.
+Revisit when a change has to touch the monitor independently of the lifecycle. Bitrate parsing, `total_size` never going backwards and the 15 s stall reason are now tested through the service; still untested is which warning wins on the card when several apply (socket, memory, timing, falling behind), so write that test first.
