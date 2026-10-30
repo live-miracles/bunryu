@@ -148,7 +148,7 @@ database. The installer checks this first: after it pulls the new code it compar
 database's stamp with the build's, and when they differ it says so and stops before it
 changes anything or restarts a service, so a running server keeps running. Only then does
 it ask, in a terminal, "Wipe it and start with an empty database? [Y/n]": Enter wipes, and
-`n`, `-y` or no terminal stops the install (`WIPE_DB=y` wipes without asking). A
+`n` or no terminal stops the install (`WIPE_DB=y` wipes without asking). A
 `db.sqlite.<timestamp>.bak` copy is kept to re-create pipelines from. A database with the
 current version is kept without any prompt. A database that has tables but no stamp
 counts as another version; an empty one is stamped.

@@ -17,18 +17,10 @@
 #   REPO_URL=https://github.com/your-fork/bunryu sudo bash scripts/server-install.sh
 set -euo pipefail
 
-ASSUME_YES=no
-case "${1:-}" in
-    -y | --yes)
-        ASSUME_YES=yes
-        ;;
-    '')
-        ;;
-    *)
-        echo "Usage: sudo bash scripts/server-install.sh [-y|--yes]" >&2
-        exit 2
-        ;;
-esac
+if [[ $# -ne 0 ]]; then
+    echo "Usage: sudo bash scripts/server-install.sh (no arguments; see the header for the environment variables)" >&2
+    exit 2
+fi
 
 if [[ "$(id -u)" -ne 0 ]]; then
     echo "ERROR: run as root (sudo bash scripts/server-install.sh)" >&2
@@ -161,10 +153,10 @@ if [[ -s "$DB_FILE" ]]; then
         echo "There are no migrations, so it cannot be kept; wiping it keeps a backup copy."
         if [[ "${WIPE_DB:-}" == y || "${WIPE_DB:-}" == Y ]]; then
             wipe_db=yes
-        elif [[ -t 0 && "$ASSUME_YES" != yes && "${WIPE_DB:-}" != n && "${WIPE_DB:-}" != N ]]; then
+        elif [[ -t 0 && "${WIPE_DB:-}" != n && "${WIPE_DB:-}" != N ]]; then
             # Enter wipes: the only other outcome is leaving without installing.
-            # Only an interactive answer counts; -y and a missing terminal never
-            # wipe on their own (that needs WIPE_DB=y).
+            # Only an interactive answer counts; a missing terminal never wipes
+            # on its own (that needs WIPE_DB=y).
             read -rp "Wipe it and start with an empty database? [Y/n] " reply
             [[ "$reply" == "n" || "$reply" == "N" ]] || wipe_db=yes
         fi
