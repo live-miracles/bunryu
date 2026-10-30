@@ -258,13 +258,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             }
         }
 
-        for (const r of renditions) {
-            // Desired-stopped first, or the output service respawns the process it
-            // was just asked to stop (see removeRendition in services/renditions.ts).
-            db.setOutputDesiredState(r.id, 'stopped');
-            await outputService.stopAndWait(r.id);
-            outputService.clearRetryState(r.id);
-        }
+        for (const r of renditions) await outputService.retire(r.id);
         db.deleteOutputsForPipeline(pipelineId);
         return res.json({ ok: true });
     });
@@ -278,8 +272,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         console.log(cyan(`[outputs] user delete requested: ${outId} (${output.name})`));
-        await outputService.stopAndWait(outId);
-        outputService.clearRetryState(outId);
+        await outputService.retire(outId);
         db.deleteOutput(outId);
         return res.json({ ok: true });
     });

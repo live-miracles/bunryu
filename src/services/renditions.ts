@@ -36,10 +36,7 @@ export interface RenditionReconciler {
 
 export function createRenditionReconciler(
     db: Db,
-    outputService: Pick<
-        OutputService,
-        'start' | 'stop' | 'stopAndWait' | 'clearRetryState' | 'readersOf'
-    >,
+    outputService: Pick<OutputService, 'start' | 'stop' | 'stopAndWait' | 'retire' | 'readersOf'>,
     diagnostics?: DiagnosticsLogger,
 ): RenditionReconciler {
     // Grace and back-off timestamps live in memory: after an app restart a
@@ -120,14 +117,9 @@ export function createRenditionReconciler(
             return;
         }
         removalDeferred.delete(row.id);
-        // Desired-stopped first: the output service restarts a process it was
-        // asked to stop while the row still says "running" (its close handler
-        // cannot tell a stop from a start that raced the kill).
-        if (row.desiredState === 'running') db.setOutputDesiredState(row.id, 'stopped');
-        await outputService.stopAndWait(row.id);
-        outputService.clearRetryState(row.id);
+        await outputService.retire(row.id);
         // An output may have been switched to this recipe while the encode was
-        // being stopped. Keep the row, desired-stopped (set above), so the next
+        // being stopped. Keep the row, desired-stopped (by retire), so the next
         // dependent start is seen as a transition and starts it again.
         if (stillNeeded(pipelineId, row.url)) return;
         idleSince.delete(row.id);

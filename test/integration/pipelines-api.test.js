@@ -79,10 +79,15 @@ function makeFakePreviewService() {
 
 function makeFakeOutputService() {
     const stoppedAndWaited = [];
+    const retired = [];
     return {
         stoppedAndWaited,
+        retired,
         async stopAndWait(outputId) {
             stoppedAndWaited.push(outputId);
+        },
+        async retire(outputId) {
+            retired.push(outputId);
         },
     };
 }
@@ -384,10 +389,10 @@ describe('Pipelines API integration', () => {
 
             assert.equal(res.status, 409);
             assert.ok(harness.db.getPipeline(p.id));
-            assert.deepEqual(harness.outputService.stoppedAndWaited, []);
+            assert.deepEqual(harness.outputService.retired, []);
         });
 
-        test('a shared encode still winding down does not block deleting; it is set stopped, then stopped and waited', async () => {
+        test('a shared encode still winding down does not block deleting; every output is retired', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
             const user = harness.db.createOutput({ pipelineId: p.id, name: 'U', url: 'rtmp://u' });
@@ -399,19 +404,12 @@ describe('Pipelines API integration', () => {
                 audioEncoding: '0',
             });
             harness.db.setOutputDesiredState(r.id, 'running');
-            const desiredAtKill = {};
-            const realStopAndWait = harness.outputService.stopAndWait;
-            harness.outputService.stopAndWait = async (id) => {
-                desiredAtKill[id] = harness.db.getOutput(id)?.desiredState;
-                return realStopAndWait.call(harness.outputService, id);
-            };
 
             const res = await harness.request('DELETE', `/api/pipelines/${p.id}`);
 
             assert.equal(res.status, 200);
             assert.equal(harness.db.getPipeline(p.id), undefined);
-            assert.equal(desiredAtKill[r.id], 'stopped', 'not respawned by its close handler');
-            assert.equal(desiredAtKill[user.id], 'stopped');
+            assert.deepEqual(new Set(harness.outputService.retired), new Set([r.id, user.id]));
         });
 
         test('stops the preview and every output, then deletes the pipeline and cascades its outputs', async () => {
@@ -425,10 +423,7 @@ describe('Pipelines API integration', () => {
             assert.equal(res.status, 200);
             assert.equal(harness.db.getPipeline(p.id), undefined);
             assert.deepEqual(harness.previewService.stopped, [p.id]);
-            assert.deepEqual(
-                new Set(harness.outputService.stoppedAndWaited),
-                new Set([o1.id, o2.id]),
-            );
+            assert.deepEqual(new Set(harness.outputService.retired), new Set([o1.id, o2.id]));
             assert.equal(harness.db.listOutputsForPipeline(p.id).length, 0);
         });
     });

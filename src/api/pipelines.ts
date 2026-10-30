@@ -108,12 +108,7 @@ export function registerPipelineApi(
 
         previewService.stop(id);
         const outputs = db.listOutputsForPipeline(id);
-        // Desired-stopped before the kill: otherwise the output service respawns a
-        // still-desired-running shared encode right after it exits.
-        for (const o of outputs) {
-            if (o.desiredState === 'running') db.setOutputDesiredState(o.id, 'stopped');
-        }
-        await Promise.all(outputs.map((o) => outputService.stopAndWait(o.id)));
+        await Promise.all(outputs.map((o) => outputService.retire(o.id)));
 
         try {
             db.deletePipeline(id);

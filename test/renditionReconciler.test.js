@@ -31,8 +31,8 @@ function fakeOutputService() {
         async stopAndWait(id) {
             calls.push(['stopAndWait', id]);
         },
-        clearRetryState(id) {
-            calls.push(['clearRetryState', id]);
+        async retire(id) {
+            calls.push(['retire', id]);
         },
     };
 }
@@ -181,7 +181,7 @@ describe('rendition reconciler: rows', () => {
         assert.equal(h.renditions(p.id).length, 1);
     });
 
-    test('editing one of two 720p outputs to copy leaves a single output, so the row is deleted after stopAndWait', async (t) => {
+    test('editing one of two 720p outputs to copy leaves a single output, so the row is deleted after retire', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
         const o = h.addUser(p.id, { video: '720p' });
@@ -199,10 +199,7 @@ describe('rendition reconciler: rows', () => {
         assert.equal(h.renditions(p.id).length, 0);
         assert.deepEqual(
             h.outputService.calls.filter((c) => c[1] === row.id),
-            [
-                ['stopAndWait', row.id],
-                ['clearRetryState', row.id],
-            ],
+            [['retire', row.id]],
         );
         assert.deepEqual(h.eventNames(), ['rendition-created', 'rendition-deleted']);
     });
@@ -262,22 +259,21 @@ describe('rendition reconciler: rows', () => {
         assert.deepEqual(h.eventNames(), ['rendition-created']);
     });
 
-    test('a running rendition is set desired-stopped before it is killed, so it is not respawned', async (t) => {
+    test('a rendition row that is no longer shared is retired, then deleted', async (t) => {
         const h = harness(t);
         const p = h.db.createPipeline();
         const o = h.addUser(p.id, { video: '720p', desired: 'running' });
         await h.tick();
         const row = h.renditions(p.id)[0];
         assert.equal(row.desiredState, 'running');
-        const desiredAtKill = [];
-        h.outputService.stopAndWait = async (id) => {
-            desiredAtKill.push(h.db.getOutput(id).desiredState);
-        };
 
         h.db.deleteOutput(o.id);
         await h.tick();
 
-        assert.deepEqual(desiredAtKill, ['stopped']);
+        assert.deepEqual(
+            h.outputService.calls.filter((c) => c[1] === row.id && c[0] !== 'start'),
+            [['retire', row.id]],
+        );
         assert.equal(h.renditions(p.id).length, 0);
     });
 
@@ -293,8 +289,8 @@ describe('rendition reconciler: rows', () => {
             url: o.url,
             audioEncoding: 'copy',
         });
-        h.outputService.stopAndWait = async (id) => {
-            h.outputService.calls.push(['stopAndWait', id]);
+        h.outputService.retire = async (id) => {
+            h.outputService.calls.push(['retire', id]);
             // The user flips an output back to 720p while we are stopping.
             h.db.updateOutput(o.id, {
                 name: 'back',
@@ -514,7 +510,7 @@ describe('rendition reconciler: robustness', () => {
         assert.equal(h.renditions(p.id).length, 1);
     });
 
-    test('a rejected stopAndWait does not stop the other pipelines from reconciling', async (t) => {
+    test('a rejected retire does not stop the other pipelines from reconciling', async (t) => {
         const h = harness(t);
         const p1 = h.db.createPipeline();
         const p2 = h.db.createPipeline();
@@ -526,7 +522,7 @@ describe('rendition reconciler: robustness', () => {
             url: o.url,
             audioEncoding: 'copy',
         });
-        h.outputService.stopAndWait = async () => {
+        h.outputService.retire = async () => {
             throw new Error('kill failed');
         };
         h.addUser(p2.id, { video: '1080p' });
@@ -550,7 +546,7 @@ describe('rendition reconciler: robustness', () => {
         });
         let release;
         let stops = 0;
-        h.outputService.stopAndWait = () => {
+        h.outputService.retire = () => {
             stops++;
             return new Promise((resolve) => (release = resolve));
         };
@@ -647,7 +643,7 @@ describe('rendition reconciler: when to share', () => {
         await h.tick();
 
         assert.equal(h.renditions(p.id).length, 1, 'kept while a reader runs');
-        assert.equal(h.outputService.calls.filter((c) => c[0] === 'stopAndWait').length, 0);
+        assert.equal(h.outputService.calls.filter((c) => c[0] === 'retire').length, 0);
         assert.equal(h.db.getOutput(row.id).desiredState, 'running');
         assert.deepEqual(
             h.eventNames().filter((n) => n === 'rendition-removal-deferred'),
@@ -665,10 +661,7 @@ describe('rendition reconciler: when to share', () => {
         assert.equal(h.renditions(p.id).length, 0, 'removed once nothing reads it');
         assert.deepEqual(
             h.outputService.calls.filter((c) => c[1] === row.id && c[0] !== 'start'),
-            [
-                ['stopAndWait', row.id],
-                ['clearRetryState', row.id],
-            ],
+            [['retire', row.id]],
         );
     });
 

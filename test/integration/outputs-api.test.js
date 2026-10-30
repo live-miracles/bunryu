@@ -114,6 +114,11 @@ function makeFakeOutputService() {
         async stopAndWait(id) {
             statuses.set(id, 'stopped');
         },
+        retired: [],
+        async retire(id) {
+            this.retired.push(id);
+            statuses.set(id, 'stopped');
+        },
         restarted: [],
         restart(id) {
             if ((statuses.get(id) ?? 'stopped') !== 'running') return false;
@@ -123,7 +128,6 @@ function makeFakeOutputService() {
         restartPipelineOutputs() {
             return 0;
         },
-        clearRetryState() {},
         shutdown() {},
     };
 }
@@ -468,17 +472,11 @@ describe('Outputs API integration', () => {
             const r = makeRendition(harness, p);
             harness.db.setOutputDesiredState(r.id, 'running');
             await harness.outputService.start(r.id);
-            const desiredAtKill = [];
-            const realStopAndWait = harness.outputService.stopAndWait;
-            harness.outputService.stopAndWait = async (id) => {
-                desiredAtKill.push(harness.db.getOutput(id)?.desiredState);
-                return realStopAndWait.call(harness.outputService, id);
-            };
 
             const res = await harness.request('DELETE', `/api/pipelines/${p.id}/outputs`);
 
             assert.equal(res.status, 200);
-            assert.deepEqual(desiredAtKill, ['stopped'], 'not respawned by its close handler');
+            assert.deepEqual(harness.outputService.retired, [r.id]);
             assert.equal(harness.db.listOutputsForPipeline(p.id).length, 0);
             assert.equal(harness.outputService.getStats(r.id).status, 'stopped');
             assert.ok(user);
@@ -807,6 +805,7 @@ describe('Outputs API integration', () => {
             const res = await harness.request('DELETE', `/api/pipelines/${p.id}/outputs/${o.id}`);
             assert.equal(res.status, 200);
             assert.equal(harness.db.getOutput(o.id), null);
+            assert.deepEqual(harness.outputService.retired, [o.id]);
             assert.equal(harness.outputService.getStats(o.id).status, 'stopped');
         });
 

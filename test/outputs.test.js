@@ -98,6 +98,11 @@ function makeDb() {
         listOutputs() {
             return [output];
         },
+        setOutputDesiredState(id, desiredState) {
+            if (id !== output.id) return null;
+            output.desiredState = desiredState;
+            return output;
+        },
         errorRecords: [],
         setOutputLastError(_id, message, kind, failedAttempts) {
             this.errorRecords.push({ message, kind, failedAttempts });
@@ -1781,10 +1786,48 @@ describe('output service control surface', () => {
         service.shutdown();
     });
 
-    test('clearRetryState cancels a pending scheduled retry so it never fires', async (t) => {
-        const proc = new FakeFfmpeg();
+    test('retire marks the output desired-stopped before the kill and waits for the exit', async (t) => {
+        const proc = new ManualExitFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        let spawns = 0;
+        const createOutputService = loadOutputService(
+            t,
+            () => {
+                spawns++;
+                return proc;
+            },
+            { progressStallMs: 60_000 },
+        );
+        const service = createOutputService(db, makeReadyInputState());
+        await service.start('out1');
+        const desiredAtKill = [];
+        const realKill = proc.kill.bind(proc);
+        proc.kill = (signal) => {
+            desiredAtKill.push(output.desiredState);
+            return realKill(signal);
+        };
+
+        let retired = false;
+        const p = service.retire('out1').then(() => {
+            retired = true;
+        });
+        await sleep(15);
+        assert.deepEqual(desiredAtKill, ['stopped'], 'close handler must not respawn it');
+        assert.equal(retired, false, 'must not resolve before the process exits');
+
+        proc.exit();
+        await p;
+        await sleep(30);
+        assert.equal(service.getStats('out1').status, 'stopped');
+        assert.equal(spawns, 1, 'not respawned after the kill');
+
+        service.shutdown();
+    });
+
+    test('retire drops a pending retry so it never fires', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
         const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -1792,15 +1835,27 @@ describe('output service control surface', () => {
         // Crash: schedules a retry ~1s out via RETRY_DELAYS_MS[0].
         proc.emit('close', 1, null);
         assert.equal(service.getStats('out1').status, 'failed');
-        assert.equal(service.getStats('out1').failures, 1);
+        assert.notEqual(service.getStats('out1').nextRetryAtMs, null);
 
-        service.clearRetryState('out1');
-        output.desiredState = 'stopped';
-        // Give the (cancelled) retry timer a chance to fire if it wasn't
-        // actually cancelled — if it fires, tryStart would spawn a 2nd proc.
-        await sleep(30);
+        await service.retire('out1');
 
-        assert.equal(service.getStats('out1').status, 'failed');
+        assert.equal(service.getStats('out1').nextRetryAtMs, null);
+        assert.equal(service.getStats('out1').status, 'stopped');
+        assert.equal(db.getOutput('out1').desiredState, 'stopped');
+
+        service.shutdown();
+    });
+
+    test('retire on an output that never ran just marks it desired-stopped', async (t) => {
+        const proc = new FakeFfmpeg();
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+        const service = createOutputService(db, makeReadyInputState());
+
+        await service.retire('out1');
+
+        assert.equal(service.getStats('out1').status, 'stopped');
+        assert.equal(db.getOutput('out1').desiredState, 'stopped');
 
         service.shutdown();
     });

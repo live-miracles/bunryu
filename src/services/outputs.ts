@@ -257,7 +257,11 @@ export interface OutputService {
     // How many running outputs are reading this shared encode right now.
     readersOf(renditionId: string): number;
     restartPipelineOutputs(pipelineId: number, staggerBase?: number): number;
-    clearRetryState(outputId: string): void;
+    // Stops the output for good, ahead of deleting its row: marks it
+    // desired-stopped first (or its close handler respawns it), waits for the
+    // process to exit, then drops any retry its exit left behind. Safe to call
+    // on an output that is not running.
+    retire(outputId: string): Promise<void>;
     // Kills every ffmpeg without waiting; returns the ids that were running.
     shutdown(): string[];
 }
@@ -2007,7 +2011,15 @@ export function createOutputService(
             return scheduled;
         },
 
-        clearRetryState: clearRetry,
+        async retire(outputId: string): Promise<void> {
+            if (db.getOutput(outputId)?.desiredState === 'running') {
+                db.setOutputDesiredState(outputId, 'stopped');
+            }
+            await service.stopAndWait(outputId);
+            // The kill's close handler may have scheduled a retry or a prompt
+            // restart before it saw desired-stopped; drop it.
+            clearRetry(outputId);
+        },
 
         shutdown(): string[] {
             shuttingDown = true;
