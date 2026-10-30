@@ -252,7 +252,7 @@ export function renderOutputCard(
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">
                 <div aria-label="status" class="status status-lg mx-1 shrink-0" style="background-color: ${statusHex}"></div>
-                <button class="btn btn-xs btn-square shrink-0 ${isStopped ? 'btn-primary' : 'btn-error btn-outline'}"
+                <button class="btn btn-xs btn-square shrink-0 ${isStopped ? 'btn-primary' : 'btn-outline btn-stop'}"
                     data-action="${isStopped ? 'start' : 'stop'}" data-out-id="${output.id}"
                     title="${isStopped ? 'Start' : 'Stop'}" aria-label="${isStopped ? 'Start' : 'Stop'}"${isPending ? ' disabled' : ''}>
                     ${isStopped ? ICON_PLAY : ICON_STOP}

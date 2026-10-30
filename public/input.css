@@ -305,6 +305,15 @@
         background: color-mix(in oklab, var(--ink) 12%, transparent);
     }
 
+    /* An output's Stop button: hollow and neutral while the output runs (the filled Start button
+       marks a stopped one), red only under the pointer, where the click would stop a live feed. */
+    .btn-stop:hover,
+    .btn-stop:focus-visible {
+        color: var(--bad);
+        border-color: var(--bad);
+        background: color-mix(in oklab, var(--bad) 14%, transparent);
+    }
+
     .btn-accent,
     .btn-primary {
         background: var(--accent);
