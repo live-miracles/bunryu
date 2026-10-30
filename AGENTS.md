@@ -78,6 +78,22 @@ In particular:
   restarts, and reconnects. Do not leave stale running state in the database
   or dashboard.
 
+**Design for robustness first, performance second.** This holds most for the
+output FFmpeg management (`src/services/outputs.ts`): keep it simple and plain so
+there is less to break. It must never reach an invalid state:
+
+- an output's FFmpeg started more than once (two processes for one output);
+- an output that should be running but was never started, or is not being retried;
+- an output shown as stopped (database or dashboard) while its process still runs,
+  or shown as running when it is not.
+
+Unless there is a very good reason, written down in
+`docs/4-reference/3-design-decisions.md`, pick the plain implementation with fewer
+states, fewer moving parts and fewer places to break over a faster or cleverer
+one. Change the start/stop/restart/retire paths in small steps, each covered by a
+test of the ordering it relies on. The dashboard is less critical: a UI bug is
+cheaper than a wrong output state, so ordinary refactoring judgment applies there.
+
 ## Diagnostics and logging
 
 Every failure or recovery path should leave enough evidence to explain what
@@ -190,7 +206,8 @@ only for a new module.
   stall/socket/memory watchdogs (a socket or stall restart first reads the input's
   SRS stream into the History and event), timestamp-warning bursts and warning
   episodes, output History writes (including a manual Start); shared-encode readiness, dependents' restart on a
-  rendition failure and `restart()`. `outputSockets.ts` parses `ss` for
+  rendition failure, `restart()` and `retire()` (stop for good before a row is deleted).
+  `outputSockets.ts` parses `ss` for
   destination socket health.
 - `src/services/renditions.ts` - the shared-encode reconciler (1 s tick): creates
   and removes the rendition output rows, starts them with their first running
@@ -226,6 +243,8 @@ only for a new module.
   `core/status.ts` is the verdict on an output or input (`outputHealth`, `inputHealth`:
   a status plus the issues behind it, and the error helpers); the Overview, the pipeline
   panel, the output cards and the Problems filter all call it.
+  `core/relay-status.ts` is the same for a pipeline's relay path (`relayHealth`: the input and
+  output halves with the issues behind each, given the clock; the leg health colour and label).
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
   `renditions` and decides which pipeline alerts belong to the input (`INPUT_ALERT_CODES`);
   `features/shared-encodes.ts` renders the Shared encodes card.
