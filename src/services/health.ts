@@ -219,7 +219,6 @@ export function hasBondedRelayPublishConflict(params: {
     return params.inputConnected && params.relayInputActive && !params.relayAcceptedBySrs;
 }
 
-// A bitrate for an alert message: Mb/s from 1000 kb/s up.
 interface ProcessUsage {
     cpuPercent: number | null;
     ramBytes: number | null;

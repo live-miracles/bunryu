@@ -2,6 +2,7 @@ import express from 'express';
 import type { Express } from 'express';
 import { requireAuth } from './auth.js';
 import { MAX_AUDIO_TRACKS } from '../utils/inputLimits.js';
+import type { PreviewService } from '../services/preview.js';
 
 function isValidTrackCount(value: unknown): boolean {
     return (
@@ -11,7 +12,6 @@ function isValidTrackCount(value: unknown): boolean {
         value <= MAX_AUDIO_TRACKS
     );
 }
-import type { PreviewService } from '../services/preview.js';
 
 export function registerPreviewApi(app: Express, previewService: PreviewService): void {
     app.post('/api/pipelines/:id/preview/start', async (req, res) => {

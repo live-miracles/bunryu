@@ -5,8 +5,8 @@ import { checkOutputDestination } from '../utils/destination.js';
 
 const CHECK_CONCURRENCY = 16;
 
-// New outputs are vetted by the API, but rows saved before that check existed
-// (or by hand) can still point somewhere the policy forbids. Re-check them all
+// New outputs are vetted by the API, but a row edited by hand in the database can
+// still point somewhere the policy forbids. Re-check them all
 // once at startup: a forbidden destination is stopped and records why, so the
 // operator sees it in the dashboard instead of it silently forwarding. Runs in
 // the background — a slow resolver must never delay readiness or other outputs.
