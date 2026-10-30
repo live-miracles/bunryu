@@ -414,6 +414,11 @@ function makeFakeInputState() {
             live.delete(id);
             protocol.delete(id);
         },
+        keepOnly(ids) {
+            for (const id of [...live.keys()]) {
+                if (!ids.has(id)) this.clearPipeline(id);
+            }
+        },
         isLive: (id) => live.get(id) ?? false,
         getProtocol: (id) => protocol.get(id) ?? null,
     };
@@ -798,6 +803,56 @@ describe('createHealthService poll orchestration', () => {
         await sleep(20);
         assert.equal(outputService.restarts.length, 1);
 
+        service.shutdown();
+    });
+
+    test('a deleted pipeline is forgotten by the input state, so its live flag cannot linger', async (t) => {
+        const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+        const pipelines = [pipeline];
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/')) {
+                return jsonResponse({
+                    code: 0,
+                    streams: [
+                        {
+                            id: 's1',
+                            name: 'key01',
+                            vhost: '__defaultVhost__',
+                            app: 'live',
+                            tcUrl: 'rtmp://x/live',
+                            live_ms: 0,
+                            publish: { active: true, cid: 'cid-1' },
+                            kbps: { recv_30s: 0, send_30s: 0 },
+                            clients: 1,
+                            frames: 0,
+                            recv_bytes: 0,
+                            send_bytes: 0,
+                        },
+                    ],
+                });
+            }
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const inputState = makeFakeInputState();
+        const service = createHealthService(
+            makeFakeDb(pipelines),
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            inputState,
+        );
+        const app = express();
+        service.registerRoutes(app);
+
+        service.start();
+        await sleep(20);
+        assert.equal(inputState.isLive(1), true);
+
+        pipelines.length = 0;
+        await tickPoll(t);
+
+        assert.equal(inputState.isLive(1), false);
         service.shutdown();
     });
 

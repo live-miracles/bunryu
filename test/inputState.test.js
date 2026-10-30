@@ -91,4 +91,23 @@ describe('input state', () => {
         assert.equal(state.isReady(42), false);
         assert.equal(state.getProtocol(42), null);
     });
+
+    test('keepOnly forgets the pipelines that no longer exist, whatever was recorded for them', () => {
+        const state = createInputState();
+        state.setSrsReachable(true);
+        for (const id of [1, 2]) {
+            state.setPipelineState(id, true, 'srt');
+            state.setInputResolution(id, 3840, 2160);
+        }
+
+        state.keepOnly(new Set([2]));
+
+        assert.equal(state.isLive(1), false);
+        assert.equal(state.isReady(1), false);
+        assert.equal(state.getProtocol(1), null);
+        assert.equal(state.isHighRes(1), false);
+        assert.equal(state.isReady(2), true);
+        assert.equal(state.getProtocol(2), 'srt');
+        assert.equal(state.isHighRes(2), true);
+    });
 });

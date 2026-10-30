@@ -11,6 +11,8 @@ export interface InputState {
     setPipelineState(pipelineId: number, live: boolean, protocol: InputProtocol | null): void;
     setInputResolution(pipelineId: number, width: number | null, height: number | null): void;
     clearPipeline(pipelineId: number): void;
+    // Forget every pipeline that is not in the set (the ones that were deleted).
+    keepOnly(activePipelineIds: Set<number>): void;
     isLive(pipelineId: number): boolean;
     isReady(pipelineId: number): boolean;
     getProtocol(pipelineId: number): InputProtocol | null;
@@ -54,6 +56,17 @@ export function createInputState(): InputState {
             liveInputs.delete(pipelineId);
             inputProtocols.delete(pipelineId);
             inputResolutions.delete(pipelineId);
+        },
+
+        keepOnly(activePipelineIds: Set<number>): void {
+            for (const map of [liveInputs, inputProtocols, inputResolutions] as Map<
+                number,
+                unknown
+            >[]) {
+                for (const pipelineId of map.keys()) {
+                    if (!activePipelineIds.has(pipelineId)) map.delete(pipelineId);
+                }
+            }
         },
 
         isLive(pipelineId: number): boolean {

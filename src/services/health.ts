@@ -792,6 +792,7 @@ export function createHealthService(
             if (!activePipelineIds.has(pipelineId)) inputFrameSamples.delete(pipelineId);
         }
         legTracker.keepOnly(activePipelineIds);
+        inputState.keepOnly(activePipelineIds);
         srtRecent.keepOnly(activePipelineIds);
         relayErrorLog.keepOnly(activePipelineIds);
         probes.keepOnly(activePipelineIds);
