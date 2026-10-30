@@ -204,12 +204,18 @@ window.previewToggleBtn = async () => {
     const id = getUrlParam('p');
     if (!id) return;
     setPreviewStarting();
-    const { startPreview } = await import('../core/api.js');
+    const { startPreview, stopPreview } = await import('../core/api.js');
     const pipeline = state.pipelines.find((p) => p.id === id);
     // The server accepts at most 50; a publisher can advertise more.
     const audioTrackCount = Math.min(50, Math.max(1, pipeline?.input.audioTracks.length ?? 1));
     const result = await startPreview(id, audioTrackCount);
-    if (result?.hlsUrl) {
+    if (result?.hlsUrl && getUrlParam('p') !== id) {
+        // The user moved to another pipeline while this one was starting, and
+        // stopCurrentPreview() had nothing to stop yet: stop it here instead of
+        // showing its video under the other pipeline's name.
+        void stopPreview(id);
+        syncPreviewControls(false);
+    } else if (result?.hlsUrl) {
         attachHls(id, result.hlsUrl);
     } else {
         syncPreviewControls(false);
