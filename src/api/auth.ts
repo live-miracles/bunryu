@@ -171,8 +171,7 @@ export async function initializePassword(db: Db, initialPassword: string): Promi
     for (const token of db.listSessions()) {
         sessions.add(token);
     }
-    // The 30-day session expiry was previously only enforced at boot, so on a
-    // long-running server old session tokens stayed valid indefinitely.
+    // Expired sessions are also dropped hourly, not only at boot.
     setInterval(() => pruneSessions(db), SESSION_PRUNE_INTERVAL_MS).unref();
 }
 
@@ -198,11 +197,13 @@ export function registerAuthApi(app: Express, db: Db): void {
 
         const password = (req.body?.password as string | undefined) ?? '';
         const hash = db.getSetting('dashboardPasswordHash');
+        // Counted as a failure before the (slow) verify and cleared on success, so a
+        // burst of parallel guesses cannot all pass the check above first.
+        noteLoginFailure(limiterKey);
         if (!hash || !(await verifyPassword(password, hash))) {
             // IP first, before anything attacker-influenced, so auth failures
             // stay easy to scan in logs.
             console.warn(`[auth] client_ip=${ip} rejected login: incorrect password`);
-            noteLoginFailure(limiterKey);
             return res.status(401).json({ error: 'Incorrect password' });
         }
         loginFailures.delete(limiterKey);

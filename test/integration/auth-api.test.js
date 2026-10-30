@@ -175,6 +175,18 @@ describe('auth login integration', () => {
         assert.equal(other.status, 200);
     });
 
+    test('a burst of parallel wrong passwords is cut off after the fifth', async () => {
+        const harness = await createHarness();
+
+        const burst = await Promise.all(
+            Array.from({ length: 20 }, () => harness.login('wrong', '203.0.113.9')),
+        );
+
+        // Only the first five get as far as checking the password.
+        assert.equal(burst.filter((res) => res.status === 401).length, 5);
+        assert.equal(burst.filter((res) => res.status === 429).length, 15);
+    });
+
     test('a successful login resets the failure counter', async () => {
         const harness = await createHarness();
 
