@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 import { validateOutputUrl, validateAudioEncoding, ENCODINGS } from '../utils/ffmpeg.js';
-import type { Db } from '../types.js';
+import type { Db, Output } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
@@ -69,6 +69,11 @@ async function parseOutputConfig(body: unknown): Promise<ParsedOutputConfig> {
 }
 
 export function registerOutputApi(app: Express, db: Db, outputService: OutputService): void {
+    // Wanted running, or still running: either way its settings are in use by an FFmpeg
+    // that a stop has not finished with yet.
+    const isInUse = (output: Output): boolean =>
+        output.desiredState !== 'stopped' || outputService.getStats(output.id).status === 'running';
+
     app.post('/api/pipelines/:pipelineId/outputs', async (req, res) => {
         const pipelineId = parseInt(req.params.pipelineId);
         if (isNaN(pipelineId)) return res.status(400).json({ error: 'invalid pipelineId' });
@@ -177,9 +182,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         // A running output keeps the destination and encoding its ffmpeg was started
         // with, so only its name may change: a body with any other setting is
         // refused, even a client holding stale config that sends the old values.
-        const isRunning =
-            output.desiredState !== 'stopped' || outputService.getStats(outId).status === 'running';
-        if (isRunning) {
+        if (isInUse(output)) {
             const body = (req.body ?? {}) as Record<string, unknown>;
             if (Object.keys(body).some((key) => key !== 'name')) {
                 return res
@@ -233,7 +236,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         const renditions = outputs.filter(isRenditionOutput);
         for (const o of outputs) {
             if (isRenditionOutput(o)) continue;
-            if (o.desiredState !== 'stopped' || outputService.getStats(o.id).status === 'running') {
+            if (isInUse(o)) {
                 return res.status(409).json({
                     error: `Output "${o.name}" is still running. Stop all outputs before clearing.`,
                 });
