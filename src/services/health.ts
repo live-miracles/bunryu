@@ -295,16 +295,25 @@ export function createHealthService(
         if (srsEvents.length > MAX_SRS_EVENTS) srsEvents.shift();
     }
 
-    const inputConnected = new Map<number, boolean>();
-    const inputLiveStartMs = new Map<number, number>();
-    const inputPublisherCid = new Map<number, string>();
-    const publisherChangedAt = new Map<number, number>();
+    // State kept per pipeline between polls. Every map made here is emptied of a deleted
+    // pipeline at the start of each poll, so a new one cannot be forgotten there.
+    const pipelineMaps: Map<number, unknown>[] = [];
+    function pipelineMap<T>(): Map<number, T> {
+        const map = new Map<number, T>();
+        pipelineMaps.push(map);
+        return map;
+    }
+
+    const inputConnected = pipelineMap<boolean>();
+    const inputLiveStartMs = pipelineMap<number>();
+    const inputPublisherCid = pipelineMap<string>();
+    const publisherChangedAt = pipelineMap<number>();
     // The format of each pipeline's last successfully probed input, kept across
     // reconnects so a different one on the next publisher is noticed.
-    const inputFormats = new Map<number, string>();
-    const lastFormatRestartAt = new Map<number, number>();
+    const inputFormats = pipelineMap<string>();
+    const lastFormatRestartAt = pipelineMap<number>();
     // When each pipeline's input disconnected, within INPUT_FLAP_WINDOW_MS.
-    const inputDisconnectsAt = new Map<number, number[]>();
+    const inputDisconnectsAt = pipelineMap<number[]>();
     // Open alert episodes by `${pipelineId}:${code}`. Alerts are rebuilt every
     // poll; these turn them into one started and one ended diagnostics event.
     const alertEpisodes = new Map<
@@ -374,10 +383,10 @@ export function createHealthService(
     }
     // Per-pipeline RTMP video-frame counter samples, one per poll, covering
     // the last INPUT_FPS_WINDOW_MS.
-    const inputFrameSamples = new Map<
-        number,
-        { cid: string | undefined; points: { at: number; frames: number }[] }
-    >();
+    const inputFrameSamples = pipelineMap<{
+        cid: string | undefined;
+        points: { at: number; frames: number }[];
+    }>();
     // Frame rate over the last full window, or null while the window is not
     // full (new publisher, counter reset, SRS not counting yet).
     function measureInputFps(
@@ -406,7 +415,7 @@ export function createHealthService(
         if (elapsedMs < INPUT_FPS_WINDOW_MS) return null;
         return ((frames - oldest.frames) * 1000) / elapsedMs;
     }
-    const relayInputSamples = new Map<number, RelayInputSample>();
+    const relayInputSamples = pipelineMap<RelayInputSample>();
     const legTracker = createLegTracker({
         historyMaxSamples: LEG_HISTORY_MAX_SAMPLES,
         pollIntervalMs: POLL_INTERVAL_MS,
@@ -454,7 +463,7 @@ export function createHealthService(
         }
     };
     // Whether the current publisher's source address has been logged. See utils/publisherLog.ts.
-    const publisherLogs = new Map<number, PublisherLogState>();
+    const publisherLogs = pipelineMap<PublisherLogState>();
     // The ffprobe checks of each connected publisher. A format that differs from the
     // previous publisher's restarts the outputs that were already running.
     const probes = createProbeScheduler({
@@ -560,35 +569,10 @@ export function createHealthService(
             if (!activePipelineIds.has(episode.pipelineId))
                 endAlertEpisode(key, 'pipeline deleted');
         }
-        for (const pipelineId of inputConnected.keys()) {
-            if (!activePipelineIds.has(pipelineId)) inputConnected.delete(pipelineId);
-        }
-        for (const pipelineId of inputLiveStartMs.keys()) {
-            if (!activePipelineIds.has(pipelineId)) inputLiveStartMs.delete(pipelineId);
-        }
-        for (const pipelineId of inputPublisherCid.keys()) {
-            if (!activePipelineIds.has(pipelineId)) inputPublisherCid.delete(pipelineId);
-        }
-        for (const pipelineId of publisherLogs.keys()) {
-            if (!activePipelineIds.has(pipelineId)) publisherLogs.delete(pipelineId);
-        }
-        for (const pipelineId of publisherChangedAt.keys()) {
-            if (!activePipelineIds.has(pipelineId)) publisherChangedAt.delete(pipelineId);
-        }
-        for (const pipelineId of inputDisconnectsAt.keys()) {
-            if (!activePipelineIds.has(pipelineId)) inputDisconnectsAt.delete(pipelineId);
-        }
-        for (const pipelineId of inputFormats.keys()) {
-            if (!activePipelineIds.has(pipelineId)) {
-                inputFormats.delete(pipelineId);
-                lastFormatRestartAt.delete(pipelineId);
+        for (const map of pipelineMaps) {
+            for (const pipelineId of map.keys()) {
+                if (!activePipelineIds.has(pipelineId)) map.delete(pipelineId);
             }
-        }
-        for (const pipelineId of relayInputSamples.keys()) {
-            if (!activePipelineIds.has(pipelineId)) relayInputSamples.delete(pipelineId);
-        }
-        for (const pipelineId of inputFrameSamples.keys()) {
-            if (!activePipelineIds.has(pipelineId)) inputFrameSamples.delete(pipelineId);
         }
         legTracker.keepOnly(activePipelineIds);
         inputState.keepOnly(activePipelineIds);

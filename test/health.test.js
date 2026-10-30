@@ -858,6 +858,69 @@ describe('createHealthService poll orchestration', () => {
         service.shutdown();
     });
 
+    test('a deleted pipeline leaves no per-pipeline state, so its id reused is not a publisher change', async (t) => {
+        const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
+        const pipelines = [pipeline];
+        let cid = 'cid-1';
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        t.mock.method(globalThis, 'fetch', async (url) => {
+            if (String(url).includes('/streams/')) {
+                return jsonResponse({
+                    code: 0,
+                    streams: [
+                        {
+                            id: 's1',
+                            name: 'key01',
+                            vhost: '__defaultVhost__',
+                            app: 'live',
+                            tcUrl: 'rtmp://x/live',
+                            live_ms: 0,
+                            publish: { active: true, cid },
+                            kbps: { recv_30s: 0, send_30s: 0 },
+                            clients: 1,
+                            frames: 0,
+                            recv_bytes: 0,
+                            send_bytes: 0,
+                        },
+                    ],
+                });
+            }
+            return jsonResponse({ code: 0, clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const db = makeFakeDb(pipelines);
+        const diagnostics = makeDiagnosticsSpy();
+        const service = createHealthService(
+            db,
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            diagnostics,
+        );
+        const app = express();
+        service.registerRoutes(app);
+
+        service.start();
+        await sleep(20);
+        assert.equal(db.logs.filter((l) => l.event === 'online').length, 1);
+
+        // Deleted while its input is live, then a pipeline with the same id is added
+        // and another encoder is live on it: the new publisher is not compared with
+        // the one the deleted pipeline had.
+        pipelines.length = 0;
+        await tickPoll(t);
+        pipelines.push(pipeline);
+        cid = 'cid-2';
+        await tickPoll(t);
+        assert.equal(db.logs.filter((l) => l.event === 'online').length, 2);
+        assert.deepEqual(
+            diagnostics.events.filter((e) => e.event === 'input-publisher-transition'),
+            [],
+        );
+
+        service.shutdown();
+    });
+
     test('an unassigned/deleted pipeline never appears in the snapshot', async (t) => {
         t.mock.method(globalThis, 'fetch', async (url) => {
             if (String(url).includes('/streams/')) return jsonResponse({ code: 0, streams: [] });
