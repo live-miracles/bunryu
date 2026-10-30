@@ -1196,6 +1196,28 @@ the other which outputs need one (saved configuration).
 **Revisit when:** the recipe rule changes again, or the API gains a field that already
 carries each output's shared encode.
 
+### The dashboard has its own small design system instead of daisyUI
+
+**Decision (October 2026):** `public/input.css` defines the dashboard's tokens and the few
+components it uses (buttons, badges, fields, dialogs, tabs, tables, the pipeline list,
+banners) on top of Tailwind's utilities. daisyUI is removed. The tokens match the org
+site (`live-miracles.github.io/ui/styles.css`): neutral Apple-style surfaces, one blue
+accent, hairline dividers, no shadows or decorative backgrounds. Green, amber and red mean
+status and nothing else, and warnings and destructive buttons are tinted, not solid. Each
+token is a `light-dark()` pair, so the dashboard follows the system theme with no second
+copy of the palette; the navbar button pins Light or Dark per browser (`features/theme.ts`).
+
+**Why:** daisyUI's `dim` theme was one dark look with its own radii and colours, and the
+dashboard overrode it in about 190 lines (menu wrapping, table header and tab contrast, the
+wave background). The markup uses only a dozen of its components, so owning them is less
+CSS than overriding the rest, and the page matches the website. The class names the markup
+already uses (`btn`, `badge`, `modal`, `select`, `fieldset`, and the `base-*`, `success`,
+`warning`, `error` colours) are kept and mapped onto the tokens, so the redesign did not
+have to touch the rendering code.
+
+**Revisit when:** a component the dashboard needs is not in `input.css` (a dropdown or a
+date picker); write it there rather than bringing the library back.
+
 ## Tooling
 
 ### ESLint checks promise handling; Prettier stays the formatter
@@ -1304,8 +1326,9 @@ command palette) mostly does not fit a 50-input, 10-viewer tool. Three small thi
 adopted on 2026-10-26:
 - **Secondary text meets WCAG AA contrast.** Measured on the pipeline page, 15 of 73
   texts were below 4.5:1 (labels and timestamps dimmed with `opacity-60` or `opacity-40`
-  were at 2.6 to 4.0, daisyUI's table headers at 4.1, inactive tabs at 3.3). One
-  `text-muted` class (82 %) now carries all secondary text, and an audit of the
+  were at 2.6 to 4.0, the table headers at 4.1, inactive tabs at 3.3). One
+  `text-muted` class (a single grey, 4.7:1 or better on every surface in both themes since the
+  October 2026 redesign, 82 % opacity before) now carries all secondary text, and an audit of the
   pipeline and Overview pages finds none below AA (66 and 140 texts). Dimming that
   means "inactive" (a quiet SRT figure, a disabled button) stays on the opacity
   utilities.

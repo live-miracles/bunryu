@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dim">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,8 +9,16 @@
     <!-- use-credentials: behind Cloudflare Access the manifest request needs the
          Access cookie, or it is redirected to the Access login and ignored. -->
     <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials" />
-    <meta name="theme-color" content="#2a303c" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <link rel="stylesheet" type="text/css" href="output.css" />
+    <script>
+      // Apply a pinned theme before first paint (see features/theme.ts).
+      try {
+        const t = localStorage.getItem('bunryu.theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
     <!-- Vendored (hls.js 1.7.3, Apache-2.0): the dashboard is an ops tool that
          must work without internet access to a CDN, and an unpinned CDN script
          is third-party code running on the streaming server's control panel. -->
@@ -76,6 +84,7 @@
               d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
           </svg>
         </a>
+        <button id="theme-btn" class="btn btn-square btn-sm btn-ghost opacity-70" title="Theme" aria-label="Theme"></button>
         <div class="group flex items-center" id="alert-sound-control">
           <button id="alert-sound-btn" class="btn btn-square btn-sm btn-ghost opacity-70" title="Alert beeps" aria-label="Alert beeps"></button>
           <input
@@ -105,7 +114,7 @@
     </div>
 
     <!-- Server connection banner -->
-    <div id="connection-banner" class="bg-error text-error-content hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
+    <div id="connection-banner" class="banner banner-bad hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path
           stroke-linecap="round"
@@ -116,7 +125,7 @@
     </div>
 
     <!-- SRS down banner -->
-    <div id="srs-banner" class="bg-error text-error-content hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
+    <div id="srs-banner" class="banner banner-bad hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path
           stroke-linecap="round"
@@ -127,9 +136,7 @@
     </div>
 
     <!-- Goryu down banner -->
-    <div
-      id="srt-relay-banner"
-      class="bg-warning text-warning-content hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
+    <div id="srt-relay-banner" class="banner hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path
           stroke-linecap="round"
@@ -140,9 +147,7 @@
     </div>
 
     <!-- Public Host not set banner -->
-    <div
-      id="public-host-banner"
-      class="bg-warning text-warning-content hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
+    <div id="public-host-banner" class="banner hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path
           stroke-linecap="round"
@@ -156,9 +161,7 @@
     </div>
 
     <!-- SRT passphrase reset pending banner -->
-    <div
-      id="srt-passphrase-banner"
-      class="bg-warning text-warning-content hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
+    <div id="srt-passphrase-banner" class="banner hidden shrink-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path
           stroke-linecap="round"
@@ -341,7 +344,7 @@
     <div
       class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 pt-0 md:h-screen md:grid-cols-[clamp(14rem,30vw,23rem)_minmax(0,1fr)] xl:grid-cols-[clamp(14rem,24vw,23rem)_minmax(22rem,3fr)_minmax(0,4fr)]">
       <!-- Left: Pipeline list -->
-      <div class="panel-waves bg-base-300 rounded-box mt-4 overflow-y-auto max-md:max-h-[40vh]">
+      <div class="panel mt-4 overflow-y-auto max-md:max-h-[40vh]">
         <div class="bg-base-300 sticky top-0 z-10 flex items-start justify-between gap-2 p-4">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="grid grid-cols-[5rem_auto] items-center gap-x-3 text-sm">
@@ -390,9 +393,10 @@
       <div class="contents md:-mx-2 md:flex md:min-h-0 md:flex-col md:overflow-y-auto md:px-2 xl:contents">
         <!-- Middle: Pipeline info -->
         <div
-          class="panel-waves bg-base-200 mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto rounded-xl px-4 pb-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible"
+          class="panel mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto px-4 pb-4 md:max-xl:shrink-0 md:max-xl:overflow-visible"
           id="pipe-info-col">
-          <div class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-xl px-4 pt-4 pb-3 text-xl font-bold">
+          <div
+            class="bg-base-200 sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 rounded-t-[calc(var(--radius-card)-1px)] px-4 pt-4 pb-3 text-xl font-bold">
             <div class="flex min-w-0 items-center gap-2">
               <span class="truncate" id="pipe-name"></span>
               <span class="badge badge-sm badge-outline hidden shrink-0" id="pipe-readers-badge"></span>
@@ -699,10 +703,8 @@
         </div>
 
         <!-- Right: Outputs -->
-        <div
-          class="panel-waves bg-base-200 mt-4 hidden overflow-y-auto rounded-xl px-4 pb-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible"
-          id="outs-col">
-          <div class="bg-base-200 sticky top-0 z-10 -mx-4 rounded-t-xl px-4 pt-4 pb-3">
+        <div class="panel mt-4 hidden overflow-y-auto px-4 pb-4 md:max-xl:shrink-0 md:max-xl:overflow-visible" id="outs-col">
+          <div class="bg-base-200 sticky top-0 z-10 -mx-4 rounded-t-[calc(var(--radius-card)-1px)] px-4 pt-4 pb-3">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <h2 class="text-xl font-bold">Outputs</h2>

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dim">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,13 +9,20 @@
     <!-- use-credentials: behind Cloudflare Access the manifest request needs the
          Access cookie, or it is redirected to the Access login and ignored. -->
     <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials" />
-    <meta name="theme-color" content="#2a303c" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <link rel="stylesheet" type="text/css" href="output.css" />
+    <script>
+      // Apply a pinned theme before first paint (see features/theme.ts).
+      try {
+        const t = localStorage.getItem('bunryu.theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
   </head>
   <body class="bg-base-100 text-base-content flex h-screen flex-col items-center justify-center p-4">
-    <div class="login-crest" aria-hidden="true"></div>
-    <div class="card bg-base-300 relative w-full max-w-sm shadow-xl">
-      <div class="card-body gap-4">
+    <div class="panel relative w-full max-w-sm">
+      <div class="flex flex-col gap-4 p-6">
         <div class="flex items-center gap-3">
           <img src="logo.png" class="h-8 w-8" alt="" />
           <h2 class="text-xl font-bold">Bunryu</h2>

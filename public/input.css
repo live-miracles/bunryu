@@ -1,94 +1,699 @@
 @import 'tailwindcss';
-@plugin 'daisyui' {
-    themes: dim;
+
+/* Design tokens, shared with the org site (live-miracles.github.io/ui/styles.css): neutral
+   Apple-style surfaces, one blue accent, hairline dividers instead of shadows. Each token is a
+   light-dark() pair, so the dashboard follows the system and the navbar toggle only has to pin
+   color-scheme (data-theme on <html>). Status colours are for status only. */
+:root {
+    color-scheme: light dark;
+    --page: light-dark(#f5f5f7, #000000);
+    --panel: light-dark(#ffffff, #1c1c1e);
+    --field: light-dark(#f5f5f7, #2c2c2e);
+    --ink: light-dark(#1d1d1f, #f5f5f7);
+    --muted: light-dark(#6e6e73, #98989d);
+    --line: light-dark(rgb(0 0 0 / 0.1), rgb(255 255 255 / 0.12));
+    --chip: light-dark(rgb(0 0 0 / 0.05), rgb(255 255 255 / 0.08));
+    --accent: light-dark(#1b5fb0, #6db3ff);
+    --on-accent: light-dark(#ffffff, #06142b);
+    --ok: light-dark(#1a7f37, #30d158);
+    --warn: light-dark(#a15c00, #ff9f0a);
+    --bad: light-dark(#d1242f, #ff453a);
+    --on-status: light-dark(#ffffff, #000000);
+    --tip: light-dark(#1d1d1f, #3a3a3c);
+    --on-tip: #f5f5f7;
+    --backdrop: light-dark(rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.6));
+    --radius-card: 18px;
+    --radius-control: 8px;
 }
 
-/* Page background: a faint blue glow plus a static seigaiha (wave) pattern
-   (waves.svg, drawn at low opacity) that fades out toward the bottom. It only
-   shows in the gutters and any panel margins; the panels are opaque, so tables,
-   charts and status colours are unaffected. It is static on purpose: no
-   animation cost on a dashboard open for hours. */
-body {
-    background-image:
-        radial-gradient(ellipse 80% 60% at 0% 0%, oklch(45% 0.09 245 / 0.28), transparent 70%),
-        radial-gradient(ellipse 70% 50% at 100% 100%, oklch(40% 0.08 220 / 0.2), transparent 70%),
-        linear-gradient(to bottom, transparent 0%, var(--color-base-100) 85%), url('waves.svg');
-    background-size:
-        auto,
-        auto,
-        auto,
-        60px 30px;
-    background-attachment: fixed;
+:root[data-theme='light'] {
+    color-scheme: light;
 }
 
-/* The three working panels show the same waves along their bottom edge, fading
-   out upward, so empty space below the content looks like water instead of a
-   flat block. The fade uses the panel's own colour. */
-.panel-waves {
-    --panel: var(--color-base-200);
-    background-image:
-        linear-gradient(to bottom, var(--panel) 35%, transparent 100%), url('waves.svg');
-    background-size:
-        auto,
-        60px 30px;
-    background-position:
-        0 0,
-        0 100%;
-    background-repeat: no-repeat, repeat;
+:root[data-theme='dark'] {
+    color-scheme: dark;
 }
 
-.panel-waves.bg-base-300 {
-    --panel: var(--color-base-300);
+/* The daisyUI colour names the markup still uses, mapped onto the tokens above. */
+@theme inline {
+    --color-base-100: var(--page);
+    --color-base-200: var(--panel);
+    --color-base-300: var(--panel);
+    --color-base-content: var(--ink);
+    --color-primary: var(--accent);
+    --color-primary-content: var(--on-accent);
+    --color-secondary: var(--accent);
+    --color-accent: var(--accent);
+    --color-accent-content: var(--on-accent);
+    --color-neutral: var(--tip);
+    --color-neutral-content: var(--on-tip);
+    --color-info: var(--accent);
+    --color-success: var(--ok);
+    --color-success-content: var(--on-status);
+    --color-warning: var(--warn);
+    --color-warning-content: var(--on-status);
+    --color-error: var(--bad);
+    --color-error-content: var(--on-status);
+    --radius-box: var(--radius-card);
+    --radius-field: var(--radius-control);
+    --font-sans:
+        -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, 'Segoe UI', Roboto,
+        sans-serif;
+    --font-mono:
+        ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
-/* Login page only: a stylized wave crest rising from the bottom-left corner. */
-.login-crest {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: min(clamp(200px, 47vh, 420px), 60vw);
-    pointer-events: none;
-    background: url('wave-crest.svg') left bottom / auto 100% no-repeat;
-    mask-image: linear-gradient(to top, #000 70%, transparent 100%);
+@layer base {
+    body {
+        background: var(--page);
+        color: var(--ink);
+        font-family: var(--font-sans);
+        font-size: 15px;
+        line-height: 1.47;
+        letter-spacing: -0.01em;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    ::selection {
+        background: color-mix(in oklab, var(--accent) 30%, transparent);
+    }
 }
 
-/* Secondary text (labels, units, timestamps). Dimmed far enough to recede but not
-   below the WCAG AA contrast of 4.5:1 that opacity-60 and below gave on the panels.
-   Deliberate "inactive" dimming (a quiet SRT figure, a disabled button) stays on the
-   opacity utilities. */
-.text-muted {
-    opacity: 0.82;
+@layer components {
+    /* Surfaces: the three working columns are flat white (dark grey) cards with a hairline. */
+    .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+    }
+
+    /* Secondary text (labels, units, timestamps). Dimmed far enough to recede but not
+       below the WCAG AA contrast of 4.5:1 on the panels. Deliberate "inactive" dimming
+       (a quiet SRT figure, a disabled button) stays on the opacity utilities. */
+    .text-muted {
+        color: var(--muted);
+        opacity: 1;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* ── Buttons ───────────────────────────────────────────── */
+    .btn {
+        --h: 2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        height: var(--h);
+        padding: 0 0.9rem;
+        border: 1px solid transparent;
+        border-radius: 9999px;
+        background: var(--chip);
+        color: var(--ink);
+        font-size: 0.875rem;
+        font-weight: 400;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        user-select: none;
+        transition:
+            background-color 0.15s,
+            color 0.15s,
+            transform 0.1s,
+            opacity 0.15s;
+    }
+
+    .btn:hover {
+        background: color-mix(in oklab, var(--ink) 10%, transparent);
+    }
+
+    .btn:active {
+        transform: scale(0.95);
+    }
+
+    .btn-sm {
+        --h: 1.75rem;
+        padding: 0 0.75rem;
+        font-size: 0.8125rem;
+    }
+
+    .btn-xs {
+        --h: 1.5rem;
+        padding: 0 0.6rem;
+        font-size: 0.75rem;
+    }
+
+    .btn-square,
+    .btn-circle {
+        width: var(--h);
+        padding: 0;
+    }
+
+    .btn-square {
+        border-radius: var(--radius-control);
+    }
+
+    .btn-ghost {
+        background: transparent;
+    }
+
+    .btn-outline {
+        background: transparent;
+        border-color: var(--line);
+    }
+
+    .btn-active {
+        background: color-mix(in oklab, var(--ink) 12%, transparent);
+    }
+
+    .btn-accent,
+    .btn-primary {
+        background: var(--accent);
+        color: var(--on-accent);
+    }
+
+    .btn-accent:hover,
+    .btn-primary:hover {
+        background: color-mix(in oklab, var(--accent) 88%, var(--ink));
+    }
+
+    /* Warning and destructive actions are tinted, not solid: colour is for status only. */
+    .btn-error,
+    .btn-warning,
+    .btn-soft {
+        --c: var(--ink);
+        background: color-mix(in oklab, var(--c) 14%, transparent);
+        color: var(--c);
+    }
+
+    .btn-error {
+        --c: var(--bad);
+    }
+
+    .btn-warning {
+        --c: var(--warn);
+    }
+
+    .btn-accent.btn-soft {
+        --c: var(--accent);
+        background: color-mix(in oklab, var(--c) 14%, transparent);
+        color: var(--c);
+    }
+
+    .btn-error:hover,
+    .btn-warning:hover,
+    .btn-soft:hover {
+        background: color-mix(in oklab, var(--c) 22%, transparent);
+    }
+
+    .btn:disabled,
+    .btn-disabled {
+        opacity: 0.4;
+        pointer-events: none;
+    }
+
+    /* Segmented control (the Publish card's modes). */
+    .join {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 9999px;
+        background: var(--chip);
+    }
+
+    .join .join-item {
+        background: transparent;
+    }
+
+    .join .join-item.btn-accent.btn-soft {
+        background: var(--panel);
+        color: var(--ink);
+        font-weight: 600;
+    }
+
+    /* ── Badges ────────────────────────────────────────────── */
+    .badge {
+        --c: var(--ink);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+        height: 1.5rem;
+        padding: 0 0.6rem;
+        border: 1px solid transparent;
+        border-radius: 9999px;
+        background: var(--chip);
+        color: var(--ink);
+        font-size: 0.8125rem;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .badge-sm {
+        height: 1.25rem;
+        padding: 0 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .badge-xs {
+        height: 1rem;
+        padding: 0 0.4rem;
+        font-size: 0.6875rem;
+    }
+
+    .badge-success,
+    .badge-warning,
+    .badge-error,
+    .badge-info,
+    .badge-accent {
+        background: color-mix(in oklab, var(--c) 15%, transparent);
+        color: var(--c);
+    }
+
+    .badge-success {
+        --c: var(--ok);
+    }
+
+    .badge-warning {
+        --c: var(--warn);
+    }
+
+    .badge-error {
+        --c: var(--bad);
+    }
+
+    .badge-info,
+    .badge-accent {
+        --c: var(--accent);
+    }
+
+    .badge-neutral,
+    .badge-ghost {
+        color: var(--muted);
+    }
+
+    .badge-outline {
+        background: transparent;
+        border-color: var(--line);
+        color: var(--muted);
+    }
+
+    /* ── Form controls ─────────────────────────────────────── */
+    .input,
+    .select,
+    .textarea {
+        height: 2rem;
+        padding: 0 0.75rem;
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        background: var(--field);
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.875rem;
+        letter-spacing: inherit;
+        transition:
+            border-color 0.15s,
+            box-shadow 0.15s;
+    }
+
+    .input::placeholder,
+    .textarea::placeholder {
+        color: var(--muted);
+        opacity: 0.8;
+    }
+
+    .input:hover,
+    .select:hover,
+    .textarea:hover {
+        border-color: var(--line);
+    }
+
+    .input:focus,
+    .select:focus,
+    .textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 28%, transparent);
+    }
+
+    .input:disabled,
+    .select:disabled,
+    .textarea:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .textarea {
+        height: auto;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .input-sm,
+    .select-sm {
+        height: 1.75rem;
+        padding-inline: 0.6rem;
+        font-size: 0.8125rem;
+    }
+
+    .input-xs,
+    .select-xs {
+        height: 1.5rem;
+        padding-inline: 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    /* A field that was edited and breaks its own constraint (port range, latency, URL
+       scheme, passphrase length) turns red without waiting for Save. */
+    .input-error,
+    .select-error,
+    .input:user-invalid {
+        border-color: var(--bad);
+    }
+
+    .input-error:focus,
+    .select-error:focus,
+    .input:user-invalid:focus {
+        border-color: var(--bad);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--bad) 28%, transparent);
+    }
+
+    .select {
+        appearance: none;
+        padding-right: 2rem;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.6rem center;
+    }
+
+    .select-sm {
+        padding-right: 1.75rem;
+    }
+
+    .select-xs {
+        padding-right: 1.5rem;
+    }
+
+    .fieldset {
+        display: grid;
+        gap: 0.35rem;
+        align-content: start;
+    }
+
+    .fieldset-legend {
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .range {
+        appearance: none;
+        height: 1rem;
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .range::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 9999px;
+        background: var(--chip);
+    }
+
+    .range::-moz-range-track {
+        height: 4px;
+        border-radius: 9999px;
+        background: var(--chip);
+    }
+
+    .range::-webkit-slider-thumb {
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        margin-top: -5px;
+        border-radius: 50%;
+        border: 0;
+        background: var(--accent);
+    }
+
+    .range::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 0;
+        background: var(--accent);
+    }
+
+    .link {
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+    }
+
+    .loading {
+        display: inline-block;
+        width: 1.25rem;
+        height: 1.25rem;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        opacity: 0.7;
+        animation: spin 0.7s linear infinite;
+    }
+
+    .loading-xs {
+        width: 0.75rem;
+        height: 0.75rem;
+        border-width: 1.5px;
+    }
+
+    /* ── Tabs: a segmented control ─────────────────────────── */
+    .tabs {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 9999px;
+        background: var(--chip);
+    }
+
+    .tab {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 1.75rem;
+        padding: 0 0.85rem;
+        border-radius: 9999px;
+        color: var(--muted);
+        font-size: 0.8125rem;
+        cursor: pointer;
+        user-select: none;
+        transition:
+            background-color 0.15s,
+            color 0.15s;
+    }
+
+    .tab:hover {
+        color: var(--ink);
+    }
+
+    .tab-active {
+        background: var(--panel);
+        color: var(--ink);
+        font-weight: 600;
+    }
+
+    /* ── Tables ────────────────────────────────────────────── */
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+    }
+
+    .table :where(th, td) {
+        padding: 0.6rem 0.75rem;
+        text-align: left;
+        vertical-align: middle;
+    }
+
+    .table :where(thead th, tfoot th) {
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .table :where(tbody tr, thead tr) {
+        border-bottom: 1px solid var(--line);
+    }
+
+    .table :where(tbody tr:last-child) {
+        border-bottom: 0;
+    }
+
+    .table-sm :where(th, td) {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8125rem;
+    }
+
+    .table-xs :where(th, td) {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    /* ── Menu: the pipeline list ───────────────────────────── */
+    .menu {
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        gap: 2px;
+        padding: 0.5rem;
+    }
+
+    .menu > li {
+        display: block;
+    }
+
+    .menu > li > * {
+        padding: 0.5rem 0.75rem;
+        border-radius: 10px;
+    }
+
+    .menu > li > *:hover {
+        background: var(--chip);
+    }
+
+    /* ── Dialogs ───────────────────────────────────────────── */
+    .modal {
+        display: none;
+        place-items: center;
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        overflow: hidden;
+    }
+
+    .modal[open] {
+        display: grid;
+    }
+
+    .modal::backdrop {
+        background: var(--backdrop);
+        backdrop-filter: blur(6px);
+    }
+
+    .modal-box {
+        grid-area: 1 / 1;
+        max-height: calc(100dvh - 2rem);
+        overflow-y: auto;
+        padding: 1.5rem;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        background: var(--panel);
+        color: var(--ink);
+    }
+
+    .modal-action {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .modal-backdrop {
+        grid-area: 1 / 1;
+        z-index: -1;
+    }
+
+    .modal-backdrop button {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: transparent;
+        color: transparent;
+        cursor: default;
+    }
+
+    /* ── Navbar and banners ────────────────────────────────── */
+    .navbar {
+        display: flex;
+        align-items: center;
+        min-height: 3.25rem;
+        padding: 0.25rem 1rem;
+        background: color-mix(in oklab, var(--page) 80%, transparent);
+        backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    /* A full-width notice: tinted, not solid, so a standing warning does not shout. */
+    .banner {
+        --c: var(--warn);
+        background: color-mix(in oklab, var(--c) 13%, var(--page));
+        border-bottom: 1px solid color-mix(in oklab, var(--c) 25%, transparent);
+        color: var(--c);
+    }
+
+    .banner-bad {
+        --c: var(--bad);
+    }
+
+    .banner .link {
+        color: inherit;
+    }
+
+    /* ── Toasts and the status dot ─────────────────────────── */
+    .alert {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.6rem 1rem;
+        border-radius: 12px;
+        background: var(--tip);
+        color: var(--on-tip);
+        font-size: 0.875rem;
+    }
+
+    .alert-error {
+        background: var(--bad);
+        color: var(--on-status);
+    }
+
+    .alert-primary {
+        background: var(--ink);
+        color: var(--page);
+    }
+
+    .status {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+    }
+
+    .status-lg {
+        width: 0.75rem;
+        height: 0.75rem;
+    }
 }
 
-/* Inactive tabs are 50% in daisyUI (3.3:1). */
-.tabs .tab:not(.tab-active, :hover) {
-    color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
-}
-
-/* daisyUI dims table headers to 60%, which is 4.1:1 on the panels. */
-.table :where(thead, tfoot) {
-    color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
-}
-
-/* A field that was edited and breaks its own constraint (port range, latency, URL
-   scheme, passphrase length) turns red without waiting for Save. */
-.input:user-invalid {
-    --input-color: var(--color-error);
-}
+/* ── Dashboard-specific ────────────────────────────────── */
 
 #overview-col .overview-name-col {
     min-width: 11rem;
-}
-
-/* daisyUI's .menu sets flex-wrap: wrap on both the <ul> and each <li>,
-   which (combined with flex-direction: column and an unbounded height)
-   stops Chromium from stretching li/row down to the list's width — the
-   pipeline name never gets clamped, so it overflows into a horizontal
-   scrollbar instead of being truncated with an ellipsis. */
-#pipelines,
-#pipelines > li {
-    flex-wrap: nowrap;
 }
 
 .input-meta-row {
@@ -179,12 +784,4 @@ body {
 
 .input-meta-row-sm .input-meta-value {
     font-size: 0.8rem;
-}
-
-/* daisyUI 5 has no alert-primary; same variables as its alert-success, so
-   confirmation alerts use the theme's primary green. */
-.alert-primary {
-    color: var(--color-primary-content);
-    --alert-border-color: var(--color-primary);
-    --alert-color: var(--color-primary);
 }

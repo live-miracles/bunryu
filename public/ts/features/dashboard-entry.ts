@@ -2,6 +2,7 @@ import { getUrlParam, setUrlParam, copyText } from '../core/utils.js';
 import { state } from '../core/state.js';
 import { refreshDashboard } from './dashboard.js';
 import { initSoundAlerts } from './sound-alerts.js';
+import { initTheme } from './theme.js';
 import { setOutputsListFilter } from './render.js';
 import {
     openSettings,
@@ -239,6 +240,7 @@ window.previewMaximizeBtn = () => {
 };
 
 initSoundAlerts();
+initTheme();
 
 // A page load can start directly on ?view=settings or ?view=logs (bookmark,
 // reload). Those views are otherwise only populated when the user clicks the
