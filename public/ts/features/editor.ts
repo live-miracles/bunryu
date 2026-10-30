@@ -25,12 +25,12 @@ import type {
 import { parseSrtUrl, srtUrlFromForm } from '../core/srt.js';
 import {
     SERVERS,
-    CUSTOM_RTMP_IDX,
-    CUSTOM_SRT_IDX,
+    type ServerId,
+    serverById,
     buildDestinationUrl,
     detectServer,
     isDestinationUrl,
-    isRestreamIdx,
+    isRestreamServer,
     sanitizedDestinationFor,
 } from '../core/destination.js';
 export { showSrtBondingDetails } from './srt-bonding-details.js';
@@ -421,9 +421,9 @@ function restreamTargets() {
     return state.config.pipelines ?? [];
 }
 
-function serverOptionsHtml(selectedIdx: number): string {
+function serverOptionsHtml(selected: ServerId): string {
     return SERVERS.map(
-        (s, i) => `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${s.label}</option>`,
+        (s) => `<option value="${s.id}"${s.id === selected ? ' selected' : ''}>${s.label}</option>`,
     ).join('');
 }
 
@@ -457,15 +457,15 @@ function fieldsetHtml(label: string, sizeClass: string, inputHtml: string): stri
     </fieldset>`;
 }
 
-function sinkKeyFieldHtml(idx: number, key: string): string {
-    if (isRestreamIdx(idx)) {
+function sinkKeyFieldHtml(server: ServerId, key: string): string {
+    if (isRestreamServer(server)) {
         return fieldsetHtml(
             'Pipeline',
             'flex-1',
             `<select id="out-sink-key-input" name="sinkKey" class="select select-sm w-full js-sink-key" onchange="this.classList.remove('select-error')">${restreamPipelineOpts(key)}</select>`,
         );
     }
-    if (idx === CUSTOM_SRT_IDX) {
+    if (server === 'custom-srt') {
         const srt = parseSrtUrl(key);
         return [
             fieldsetHtml(
@@ -513,12 +513,12 @@ function sinkKeyFieldHtml(idx: number, key: string): string {
             ),
         ].join('');
     }
-    const s = SERVERS[idx];
+    const s = serverById(server);
     return fieldsetHtml(
         s.keyLabel,
         'flex-1',
         `<input type="text" id="out-sink-key-input" name="sinkKey" class="input input-sm w-full font-mono text-xs js-sink-key"
-               placeholder="${s.placeholder}" value="${escapeHtml(key)}"${idx === CUSTOM_RTMP_IDX ? ' pattern="rtmps?://.+" title="Starts with rtmp:// or rtmps://"' : ''}
+               placeholder="${s.placeholder}" value="${escapeHtml(key)}"${server === 'custom-rtmp' ? ' pattern="rtmps?://.+" title="Starts with rtmp:// or rtmps://"' : ''}
                oninput="this.classList.remove('input-error')" onpaste="onSinkKeyPaste(event)" />`,
     );
 }
@@ -578,13 +578,13 @@ function audioOptionsHtml(tracks: AudioTrackInfo[], selected: string): string {
     return options.join('');
 }
 
-function sinkRowHtmlForServer(idx: number, key = ''): string {
+function sinkRowHtmlForServer(server: ServerId, key = ''): string {
     const serverField = fieldsetHtml(
         'Server',
         '',
-        `<select class="select select-sm w-40" id="out-server-input" onchange="outServerChange(this)">${serverOptionsHtml(idx)}</select>`,
+        `<select class="select select-sm w-40" id="out-server-input" onchange="outServerChange(this)">${serverOptionsHtml(server)}</select>`,
     );
-    return `<div class="js-sink-row flex flex-wrap items-end gap-2 rounded-box bg-base-200 px-2 py-2">${serverField}${sinkKeyFieldHtml(idx, key)}</div>`;
+    return `<div class="js-sink-row flex flex-wrap items-end gap-2 rounded-box bg-base-200 px-2 py-2">${serverField}${sinkKeyFieldHtml(server, key)}</div>`;
 }
 
 function refreshSinkAudioMode(selected: string): void {
@@ -596,13 +596,13 @@ function refreshSinkAudioMode(selected: string): void {
 
 function populateDestinationDetected(
     tracks: AudioTrackInfo[],
-    idx: number,
+    server: ServerId,
     key: string,
     audioEncoding: string,
 ): void {
     currentSinkTracks = tracks;
     const container = document.getElementById('out-sinks-container');
-    if (container) container.innerHTML = sinkRowHtmlForServer(idx, key);
+    if (container) container.innerHTML = sinkRowHtmlForServer(server, key);
     syncSrtHostVisibility();
     refreshSinkAudioMode(audioEncoding);
 }
@@ -611,16 +611,15 @@ function populateDestination(
     tracks: AudioTrackInfo[],
     destination: { url: string; audioEncoding: string } | null,
 ): void {
-    const { idx, key } = destination?.url
+    const { server, key } = destination?.url
         ? detectServer(destination.url, restreamTargets())
-        : { idx: CUSTOM_RTMP_IDX, key: '' };
-    populateDestinationDetected(tracks, idx, key, destination?.audioEncoding ?? 'copy');
+        : { server: 'custom-rtmp' as const, key: '' };
+    populateDestinationDetected(tracks, server, key, destination?.audioEncoding ?? 'copy');
 }
 
 export function onOutServerChange(select: HTMLSelectElement): void {
-    const idx = parseInt(select.value);
     const container = document.getElementById('out-sinks-container');
-    if (container) container.innerHTML = sinkRowHtmlForServer(idx, '');
+    if (container) container.innerHTML = sinkRowHtmlForServer(select.value as ServerId, '');
     syncSrtHostVisibility();
 }
 
@@ -633,11 +632,11 @@ export function onOutServerChange(select: HTMLSelectElement): void {
 export function onSinkKeyPaste(event: ClipboardEvent): void {
     const text = event.clipboardData?.getData('text').trim();
     if (!text || !isDestinationUrl(text)) return;
-    const { idx, key } = detectServer(text, restreamTargets());
-    if (idx === CUSTOM_RTMP_IDX && key === text) return;
+    const { server, key } = detectServer(text, restreamTargets());
+    if (server === 'custom-rtmp' && key === text) return;
     event.preventDefault();
     const container = document.getElementById('out-sinks-container');
-    if (container) container.innerHTML = sinkRowHtmlForServer(idx, key);
+    if (container) container.innerHTML = sinkRowHtmlForServer(server, key);
     syncSrtHostVisibility();
 }
 
@@ -687,10 +686,15 @@ export function openAddOutput(pipelineId: string): void {
     (document.getElementById('out-video-encoding-input') as HTMLSelectElement).innerHTML =
         outVideoEncodingOptions(previous?.videoEncoding ?? 'copy');
     if (previous) {
-        const { idx, key } = sanitizedDestinationFor(previous.url, restreamTargets());
-        populateDestinationDetected(pipelineTracks(pipelineId), idx, key, previous.audioEncoding);
+        const { server, key } = sanitizedDestinationFor(previous.url, restreamTargets());
+        populateDestinationDetected(
+            pipelineTracks(pipelineId),
+            server,
+            key,
+            previous.audioEncoding,
+        );
     } else {
-        populateDestinationDetected(pipelineTracks(pipelineId), CUSTOM_RTMP_IDX, '', 'copy');
+        populateDestinationDetected(pipelineTracks(pipelineId), 'custom-rtmp', '', 'copy');
     }
     (document.getElementById('out-modal-title') as HTMLElement).textContent = 'Add Output';
     setOutputSettingsLocked(false);
@@ -793,9 +797,8 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
         .value;
     const audioEncoding = (document.getElementById('out-audio-encoding-input') as HTMLSelectElement)
         .value;
-    const serverIdx = parseInt(
-        (document.getElementById('out-server-input') as HTMLSelectElement).value,
-    );
+    const server = (document.getElementById('out-server-input') as HTMLSelectElement)
+        .value as ServerId;
 
     const row = document.querySelector('#out-sinks-container .js-sink-row');
     let url = '';
@@ -806,7 +809,7 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
             | HTMLSelectElement
             | null;
         const key = keyEl?.value.trim() ?? '';
-        if (serverIdx === CUSTOM_SRT_IDX) {
+        if (server === 'custom-srt') {
             const srt = readSrtSettings(row);
             if ('error' in srt) {
                 destinationValid = false;
@@ -814,9 +817,9 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
                 url = srt.url;
             }
         } else {
-            const built = buildDestinationUrl(serverIdx, key, restreamTargets());
+            const built = buildDestinationUrl(server, key, restreamTargets());
             keyEl?.classList.toggle(
-                isRestreamIdx(serverIdx) ? 'select-error' : 'input-error',
+                isRestreamServer(server) ? 'select-error' : 'input-error',
                 'error' in built,
             );
             if ('error' in built) {
