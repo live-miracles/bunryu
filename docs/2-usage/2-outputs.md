@@ -152,7 +152,9 @@ dragged, because the saved order covers all of them.
 
 ### Overview
 
-The dashboard's **Overview** lists every input and every output in two tables. The
+The dashboard's **Overview** lists every input and every output in two tables. Open it with
+the grid icon at the start of the navbar (the sidebar's warning and error counts open it on
+the Issues tab). The
 **All**, **Active** and **Issues** tabs narrow both: Active hides what is offline or
 stopped, and Issues keeps only warnings and errors, plus an offline input whose outputs
 are affected, with the reason. The search box on each table's heading line filters it as

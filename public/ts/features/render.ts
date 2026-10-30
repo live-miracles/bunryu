@@ -1880,6 +1880,11 @@ export function renderMetrics(): void {
 export function renderPipelines(): void {
     const selectedId = getUrlParam('p');
     const view = getUrlParam('view');
+    const overviewBtn = document.getElementById('overview-nav-btn');
+    overviewBtn?.classList.toggle(
+        'btn-active',
+        !view && !state.pipelines.some((p) => p.id === selectedId),
+    );
     const logsBtn = document.getElementById('srs-logs-nav-btn');
     logsBtn?.classList.toggle('btn-active', view === 'logs');
     const settingsBtn = document.getElementById('settings-nav-btn');
