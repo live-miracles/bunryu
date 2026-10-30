@@ -8,4 +8,4 @@ It is not separable, because the monitor does not own its state. The per-output 
 
 Only the pure part separates cleanly: the constants, the line patterns, the bitrate and progress parsers and, at most, the burst counter as a function of a line and the time. That is about 120 to 150 lines and gains little. The behaviour is already tested through the real service with a fake `spawn`.
 
-Revisit when a change has to touch the monitor independently of the lifecycle. Bitrate parsing, `total_size` never going backwards and the 15 s stall reason are now tested through the service; still untested is which warning wins on the card when several apply (socket, memory, timing, falling behind), so write that test first.
+Revisit when a change has to touch the monitor independently of the lifecycle. The pieces that were untested are now covered through the service: bitrate parsing, `total_size` never going backwards, the 15 s stall reason, and which warning the card shows when several apply (socket, then memory, then timing, then falling behind).

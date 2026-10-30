@@ -1593,6 +1593,72 @@ describe('output service control surface', () => {
         service.shutdown();
     });
 
+    test('the card shows one warning at a time: socket, then memory, then timing, then falling behind', async (t) => {
+        const clock = { now: Date.now() };
+        t.mock.method(Date, 'now', () => clock.now);
+        const proc = new FakeFfmpeg();
+        const healthySocket =
+            'ESTAB 0 0 10.160.0.30:47178 192.178.174.134:1935 users:(("ffmpeg",pid=1234,fd=6))\n';
+        const closingSocket = healthySocket.replace('ESTAB', 'CLOSE-WAIT');
+        const options = {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 1e9,
+            memoryLimitMb: 200,
+            ssOutput: healthySocket,
+        };
+        let rssKb = 10_000;
+        const originalReadFileSync = fs.readFileSync;
+        t.mock.method(fs, 'readFileSync', (filePath, ...rest) =>
+            String(filePath) === `/proc/${proc.pid}/status`
+                ? `VmRSS:  ${rssKb} kB\n`
+                : originalReadFileSync(filePath, ...rest),
+        );
+        const createOutputService = loadOutputService(t, proc, options);
+        const service = createOutputService(makeDb(), makeReadyInputState({ srt: true }));
+        const reason = () => service.getStats('out1').warningReason;
+
+        await service.start('out1');
+        proc.stdout.write('total_size=4096\n');
+        let outTimeUs = 1_000_000;
+        const progress = async (wallMs, mediaUs) => {
+            clock.now += wallMs;
+            outTimeUs += mediaUs;
+            proc.stdout.write(`out_time_ms=${outTimeUs}\n`);
+            await sleep(5);
+        };
+        await progress(0, 0);
+        assert.equal(reason(), null);
+
+        // Running at half speed for a minute and a bit: falling behind.
+        for (let i = 0; i < 70; i++) await progress(1000, 500_000);
+        assert.match(reason(), /falling behind/);
+
+        // Progress stops for 16 s: the stall shows instead.
+        clock.now += 16_000;
+        assert.match(reason(), /FFmpeg media progress has stalled for 16s/);
+
+        // High memory outranks the stall.
+        rssKb = 150_000;
+        await sleep(40);
+        assert.match(reason(), /High memory usage/);
+
+        // A closing destination socket outranks everything.
+        options.ssOutput = closingSocket;
+        await sleep(40);
+        assert.match(reason(), /CLOSE-WAIT/);
+
+        // And each one gives way to the next as it clears.
+        options.ssOutput = healthySocket;
+        await sleep(40);
+        assert.match(reason(), /High memory usage/);
+        rssKb = 10_000;
+        await sleep(40);
+        assert.match(reason(), /FFmpeg media progress has stalled/);
+
+        service.shutdown();
+    });
+
     describe('falling behind realtime', () => {
         // Feeds -progress lines on a fake clock: `wallMs` of wall time passes and
         // the output's media clock advances by `mediaUs`.
