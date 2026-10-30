@@ -20,9 +20,9 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | GET | `/api/metrics/system` | Host CPU, RAM, disk and network stats (RAM used is total minus `MemAvailable`, so reclaimable page cache does not count) |
 | GET | `/api/srs-logs` | Recent Server events (SRS and Goryu becoming unreachable or recovering, host CPU, memory and disk alerts: `{ ts, source: srs\|relay\|host, type: problem\|recovered, message }`) and log tails for SRS, the dashboard, and the relay |
 | GET | `/api/ready` | Unauthenticated readiness check used by systemd before starting SRS |
-| POST | `/api/pipelines` | Create pipeline (auto-names and assigns stream key) |
+| POST | `/api/pipelines` | Create pipeline (auto-names and assigns stream key) — 409 when every stream key is already assigned |
 | GET | `/api/pipelines/:id` | Pipeline details including relay health and bonded-input activity |
-| POST | `/api/pipelines/:id` | Rename pipeline `{ name }`, optionally reassign key `{ name, streamKeyId }` — a key change returns 409 while any of your outputs is running; a shared encode still running is stopped first, so the next one pulls the new key |
+| POST | `/api/pipelines/:id` | Rename pipeline `{ name }`, optionally reassign key `{ name, streamKeyId }` (`400` for an unknown `streamKeyId`) — a key change returns 409 while any of your outputs is running; a shared encode still running is stopped first, so the next one pulls the new key |
 | DELETE | `/api/pipelines/:id` | Delete pipeline (stream key is freed, not deleted) — 409 while any of your outputs is running; its shared encodes are stopped and removed with it |
 | GET | `/api/pipelines/:id/logs` | Pipeline event log: input online/offline, probe results, and bonded legs joining or leaving (event `legs`) |
 | GET | `/api/health/pipelines/:id/legs/history` | Per-leg SRT history of a bonded input (state, health, rate, RTT, loss), 5 s samples for up to 30 min; `?from=`, `?to=`, `?after=` in ms |

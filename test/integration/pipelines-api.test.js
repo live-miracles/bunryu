@@ -128,6 +128,16 @@ describe('Pipelines API integration', () => {
             assert.ok(res.body.id > 0);
             assert.ok(res.body.streamKey.startsWith('key'));
         });
+
+        test('409s with the reason when every stream key is already assigned', async () => {
+            const harness = createHarness();
+            for (const _key of harness.db.listStreamKeys()) harness.db.createPipeline();
+
+            const res = await harness.request('POST', '/api/pipelines');
+
+            assert.equal(res.status, 409);
+            assert.equal(res.body.error, 'No unassigned stream keys available');
+        });
     });
 
     describe('GET /api/pipelines/:id', () => {
@@ -216,6 +226,21 @@ describe('Pipelines API integration', () => {
             assert.equal(res.status, 200);
             assert.equal(res.body.streamKeyId, p2.streamKeyId);
             assert.deepEqual(harness.previewService.stopped, [p1.id]);
+        });
+
+        test('rejects a streamKeyId that is not an existing key, before stopping anything', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            for (const streamKeyId of [null, 'abc', 1.5, 99999]) {
+                const res = await harness.request('POST', `/api/pipelines/${p.id}`, {
+                    name: p.name,
+                    streamKeyId,
+                });
+                assert.equal(res.status, 400, String(streamKeyId));
+                assert.equal(res.body.error, 'invalid streamKeyId');
+            }
+            assert.equal(harness.db.getPipeline(p.id).streamKeyId, p.streamKeyId);
+            assert.deepEqual(harness.previewService.stopped, []);
         });
 
         test('409s a stream key change while any output is running, and does not touch the preview or db', async () => {

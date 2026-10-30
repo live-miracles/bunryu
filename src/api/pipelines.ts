@@ -14,8 +14,13 @@ export function registerPipelineApi(
     srtRelayService: SrtRelayService,
 ): void {
     app.post('/api/pipelines', (_req, res) => {
-        const pipeline = db.createPipeline();
-        return res.status(201).json(pipeline);
+        try {
+            return res.status(201).json(db.createPipeline());
+        } catch (error) {
+            // Expected when every stream key is taken, so not a server error.
+            const message = error instanceof Error ? error.message : 'could not create pipeline';
+            return res.status(409).json({ error: message });
+        }
     });
 
     app.get('/api/pipelines/:id', (req, res) => {
@@ -40,6 +45,14 @@ export function registerPipelineApi(
         const parsedName = parseName(req.body?.name);
         if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
         const name = parsedName.name;
+        // Checked before the key-change side effects below: a null or unknown id would
+        // otherwise stop the shared encodes and the preview and then fail to save.
+        if (
+            req.body?.streamKeyId !== undefined &&
+            !db.listStreamKeys().some((key) => key.id === req.body.streamKeyId)
+        ) {
+            return res.status(400).json({ error: 'invalid streamKeyId' });
+        }
         const streamKeyId = req.body?.streamKeyId as number | undefined;
         const keyChanged = streamKeyId !== undefined && streamKeyId !== existing.streamKeyId;
 
