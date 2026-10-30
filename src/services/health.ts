@@ -900,9 +900,12 @@ export function createHealthService(
         }
     }
 
+    let pollTimer: NodeJS.Timeout | undefined;
+
     function start(): void {
         void poll();
-        setInterval(() => void poll(), POLL_INTERVAL_MS).unref();
+        pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
+        pollTimer.unref();
     }
 
     function registerRoutes(app: Express): void {
@@ -952,6 +955,8 @@ export function createHealthService(
     }
 
     function shutdown(): void {
+        // No poll after the kill sweep: one could restart outputs the sweep just killed.
+        clearInterval(pollTimer);
         probes.shutdown();
     }
 

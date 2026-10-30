@@ -201,6 +201,25 @@ describe('output watchdog', () => {
         delete require.cache[require.resolve('../src/utils/appConfig')];
     });
 
+    test('does not spawn an ffmpeg once the service is shutting down', async (t) => {
+        let spawned = 0;
+        const db = makeDb();
+        const createOutputService = loadOutputService(t, () => {
+            spawned++;
+            return new FakeFfmpeg();
+        });
+        const service = createOutputService(db, makeReadyInputState());
+
+        service.shutdown();
+        // A Start request or a health restart landing in the flush window.
+        await service.start('out1');
+        service.restartPipelineOutputs(1, 0);
+        await sleep(700);
+
+        assert.equal(spawned, 0, 'no ffmpeg may outlive the kill sweep');
+        assert.notEqual(service.getStats('out1').status, 'running');
+    });
+
     test('kills and retries a running output when ffmpeg output progress stalls', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();

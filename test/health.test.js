@@ -808,6 +808,31 @@ describe('createHealthService poll orchestration', () => {
         service.shutdown();
     });
 
+    test('shutdown stops the poll interval', async (t) => {
+        let fetches = 0;
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        t.mock.method(globalThis, 'fetch', async () => {
+            fetches++;
+            return jsonResponse({ code: 0, streams: [], clients: [] });
+        });
+        const createHealthService = loadHealthService(t);
+        const service = createHealthService(
+            makeFakeDb([]),
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+        );
+
+        service.start();
+        await sleep(20);
+        service.shutdown();
+        const before = fetches;
+        await tickPoll(t);
+        await tickPoll(t);
+
+        assert.equal(fetches, before, 'no poll runs after shutdown');
+    });
+
     test('a deleted pipeline is forgotten by the input state, so its live flag cannot linger', async (t) => {
         const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
         const pipelines = [pipeline];

@@ -1601,6 +1601,13 @@ export function createOutputService(
     }
 
     async function startJob(output: Output): Promise<void> {
+        // shutdown() has killed every process and the kill sweep will not run again, so
+        // a child spawned now would outlive the server. Not an error: the desired state
+        // is untouched, and the output starts again at the next boot.
+        if (shuttingDown) {
+            console.log(`[outputs] ${output.id} not started: the server is shutting down`);
+            return;
+        }
         if (!validateOutputUrl(output.url)) throw new Error('Invalid output URL');
 
         const pipeline = db.getPipeline(output.pipelineId);
