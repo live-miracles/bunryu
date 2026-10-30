@@ -154,8 +154,10 @@ if [[ -s "$DB_FILE" ]]; then
     # now, before anything is changed, instead of leaving a failed service.
     db_version="$(bash "$APP_DIR/scripts/db-schema-version.sh" "$DB_FILE")"
     build_version="$(bash "$APP_DIR/scripts/db-schema-version.sh" --build)"
-    if [[ "$db_version" != 0 && "$db_version" != "$build_version" ]]; then
-        echo "Existing database $DB_FILE has schema version ${db_version:-unknown (not a SQLite database)}, this build needs $build_version."
+    if [[ "$db_version" != "$build_version" ]]; then
+        shown_version="${db_version:-unknown (not a SQLite database)}"
+        [[ "$db_version" == 0 ]] && shown_version="0 (never stamped)"
+        echo "Existing database $DB_FILE has schema version $shown_version, this build needs $build_version."
         echo "There are no migrations, so it cannot be kept; wiping it keeps a backup copy."
         if [[ "${WIPE_DB:-}" == y || "${WIPE_DB:-}" == Y ]]; then
             wipe_db=yes

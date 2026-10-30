@@ -26,9 +26,8 @@ const OUTPUT_ERROR_HISTORY_LIMIT = 10;
 // warnings can never push crashes and stops out of the history.
 const OUTPUT_WARNING_HISTORY_LIMIT = 5;
 
-// Output.lastError's wire format predates the history array and stays
-// "<ts_ms>\n<message>" so existing frontend parsing keeps working. It only
-// surfaces a crash when that crash is also the *most recent* history entry.
+// Output.lastError is "<ts_ms>\n<message>". It only surfaces a crash when that
+// crash is also the *most recent* history entry.
 // Every deliberate stop appends a 'stopped' marker (see outputs.ts), even
 // with an empty message, specifically so it immediately supersedes any
 // earlier crash here — "is this error still current" then falls out of
@@ -87,7 +86,7 @@ const reportedCorruptHistory = new Set<string>();
 
 function parseOutputErrorHistory(raw: string | null): OutputErrorRecord[] {
     if (!raw) return [];
-    let parsed: Array<Partial<OutputErrorRecord> & { ts: number; message: string }>;
+    let parsed: OutputErrorRecord[];
     try {
         const value: unknown = JSON.parse(raw);
         if (!Array.isArray(value)) throw new Error('not an array');
@@ -104,13 +103,11 @@ function parseOutputErrorHistory(raw: string | null): OutputErrorRecord[] {
         }
         return [];
     }
-    // Records written before 'kind' existed have none — they all predate this
-    // feature and were all crash/watchdog errors, so default them as such.
     return trimOutputErrorHistory(
         parsed.map((e) => ({
             ts: e.ts,
             message: e.message,
-            kind: e.kind ?? 'crash',
+            kind: e.kind,
             ...(e.failedAttempts ? { failedAttempts: e.failedAttempts } : {}),
             ...(typeof e.count === 'number' ? { count: e.count } : {}),
             ...(typeof e.lastTs === 'number' ? { lastTs: e.lastTs } : {}),

@@ -1007,17 +1007,29 @@ describe('schema version stamp', () => {
         });
     });
 
-    test('a database from before the stamp existed (same schema) is accepted and stamped', () => {
+    test('a database with tables but no stamp is refused and left untouched', () => {
         withDbFile((file) => {
             const db = createDb(file);
-            const pipeline = db.createPipeline();
+            db.createPipeline();
             const raw = new Database(file);
             raw.pragma('user_version = 0');
             raw.close();
 
-            const reopened = createDb(file);
-            assert.equal(reopened.listPipelines().length, 1);
-            assert.equal(reopened.listPipelines()[0].id, pipeline.id);
+            assert.throws(
+                () => createDb(file),
+                (err) =>
+                    err instanceof DatabaseSchemaError &&
+                    /no schema version stamp/.test(err.message) &&
+                    /no migrations/i.test(err.message),
+            );
+            assert.equal(userVersion(file), 0);
+        });
+    });
+
+    test('an empty database file is stamped, so a first start is not mistaken for an old database', () => {
+        withDbFile((file) => {
+            new Database(file).close();
+            createDb(file);
             assert.equal(userVersion(file), SCHEMA_VERSION);
         });
     });
