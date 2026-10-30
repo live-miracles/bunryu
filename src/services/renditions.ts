@@ -2,6 +2,7 @@ import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import { cyan, red, yellow } from '../utils/ansiColor.js';
+import { createLogThrottle } from '../utils/logThrottle.js';
 import {
     encodeRecipe,
     isRenditionOutput,
@@ -43,7 +44,10 @@ export function createRenditionReconciler(
     // rendition with no running dependent simply idles out 15 s later.
     const idleSince = new Map<string, number>();
     const startBlockedUntil = new Map<string, number>();
-    const errorLog = new Map<string, { atMs: number; suppressed: number }>();
+    const errorLog = createLogThrottle({
+        intervalMs: ERROR_LOG_INTERVAL_MS,
+        maxKeys: MAX_TRACKED_ERRORS,
+    });
     // Rows whose removal is on hold because outputs still read them (logged once).
     const removalDeferred = new Set<string>();
     let timer: NodeJS.Timeout | null = null;
@@ -52,19 +56,13 @@ export function createRenditionReconciler(
 
     function reportError(pipelineId: number | null, err: unknown): void {
         const message = err instanceof Error ? err.message : String(err);
-        const now = Date.now();
-        const seen = errorLog.get(message);
-        if (seen && now - seen.atMs < ERROR_LOG_INTERVAL_MS) {
-            seen.suppressed++;
-            return;
-        }
-        if (errorLog.size >= MAX_TRACKED_ERRORS) errorLog.clear();
-        errorLog.set(message, { atMs: now, suppressed: 0 });
+        const { shouldLog, suppressed } = errorLog.note(message, Date.now());
+        if (!shouldLog) return;
         console.warn(red(`[renditions] reconcile failed (pipeline=${pipelineId}): ${message}`));
         diagnostics?.event('rendition-reconcile-error', {
             pipelineId,
             error: message,
-            suppressedSimilar: seen?.suppressed ?? 0,
+            suppressedSimilar: suppressed,
         });
     }
 

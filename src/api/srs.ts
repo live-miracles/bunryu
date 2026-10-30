@@ -7,6 +7,7 @@ import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { SrsEvent } from '../services/health.js';
 import type { InputState } from '../services/inputState.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
+import { createLogThrottle } from '../utils/logThrottle.js';
 import {
     createRejectedPublishes,
     isKeyShaped,
@@ -117,21 +118,14 @@ export function registerSrsHooks(
     };
 
     let recentlyKicked = new Map<string, number>();
-    const crossProtocolLogged = new Map<
-        number,
-        { at: number; suppressed: number; detail: string }
-    >();
+    const crossProtocolLog = createLogThrottle({ intervalMs: CROSS_PROTOCOL_LOG_INTERVAL_MS });
     setInterval(() => {
         recentlyKicked = new Map();
-        const now = Date.now();
-        for (const [pipelineId, state] of crossProtocolLogged) {
-            if (now - state.at < CROSS_PROTOCOL_LOG_INTERVAL_MS) continue;
-            if (state.suppressed > 0) {
-                console.log(
-                    `[srs-hook] ${state.suppressed} more rejected publish attempts for pipeline ${pipelineId} (${state.detail}) were not logged`,
-                );
-            }
-            crossProtocolLogged.delete(pipelineId);
+        for (const { key, suppressed } of crossProtocolLog.flush(Date.now())) {
+            const [pipelineId, why] = key.split('|');
+            console.log(
+                `[srs-hook] ${suppressed} more rejected publish attempts for pipeline ${pipelineId} (${why}) were not logged`,
+            );
         }
     }, KICK_COOLDOWN_MS).unref();
 
@@ -239,15 +233,7 @@ export function registerSrsHooks(
         const currentProtocol = inputState.getProtocol(pipeline.id);
         if (inputState.isLive(pipeline.id) && currentProtocol && currentProtocol !== protocol) {
             const why = `already live via ${currentProtocol}, attempted ${protocol}`;
-            const state = crossProtocolLogged.get(pipeline.id);
-            if (state) {
-                state.suppressed++;
-            } else {
-                crossProtocolLogged.set(pipeline.id, {
-                    at: Date.now(),
-                    suppressed: 0,
-                    detail: why,
-                });
+            if (crossProtocolLog.note(`${pipeline.id}|${why}`, Date.now()).shouldLog) {
                 console.log(`[srs-hook] rejected publish from ${ip}: ${stream} (${why})`);
                 diagnostics?.event('publish-rejected', {
                     pipelineId: pipeline.id,

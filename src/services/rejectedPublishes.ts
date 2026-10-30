@@ -16,6 +16,7 @@
 // other name, is never stored, returned or logged — only the label.
 
 import { createHash } from 'node:crypto';
+import { createLogThrottle } from '../utils/logThrottle.js';
 
 export type RejectedPublishReason = 'assigned' | 'unassigned' | 'unknown' | 'unrecognized';
 // What the stream name matched: a key some pipeline uses, a valid key no
@@ -103,7 +104,10 @@ export function createRejectedPublishes(
     const entries = new Map<string, Entry>();
     // Throttle state is separate from entries: all non-key names share one log
     // bucket, so a stream of distinct junk names can't bypass the throttle.
-    const lastLogged = new Map<string, { at: number; suppressed: number }>();
+    const logThrottle = createLogThrottle({
+        intervalMs: LOG_INTERVAL_MS,
+        retentionMs: RETENTION_MS,
+    });
     let lastPruneAt = 0;
 
     function prune(at: number): void {
@@ -118,17 +122,13 @@ export function createRejectedPublishes(
             }
             if (entry.names.size < MAX_DISTINCT_NAMES) entry.namesCapped = false;
         }
-        for (const [bucket, state] of lastLogged) {
-            // Attempts that stopped inside a throttle window would otherwise
-            // never have their count logged.
-            if (state.suppressed > 0 && at - state.at >= LOG_INTERVAL_MS) {
-                const [kind, label] = bucket.split(':');
-                log(
-                    `[srs-hook] ${state.suppressed} more rejected ${kind} attempts for ${label || 'non-key stream names'} were not logged`,
-                );
-                state.suppressed = 0;
-            }
-            if (at - state.at > RETENTION_MS) lastLogged.delete(bucket);
+        // Attempts that stopped inside a throttle window would otherwise never have
+        // their count logged.
+        for (const { key, suppressed } of logThrottle.flush(at)) {
+            const [kind, label] = key.split(':');
+            log(
+                `[srs-hook] ${suppressed} more rejected ${kind} attempts for ${label || 'non-key stream names'} were not logged`,
+            );
         }
     }
 
@@ -168,16 +168,7 @@ export function createRejectedPublishes(
         }
 
         // Publish and play rejections of the same key are different incidents.
-        const bucket = `${kind}:${label}`;
-        const state = lastLogged.get(bucket);
-        let result: RecordResult;
-        if (state && at - state.at < LOG_INTERVAL_MS) {
-            state.suppressed++;
-            result = { shouldLog: false, suppressed: state.suppressed };
-        } else {
-            lastLogged.set(bucket, { at, suppressed: 0 });
-            result = { shouldLog: true, suppressed: state?.suppressed ?? 0 };
-        }
+        const result = logThrottle.note(`${kind}:${label}`, at);
         // After the throttle decision, so this attempt's own bucket reports its
         // suppressed count on the line it logs rather than in a flush.
         if (at - lastPruneAt >= PRUNE_INTERVAL_MS) {
