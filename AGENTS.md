@@ -223,7 +223,10 @@ only for a new module.
   parser; health restarts running outputs when a new publisher's probed format differs
   from the last one), alerts, the per-minute diagnostics snapshot; `hostMonitor.ts` turns the
   host's memory, CPU pressure and disk readings into host alerts and Server events (readings
-  are injectable). `inputState.ts` holds per-input
+  are injectable); `inputLifecycle.ts` keeps each pipeline's input between polls (connect and
+  disconnect transitions, publisher and format changes, the frame-rate, keyframe and flapping
+  alerts) and acts on them through the output service, probe scheduler and `inputState`.
+  `inputState.ts` holds per-input
   readiness/protocol and builds the pull URL outputs read. `legTracker.ts` keeps each pipeline's SRT legs between polls (the group's size, which legs stopped delivering, health, history); `utils/srtLinkAlerts.ts` holds the pure SRT link rules (the per-interval alerts and a leg's one-minute health thresholds). `utils/srtRecent.ts` keeps
   the 10-minute rolling SRT loss/retransmit/drop counts behind `recent` in the health
   payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError` into merged

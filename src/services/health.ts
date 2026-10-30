@@ -11,13 +11,12 @@ import {
     type AudioTrackInfo,
 } from '../utils/srs.js';
 import { readAppConfig } from '../utils/appConfig.js';
-import { formatDuration } from '../utils/duration.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
 import type { SrtRelayService, SrtRelayStats, SrtRelayStreamStatus } from './srtRelay.js';
-import type { InputProtocol, InputState } from './inputState.js';
+import type { InputState } from './inputState.js';
 import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
 import {
     readCpuPressure,
@@ -33,15 +32,11 @@ import {
     nextPublisherLog,
     type PublisherLogState,
 } from '../utils/publisherLog.js';
-import {
-    isProbeUsable,
-    keyframeIntervalTooLong,
-    keyframeSummary,
-    type KeyframeStats,
-    type ProbeResult,
-} from './mediaProbe.js';
+import { isProbeUsable, type KeyframeStats } from './mediaProbe.js';
 import { createProbeScheduler } from './probeScheduler.js';
 import { createLegTracker } from './legTracker.js';
+import { createInputLifecycle, type PollStaggers } from './inputLifecycle.js';
+import { createPipelineMaps } from '../utils/pipelineMaps.js';
 import { createHostMonitor, type HostAlertKind } from './hostMonitor.js';
 import {
     srtIntervalAlerts,
@@ -58,35 +53,11 @@ const POLL_INTERVAL_MS = 5000;
 // An alert absent for this many polls in a row (~30 s) ends its episode, so a
 // condition that flickers poll to poll is one episode, not dozens.
 const ALERT_EPISODE_QUIET_POLLS = 6;
-// An input that disconnects this many times within the window is flapping (a bad
-// uplink or a crashing encoder), which one "Input disconnected" line per drop in
-// the pipeline log does not make obvious.
-// An encoder that reconnects with another codec, resolution or audio track count
-// breaks the running outputs, so they are restarted. At most one such restart per
-// pipeline per window, so an encoder that alternates formats cannot start a storm.
-const INPUT_FORMAT_RESTART_COOLDOWN_MS = 60 * 1000;
-const INPUT_FLAP_WINDOW_MS = 5 * 60 * 1000;
-const INPUT_FLAP_DISCONNECTS = 3;
 const MAX_SRS_EVENTS = 200;
 const LEG_HISTORY_MAX_SAMPLES = (60 * 60 * 1000) / POLL_INTERVAL_MS;
 const LEG_HISTORY_MAX_WINDOW_MS = 30 * 60 * 1000;
 const LEG_HEALTH_WINDOW_MS = 60 * 1000;
-// SRS adds RTMP video frames to its counter in ~5 s batches (and starts
-// ~20 s after the connect), so a window's rate is off by up to one batch at each
-// end: ±5 s / window, about ±4 % over 2 minutes. The ±10 % band sits clear of
-// that; a real encoder drops or bursts frames by far more.
-const INPUT_FPS_WINDOW_MS = 2 * 60 * 1000;
-const INPUT_FPS_TOLERANCE = 0.1;
 const DIAGNOSTICS_SNAPSHOT_INTERVAL_MS = 60 * 1000;
-
-// The part of a probe that running outputs depend on, as one comparable string.
-function inputFormatOf(result: ProbeResult): string {
-    const video = result.video
-        ? `${result.video.codec} ${result.video.width}x${result.video.height}`
-        : 'no video';
-    const n = result.audioTracks.length;
-    return `${video}, ${n} audio track${n === 1 ? '' : 's'}`;
-}
 
 export interface InputHealth {
     connected: boolean;
@@ -295,25 +266,8 @@ export function createHealthService(
         if (srsEvents.length > MAX_SRS_EVENTS) srsEvents.shift();
     }
 
-    // State kept per pipeline between polls. Every map made here is emptied of a deleted
-    // pipeline at the start of each poll, so a new one cannot be forgotten there.
-    const pipelineMaps: Map<number, unknown>[] = [];
-    function pipelineMap<T>(): Map<number, T> {
-        const map = new Map<number, T>();
-        pipelineMaps.push(map);
-        return map;
-    }
-
-    const inputConnected = pipelineMap<boolean>();
-    const inputLiveStartMs = pipelineMap<number>();
-    const inputPublisherCid = pipelineMap<string>();
-    const publisherChangedAt = pipelineMap<number>();
-    // The format of each pipeline's last successfully probed input, kept across
-    // reconnects so a different one on the next publisher is noticed.
-    const inputFormats = pipelineMap<string>();
-    const lastFormatRestartAt = pipelineMap<number>();
-    // When each pipeline's input disconnected, within INPUT_FLAP_WINDOW_MS.
-    const inputDisconnectsAt = pipelineMap<number[]>();
+    // State kept per pipeline between polls that the input lifecycle does not own.
+    const pipelineMaps = createPipelineMaps();
     // Open alert episodes by `${pipelineId}:${code}`. Alerts are rebuilt every
     // poll; these turn them into one started and one ended diagnostics event.
     const alertEpisodes = new Map<
@@ -381,41 +335,7 @@ export function createHealthService(
             if (episode.absentPolls >= ALERT_EPISODE_QUIET_POLLS) endAlertEpisode(key, 'cleared');
         }
     }
-    // Per-pipeline RTMP video-frame counter samples, one per poll, covering
-    // the last INPUT_FPS_WINDOW_MS.
-    const inputFrameSamples = pipelineMap<{
-        cid: string | undefined;
-        points: { at: number; frames: number }[];
-    }>();
-    // Frame rate over the last full window, or null while the window is not
-    // full (new publisher, counter reset, SRS not counting yet).
-    function measureInputFps(
-        pipelineId: number,
-        stream: SrsStream | undefined,
-        now: number,
-    ): number | null {
-        const frames = stream?.frames ?? 0;
-        if (!stream || !frames) {
-            inputFrameSamples.delete(pipelineId);
-            return null;
-        }
-        const cid = stream.publish?.cid;
-        let entry = inputFrameSamples.get(pipelineId);
-        const last = entry?.points.at(-1);
-        if (!entry || entry.cid !== cid || (last && frames < last.frames)) {
-            entry = { cid, points: [] };
-            inputFrameSamples.set(pipelineId, entry);
-        }
-        const { points } = entry;
-        points.push({ at: now, frames });
-        // Keep the newest sample that is at least a window old as the baseline.
-        while (points.length > 1 && now - points[1].at >= INPUT_FPS_WINDOW_MS) points.shift();
-        const oldest = points[0];
-        const elapsedMs = now - oldest.at;
-        if (elapsedMs < INPUT_FPS_WINDOW_MS) return null;
-        return ((frames - oldest.frames) * 1000) / elapsedMs;
-    }
-    const relayInputSamples = pipelineMap<RelayInputSample>();
+    const relayInputSamples = pipelineMaps.map<RelayInputSample>();
     const legTracker = createLegTracker({
         historyMaxSamples: LEG_HISTORY_MAX_SAMPLES,
         pollIntervalMs: POLL_INTERVAL_MS,
@@ -463,58 +383,21 @@ export function createHealthService(
         }
     };
     // Whether the current publisher's source address has been logged. See utils/publisherLog.ts.
-    const publisherLogs = pipelineMap<PublisherLogState>();
+    const publisherLogs = pipelineMaps.map<PublisherLogState>();
     // The ffprobe checks of each connected publisher. A format that differs from the
     // previous publisher's restarts the outputs that were already running.
     const probes = createProbeScheduler({
         db,
         diagnostics,
-        onUsableProbe: (pipelineId, result) => noteInputFormat(pipelineId, result),
+        onUsableProbe: (pipelineId, result) => inputLifecycle.noteProbe(pipelineId, result),
     });
-
-    // Called with every successful probe. A format that differs from the previous
-    // publisher's restarts the outputs that were already running (never on a failed
-    // probe, which proves nothing about the format).
-    function noteInputFormat(pipelineId: number, result: ProbeResult): void {
-        const format = inputFormatOf(result);
-        const previous = inputFormats.get(pipelineId);
-        inputFormats.set(pipelineId, format);
-        if (previous === undefined || previous === format) return;
-        const now = Date.now();
-        // Outputs that started after the new publisher connected already read the
-        // new format.
-        const publisherStartedAt = Math.max(
-            publisherChangedAt.get(pipelineId) ?? 0,
-            inputLiveStartMs.get(pipelineId) ?? 0,
-        );
-        const sinceLastRestartMs = now - (lastFormatRestartAt.get(pipelineId) ?? -Infinity);
-        const suppressed = sinceLastRestartMs < INPUT_FORMAT_RESTART_COOLDOWN_MS;
-        const why = `input format changed from ${previous} to ${format}`;
-        let restarted = 0;
-        if (!suppressed && publisherStartedAt > 0) {
-            lastFormatRestartAt.set(pipelineId, now);
-            restarted = outputService.restartRunningOutputs(pipelineId, why, publisherStartedAt);
-        }
-        diagnostics?.event('input-format-changed', {
-            pipelineId,
-            from: previous,
-            to: format,
-            outputsRestarted: restarted,
-            suppressed,
-            cooldownMs: INPUT_FORMAT_RESTART_COOLDOWN_MS,
-        });
-        try {
-            db.appendPipelineLog(
-                pipelineId,
-                'format_changed',
-                suppressed
-                    ? `Input format changed from ${previous} to ${format}; outputs not restarted (another format restart less than ${INPUT_FORMAT_RESTART_COOLDOWN_MS / 1000} s ago)`
-                    : `Input format changed from ${previous} to ${format}; restarting ${restarted} running ${restarted === 1 ? 'output' : 'outputs'}`,
-            );
-        } catch {
-            /* non-critical */
-        }
-    }
+    const inputLifecycle = createInputLifecycle({
+        db,
+        outputService,
+        inputState,
+        probes,
+        diagnostics,
+    });
 
     let pollInProgress = false;
 
@@ -569,11 +452,8 @@ export function createHealthService(
             if (!activePipelineIds.has(episode.pipelineId))
                 endAlertEpisode(key, 'pipeline deleted');
         }
-        for (const map of pipelineMaps) {
-            for (const pipelineId of map.keys()) {
-                if (!activePipelineIds.has(pipelineId)) map.delete(pipelineId);
-            }
-        }
+        pipelineMaps.keepOnly(activePipelineIds);
+        inputLifecycle.keepOnly(activePipelineIds);
         legTracker.keepOnly(activePipelineIds);
         inputState.keepOnly(activePipelineIds);
         srtRecent.keepOnly(activePipelineIds);
@@ -650,119 +530,19 @@ export function createHealthService(
             if (client.publish && client.id) publisherByCid.set(client.id, client);
         }
         const pipelinesHealth: Record<string, PipelineHealth> = {};
-        let ffprobeStagger = 0;
-        let restartStagger = 0;
+        const staggers: PollStaggers = { ffprobe: 0, restart: 0 };
         for (const pipeline of pipelines) {
             const path = `live/${pipeline.streamKey}`;
             // When SRS is unreachable we can't distinguish a real stream drop from a
-            // transient API failure. Preserve the last known live state so we don't
-            // fire spurious offline/online transitions or mass-restart all outputs.
-            const prevConnected = inputConnected.get(pipeline.id) ?? false;
-            const prevLive = inputState.isLive(pipeline.id);
+            // transient API failure, so there is no stream to observe: the lifecycle keeps
+            // the last known live state and fires no spurious offline/online transitions
+            // or mass restarts.
             const s = srsReachable ? liveByPath.get(path) : undefined;
-            const nowConnected = srsReachable ? !!s : prevConnected;
-            const nowSrtInput = !!s?.tcUrl?.startsWith('srt://');
-            const prevPublisherCid = inputPublisherCid.get(pipeline.id) ?? null;
-            const publisherCid = s?.publish?.cid ?? null;
-            const publisherChanged =
-                nowConnected &&
-                publisherCid !== null &&
-                prevPublisherCid !== null &&
-                publisherCid !== prevPublisherCid;
-            if (publisherChanged) {
-                probes.clear(pipeline.id);
-                publisherChangedAt.set(pipeline.id, Date.now());
-                diagnostics?.event('input-publisher-transition', {
-                    pipelineId: pipeline.id,
-                    fromCid: prevPublisherCid,
-                    toCid: publisherCid,
-                    protocol: nowSrtInput ? 'srt' : 'rtmp',
-                });
-            }
-            const nowProtocol: InputProtocol | null = nowConnected
-                ? nowSrtInput
-                    ? 'srt'
-                    : 'rtmp'
-                : null;
-            const nowLive = srsReachable ? nowConnected : prevLive;
-            // UI should reflect whether the input is currently usable through SRS.
-            // Keep nowLive sticky internally for restart/logging behavior during an
-            // SRS outage, but don't present a stale green input while SRS is down.
-            const displayLive = srsReachable ? nowLive : false;
-            const displayConnected = srsReachable ? nowConnected : false;
-
-            if (srsReachable) {
-                inputConnected.set(pipeline.id, nowConnected);
-                if (nowConnected && s) {
-                    if (publisherCid) inputPublisherCid.set(pipeline.id, publisherCid);
-                    inputState.setPipelineState(pipeline.id, nowLive, nowProtocol);
-                    if (nowProtocol) {
-                        probes.ensure(
-                            pipeline.id,
-                            pipeline.streamKey,
-                            nowProtocol,
-                            ffprobeStagger++,
-                        );
-                    }
-                } else if (!nowConnected) {
-                    inputState.clearPipeline(pipeline.id);
-                }
-
-                if (!prevLive && nowLive) {
-                    inputLiveStartMs.set(pipeline.id, Date.now());
-                    restartStagger += outputService.restartPipelineOutputs(
-                        pipeline.id,
-                        restartStagger,
-                    );
-                    try {
-                        db.appendPipelineLog(
-                            pipeline.id,
-                            'online',
-                            `Input media detected (${inputState.getProtocol(pipeline.id) ?? 'unknown'})`,
-                        );
-                    } catch {
-                        /* non-critical */
-                    }
-                    diagnostics?.event('input-transition', {
-                        pipelineId: pipeline.id,
-                        from: prevLive ? 'live' : 'offline',
-                        to: 'live',
-                        protocol: inputState.getProtocol(pipeline.id),
-                    });
-                }
-
-                if (prevConnected && !nowConnected) {
-                    const liveStartMs = inputLiveStartMs.get(pipeline.id);
-                    const uptimeSec =
-                        liveStartMs != null ? Math.round((Date.now() - liveStartMs) / 1000) : null;
-                    inputDisconnectsAt.set(pipeline.id, [
-                        ...(inputDisconnectsAt.get(pipeline.id) ?? []),
-                        Date.now(),
-                    ]);
-                    inputConnected.delete(pipeline.id);
-                    inputPublisherCid.delete(pipeline.id);
-                    inputState.clearPipeline(pipeline.id);
-                    inputLiveStartMs.delete(pipeline.id);
-                    probes.clear(pipeline.id);
-                    try {
-                        db.appendPipelineLog(
-                            pipeline.id,
-                            'offline',
-                            uptimeSec == null
-                                ? 'Input disconnected'
-                                : `Input disconnected (was live for ${formatDuration(uptimeSec * 1000)})`,
-                        );
-                    } catch {
-                        /* non-critical */
-                    }
-                    diagnostics?.event('input-transition', {
-                        pipelineId: pipeline.id,
-                        from: 'connected',
-                        to: 'disconnected',
-                        uptimeSec,
-                    });
-                }
-            }
+            const {
+                live: displayLive,
+                connected: displayConnected,
+                isSrt: nowSrtInput,
+            } = inputLifecycle.observe(pipeline, s, srsReachable, staggers);
 
             const outputsHealth: Record<string, OutputHealth> = {};
             for (const outId of outputsByPipeline.get(pipeline.id) ?? []) {
@@ -810,60 +590,19 @@ export function createHealthService(
                 forwardedPackets: rawBondingStatus.forwardedPackets,
             };
             relayInputSamples.set(pipeline.id, currentRelaySample);
-            const alerts: PipelineAlert[] = [];
-            // RTMP only: an SRT input's frames are counted in larger batches,
-            // and its link quality comes from the relay's loss/drop alerts.
-            const inputFps = measureInputFps(
+            const keyframes = probes.keyframes(pipeline.id);
+            // The frame rate is RTMP only: an SRT input's frames are counted in larger
+            // batches, and its link quality comes from the relay's loss/drop alerts.
+            const alerts = inputLifecycle.alerts(
                 pipeline.id,
-                displayLive && !srtStream ? s : undefined,
+                {
+                    fpsStream: displayLive && !srtStream ? s : undefined,
+                    nominalFps: probedMedia?.video?.fps ?? null,
+                    connected: displayConnected,
+                    keyframes,
+                },
                 now,
             );
-            const nominalFps = probedMedia?.video?.fps ?? null;
-            if (inputFps !== null && nominalFps) {
-                const low = inputFps < nominalFps * (1 - INPUT_FPS_TOLERANCE);
-                if (low || inputFps > nominalFps * (1 + INPUT_FPS_TOLERANCE)) {
-                    alerts.push({
-                        severity: 'warning',
-                        code: low ? 'input-low-framerate' : 'input-high-framerate',
-                        message: `Input is delivering ${inputFps.toFixed(1)} fps; ffprobe reports ${nominalFps} fps.`,
-                        sinceMs: now,
-                    });
-                }
-            }
-            const keyframes = probes.keyframes(pipeline.id);
-            if (displayConnected && keyframes && keyframeIntervalTooLong(keyframes)) {
-                alerts.push({
-                    severity: 'warning',
-                    code: 'input-keyframe-interval',
-                    message: `Input keyframes are too far apart: ${keyframeSummary(keyframes)}`,
-                    sinceMs: keyframes.checkedAt,
-                });
-            }
-            const recentDisconnects = (inputDisconnectsAt.get(pipeline.id) ?? []).filter(
-                (at) => now - at <= INPUT_FLAP_WINDOW_MS,
-            );
-            if (recentDisconnects.length > 0)
-                inputDisconnectsAt.set(pipeline.id, recentDisconnects);
-            else inputDisconnectsAt.delete(pipeline.id);
-            if (recentDisconnects.length >= INPUT_FLAP_DISCONNECTS) {
-                alerts.push({
-                    severity: 'warning',
-                    code: 'input-flapping',
-                    message: `Input disconnected ${recentDisconnects.length} times in the last 5 minutes.`,
-                    sinceMs: recentDisconnects[0],
-                });
-            }
-            const changedAt = publisherChangedAt.get(pipeline.id);
-            if (changedAt && now - changedAt <= 30_000) {
-                alerts.push({
-                    severity: 'warning',
-                    code: 'publisher-reconnected',
-                    message: 'SRT publisher reconnected; input timing may be recovering.',
-                    sinceMs: changedAt,
-                });
-            } else if (changedAt) {
-                publisherChangedAt.delete(pipeline.id);
-            }
             if (previousRelaySample && rawBondingStatus.inputActive) {
                 alerts.push(...srtIntervalAlerts(previousRelaySample, currentRelaySample, now));
             }
@@ -969,9 +708,7 @@ export function createHealthService(
                     recvBitrateKbps: s?.kbps?.recv_30s ?? null,
                     sendBitrateKbps: s?.kbps?.send_30s ?? null,
                     readers: s ? Math.max(0, (s.clients ?? 0) - 1) : 0,
-                    uptimeMs: displayLive
-                        ? Date.now() - (inputLiveStartMs.get(pipeline.id) ?? Date.now())
-                        : null,
+                    uptimeMs: displayLive ? inputLifecycle.uptimeMs(pipeline.id) : null,
                     publisherIp: displayConnected ? (publisher?.ip ?? null) : null,
                     publisherType: displayConnected ? (publisher?.type ?? null) : null,
                     video: displayVideo,
