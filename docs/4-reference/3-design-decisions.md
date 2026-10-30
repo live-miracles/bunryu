@@ -1201,8 +1201,16 @@ carries each output's shared encode.
 **Decision (October 2026):** `public/input.css` defines the dashboard's tokens and the few
 components it uses (buttons, badges, fields, dialogs, tabs, tables, the pipeline list,
 banners) on top of Tailwind's utilities. daisyUI is removed. The tokens match the org
-site (`live-miracles.github.io/ui/styles.css`): neutral Apple-style surfaces, one blue
-accent, hairline dividers, no shadows or decorative backgrounds. Green, amber and red mean
+site (`live-miracles.github.io/ui/styles.css`): the palette of Hokusai's Great Wave (indigo
+ink on warm paper by day, the same sea at night), one blue accent, hairline dividers and
+no shadows, with Apple's restraint in type, spacing and radii. The Japanese motifs stay,
+quietly: glows in the print's blue, coral and cream behind the page and in the bottom corners
+of each panel, seigaiha waves rising from the bottom of the three working columns, an
+asanoha corner on the page, the blue-to-coral gradient on the wordmark and under the navbar,
+and the wave crest on the login page. The dense full-width views (Overview, Settings, server
+logs) keep the glows and drop the waves, so no pattern runs behind a table. All of it is
+static (no animation cost on a dashboard open for hours) and is background layers or SVG
+masks filled with the accent, so one file serves both themes. Green, amber and red mean
 status and nothing else, and warnings and destructive buttons are tinted, not solid. Each
 token is a `light-dark()` pair, so the dashboard follows the system theme with no second
 copy of the palette; the navbar switch pins Light or Dark per browser (`features/theme.ts`).

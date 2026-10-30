@@ -1,18 +1,26 @@
 @import 'tailwindcss';
 
-/* Design tokens, shared with the org site (live-miracles.github.io/ui/styles.css): neutral
-   Apple-style surfaces, one blue accent, hairline dividers instead of shadows. Each token is a
+/* Design tokens, shared with the org site (live-miracles.github.io/ui/styles.css): the
+   palette of Hokusai's Great Wave (indigo ink on warm paper by day, the same sea at night),
+   one blue accent, hairline dividers instead of shadows. Each token is a
    light-dark() pair, so the dashboard follows the system and the navbar toggle only has to pin
    color-scheme (data-theme on <html>). Status colours are for status only. */
 :root {
     color-scheme: light dark;
-    --page: light-dark(#f5f5f7, #000000);
-    --panel: light-dark(#ffffff, #1c1c1e);
-    --field: light-dark(#f5f5f7, #2c2c2e);
-    --ink: light-dark(#1d1d1f, #f5f5f7);
-    --muted: light-dark(#6e6e73, #98989d);
-    --line: light-dark(rgb(0 0 0 / 0.1), rgb(255 255 255 / 0.12));
-    --chip: light-dark(rgb(0 0 0 / 0.05), rgb(255 255 255 / 0.08));
+    --page: light-dark(#f4efe5, #060b18);
+    --panel: light-dark(#fdfbf7, #0c1428);
+    --field: light-dark(#f4efe5, #172240);
+    --ink: light-dark(#14213d, #eef2fa);
+    --muted: light-dark(#5c677d, #9aa7bf);
+    --line: light-dark(rgb(20 33 61 / 0.12), rgb(255 255 255 / 0.12));
+    --chip: light-dark(rgb(20 33 61 / 0.06), rgb(255 255 255 / 0.08));
+    /* The print's blue, coral and cream: glows behind the page and the panels. */
+    --glow-a: light-dark(rgb(52 120 196 / 0.2), rgb(60 130 220 / 0.3));
+    --glow-b: light-dark(rgb(232 130 100 / 0.18), rgb(240 120 90 / 0.2));
+    --glow-c: light-dark(rgb(236 200 120 / 0.2), rgb(240 190 100 / 0.1));
+    --grad-from: light-dark(#1b5fb0, #7db8ff);
+    --grad-to: light-dark(#d9694f, #ffa982);
+    --pattern-strength: light-dark(26%, 34%);
     --accent: light-dark(#1b5fb0, #6db3ff);
     --on-accent: light-dark(#ffffff, #06142b);
     --ok: light-dark(#1a7f37, #30d158);
@@ -28,9 +36,9 @@
     --chart-ram: light-dark(#af52de, #bf5af2);
     --chart-rx: light-dark(#34c759, #30d158);
     --chart-tx: light-dark(#ff9500, #ff9f0a);
-    --tip: light-dark(#1d1d1f, #3a3a3c);
-    --on-tip: #f5f5f7;
-    --backdrop: light-dark(rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.6));
+    --tip: light-dark(#14213d, #16213d);
+    --on-tip: #eef2fa;
+    --backdrop: light-dark(rgb(20 33 61 / 0.32), rgb(2 5 14 / 0.65));
     --radius-card: 18px;
     --radius-control: 8px;
 }
@@ -88,6 +96,43 @@
         outline-offset: 2px;
     }
 
+    /* The page: the print's glows in the corners, an asanoha (hemp leaf) pattern fading out
+       from the top right and seigaiha waves rising from the bottom. Both patterns are SVG
+       masks (white lines on black, read by luminance) filled with the accent, so one file
+       serves both themes. Static on purpose: no animation cost on a dashboard open for
+       hours. The panels cover most of it; it shows around and between them. */
+    body {
+        background:
+            radial-gradient(60% 55% at 0% 0%, var(--glow-a), transparent 70%) fixed no-repeat,
+            radial-gradient(50% 50% at 100% 0%, var(--glow-b), transparent 70%) fixed no-repeat,
+            radial-gradient(70% 40% at 50% 100%, var(--glow-c), transparent 70%) fixed no-repeat,
+            var(--page);
+    }
+
+    body::before,
+    body::after {
+        content: '';
+        position: fixed;
+        z-index: -1;
+        pointer-events: none;
+        background: color-mix(in srgb, var(--accent) var(--pattern-strength), transparent);
+        mask-mode: luminance;
+        mask-composite: intersect;
+    }
+
+    body::before {
+        inset: 0 0 auto;
+        height: 55vh;
+        mask-image:
+            radial-gradient(ellipse 55% 100% at 100% 0%, #fff, #000), url('patterns/asanoha.svg');
+    }
+
+    body::after {
+        inset: auto 0 0;
+        height: 35vh;
+        mask-image: linear-gradient(to top, #fff 0%, #000 90%), url('patterns/seigaiha.svg');
+    }
+
     * {
         scrollbar-width: thin;
         scrollbar-color: color-mix(in oklab, var(--ink) 25%, transparent) transparent;
@@ -100,8 +145,16 @@
 
 @layer components {
     /* Surfaces: the three working columns are flat white (dark grey) cards with a hairline. */
+    /* The panel's own layers do not scroll with its content: warm and cool glows in the
+       bottom corners and seigaiha waves rising from the bottom edge, under a fade of the
+       panel colour, so empty space below the content looks like water. */
     .panel {
-        background: var(--panel);
+        background:
+            linear-gradient(to bottom, var(--panel) 40%, transparent 100%) no-repeat,
+            url('patterns/waves-tile.svg') 0 100% / 60px 30px repeat,
+            radial-gradient(ellipse 70% 30% at 0% 100%, var(--glow-a), transparent 70%) no-repeat,
+            radial-gradient(ellipse 70% 30% at 100% 100%, var(--glow-b), transparent 70%) no-repeat,
+            var(--panel);
         border: 1px solid var(--line);
         border-radius: var(--radius-card);
     }
@@ -118,6 +171,15 @@
         to {
             transform: rotate(360deg);
         }
+    }
+
+    /* The full-width views (Overview, Settings, server logs) are dense with text, so they
+       keep the glows and lose the waves. */
+    .panel-calm {
+        background:
+            radial-gradient(ellipse 70% 30% at 0% 100%, var(--glow-a), transparent 70%) no-repeat,
+            radial-gradient(ellipse 70% 30% at 100% 100%, var(--glow-b), transparent 70%) no-repeat,
+            var(--panel);
     }
 
     /* ── Buttons ───────────────────────────────────────────── */
@@ -644,13 +706,33 @@
     }
 
     /* ── Navbar and banners ────────────────────────────────── */
+    /* The wordmark in the print's blue-to-coral gradient. */
+    .brand-text {
+        background: linear-gradient(100deg, var(--grad-from), var(--grad-to));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+
     .navbar {
+        border-image: linear-gradient(
+                90deg,
+                color-mix(in oklab, var(--grad-from) 55%, transparent),
+                color-mix(in oklab, var(--grad-to) 55%, transparent)
+            )
+            1;
         display: flex;
         align-items: center;
         min-height: 3.25rem;
         padding: 0.25rem 1rem;
-        background: color-mix(in oklab, var(--page) 80%, transparent);
-        backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    /* Below lg the navbar sticks to the top, so it needs a body to read over. */
+    @media (max-width: 1023px) {
+        .navbar {
+            background: color-mix(in oklab, var(--page) 85%, transparent);
+            backdrop-filter: saturate(180%) blur(20px);
+        }
     }
 
     /* A full-width notice: tinted, not solid, so a standing warning does not shout. */
@@ -812,4 +894,25 @@
 
 #hover-tooltip .text-muted {
     color: color-mix(in oklab, var(--on-tip) 65%, transparent);
+}
+
+/* Login page only: a stylized wave crest rising from the bottom-left corner, drawn in the
+   accent (the SVG is a mask, so both themes use the same file). */
+.login-crest {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: min(clamp(200px, 47vh, 420px), 60vw);
+    pointer-events: none;
+    background: color-mix(in srgb, var(--accent) 38%, transparent);
+    mask-image: url('wave-crest.svg'), linear-gradient(to top, #000 70%, transparent 100%);
+    mask-position:
+        left bottom,
+        0 0;
+    mask-size:
+        auto 100%,
+        100% 100%;
+    mask-repeat: no-repeat;
+    mask-composite: intersect;
 }

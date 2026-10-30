@@ -25,11 +25,11 @@
     <script src="vendor/hls.min.js"></script>
     <script type="module" src="js/features/dashboard-entry.js"></script>
   </head>
-  <body class="bg-base-100 text-base-content flex min-h-screen flex-col md:h-screen">
+  <body class="text-base-content flex min-h-screen flex-col md:h-screen">
     <!-- Navbar -->
-    <div class="navbar bg-base-100 border-base-content/10 shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:flex-wrap">
+    <div class="navbar shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:flex-wrap">
       <div class="flex flex-1 items-center gap-3">
-        <button class="btn btn-ghost px-2 text-lg font-semibold tracking-tight" id="server-name-display" onclick="selectPipeline(null)">
+        <button class="btn btn-ghost brand-text px-2 text-lg font-semibold tracking-tight" id="server-name-display" onclick="selectPipeline(null)">
           Bunryu
         </button>
         <button
@@ -834,11 +834,13 @@
 
         <!-- Overview: all pipelines table (spans middle + right columns from xl up) -->
         <div
-          class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          class="panel panel-calm mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
           id="overview-col"></div>
 
         <!-- Server Logs (spans middle + right columns from xl up) -->
-        <div class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2" id="srs-logs-col">
+        <div
+          class="panel panel-calm mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          id="srs-logs-col">
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-xl font-bold">Server Logs</h2>
             <button
@@ -858,7 +860,9 @@
         </div>
 
         <!-- Settings (spans middle + right columns from xl up) -->
-        <div class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2" id="settings-col">
+        <div
+          class="panel panel-calm mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          id="settings-col">
           <div class="mx-auto max-w-4xl space-y-3">
             <h2 class="text-xl font-bold">Settings</h2>
 
