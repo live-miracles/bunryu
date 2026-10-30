@@ -68,7 +68,7 @@ describe('split dot gradient', () => {
     test('left colour, a divider, then the right colour', () => {
         assert.equal(
             splitDotGradient('#111', '#222'),
-            'linear-gradient(90deg, #111 0 45%, #242933 45% 55%, #222 55% 100%)',
+            'linear-gradient(90deg, #111 0 45%, transparent 45% 55%, #222 55% 100%)',
         );
     });
 });

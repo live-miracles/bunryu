@@ -39,10 +39,11 @@ export function setUrlParam(key: string, value: string | null): void {
 
 export const LOW_BITRATE_KBPS = 200;
 
-export const STATUS_COLOR_GOOD = '#22c55e';
-export const STATUS_COLOR_WARN = '#facc15';
-export const STATUS_COLOR_ERROR = '#ef4444';
-export const STATUS_COLOR_OFF = '#6b7280';
+// CSS variables (input.css), so the colours follow the light and dark themes.
+export const STATUS_COLOR_GOOD = 'var(--dot-ok)';
+export const STATUS_COLOR_WARN = 'var(--dot-warn)';
+export const STATUS_COLOR_ERROR = 'var(--dot-bad)';
+export const STATUS_COLOR_OFF = 'var(--dot-off)';
 
 // The dashboard's number rule: one decimal under 10, whole numbers from 10 up
 // (a value that rounds up to 10.0 counts as 10).

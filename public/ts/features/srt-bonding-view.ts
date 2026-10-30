@@ -160,10 +160,10 @@ export function renderBondedLegs(input: SrtBondingStatus['input']): string {
                                return `<tr>
                                    <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}${leg.state === 'running' ? '' : `<span class="text-muted">(${escapeHtml(leg.state)})</span>`}</span></td>
                                    <td class="font-mono text-xs">${escapeHtml(leg.ip)}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap ${figureClass(figure, false)}" title="${escapeHtml(figure.title)}">${figure.text}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap">${fmtMs(leg.rttMs)}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap">${fmtMbpsValue(leg.recvRateMbps)}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap">${fmtMs(leg.rcvBufMs)}</td>
+                                   <td class="tabular-nums text-xs whitespace-nowrap ${figureClass(figure, false)}" title="${escapeHtml(figure.title)}">${figure.text}</td>
+                                   <td class="tabular-nums text-xs whitespace-nowrap">${fmtMs(leg.rttMs)}</td>
+                                   <td class="tabular-nums text-xs whitespace-nowrap">${fmtMbpsValue(leg.recvRateMbps)}</td>
+                                   <td class="tabular-nums text-xs whitespace-nowrap">${fmtMs(leg.rcvBufMs)}</td>
                                </tr>`;
                            })
                            .join('')}</tbody>

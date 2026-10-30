@@ -256,7 +256,7 @@ only for a new module.
 - `public/input.css` - the dashboard's design tokens (`light-dark()` pairs shared with the org
   site) and its few components (`btn`, `badge`, `input`, `modal`, `tabs`, `table`, `banner`),
   compiled by Tailwind to untracked `public/output.css`; there is no component library.
-  `public/ts/features/theme.ts` is the navbar's System/Light/Dark button.
+  `public/ts/features/theme.ts` is the navbar's System/Light/Dark switch.
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
   `core/status.ts` is the verdict on an output or input (`outputHealth`, `inputHealth`:
   a status plus the issues behind it, and the error helpers); the Overview, the pipeline

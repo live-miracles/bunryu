@@ -217,10 +217,13 @@ describe('error line', () => {
 });
 
 describe('card tint follows the most severe problem', () => {
-    const tintOf = (html) =>
-        /data-output-card="[^"]*" style="background:color-mix\(in oklch, var\(--color-(error|warning)\)/.exec(
-            html,
-        )?.[1] ?? null;
+    const tintOf = (html) => {
+        const dot =
+            /data-output-card="[^"]*" style="background:color-mix\(in oklab, var\(--dot-(bad|warn)\)/.exec(
+                html,
+            )?.[1];
+        return dot === 'bad' ? 'error' : dot === 'warn' ? 'warning' : null;
+    };
     const erroredCard = (over = {}) =>
         render({
             desiredState: 'stopped',

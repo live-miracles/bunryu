@@ -113,7 +113,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     }
     const uptime =
         uptimeMs !== null
-            ? `<span class="font-mono text-xs text-muted whitespace-nowrap">${escapeHtml(formatUptime(uptimeMs))}</span>`
+            ? `<span class="tabular-nums text-xs text-muted whitespace-nowrap">${escapeHtml(formatUptime(uptimeMs))}</span>`
             : '';
     const badges: string[] = [outputMetricsBadge(rendition, input)];
     const readers = rendition.readers ?? 0;

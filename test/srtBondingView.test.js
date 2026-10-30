@@ -101,7 +101,7 @@ describe('bonded legs table', () => {
             input([leg({ recent: recent({ drop: 40 }) }), leg({ recent: recent() })]),
         );
         const cells = html.match(
-            /<td class="font-mono text-xs[^"]*" title="[^"]*">[^<]*\/[^<]*<\/td>/g,
+            /<td class="tabular-nums text-xs[^"]*" title="[^"]*">[^<]*\/[^<]*<\/td>/g,
         );
         assert.equal(cells.length, 2);
         assert.doesNotMatch(cells[0], /opacity-50|text-warning/, 'a leg that dropped is plain');

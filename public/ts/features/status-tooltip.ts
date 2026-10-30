@@ -23,7 +23,7 @@ export function issueLinesHtml(issues: StatusIssue[]): string {
         .join('');
 }
 
-const DOT_DIVIDER = '#242933';
+const DOT_DIVIDER = 'transparent';
 
 // A circle or square split in two with a thin divider: left half, right half.
 export function splitDotGradient(leftColor: string, rightColor: string): string {

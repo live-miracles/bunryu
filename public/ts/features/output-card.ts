@@ -174,7 +174,7 @@ export function renderOutputCard(
     }
     if (uptimeMs !== null) {
         badges.push(
-            `<span class="font-mono text-xs text-muted whitespace-nowrap">${formatUptime(uptimeMs)}</span>`,
+            `<span class="tabular-nums text-xs text-muted whitespace-nowrap">${formatUptime(uptimeMs)}</span>`,
         );
     }
     const metricsBadge = outputMetricsBadge(output, input);
@@ -243,7 +243,7 @@ export function renderOutputCard(
     const tintColor =
         status === 'error' || lastErrorLine ? 'error' : warningsHtml ? 'warning' : null;
     const cardTint = tintColor
-        ? `style="background:color-mix(in oklch, var(--color-${tintColor}) 15%, transparent)"`
+        ? `style="background:color-mix(in oklab, var(--${tintColor === 'error' ? 'dot-bad' : 'dot-warn'}) 12%, var(--panel))"`
         : '';
     const isPending = deps.pendingOutputs.has(output.id);
 

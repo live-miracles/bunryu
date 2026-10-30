@@ -264,7 +264,7 @@ function inputStatus(input: InputHealth): InputStatus {
 function overviewStatusBadge(st: InputStatus | OutStatus): string {
     if (st === 'error') return '<span class="badge badge-sm badge-error">ERROR</span>';
     if (st === 'warn') return '<span class="badge badge-sm badge-warning">WARNING</span>';
-    if (st === 'off') return '<span class="font-mono text-xs text-muted">—</span>';
+    if (st === 'off') return '<span class="tabular-nums text-xs text-muted">—</span>';
     return '<span class="badge badge-sm badge-success">OK</span>';
 }
 
@@ -559,7 +559,7 @@ function renderPipelineList(): void {
 
         const uptimeSpan =
             p.input.live && p.input.uptimeMs !== null
-                ? `<span class="font-mono text-xs text-muted shrink-0">${formatUptime(p.input.uptimeMs)}</span>`
+                ? `<span class="tabular-nums text-xs text-muted shrink-0">${formatUptime(p.input.uptimeMs)}</span>`
                 : '';
         const inputTypeBadge = p.input.connected
             ? `<span class="badge badge-sm badge-outline shrink-0">${p.srtBonding.acceptedBySrs ? relayTypeLabel(p) : p.input.isSrt ? 'SRT' : 'RTMP'}</span>`
@@ -798,7 +798,7 @@ function renderOverview(): void {
     if (!overviewEl) return;
 
     const td = (val: string | number | null | undefined): string =>
-        `<td class="font-mono text-xs">${val ?? '—'}</td>`;
+        `<td class="tabular-nums text-xs">${val ?? '—'}</td>`;
 
     // One "Stream specification" cell replaces the separate V.Codec/Resolution/FPS/Scan/
     // A.Codec/Ch/Sample Rate columns (protocol has its own Type column). Multiple audio
@@ -820,9 +820,9 @@ function renderOverview(): void {
 
     const statusBg = (error: boolean, warn: boolean): string =>
         error
-            ? 'style="background:color-mix(in oklch, var(--color-error) 15%, transparent)"'
+            ? 'style="background:color-mix(in oklab, var(--dot-bad) 12%, transparent)"'
             : warn
-              ? 'style="background:color-mix(in oklch, var(--color-warning) 15%, transparent)"'
+              ? 'style="background:color-mix(in oklab, var(--dot-warn) 12%, transparent)"'
               : '';
 
     const totalOuts = state.pipelines.reduce((s, p) => s + p.outs.length, 0);
@@ -862,11 +862,11 @@ function renderOverview(): void {
         return `
             <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}<span class="text-muted">(${escapeHtml(leg.state)})</span></span></td>
             <td class="font-mono text-xs">${escapeHtml(leg.ip)}</td>
-            <td class="font-mono text-xs${legFigure.quiet ? ' opacity-50' : ''}" title="${escapeHtml(legFigure.title)}">${legFigure.text}</td>
-            <td class="font-mono text-xs">${fmtMs(leg.rttMs)}</td>
-            <td class="font-mono text-xs">${fmtMbpsValue(leg.recvRateMbps)}</td>
-            <td class="font-mono text-xs">${fmtMs(leg.rcvBufMs)}</td>
-            <td class="font-mono text-xs">${fmtMs(leg.latencyMs)}</td>`;
+            <td class="tabular-nums text-xs${legFigure.quiet ? ' opacity-50' : ''}" title="${escapeHtml(legFigure.title)}">${legFigure.text}</td>
+            <td class="tabular-nums text-xs">${fmtMs(leg.rttMs)}</td>
+            <td class="tabular-nums text-xs">${fmtMbpsValue(leg.recvRateMbps)}</td>
+            <td class="tabular-nums text-xs">${fmtMs(leg.rcvBufMs)}</td>
+            <td class="tabular-nums text-xs">${fmtMs(leg.latencyMs)}</td>`;
     };
 
     let relayRows = '';
@@ -889,7 +889,7 @@ function renderOverview(): void {
                 <td${rowspan}>${overviewStatusBadge(inputSt)}</td>
                 <td${rowspan}>${overviewStatusBadge(outputSt)}</td>
                 <td${rowspan}>${renderOverviewIssues(relayIssueList(relay))}</td>
-                <td class="font-mono text-xs"${rowspan}>${p.input.live ? formatUptime(p.input.uptimeMs) : '—'}</td>`;
+                <td class="tabular-nums text-xs"${rowspan}>${p.input.live ? formatUptime(p.input.uptimeMs) : '—'}</td>`;
             const inputFigure = recentFigure(p.srtBonding.input.recent, aggregateStatsAreDropOnly);
             const inputFigureClass = inputFigure.dropped
                 ? ' text-warning font-semibold'
@@ -897,7 +897,7 @@ function renderOverview(): void {
                   ? ' opacity-50'
                   : '';
             const totalsCells = `
-                <td class="font-mono text-xs${inputFigureClass}" title="${escapeHtml(inputFigure.title)}"${rowspan}>${inputFigure.text}</td>`;
+                <td class="tabular-nums text-xs${inputFigureClass}" title="${escapeHtml(inputFigure.title)}"${rowspan}>${inputFigure.text}</td>`;
 
             if (legs.length > 1) {
                 relayRows += legs
@@ -966,8 +966,8 @@ function renderOverview(): void {
                 <td class="overview-name-col font-semibold cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}">${escapeHtml(p.name)}</td>
                 <td>${overviewStatusBadge(st)}</td>
                 <td>${renderOverviewIssues(affected > 0 ? [{ severity: 'warning', message: `No publisher is connected; ${affected} output${affected === 1 ? '' : 's'} affected.` }] : inputIssues(inp))}</td>
-                <td class="font-mono text-xs">${inp.live ? formatUptime(inp.uptimeMs) : '—'}</td>
-                <td class="font-mono text-xs">${inp.connected ? formatBitrate(displayInputBitrateKbps(inp)) : '—'}</td>
+                <td class="tabular-nums text-xs">${inp.live ? formatUptime(inp.uptimeMs) : '—'}</td>
+                <td class="tabular-nums text-xs">${inp.connected ? formatBitrate(displayInputBitrateKbps(inp)) : '—'}</td>
                 <td>${typeBadge(protocolLabel)}</td>
                 <td class="font-mono text-xs">${spec}</td>
             </tr>`;
@@ -1017,10 +1017,10 @@ function renderOverview(): void {
                     <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
                     <td>${badge}</td>
                     <td>${renderOverviewIssues(outputIssues(o, p.input))}</td>
-                    <td class="font-mono text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
+                    <td class="tabular-nums text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
                     ${td(formatBitrate(o.bitrateKbps))}
-                    <td class="font-mono text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
-                    <td class="font-mono text-xs ${memorySeverityClass(outputMemoryPercent(o))}">${formatOutputMemory(o) ?? '—'}</td>
+                    <td class="tabular-nums text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
+                    <td class="tabular-nums text-xs ${memorySeverityClass(outputMemoryPercent(o))}">${formatOutputMemory(o) ?? '—'}</td>
                     <td>${typeBadge(protocolLabel)}</td>
                     <td class="font-mono text-xs">${spec}</td>
                 </tr>`;
@@ -1055,7 +1055,7 @@ function renderOverview(): void {
     const rangeLabel = `<span class="inline-flex justify-center w-28">${
         atLive
             ? `<span class="badge badge-success badge-xs gap-1">LIVE</span>`
-            : `<span class="font-mono text-xs text-muted">${formatClockTime(windowStart)} – ${formatClockTime(windowEnd)}</span>`
+            : `<span class="tabular-nums text-xs text-muted">${formatClockTime(windowStart)} – ${formatClockTime(windowEnd)}</span>`
     }</span>`;
 
     const chartsHtml = `
@@ -1179,14 +1179,14 @@ function renderOverview(): void {
     const uplinkRowTitle =
         'Per process: Outs = every running ffmpeg output pushing to a destination.';
     const cell = (value: string, title = ''): string =>
-        `<td class="font-mono text-xs"${title ? ` title="${title}"` : ''}>${value}</td>`;
+        `<td class="tabular-nums text-xs"${title ? ` title="${title}"` : ''}>${value}</td>`;
 
     const systemUsageHtml = `
     <div class="overflow-x-auto mb-6">
         <table class="table table-sm">
             <thead>
                 <tr>
-                    <th class="font-mono text-xs font-normal text-muted" title="How long the dashboard process has been running">${m.uptimeSeconds != null ? `Up ${formatUptime(m.uptimeSeconds * 1000)}` : ''}</th>
+                    <th class="tabular-nums text-xs font-normal text-muted" title="How long the dashboard process has been running">${m.uptimeSeconds != null ? `Up ${formatUptime(m.uptimeSeconds * 1000)}` : ''}</th>
                     <th>Node</th>
                     <th>SRS</th>
                     <th>Relay</th>
@@ -1322,13 +1322,13 @@ function renderOverview(): void {
     }
 
     const fmtPct = (v: number) => `${Math.round(v)}%`;
-    drawChart('chart-cpu', chartSamples, (s) => s.cpu, 100, '#3b82f6', fmtPct);
+    drawChart('chart-cpu', chartSamples, (s) => s.cpu, 100, 'var(--chart-cpu)', fmtPct);
     drawChart(
         'chart-ram',
         chartSamples,
         (s) => (s.ramUsed / s.ramTotal) * 100,
         100,
-        '#a855f7',
+        'var(--chart-ram)',
         fmtPct,
     );
     // kbps with a 10 kbps floor, so an idle host still gets distinct tick labels.
@@ -1337,7 +1337,7 @@ function renderOverview(): void {
         chartSamples,
         (s) => (s.rxBps * 8) / 1000,
         10,
-        '#22c55e',
+        'var(--chart-rx)',
         formatBitrateAxis,
     );
     drawChart(
@@ -1345,7 +1345,7 @@ function renderOverview(): void {
         chartSamples,
         (s) => (s.txBps * 8) / 1000,
         10,
-        '#f97316',
+        'var(--chart-tx)',
         formatBitrateAxis,
     );
 
@@ -1927,7 +1927,7 @@ function renderRejectedPublishes(): void {
                 <div class="flex items-center gap-2 pl-5">
                     ${streamsBadge}
                     <span class="badge badge-sm badge-error shrink-0 gap-1 px-2" title="${r.attempts} rejected attempt${r.attempts === 1 ? '' : 's'}">${ICON_CROSS}${r.attempts}</span>
-                    <span class="font-mono text-xs text-muted">${formatUptime(r.lastAttemptAgoMs)} ago</span>
+                    <span class="tabular-nums text-xs text-muted">${formatUptime(r.lastAttemptAgoMs)} ago</span>
                 </div>
             </li>`;
         })

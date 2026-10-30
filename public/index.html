@@ -29,7 +29,9 @@
     <!-- Navbar -->
     <div class="navbar bg-base-100 border-base-content/10 shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:flex-wrap">
       <div class="flex flex-1 items-center gap-3">
-        <button class="btn btn-ghost px-2 text-xl font-bold" id="server-name-display" onclick="selectPipeline(null)">Bunryu</button>
+        <button class="btn btn-ghost px-2 text-lg font-semibold tracking-tight" id="server-name-display" onclick="selectPipeline(null)">
+          Bunryu
+        </button>
         <button
           id="settings-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"
@@ -84,7 +86,7 @@
               d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
           </svg>
         </a>
-        <button id="theme-btn" class="btn btn-square btn-sm btn-ghost opacity-70" title="Theme" aria-label="Theme"></button>
+        <div id="theme-switch" class="join mx-1" role="group" aria-label="Theme"></div>
         <div class="group flex items-center" id="alert-sound-control">
           <button id="alert-sound-btn" class="btn btn-square btn-sm btn-ghost opacity-70" title="Alert beeps" aria-label="Alert beeps"></button>
           <input
@@ -104,11 +106,11 @@
       </div>
       <div class="flex-none max-lg:order-last max-lg:w-full">
         <div class="divide-base-content/15 flex items-center divide-x max-lg:flex-wrap max-lg:justify-center max-lg:*:px-1.5 max-lg:*:text-[11px]">
-          <span class="px-3 font-mono text-sm tabular-nums" id="navbar-cpu-value">CPU —</span>
-          <span class="px-3 font-mono text-sm tabular-nums" id="navbar-ram-value">RAM —</span>
-          <span class="px-3 font-mono text-sm tabular-nums" id="navbar-disk-value">Disk —</span>
-          <span class="px-3 font-mono text-sm tabular-nums" id="navbar-net-rx">↓ —</span>
-          <span class="px-3 font-mono text-sm tabular-nums" id="navbar-net-tx">↑ —</span>
+          <span class="px-3 text-[13px] tabular-nums" id="navbar-cpu-value">CPU —</span>
+          <span class="px-3 text-[13px] tabular-nums" id="navbar-ram-value">RAM —</span>
+          <span class="px-3 text-[13px] tabular-nums" id="navbar-disk-value">Disk —</span>
+          <span class="px-3 text-[13px] tabular-nums" id="navbar-net-rx">↓ —</span>
+          <span class="px-3 text-[13px] tabular-nums" id="navbar-net-tx">↑ —</span>
         </div>
       </div>
     </div>
@@ -832,13 +834,11 @@
 
         <!-- Overview: all pipelines table (spans middle + right columns from xl up) -->
         <div
-          class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
+          class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
           id="overview-col"></div>
 
         <!-- Server Logs (spans middle + right columns from xl up) -->
-        <div
-          class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
-          id="srs-logs-col">
+        <div class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2" id="srs-logs-col">
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-xl font-bold">Server Logs</h2>
             <button
@@ -858,9 +858,7 @@
         </div>
 
         <!-- Settings (spans middle + right columns from xl up) -->
-        <div
-          class="bg-base-200 mt-4 hidden scroll-mt-24 overflow-y-auto rounded-xl p-4 shadow md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
-          id="settings-col">
+        <div class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2" id="settings-col">
           <div class="mx-auto max-w-4xl space-y-3">
             <h2 class="text-xl font-bold">Settings</h2>
 

@@ -332,7 +332,10 @@ describe('Shared encodes card', () => {
                     inputHealth: () => side('warn', [{ severity: 'warning', message: 'y' }]),
                 }),
             );
-            assert.match(dot(html), /#ef4444 0 45%, #242933 45% 55%, #facc15 55% 100%/);
+            assert.match(
+                dot(html),
+                /var\(--dot-bad\) 0 45%, transparent 45% 55%, var\(--dot-warn\) 55% 100%/,
+            );
         });
 
         test('the tooltip lists each side under its own heading', () => {
@@ -373,7 +376,10 @@ describe('Shared encodes card', () => {
                 pipelineWith({ status: 'stopped', startedAtMs: null, ready: false }, rows),
                 deps({ inputHealth: () => side('error', [{ severity: 'error', message: 'z' }]) }),
             );
-            assert.match(dot(html), /#6b7280 0 45%, #242933 45% 55%, #6b7280 55% 100%/);
+            assert.match(
+                dot(html),
+                /var\(--dot-off\) 0 45%, transparent 45% 55%, var\(--dot-off\) 55% 100%/,
+            );
             assert.match(tooltip(html), /Idle: it starts with the first output that uses it\./);
         });
     });

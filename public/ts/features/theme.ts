@@ -1,4 +1,4 @@
-// The navbar's theme button: it cycles System, Light and Dark. System leaves
+// The navbar's theme switch: System, Light or Dark. System leaves
 // color-scheme to the browser (the CSS tokens are light-dark() pairs); the other two
 // pin it through data-theme on <html>. The choice is per browser; the inline script in
 // index.html's head applies it before first paint so the page does not flash.
@@ -39,19 +39,22 @@ function apply(): void {
 }
 
 function syncButton(): void {
-    const button = document.getElementById('theme-btn');
-    if (!button) return;
-    button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[choice]}</svg>`;
-    const label = `Theme: ${LABEL[choice]} (click to change)`;
-    button.title = label;
-    button.setAttribute('aria-label', label);
+    const group = document.getElementById('theme-switch');
+    if (!group) return;
+    group.innerHTML = ORDER.map((c) => {
+        const active = c === choice;
+        return `<button type="button" data-theme-choice="${c}" class="btn btn-square btn-xs join-item ${active ? 'btn-accent btn-soft' : 'opacity-70'}" aria-pressed="${active}" title="Theme: ${LABEL[c]}" aria-label="Theme: ${LABEL[c]}"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[c]}</svg></button>`;
+    }).join('');
 }
 
 export function initTheme(): void {
     load();
     syncButton();
-    document.getElementById('theme-btn')?.addEventListener('click', () => {
-        choice = ORDER[(ORDER.indexOf(choice) + 1) % ORDER.length]!;
+    document.getElementById('theme-switch')?.addEventListener('click', (e) => {
+        const next = (e.target as Element).closest<HTMLElement>('[data-theme-choice]')?.dataset
+            .themeChoice;
+        if (next !== 'system' && next !== 'light' && next !== 'dark') return;
+        choice = next;
         apply();
     });
 }

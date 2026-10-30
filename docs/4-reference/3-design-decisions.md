@@ -1205,7 +1205,10 @@ site (`live-miracles.github.io/ui/styles.css`): neutral Apple-style surfaces, on
 accent, hairline dividers, no shadows or decorative backgrounds. Green, amber and red mean
 status and nothing else, and warnings and destructive buttons are tinted, not solid. Each
 token is a `light-dark()` pair, so the dashboard follows the system theme with no second
-copy of the palette; the navbar button pins Light or Dark per browser (`features/theme.ts`).
+copy of the palette; the navbar switch pins Light or Dark per browser (`features/theme.ts`).
+Status dots, split dots and card tints use brighter `--dot-*` tokens than the status text
+colours (an amber that reads as text on white is brown as a dot), and the charts resolve
+`--chart-*` through the browser because a canvas cannot read `var()` or `light-dark()`.
 
 **Why:** daisyUI's `dim` theme was one dark look with its own radii and colours, and the
 dashboard overrode it in about 190 lines (menu wrapping, table header and tab contrast, the

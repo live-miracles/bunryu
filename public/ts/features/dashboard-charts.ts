@@ -18,6 +18,23 @@ function formatChartTimeTick(ts: number): string {
     return `${d.getHours().toString().padStart(2, '0')}:${mm}`;
 }
 
+// Canvas drawing cannot take var() or light-dark(), so a CSS colour is resolved by
+// letting the browser compute it on a throwaway element (an `rgb()` or `rgba()` string).
+function resolveColor(value: string): string {
+    const probe = document.createElement('span');
+    probe.style.color = value;
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+}
+
+function withAlpha(rgb: string, alpha: number): string {
+    return rgb.startsWith('rgb(')
+        ? rgb.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`)
+        : rgb.replace(/[\d.]+\)$/, `${alpha})`);
+}
+
 export function drawChart(
     id: string,
     samples: MetricSample[],
@@ -49,16 +66,11 @@ export function drawChart(
 
     ctx.clearRect(0, 0, W, H);
 
-    // Theme-aware colours derived from the canvas's computed text colour
-    const base = getComputedStyle(canvas).color;
-    const toRgba = (c: string, a: number) =>
-        c.startsWith('rgb(')
-            ? c.replace('rgb(', 'rgba(').replace(')', `, ${a})`)
-            : `rgba(128,128,128,${a})`;
-    const gridColor = toRgba(base, 0.35);
-    const labelColor = toRgba(base, 0.9);
+    const gridColor = resolveColor('var(--line)');
+    const labelColor = resolveColor('var(--muted)');
+    const lineColor = resolveColor(color);
 
-    ctx.font = '10px ui-monospace, monospace';
+    ctx.font = `10px ${getComputedStyle(canvas).fontFamily}`;
 
     const values = samples.length >= 2 ? samples.map(extract) : [];
     const rawMax = values.length ? Math.max(maxHint, ...values, 0.001) : maxHint || 1;
@@ -123,24 +135,24 @@ export function drawChart(
     ctx.lineTo(cx(values.length - 1), H - mB);
     ctx.lineTo(cx(0), H - mB);
     ctx.closePath();
-    ctx.fillStyle = color + '28';
+    ctx.fillStyle = withAlpha(lineColor, 0.14);
     ctx.fill();
 
     // Line
     ctx.beginPath();
     ctx.moveTo(cx(0), cy(values[0]));
     for (let i = 1; i < values.length; i++) ctx.lineTo(cx(i), cy(values[i]));
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = lineColor;
     ctx.lineWidth = 1.5;
     ctx.lineJoin = 'round';
     ctx.stroke();
 }
 
 export function chartCard(id: string, label: string, currentVal: string): string {
-    return `<div class="bg-base-300 rounded-xl p-3">
+    return `<div class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
         <div class="mb-2 flex items-center justify-between">
             <span class="text-xs font-semibold text-muted">${label}</span>
-            <span class="font-mono text-xs">${currentVal}</span>
+            <span class="text-xs font-semibold tabular-nums">${currentVal}</span>
         </div>
         <canvas id="${id}" style="width:100%;height:160px;display:block"></canvas>
     </div>`;
