@@ -1213,7 +1213,7 @@ static (no animation cost on a dashboard open for hours) and is background layer
 masks filled with the accent, so one file serves both themes. Green, amber and red mean
 status and nothing else, and warnings and destructive buttons are tinted, not solid. Each
 token is a `light-dark()` pair, so the dashboard follows the system theme with no second
-copy of the palette; the navbar switch pins Light or Dark per browser (`features/theme.ts`).
+copy of the palette; the navbar's sun/moon toggle pins the opposite theme per browser (`features/theme.ts`).
 Status dots, split dots and card tints use brighter `--dot-*` tokens than the status text
 colours (an amber that reads as text on white is brown as a dot), and the charts resolve
 `--chart-*` through the browser because a canvas cannot read `var()` or `light-dark()`.
