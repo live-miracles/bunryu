@@ -216,21 +216,26 @@ only for a new module.
   rules (`encodeRecipe`, and `sharedRecipe`, which also needs two outputs with the
   recipe), naming and URL recognition; the dashboard twins are in
   `public/ts/core/renditions.ts`.
-- `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay
-  state, input live/media state (`probeScheduler.ts` owns each publisher's ffprobe
-  lifecycle: when to probe, the retries, the once-per-publisher keyframe check, and
-  cancelling it all when the publisher changes, with `mediaProbe.ts` as the runner and
-  parser; health restarts running outputs when a new publisher's probed format differs
-  from the last one), alerts, the per-minute diagnostics snapshot; `hostMonitor.ts` turns the
-  host's memory, CPU pressure and disk readings into host alerts and Server events (readings
-  are injectable); `inputLifecycle.ts` keeps each pipeline's input between polls (connect and
-  disconnect transitions, publisher and format changes, the frame-rate, keyframe and flapping
-  alerts) and acts on them through the output service, probe scheduler and `inputState`.
-  `inputState.ts` holds per-input
-  readiness/protocol and builds the pull URL outputs read. `legTracker.ts` keeps each pipeline's SRT legs between polls (the group's size, which legs stopped delivering, health, history); `utils/srtLinkAlerts.ts` holds the pure SRT link rules (the per-interval alerts and a leg's one-minute health thresholds). `utils/srtRecent.ts` keeps
-  the 10-minute rolling SRT loss/retransmit/drop counts behind `recent` in the health
-  payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError` into merged
-  pipeline-log lines.
+- `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay state,
+  alerts, the per-minute diagnostics snapshot. It reads state from these modules:
+    - `inputLifecycle.ts` keeps each pipeline's input between polls (connect and
+      disconnect transitions, publisher and format changes, the frame-rate, keyframe and
+      flapping alerts) and acts on them through the output service, the probe scheduler and
+      `inputState`. A new publisher whose probed format differs from the last one restarts
+      the running outputs.
+    - `probeScheduler.ts` owns each publisher's ffprobe lifecycle: when to probe, the
+      retries, the once-per-publisher keyframe check, and cancelling it all when the
+      publisher changes (`mediaProbe.ts` is the runner and parser).
+    - `inputState.ts` holds per-input readiness and protocol and builds the pull URL
+      outputs read.
+    - `legTracker.ts` keeps each pipeline's SRT legs between polls (the group's size, which
+      legs stopped delivering, health, history); `utils/srtLinkAlerts.ts` holds the pure SRT
+      link rules (the per-interval alerts and a leg's one-minute health thresholds);
+      `utils/srtRecent.ts` keeps the 10-minute loss/retransmit/drop counts behind `recent`
+      in the health payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError`
+      into merged pipeline-log lines.
+    - `hostMonitor.ts` turns the host's memory, CPU pressure and disk readings into host
+      alerts and Server events (readings are injectable).
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `preview.ts`
   (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.
