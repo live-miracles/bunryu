@@ -452,6 +452,7 @@ function loadHealthService(t) {
         queueMicrotask(() => cb(new Error('ffprobe disabled in test'), '', ''));
     });
     delete require.cache[require.resolve('../src/services/health')];
+    delete require.cache[require.resolve('../src/services/hostMonitor')];
     delete require.cache[require.resolve('../src/utils/srsConfig')];
     return require('../src/services/health').createHealthService;
 }
@@ -464,6 +465,7 @@ describe('createHealthService poll orchestration', () => {
     afterEach(() => {
         process.chdir(originalCwd);
         delete require.cache[require.resolve('../src/services/health')];
+        delete require.cache[require.resolve('../src/services/hostMonitor')];
         delete require.cache[require.resolve('../src/utils/appConfig')];
         delete require.cache[require.resolve('../src/utils/srsConfig')];
     });
@@ -889,6 +891,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     afterEach(() => {
         process.chdir(originalCwd);
         delete require.cache[require.resolve('../src/services/health')];
+        delete require.cache[require.resolve('../src/services/hostMonitor')];
         delete require.cache[require.resolve('../src/utils/appConfig')];
         delete require.cache[require.resolve('../src/utils/srsConfig')];
     });
@@ -2969,6 +2972,7 @@ describe('shared encodes (renditions) in the health snapshot', () => {
     afterEach(() => {
         process.chdir(originalCwd);
         delete require.cache[require.resolve('../src/services/health')];
+        delete require.cache[require.resolve('../src/services/hostMonitor')];
         delete require.cache[require.resolve('../src/utils/appConfig')];
         delete require.cache[require.resolve('../src/utils/srsConfig')];
     });

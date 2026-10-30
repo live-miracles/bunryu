@@ -221,7 +221,9 @@ only for a new module.
   lifecycle: when to probe, the retries, the once-per-publisher keyframe check, and
   cancelling it all when the publisher changes, with `mediaProbe.ts` as the runner and
   parser; health restarts running outputs when a new publisher's probed format differs
-  from the last one), alerts, the per-minute diagnostics snapshot. `inputState.ts` holds per-input
+  from the last one), alerts, the per-minute diagnostics snapshot; `hostMonitor.ts` turns the
+  host's memory, CPU pressure and disk readings into host alerts and Server events (readings
+  are injectable). `inputState.ts` holds per-input
   readiness/protocol and builds the pull URL outputs read. `legTracker.ts` keeps each pipeline's SRT legs between polls (the group's size, which legs stopped delivering, health, history); `utils/srtLinkAlerts.ts` holds the pure SRT link rules (the per-interval alerts and a leg's one-minute health thresholds). `utils/srtRecent.ts` keeps
   the 10-minute rolling SRT loss/retransmit/drop counts behind `recent` in the health
   payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError` into merged
