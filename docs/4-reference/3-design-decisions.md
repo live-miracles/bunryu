@@ -4,6 +4,7 @@ Why Bunryu is built the way it is, and why some obvious alternatives are not
 used. Each entry gives the decision, the reasons, the evidence behind them, and
 what would make it worth revisiting. Most of the evidence comes from tests run
 in October 2026 against SRS 6.0-r2, MediaMTX v1.21.2 and the pinned FFmpeg 7.1.
+The short decision records (rules and rejected refactors) are in the [decision records](../README.md#decision-records).
 
 ## Current architecture in one paragraph
 

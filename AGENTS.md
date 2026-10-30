@@ -88,7 +88,8 @@ there is less to break. It must never reach an invalid state:
   or shown as running when it is not.
 
 Unless there is a very good reason, written down in
-`docs/4-reference/3-design-decisions.md`, pick the plain implementation with fewer
+`docs/4-reference/3-design-decisions.md` or an ADR (see
+[ADR 0001](docs/adr/0001-robustness-before-performance-in-output-management.md)), pick the plain implementation with fewer
 states, fewer moving parts and fewer places to break over a faster or cleverer
 one. Change the start/stop/restart/retire paths in small steps, each covered by a
 test of the ordering it relies on. The dashboard is less critical: a UI bug is
@@ -270,6 +271,8 @@ only for a new module.
   same readiness ordering as the systemd units. Media binary pins mirror
   `scripts/server-install.sh`; bump both together. `docker/README.dockerhub.md`
   is the Docker Hub description (synced by `.github/workflows/docker.yml`).
+- `GLOSSARY.md` is the project's vocabulary (use its terms, not the `_Avoid_` ones); `docs/adr/`
+  has the short decision records and `docs/agents/` the notes the engineering skills read.
 - `README.md` is a short pitch, feature list and quick start; everything else
   lives in `docs/` (numbered section folders of numbered pages, index in
   `docs/README.md`). Link between pages with relative `.md` links. The org
@@ -298,15 +301,15 @@ tool folder.
 
 ### Issue tracker
 
-Issues live in GitHub Issues (`live-miracles/bunryu`, via `gh`). See `agent-docs/issue-tracker.md`.
+Issues live in GitHub Issues (`live-miracles/bunryu`, via `gh`). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `agent-docs/triage-labels.md`.
+Default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: `GLOSSARY.md` at the repo root. Design decisions are recorded in `docs/4-reference/3-design-decisions.md` rather than a separate `docs/adr/`. See `agent-docs/domain.md`.
+Single-context: `GLOSSARY.md` at the repo root. Decisions are recorded in `docs/adr/` (short records of decisions that are hard to reverse and surprising, including refactors considered and rejected) and in `docs/4-reference/3-design-decisions.md` (the longer ones with their evidence). See `docs/agents/domain.md`.
 
 ## Data model and compatibility
 
