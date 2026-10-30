@@ -26,7 +26,7 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | DELETE | `/api/pipelines/:id` | Delete pipeline (stream key is freed, not deleted) — 409 while any of your outputs is running; its shared encodes are stopped and removed with it |
 | GET | `/api/pipelines/:id/logs` | Pipeline event log: input online/offline, probe results, and bonded legs joining or leaving (event `legs`) |
 | GET | `/api/health/pipelines/:id/legs/history` | Per-leg SRT history of a bonded input (state, health, rate, RTT, loss), 5 s samples for up to 30 min; `?from=`, `?to=`, `?after=` in ms |
-| POST | `/api/pipelines/:id/preview/start` | Start an HLS preview `{ audioTrackCount? }` (1–50, default 1); returns `{ hlsUrl }`. Video is copied, audio is AAC, one rendition per track |
+| POST | `/api/pipelines/:id/preview/start` | Start an HLS preview `{ audioTrackCount? }` (1–50, default 1); returns `{ hlsUrl }`. Video is copied, audio is AAC, one rendition per track; `404` for an unknown pipeline |
 | POST | `/api/pipelines/:id/preview/keepalive` | Refresh the preview TTL — a preview with no keepalive and no HLS fetch for 20s is stopped automatically; closing the tab also stops it immediately |
 | POST | `/api/pipelines/:id/preview/stop` | Stop the HLS preview |
 | POST | `/api/pipelines/:id/outputs` | Create output `{ name, videoEncoding, url, audioEncoding }` |

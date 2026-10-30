@@ -4,6 +4,7 @@ const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const { registerPreviewApi } = require('../../src/api/preview');
+const { PipelineNotFoundError } = require('../../src/utils/pipelineNotFoundError');
 
 describe('preview start API', () => {
     let server;
@@ -16,6 +17,8 @@ describe('preview start API', () => {
         registerPreviewApi(app, {
             baseDir: '/nonexistent',
             start: async (id, count) => {
+                if (id === 404) throw new PipelineNotFoundError();
+                if (id === 500) throw new Error('ffmpeg exploded');
                 started.push([id, count]);
                 return { hlsUrl: `/hls/${id}/index.m3u8` };
             },
@@ -65,5 +68,22 @@ describe('preview start API', () => {
             [1, 1],
             [1, 1],
         ]);
+    });
+
+    test('an unknown pipeline is a 404, any other failure a 500 with its message', async () => {
+        const post = (id) =>
+            fetch(`${base}/api/pipelines/${id}/preview/start`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: '{}',
+            });
+
+        const missing = await post(404);
+        assert.equal(missing.status, 404);
+        assert.deepEqual(await missing.json(), { error: 'Pipeline not found' });
+
+        const broken = await post(500);
+        assert.equal(broken.status, 500);
+        assert.match((await broken.json()).error, /ffmpeg exploded/);
     });
 });

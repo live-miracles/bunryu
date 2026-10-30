@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import { requireAuth } from './auth.js';
 import { MAX_AUDIO_TRACKS } from '../utils/inputLimits.js';
 import type { PreviewService } from '../services/preview.js';
+import { PipelineNotFoundError } from '../utils/pipelineNotFoundError.js';
 
 function isValidTrackCount(value: unknown): boolean {
     return (
@@ -29,6 +30,9 @@ export function registerPreviewApi(app: Express, previewService: PreviewService)
         try {
             return res.json(await previewService.start(id, audioTrackCount));
         } catch (err) {
+            if (err instanceof PipelineNotFoundError) {
+                return res.status(404).json({ error: err.message });
+            }
             return res.status(500).json({ error: String(err) });
         }
     });

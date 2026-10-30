@@ -7,6 +7,7 @@ import { INPUT_TIMEOUT_US, ffmpegEnv } from '../utils/ffmpeg.js';
 import type { Db } from '../types.js';
 import type { InputState } from './inputState.js';
 import { MAX_AUDIO_TRACKS } from '../utils/inputLimits.js';
+import { PipelineNotFoundError } from '../utils/pipelineNotFoundError.js';
 
 const FFMPEG_CMD = readAppConfig().ffmpegPath;
 const STDERR_TAIL_BYTES = 2000;
@@ -113,7 +114,7 @@ export function createPreviewService(
 
     async function start(pipelineId: number, audioTrackCount = 1): Promise<{ hlsUrl: string }> {
         const pipeline = db.getPipeline(pipelineId);
-        if (!pipeline) throw new Error('Pipeline not found');
+        if (!pipeline) throw new PipelineNotFoundError();
 
         // Pull the input back over its own protocol. Default to RTMP until known.
         const inputProtocol = inputState.getProtocol(pipelineId) ?? 'rtmp';
