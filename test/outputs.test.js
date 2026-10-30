@@ -3714,24 +3714,3 @@ describe('recovery from a crash', () => {
         service.shutdown();
     });
 });
-
-describe('formatDuration', () => {
-    beforeEach(() => {
-        process.chdir(tempDir);
-    });
-
-    afterEach(() => {
-        process.chdir(originalCwd);
-        delete require.cache[require.resolve('../src/services/outputs')];
-        delete require.cache[require.resolve('../src/utils/appConfig')];
-    });
-
-    test('shows seconds, then minutes, then hours', (t) => {
-        loadOutputService(t, new FakeFfmpeg());
-        const { formatDuration } = require('../src/services/outputs');
-        assert.equal(formatDuration(12_000), '12s');
-        assert.equal(formatDuration(125_000), '2m 5s');
-        assert.equal(formatDuration(3_600_000), '1h 0m 0s');
-        assert.equal(formatDuration(11_345_000), '3h 9m 5s');
-    });
-});

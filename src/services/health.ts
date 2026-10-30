@@ -3,6 +3,7 @@ import path from 'path';
 import {
     fetchSrsClientsForHealth,
     fetchSrsStreams,
+    extractStreamResource,
     type SrsStream,
     type SrsClient,
     type SrsStreamVideo,
@@ -10,6 +11,7 @@ import {
     type AudioTrackInfo,
 } from '../utils/srs.js';
 import { readAppConfig } from '../utils/appConfig.js';
+import { formatDuration } from '../utils/duration.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { Db, Output } from '../types.js';
@@ -211,6 +213,9 @@ interface SrsPublisherInfo {
     type: string | null;
 }
 
+// The address the relay publishes to SRS from. Narrower on purpose than the check in
+// api/srs.ts, which accepts all of 127.0.0.0/8: another local process must not look
+// like the relay.
 export function isLoopbackIp(ip: string | null | undefined): boolean {
     return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
@@ -242,23 +247,6 @@ function isLocalSrsHost(hostname: string): boolean {
     );
 }
 
-function extractStreamResource(value: string): string | null {
-    const candidates = [value];
-    try {
-        candidates.push(decodeURIComponent(value));
-    } catch {
-        /* keep the raw candidate only */
-    }
-
-    for (const candidate of candidates) {
-        const match = /(?:^|[?,&#]|::|,)r=([^,&#]+)/.exec(candidate);
-        if (!match?.[1]) continue;
-        return match[1].replace(/^\/+/, '');
-    }
-
-    return null;
-}
-
 export function localSrtOutputTargetsStream(url: string, streamKey: string): boolean {
     if (!url.startsWith('srt://')) return false;
 
@@ -281,17 +269,6 @@ export function hasBondedRelayPublishConflict(params: {
     relayAcceptedBySrs: boolean;
 }): boolean {
     return params.inputConnected && params.relayInputActive && !params.relayAcceptedBySrs;
-}
-
-function formatDuration(totalSeconds: number): string {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    const parts: string[] = [];
-    if (h > 0) parts.push(`${h}h`);
-    if (h > 0 || m > 0) parts.push(`${m}m`);
-    parts.push(`${s}s`);
-    return parts.join(' ');
 }
 
 // A bitrate for an alert message: Mb/s from 1000 kb/s up.
@@ -672,7 +649,7 @@ export function createHealthService(
         } else {
             hostEvent(
                 'recovered',
-                `CPU recovered: pressure ${pressure.some10}% (10 s), peak ${change.worst}% over ${formatDuration(Math.round((change.polls * POLL_INTERVAL_MS) / 1000))}`,
+                `CPU recovered: pressure ${pressure.some10}% (10 s), peak ${change.worst}% over ${formatDuration(change.polls * POLL_INTERVAL_MS)}`,
                 'host-cpu-recovered',
                 {
                     pressure10: pressure.some10,
@@ -967,7 +944,7 @@ export function createHealthService(
                             'offline',
                             uptimeSec == null
                                 ? 'Input disconnected'
-                                : `Input disconnected (was live for ${formatDuration(uptimeSec)})`,
+                                : `Input disconnected (was live for ${formatDuration(uptimeSec * 1000)})`,
                         );
                     } catch {
                         /* non-critical */

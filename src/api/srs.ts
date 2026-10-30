@@ -80,6 +80,8 @@ function logKickFailure(err: unknown): void {
     );
 }
 
+// Any connection from this host (all of 127.0.0.0/8): who may use the internal app and
+// who is exempt from the play check. health.ts's isLoopbackIp is narrower on purpose.
 function isLoopbackIp(ip: string): boolean {
     return ip === '::1' || ip.startsWith('127.') || ip.startsWith('::ffff:127.');
 }

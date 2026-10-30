@@ -1,5 +1,6 @@
 import { readRelayConfig } from '../utils/relayConfig.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
+import { extractStreamResource } from '../utils/srs.js';
 
 const SRT_RELAY_POLL_MS = 5000;
 const SRT_RELAY_FETCH_TIMEOUT_MS = 2000;
@@ -220,12 +221,6 @@ function parseLeg(leg: RelayStatusResponseLeg): SrtRelayLegStatus {
         reorderDistance: numOrNull(leg.reorderDistance),
         rcvBufMs: numOrNull(leg.rcvBufMs),
     };
-}
-
-function extractStreamResource(streamId: string): string | null {
-    const match = /(?:^|[?,&#]|::|,)r=([^,&#]+)/.exec(streamId);
-    if (!match?.[1]) return null;
-    return match[1].replace(/^\/+/, '');
 }
 
 const EMPTY_INPUT_STATUS: SrtRelayInputStatus = {

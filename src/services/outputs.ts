@@ -21,6 +21,7 @@ import {
     runLogged,
     type DiagnosticsLogger,
 } from '../utils/diagnostics.js';
+import { formatDuration } from '../utils/duration.js';
 import {
     RENDITION_APP,
     encodeRecipe,
@@ -142,14 +143,6 @@ function timestampWarningKind(line: string): string {
 
 const WARNING_KINDS = ['memory', 'socket', 'media-clock', 'falling-behind'] as const;
 type WarningKind = (typeof WARNING_KINDS)[number];
-
-export function formatDuration(ms: number): string {
-    const totalSec = Math.round(ms / 1000);
-    if (totalSec < 60) return `${totalSec}s`;
-    const minutes = Math.floor(totalSec / 60) % 60;
-    const hours = Math.floor(totalSec / 3600);
-    return `${hours > 0 ? `${hours}h ` : ''}${minutes}m ${totalSec % 60}s`;
-}
 
 function memoryLimitBytesFor(videoEncoding: string, highRes: boolean): number {
     return outputMemoryLimitBytes(appConfig.outputWatchdog, videoEncoding, highRes);

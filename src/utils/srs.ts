@@ -182,3 +182,22 @@ export function srtPublishUrl(streamKey: string, host: string, passphrase?: stri
     if (!passphrase) return url;
     return `${url}&passphrase=${encodeURIComponent(passphrase)}&pbkeylen=16`;
 }
+
+// The `r=` resource of an SRT stream id (`#!::r=live/key01,m=publish`), as written or
+// percent-encoded; null when there is none.
+export function extractStreamResource(value: string): string | null {
+    const candidates = [value];
+    try {
+        candidates.push(decodeURIComponent(value));
+    } catch {
+        /* keep the raw candidate only */
+    }
+
+    for (const candidate of candidates) {
+        const match = /(?:^|[?,&#]|::|,)r=([^,&#]+)/.exec(candidate);
+        if (!match?.[1]) continue;
+        return match[1].replace(/^\/+/, '');
+    }
+
+    return null;
+}
