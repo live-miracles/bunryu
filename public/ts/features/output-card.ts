@@ -1,12 +1,4 @@
-import {
-    escapeHtml,
-    formatAgo,
-    formatLocalDateTime,
-    STATUS_COLOR_ERROR,
-    STATUS_COLOR_GOOD,
-    STATUS_COLOR_OFF,
-    STATUS_COLOR_WARN,
-} from '../core/utils.js';
+import { escapeHtml, formatAgo, formatLocalDateTime, formatUptime } from '../core/utils.js';
 import { healthNowMs, state } from '../core/state.js';
 import type { InputHealth, OutputView } from '../types.js';
 import {
@@ -17,14 +9,13 @@ import {
     outputMetricsBadge,
 } from './output-badges.js';
 import { errorHint } from '../core/hints.js';
-import { lastErrorLine, outputHealth } from '../core/status.js';
+import { lastErrorLine, outputHealth, statusColor } from '../core/status.js';
 
 // outputId lets an output card leave itself out of its own duplicate list.
 export type DupRef = { pipelineName: string; outputName?: string; outputId?: string };
 
 type OutputCardDeps = {
     pendingOutputs: Map<string, 'start' | 'stop'>;
-    formatUptime: (ms: number | null) => string;
 };
 
 const ICON_PENCIL = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
@@ -164,14 +155,7 @@ export function renderOutputCard(
 ): string {
     const isStopped = output.desiredState === 'stopped';
     const status = outputHealth(output, input).status;
-    const statusHex =
-        status === 'good'
-            ? STATUS_COLOR_GOOD
-            : status === 'warn'
-              ? STATUS_COLOR_WARN
-              : status === 'error'
-                ? STATUS_COLOR_ERROR
-                : STATUS_COLOR_OFF;
+    const statusHex = statusColor(status);
     const uptimeMs = output.startedAtMs !== null ? Date.now() - output.startedAtMs : null;
     const badges: string[] = [];
     if (output.videoEncoding !== 'copy') {
@@ -190,7 +174,7 @@ export function renderOutputCard(
     }
     if (uptimeMs !== null) {
         badges.push(
-            `<span class="font-mono text-xs text-muted whitespace-nowrap">${deps.formatUptime(uptimeMs)}</span>`,
+            `<span class="font-mono text-xs text-muted whitespace-nowrap">${formatUptime(uptimeMs)}</span>`,
         );
     }
     const metricsBadge = outputMetricsBadge(output, input);

@@ -92,6 +92,30 @@ export function fmtMbpsValue(v: number | null | undefined): string {
     return v != null ? formatBitrate(v * 1000) : NO_VALUE;
 }
 
+export function formatCompactCount(n: number): string {
+    if (!Number.isFinite(n)) return '0';
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+    return String(Math.round(n));
+}
+
+export function fmtLossRexmitDrop(
+    loss: number | null | undefined,
+    rexmit: number | null | undefined,
+    drop: number | null | undefined,
+): string {
+    return `${loss != null ? formatCompactCount(loss) : '—'} / ${rexmit != null ? formatCompactCount(rexmit) : '—'} / ${drop != null ? formatCompactCount(drop) : '—'}`;
+}
+
+export function formatUptime(ms: number | null): string {
+    if (ms === null) return '—';
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
 export function formatLocalTime(ts: number): string {
     return new Date(ts).toLocaleTimeString(undefined, { hour12: false });
 }

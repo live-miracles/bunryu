@@ -1,5 +1,11 @@
 import { alertHint } from './hints.js';
-import { LOW_BITRATE_KBPS } from './utils.js';
+import {
+    LOW_BITRATE_KBPS,
+    STATUS_COLOR_ERROR,
+    STATUS_COLOR_GOOD,
+    STATUS_COLOR_OFF,
+    STATUS_COLOR_WARN,
+} from './utils.js';
 import type { InputHealth, OutputView } from '../types.js';
 
 // The verdict on an output or an input: its status, and the problems behind it.
@@ -71,6 +77,23 @@ const INPUT_BITRATE_STATS_WARMUP_MS = 30_000;
 
 export function inputBitrateStatsReady(input: InputHealth): boolean {
     return input.uptimeMs !== null && input.uptimeMs >= INPUT_BITRATE_STATS_WARMUP_MS;
+}
+
+// The bitrate to show for an input, or null while it has not run long enough to
+// have a meaningful one.
+export function displayInputBitrateKbps(input: InputHealth): number | null {
+    if (input.live && input.recvBitrateKbps === 0 && !inputBitrateStatsReady(input)) {
+        return null;
+    }
+    return input.recvBitrateKbps;
+}
+
+// The colour of a status dot or a status in a table row.
+export function statusColor(status: OutStatus | InputStatus): string {
+    if (status === 'good') return STATUS_COLOR_GOOD;
+    if (status === 'warn') return STATUS_COLOR_WARN;
+    if (status === 'error') return STATUS_COLOR_ERROR;
+    return STATUS_COLOR_OFF;
 }
 
 // What an output that pulls a shared encode should say while it is not running

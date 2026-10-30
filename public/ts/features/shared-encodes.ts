@@ -1,6 +1,6 @@
 import { healthNowMs } from '../core/state.js';
-import { escapeHtml, formatAgo, formatLocalDateTime } from '../core/utils.js';
-import { lastErrorLine } from '../core/status.js';
+import { escapeHtml, formatAgo, formatLocalDateTime, formatUptime } from '../core/utils.js';
+import { lastErrorLine, statusColor } from '../core/status.js';
 import type { StatusIssue } from '../core/status.js';
 import { renderStatusTooltip, splitDotGradient } from './status-tooltip.js';
 import {
@@ -87,8 +87,8 @@ function renderStatusDot(
         indicator.idle ? 'Idle: it starts with the first output that uses it.' : undefined,
     );
     const gradient = splitDotGradient(
-        deps.statusColor(indicator.ffmpeg.status),
-        deps.statusColor(indicator.input.status),
+        statusColor(indicator.ffmpeg.status),
+        statusColor(indicator.input.status),
     );
     return `<span class="js-tooltip shrink-0 mx-1" tabindex="0">
         <div aria-label="status" class="border-base-content/15 h-5 w-5 overflow-hidden rounded-full border" style="background-image: ${gradient}"></div>
@@ -113,7 +113,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     }
     const uptime =
         uptimeMs !== null
-            ? `<span class="font-mono text-xs text-muted whitespace-nowrap">${escapeHtml(deps.formatUptime(uptimeMs))}</span>`
+            ? `<span class="font-mono text-xs text-muted whitespace-nowrap">${escapeHtml(formatUptime(uptimeMs))}</span>`
             : '';
     const badges: string[] = [outputMetricsBadge(rendition, input)];
     const readers = rendition.readers ?? 0;
@@ -175,8 +175,6 @@ export interface SharedEncodeCardDeps {
     // The problems on each side of the status dot (see sharedEncodeIndicator).
     ffmpegHealth: (output: OutputView) => SharedEncodeSide;
     inputHealth: (input: InputHealth) => SharedEncodeSide;
-    statusColor: (status: SharedEncodeStatus) => string;
-    formatUptime: (ms: number | null) => string;
     restartLocked: (outputId: string) => boolean;
 }
 

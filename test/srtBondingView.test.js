@@ -10,21 +10,6 @@ const {
     renderBondedLegs,
     renderBondingStats,
 } = require('../public/ts/features/srt-bonding-view');
-const { renderCompactMetaRow } = require('../public/ts/features/input-stats-view');
-
-const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-const deps = {
-    formatCompactCount: compact,
-    fmtMs: (v) => (v == null ? '—' : `${v} ms`),
-    fmtMbpsValue: (v) => (v == null ? '—' : `${v} Mb/s`),
-    fmtLossRexmitDrop: (l, r, d) =>
-        [l, r, d].map((v) => (v == null ? '—' : compact(v))).join(' / '),
-    inputAggregateStatsAreDropOnly: (input) =>
-        input.recvLossTotal === null && input.retransTotal === null,
-    legHealthColor: () => 'green',
-    legHealthLabel: () => 'OK',
-    renderCompactMetaRow: renderCompactMetaRow,
-};
 
 const MIN = 60_000;
 const recent = (over = {}) => ({
@@ -46,7 +31,7 @@ describe('recentSpanLabel', () => {
 
 describe('recentFigure', () => {
     test('names the units and the window in the tooltip and dims a quiet link', () => {
-        const figure = recentFigure(recent(), false, deps);
+        const figure = recentFigure(recent(), false);
         assert.equal(figure.text, '0 / 0 / 0');
         assert.equal(figure.quiet, true);
         assert.equal(figure.dropped, false);
@@ -54,21 +39,21 @@ describe('recentFigure', () => {
     });
 
     test('a burst shows up and is not quiet', () => {
-        const figure = recentFigure(recent({ loss: 114, retrans: 116, drop: 39 }), false, deps);
+        const figure = recentFigure(recent({ loss: 114, retrans: 116, drop: 39 }), false);
         assert.equal(figure.text, '114 / 116 / 39');
         assert.equal(figure.quiet, false);
         assert.equal(figure.dropped, true);
     });
 
     test('a bonded group shows only the packets still missing', () => {
-        const figure = recentFigure(recent({ drop: 3 }), true, deps);
+        const figure = recentFigure(recent({ drop: 3 }), true);
         assert.equal(figure.text, '— / — / 3');
         assert.match(figure.title, /^Last 10 min: 3 dropped$/);
         assert.doesNotMatch(figure.title, /lost|rexmit/);
     });
 
     test('has no figure until the window has two polls', () => {
-        const figure = recentFigure(null, false, deps);
+        const figure = recentFigure(null, false);
         assert.equal(figure.text, '—');
         assert.match(figure.title, /^Collecting…$/);
     });
@@ -94,7 +79,7 @@ describe('bonded legs table', () => {
     const input = (legs) => ({ bonded: true, expectedLegs: legs.length, legs });
 
     test('shows the last ten minutes of each leg, with the window in the header', () => {
-        const html = renderBondedLegs(input([leg(), leg({ ip: '203.0.113.11' })]), deps);
+        const html = renderBondedLegs(input([leg(), leg({ ip: '203.0.113.11' })]));
         assert.match(
             html,
             /L \/ R \/ D<\/span> <span class="font-normal text-muted">10 min<\/span>/,
@@ -105,7 +90,7 @@ describe('bonded legs table', () => {
     });
 
     test('puts L / R / D right after the IP column', () => {
-        const html = renderBondedLegs(input([leg()]), deps);
+        const html = renderBondedLegs(input([leg()]));
         const heads = [...html.matchAll(/<th>(?:<span[^>]*>)?([^<]+)/g)].map((m) => m[1]);
         assert.deepEqual(heads, ['State', 'Leg IP', 'L / R / D', 'RTT', 'Rate', 'Buffer']);
         assert.match(html, /203\.0\.113\.10<\/td>\s*<td[^>]*>2 \/ 3 \/ 0<\/td>/);
@@ -114,7 +99,6 @@ describe('bonded legs table', () => {
     test('dims a leg with nothing lately and marks none as an error', () => {
         const html = renderBondedLegs(
             input([leg({ recent: recent({ drop: 40 }) }), leg({ recent: recent() })]),
-            deps,
         );
         const cells = html.match(
             /<td class="font-mono text-xs[^"]*" title="[^"]*">[^<]*\/[^<]*<\/td>/g,
@@ -125,7 +109,7 @@ describe('bonded legs table', () => {
     });
 
     test('shows a dash while the first window is collected', () => {
-        const html = renderBondedLegs(input([leg({ recent: null })]), deps);
+        const html = renderBondedLegs(input([leg({ recent: null })]));
         assert.match(html, />—<\/td>/);
         assert.doesNotMatch(html, /min<\/span><\/th>/);
     });
@@ -156,7 +140,7 @@ describe('relay stats row', () => {
     });
 
     test('labels the window and shows only drops for a bonded group', () => {
-        const html = renderBondingStats(status(), true, deps);
+        const html = renderBondingStats(status(), true);
         assert.match(html, />In L \/ R \/ D 10 min</);
         assert.match(html, />Out L \/ R \/ D 10 min</);
         assert.match(html, /input-meta-value[^>]*title="Last 10 min: 0 dropped"/);
@@ -164,7 +148,7 @@ describe('relay stats row', () => {
     });
 
     test('has no Rx figure and ends with the latency', () => {
-        const html = renderBondingStats(status(), true, deps);
+        const html = renderBondingStats(status(), true);
         assert.doesNotMatch(html, />Rx</);
         const labels = [...html.matchAll(/input-meta-label[^>]*>([^<]+)</g)].map((m) => m[1]);
         assert.deepEqual(labels, ['In L / R / D 10 min', 'Out L / R / D 10 min', 'Latency']);
@@ -174,7 +158,6 @@ describe('relay stats row', () => {
         const html = renderBondingStats(
             status({ recent: recent({ loss: null, retrans: null, drop: 3 }) }),
             true,
-            deps,
         );
         assert.match(
             html,

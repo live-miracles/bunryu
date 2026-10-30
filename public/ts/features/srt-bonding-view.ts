@@ -1,29 +1,13 @@
-import { escapeHtml } from '../core/utils.js';
-import type { SrtBondingLeg, SrtBondingStatus, SrtRecent } from '../types.js';
+import { escapeHtml, fmtLossRexmitDrop, fmtMbpsValue, fmtMs } from '../core/utils.js';
+import { legHealthColor, legHealthLabel } from '../core/relay-status.js';
+import { renderCompactMetaRow } from './input-stats-view.js';
+import type { SrtBondingStatus, SrtRecent } from '../types.js';
 
-type BondingViewDeps = {
-    formatCompactCount: (value: number) => string;
-    fmtMs: (value: number | null | undefined) => string;
-    fmtMbpsValue: (value: number | null | undefined) => string;
-    fmtLossRexmitDrop: (
-        loss: number | null | undefined,
-        retransmit: number | null | undefined,
-        drop: number | null | undefined,
-    ) => string;
-    inputAggregateStatsAreDropOnly: (input: SrtBondingStatus['input']) => boolean;
-    legHealthColor: (leg: SrtBondingLeg) => string;
-    legHealthLabel: (leg: SrtBondingLeg) => string;
-    renderCompactMetaRow: (
-        items: Array<{
-            label: string;
-            labelTitle?: string;
-            value: string | number | null | undefined;
-            valueClass?: string;
-            valueTitle?: string;
-        }>,
-        className?: string,
-    ) => string;
-};
+// A bonded group reports only the packets still missing after the legs back each
+// other up, so its aggregate loss and retransmit counters are absent.
+export function inputAggregateStatsAreDropOnly(input: SrtBondingStatus['input']): boolean {
+    return input.recvLossTotal === null && input.retransTotal === null;
+}
 
 // Loss / Rexmit / Drop figures show what happened over the last few minutes,
 // not since the stream connected: on a long event the totals only ever grow and
@@ -79,7 +63,6 @@ export interface RecentFigure {
 export function recentFigure(
     recent: SrtRecent | null | undefined,
     dropOnly: boolean,
-    deps: Pick<BondingViewDeps, 'formatCompactCount' | 'fmtLossRexmitDrop'>,
 ): RecentFigure {
     const units = { loss: 'lost', retrans: 'rexmit', drop: 'dropped' };
     if (!recent) {
@@ -93,8 +76,8 @@ export function recentFigure(
     const shown = dropOnly ? { loss: null, retrans: null, drop: recent.drop } : recent;
     return {
         text: dropOnly
-            ? deps.fmtLossRexmitDrop(null, null, recent.drop)
-            : deps.fmtLossRexmitDrop(recent.loss, recent.retrans, recent.drop),
+            ? fmtLossRexmitDrop(null, null, recent.drop)
+            : fmtLossRexmitDrop(recent.loss, recent.retrans, recent.drop),
         title: `Last ${recentSpanLabel(recent.spanMs)}: ${countList(shown, units)}`,
         quiet: !recent.loss && !recent.retrans && !recent.drop,
         dropped: (recent.drop ?? 0) > 0,
@@ -112,20 +95,16 @@ function figureClass(figure: RecentFigure, markDrops: boolean): string {
     return figure.quiet ? 'opacity-50' : '';
 }
 
-export function renderBondingStats(
-    status: SrtBondingStatus,
-    relayProcessRunning: boolean,
-    deps: BondingViewDeps,
-): string {
-    const inputStatsAreDropOnly = deps.inputAggregateStatsAreDropOnly(status.input);
+export function renderBondingStats(status: SrtBondingStatus, relayProcessRunning: boolean): string {
+    const inputStatsAreDropOnly = inputAggregateStatsAreDropOnly(status.input);
     const rxPkts = status.input.recvUniquePacketsTotal || status.input.recvPacketsTotal || 0;
     const hasSessionStats =
         relayProcessRunning &&
         (status.inputActive || rxPkts > 0 || (status.input.retransTotal ?? 0) > 0);
     const hasOutputStats =
         relayProcessRunning && (status.outputConnected || status.output.sentPacketsTotal > 0);
-    const inputFigure = recentFigure(status.input.recent, inputStatsAreDropOnly, deps);
-    const outputFigure = recentFigure(status.output.recent, false, deps);
+    const inputFigure = recentFigure(status.input.recent, inputStatsAreDropOnly);
+    const outputFigure = recentFigure(status.output.recent, false);
     const labelFor = (base: string, recent: SrtRecent | null): string =>
         recent ? `${base} ${recentSpanLabel(recent.spanMs)}` : base;
     const inputItem = {
@@ -146,17 +125,17 @@ export function renderBondingStats(
         label: 'Latency',
         labelTitle:
             'Negotiated SRT buffering latency for the input. For a bonded group this is the max latency negotiated across legs.',
-        value: deps.fmtMs(status.input.latencyMs),
+        value: fmtMs(status.input.latencyMs),
     };
     const items = [
         ...(hasSessionStats ? [inputItem] : []),
         ...(hasOutputStats ? [outputItem] : []),
         ...(hasSessionStats ? [latencyItem] : []),
     ];
-    return items.length > 0 ? deps.renderCompactMetaRow(items, 'input-meta-row-sm') : '';
+    return items.length > 0 ? renderCompactMetaRow(items, 'input-meta-row-sm') : '';
 }
 
-export function renderBondedLegs(input: SrtBondingStatus['input'], deps: BondingViewDeps): string {
+export function renderBondedLegs(input: SrtBondingStatus['input']): string {
     const legs = input.legs;
     if (legs.length === 0) return '';
     const expected = Math.max(input.expectedLegs, legs.length);
@@ -174,17 +153,17 @@ export function renderBondedLegs(input: SrtBondingStatus['input'], deps: Bonding
                        </tr></thead>
                        <tbody>${legs
                            .map((leg) => {
-                               const color = deps.legHealthColor(leg);
-                               const health = deps.legHealthLabel(leg);
+                               const color = legHealthColor(leg);
+                               const health = legHealthLabel(leg);
                                const title = leg.healthReason ?? `Transport state: ${leg.state}`;
-                               const figure = recentFigure(leg.recent, false, deps);
+                               const figure = recentFigure(leg.recent, false);
                                return `<tr>
                                    <td title="${escapeHtml(title)}"><span class="inline-flex items-center gap-1"><span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background:${color}"></span>${health}${leg.state === 'running' ? '' : `<span class="text-muted">(${escapeHtml(leg.state)})</span>`}</span></td>
                                    <td class="font-mono text-xs">${escapeHtml(leg.ip)}</td>
                                    <td class="font-mono text-xs whitespace-nowrap ${figureClass(figure, false)}" title="${escapeHtml(figure.title)}">${figure.text}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap">${deps.fmtMs(leg.rttMs)}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap">${deps.fmtMbpsValue(leg.recvRateMbps)}</td>
-                                   <td class="font-mono text-xs whitespace-nowrap">${deps.fmtMs(leg.rcvBufMs)}</td>
+                                   <td class="font-mono text-xs whitespace-nowrap">${fmtMs(leg.rttMs)}</td>
+                                   <td class="font-mono text-xs whitespace-nowrap">${fmtMbpsValue(leg.recvRateMbps)}</td>
+                                   <td class="font-mono text-xs whitespace-nowrap">${fmtMs(leg.rcvBufMs)}</td>
                                </tr>`;
                            })
                            .join('')}</tbody>

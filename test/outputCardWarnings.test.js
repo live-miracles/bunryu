@@ -22,7 +22,7 @@ const output = (over) => ({
     ...over,
 });
 const rtmpInput = { connected: true, live: true, isSrt: false, audioTracks: [] };
-const deps = { pendingOutputs: new Set(), formatUptime: () => '' };
+const deps = { pendingOutputs: new Set() };
 const render = (over, input = rtmpInput) => renderOutputCard(output(over), input, new Map(), deps);
 
 describe('RTMP input with Track 1 audio on an RTMP output', () => {

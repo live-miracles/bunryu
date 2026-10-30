@@ -21,7 +21,7 @@ const output = (url) => ({
     url,
 });
 const input = { connected: false, isSrt: false, audioTracks: [] };
-const deps = { pendingOutputs: new Set(), formatUptime: () => '' };
+const deps = { pendingOutputs: new Set() };
 const render = (url) => renderOutputCard(output(url), input, new Map(), deps);
 
 describe('output card escaping', () => {

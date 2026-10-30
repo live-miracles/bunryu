@@ -116,15 +116,15 @@ describe('renderInputStats', () => {
         mediaError: null,
         mediaCheckedAt: Date.now() - 125_000,
         publisherIp: '198.51.100.7',
+        recvBitrateKbps: 5200,
         video,
         audio: null,
         audioTracks: [track({})],
         ...over,
     });
-    const deps = (kbps) => ({ displayInputBitrateKbps: () => kbps });
 
     test('shows source, video and audio as labelled lines with the probe time', () => {
-        const html = renderInputStats(input({}), deps(5200));
+        const html = renderInputStats(input({}), {});
         assert.match(html, /Source/);
         assert.match(html, /198\.51\.100\.7 · <span class="">5\.2 Mbps<\/span>/);
         assert.match(html, /h264 1920x1080p50 High L4\.2/);
@@ -144,27 +144,29 @@ describe('renderInputStats', () => {
         };
         const ok = renderInputStats(
             input({ keyframes: { ...keyframes, meanGapSec: 2, maxGapSec: 2 } }),
-            deps(5200),
+            {},
         );
         assert.match(ok, /Keyframes/);
         assert.match(ok, /every 2\.0 s/);
         assert.ok(!/text-warning[^>]*>every/.test(ok));
         const bad = renderInputStats(
             input({ keyframes, alerts: [{ code: 'input-keyframe-interval' }] }),
-            deps(5200),
+            {},
         );
         assert.match(bad, /text-warning[^>]*>every 6\.0 s/);
-        assert.ok(!/Keyframes/.test(renderInputStats(input({ keyframes: null }), deps(5200))));
+        assert.ok(!/Keyframes/.test(renderInputStats(input({ keyframes: null }), {})));
     });
 
     test('marks a starved input bitrate as a warning', () => {
-        assert.match(renderInputStats(input({}), deps(150)), /class="text-warning"[^>]*>150 kbps/);
-        assert.ok(!/text-warning/.test(renderInputStats(input({}), deps(900))));
+        assert.match(
+            renderInputStats(input({ recvBitrateKbps: 150 }), {}),
+            /class="text-warning"[^>]*>150 kbps/,
+        );
+        assert.ok(!/text-warning/.test(renderInputStats(input({ recvBitrateKbps: 900 }), {})));
     });
 
     test('prefers the relay-reported source IP', () => {
-        const html = renderInputStats(input({ publisherIp: '127.0.0.1' }), {
-            ...deps(900),
+        const html = renderInputStats(input({ publisherIp: '127.0.0.1', recvBitrateKbps: 900 }), {
             sourceIp: '203.0.113.9',
         });
         assert.match(html, /203\.0\.113\.9/);
@@ -173,7 +175,6 @@ describe('renderInputStats', () => {
 
     test('tells a direct SRT input that it has no loss stats, naming the relay port', () => {
         const html = renderInputStats(input({}), {
-            ...deps(900),
             directSrt: true,
             relayPort: 10081,
         });
@@ -182,16 +183,16 @@ describe('renderInputStats', () => {
     });
 
     test('shows no direct-SRT hint otherwise', () => {
-        assert.ok(!/straight to SRS/.test(renderInputStats(input({}), deps(900))));
+        assert.ok(!/straight to SRS/.test(renderInputStats(input({ recvBitrateKbps: 900 }), {})));
         assert.ok(
             !/straight to SRS/.test(
-                renderInputStats(input({}), { ...deps(900), directSrt: false, relayPort: 10081 }),
+                renderInputStats(input({}), { directSrt: false, relayPort: 10081 }),
             ),
         );
     });
 
     test('still shows the probe notice instead of stats while ffprobe has not finished', () => {
-        const html = renderInputStats(input({ mediaOk: null }), deps(900));
+        const html = renderInputStats(input({ mediaOk: null }), {});
         assert.match(html, /Waiting for ffprobe/);
         assert.ok(!/Source/.test(html));
     });

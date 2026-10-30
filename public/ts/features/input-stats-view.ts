@@ -7,11 +7,10 @@ import {
     formatBitrate,
     formatLocalTime,
 } from '../core/utils.js';
-import { inputStatusMessage } from '../core/status.js';
+import { displayInputBitrateKbps, inputStatusMessage } from '../core/status.js';
 import type { InputHealth } from '../types.js';
 
-type InputStatsDeps = {
-    displayInputBitrateKbps: (input: InputHealth) => number | null;
+type InputStatsOptions = {
     // Overrides the publisher IP when SRS only sees the relay (loopback).
     sourceIp?: string | null;
     // Plain SRT sent straight to SRS (not through the relay): SRS exposes no
@@ -19,15 +18,6 @@ type InputStatsDeps = {
     directSrt?: boolean;
     relayPort?: number;
 };
-
-export function formatUptime(ms: number | null): string {
-    if (ms === null) return '—';
-    const s = Math.floor(ms / 1000);
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
-}
 
 function formatMediaProbeStatus(input: InputHealth): string | null {
     if (input.mediaCheckedAt) {
@@ -52,7 +42,7 @@ function renderDirectSrtNotice(relayPort: number | undefined): string {
     return `<p class="text-xs text-muted mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the SRT relay input${port} to get them.</p>`;
 }
 
-export function renderInputStats(input: InputHealth, deps: InputStatsDeps): string {
+export function renderInputStats(input: InputHealth, options: InputStatsOptions): string {
     if (!input.connected) return '';
     // mediaError takes priority over `!live` below: for RTMP inputs, SRS keeps
     // reporting its own (stale) demuxed video/audio metadata even while our
@@ -66,9 +56,9 @@ export function renderInputStats(input: InputHealth, deps: InputStatsDeps): stri
 
     const v = videoSpec(input.video);
     const audioLines = audioSpecLines(input.audioTracks, input.audio);
-    const bitrateKbps = deps.displayInputBitrateKbps(input);
+    const bitrateKbps = displayInputBitrateKbps(input);
     const lowBitrate = bitrateKbps !== null && bitrateKbps < LOW_BITRATE_KBPS;
-    const ip = deps.sourceIp ?? input.publisherIp;
+    const ip = options.sourceIp ?? input.publisherIp;
     const source = [
         ip ? escapeHtml(ip) : null,
         `<span class="${lowBitrate ? 'text-warning' : ''}"${lowBitrate ? ` title="Below ${LOW_BITRATE_KBPS} kbps"` : ''}>${formatBitrate(bitrateKbps)}</span>`,
@@ -94,7 +84,7 @@ export function renderInputStats(input: InputHealth, deps: InputStatsDeps): stri
             ${keyframes ? row('Keyframes', `<span class="${keyframesTooLong ? 'text-warning' : ''}" title="Measured over ${keyframes.windowSec} s of video about a minute after the publisher connected. Platforms need a keyframe at least every 4 s; 2 s is recommended.">${escapeHtml(keyframeSpec(keyframes))}</span>`) : ''}
         </div>
         ${v ? '' : renderMediaProbeNotice(input)}
-        ${deps.directSrt ? renderDirectSrtNotice(deps.relayPort) : ''}
+        ${options.directSrt ? renderDirectSrtNotice(options.relayPort) : ''}
     `;
 }
 

@@ -283,9 +283,6 @@ describe('Shared encodes card', () => {
                   ? side('off')
                   : side('good'),
         inputHealth: () => side('good'),
-        statusColor: (status) =>
-            ({ good: '#22c55e', warn: '#facc15', error: '#ef4444', off: '#6b7280' })[status],
-        formatUptime: () => '1m 5s',
         restartLocked: () => false,
         ...overrides,
     });
