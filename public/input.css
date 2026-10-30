@@ -43,12 +43,29 @@
     --radius-control: 8px;
 }
 
+:root {
+    --art-filter: invert(1) hue-rotate(180deg) sepia(0.25);
+    --art-blend: multiply;
+    --art-opacity: 0.55;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+        --art-filter: none;
+        --art-blend: screen;
+        --art-opacity: 1;
+    }
+}
+
 :root[data-theme='light'] {
     color-scheme: light;
 }
 
 :root[data-theme='dark'] {
     color-scheme: dark;
+    --art-filter: none;
+    --art-blend: screen;
+    --art-opacity: 1;
 }
 
 /* The daisyUI colour names the markup still uses, mapped onto the tokens above. */
@@ -896,23 +913,23 @@
     color: color-mix(in oklab, var(--on-tip) 65%, transparent);
 }
 
-/* Login page only: a stylized wave crest rising from the bottom-left corner, drawn in the
-   accent (the SVG is a mask, so both themes use the same file). */
-.login-crest {
+/* Login page only: the org site's wave nightscape (the hero art) behind the card. By night
+   it blends over the glows; by day it is inverted into pale paper with indigo waves. The
+   filter and blend are not colours, so they cannot be light-dark() pairs: each theme sets
+   them. On phones the waves at its left edge show, as the middle is empty. */
+.login-art {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: min(clamp(200px, 47vh, 420px), 60vw);
+    inset: 0;
+    z-index: -1;
     pointer-events: none;
-    background: color-mix(in srgb, var(--accent) 38%, transparent);
-    mask-image: url('wave-crest.svg'), linear-gradient(to top, #000 70%, transparent 100%);
-    mask-position:
-        left bottom,
-        0 0;
-    mask-size:
-        auto 100%,
-        100% 100%;
-    mask-repeat: no-repeat;
-    mask-composite: intersect;
+    background: url('waves.avif') left bottom / cover no-repeat;
+    mix-blend-mode: var(--art-blend);
+    filter: var(--art-filter);
+    opacity: var(--art-opacity);
+}
+
+@media (min-width: 1024px) {
+    .login-art {
+        background-position: center;
+    }
 }

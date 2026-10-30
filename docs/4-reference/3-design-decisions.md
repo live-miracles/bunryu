@@ -1207,7 +1207,7 @@ no shadows, with Apple's restraint in type, spacing and radii. The Japanese moti
 quietly: glows in the print's blue, coral and cream behind the page and in the bottom corners
 of each panel, seigaiha waves rising from the bottom of the three working columns, an
 asanoha corner on the page, the blue-to-coral gradient on the wordmark and under the navbar,
-and the wave crest on the login page. The dense full-width views (Overview, Settings, server
+and the org site's wave artwork (`waves.avif`, 41 KB) on the login page. The dense full-width views (Overview, Settings, server
 logs) keep the glows and drop the waves, so no pattern runs behind a table. All of it is
 static (no animation cost on a dashboard open for hours) and is background layers or SVG
 masks filled with the accent, so one file serves both themes. Green, amber and red mean
