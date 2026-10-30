@@ -84,9 +84,13 @@ import { srtPassphraseResetBlock } from '../core/pipeline.js';
 import {
     affectedOutputCount,
     countLabel,
+    isOffline,
+    isProblem,
     matchesName,
     noMatchRowHtml,
     searchBoxHtml,
+    tallyStatuses,
+    worstOfTally,
 } from '../core/overview-filter.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderInputStats } from './input-stats-view.js';
@@ -511,10 +515,12 @@ function renderPipelineList(): void {
     }
 
     const renderPipelineRow = (p: PipelineView, groupKey: string): string => {
-        const outGood = p.outs.filter((o) => outStatus(o, p.input) === 'good').length;
-        const outWarn = p.outs.filter((o) => outStatus(o, p.input) === 'warn').length;
-        const outFailed = p.outs.filter((o) => outStatus(o, p.input) === 'error').length;
-        const outOff = p.outs.filter((o) => outStatus(o, p.input) === 'off').length;
+        const {
+            good: outGood,
+            warn: outWarn,
+            error: outFailed,
+            off: outOff,
+        } = tallyStatuses(p.outs.map((o) => outStatus(o, p.input)));
 
         const relay = relayHealth(p, relayProcessRunning, healthNowMs());
         const inColor = relayInputSeverityColor(p, relay, statusColor(inputStatus(p.input)));
@@ -762,31 +768,18 @@ function renderGroupHeader(
     collapsed: boolean,
 ): string {
     let inSt: InputStatus = 'off';
-    let outGood = 0;
-    let outWarn = 0;
-    let outFailed = 0;
-    let outOff = 0;
-    for (const p of members) {
-        inSt = worstStatus(inSt, inputStatus(p.input));
-        for (const o of p.outs) {
-            const st = outStatus(o, p.input);
-            if (st === 'good') outGood++;
-            else if (st === 'warn') outWarn++;
-            else if (st === 'error') outFailed++;
-            else if (st === 'off') outOff++;
-        }
-    }
-    const outSt: OutStatus =
-        outFailed > 0 ? 'error' : outWarn > 0 ? 'warn' : outGood > 0 ? 'good' : 'off';
+    for (const p of members) inSt = worstStatus(inSt, inputStatus(p.input));
+    const outs = tallyStatuses(members.flatMap((p) => p.outs.map((o) => outStatus(o, p.input))));
+    const outSt: OutStatus = worstOfTally(outs);
     const inColor = statusColor(inSt);
     const outColor = statusColor(outSt);
 
     const summary = collapsed
         ? `<div class="rounded-box h-5 w-5 shrink-0" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
-           ${statusBadge(outGood, 'badge-success')}
-           ${statusBadge(outWarn, 'badge-warning')}
-           ${statusBadge(outFailed, 'badge-error')}
-           ${statusBadge(outOff, 'badge-ghost')}`
+           ${statusBadge(outs.good, 'badge-success')}
+           ${statusBadge(outs.warn, 'badge-warning')}
+           ${statusBadge(outs.error, 'badge-error')}
+           ${statusBadge(outs.off, 'badge-ghost')}`
         : '';
 
     return `<li data-group-id="${group.id}">
@@ -836,8 +829,6 @@ function renderOverview(): void {
     const relayProcessRunning = state.health.srtRelay?.status === 'running';
     const activeOnly = state.overviewFilter === 'active';
     const problemsOnly = state.overviewFilter === 'problems';
-    const isProblem = (st: string): boolean => st === 'warn' || st === 'error';
-    const isOffline = (st: string): boolean => st === 'off';
 
     // ── Goryu ───────────────────────────────
     const activeRelayPipelines = state.pipelines.filter(

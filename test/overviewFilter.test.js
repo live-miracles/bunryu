@@ -91,3 +91,45 @@ describe('searchBoxHtml and noMatchRowHtml escape what the user typed', () => {
         assert.ok(html.includes('No outputs match'));
     });
 });
+
+describe('status tally (pipeline row and group header badges)', () => {
+    const {
+        tallyStatuses,
+        worstOfTally,
+        isProblem,
+        isOffline,
+    } = require('../public/ts/core/overview-filter');
+
+    test('counts each status on its own', () => {
+        assert.deepEqual(tallyStatuses(['good', 'good', 'warn', 'error', 'off', 'off']), {
+            good: 2,
+            warn: 1,
+            error: 1,
+            off: 2,
+        });
+        assert.deepEqual(tallyStatuses([]), { good: 0, warn: 0, error: 0, off: 0 });
+    });
+
+    test('the worst status wins: error, then warning, then good, then off', () => {
+        assert.equal(worstOfTally(tallyStatuses(['good', 'warn', 'error'])), 'error');
+        assert.equal(worstOfTally(tallyStatuses(['good', 'warn', 'off'])), 'warn');
+        assert.equal(worstOfTally(tallyStatuses(['good', 'off'])), 'good');
+        assert.equal(worstOfTally(tallyStatuses(['off', 'off'])), 'off');
+        assert.equal(worstOfTally(tallyStatuses([])), 'off');
+    });
+
+    test('only a warning or an error is a problem, only off is offline', () => {
+        assert.deepEqual(['good', 'warn', 'error', 'off'].map(isProblem), [
+            false,
+            true,
+            true,
+            false,
+        ]);
+        assert.deepEqual(['good', 'warn', 'error', 'off'].map(isOffline), [
+            false,
+            false,
+            false,
+            true,
+        ]);
+    });
+});

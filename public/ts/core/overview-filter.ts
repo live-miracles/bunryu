@@ -5,7 +5,23 @@ import { escapeHtml } from './utils.js';
 
 type RowStatus = 'good' | 'warn' | 'error' | 'off';
 
-const isProblem = (status: RowStatus): boolean => status === 'warn' || status === 'error';
+export const isProblem = (status: RowStatus): boolean => status === 'warn' || status === 'error';
+export const isOffline = (status: RowStatus): boolean => status === 'off';
+
+// How many of a pipeline's (or a group's) outputs are in each status, and the one
+// status that stands for them all: an error beats a warning beats a healthy output,
+// and no healthy output at all reads as off.
+export type StatusTally = Record<RowStatus, number>;
+
+export function tallyStatuses(statuses: RowStatus[]): StatusTally {
+    const tally: StatusTally = { good: 0, warn: 0, error: 0, off: 0 };
+    for (const status of statuses) tally[status] += 1;
+    return tally;
+}
+
+export function worstOfTally(tally: StatusTally): RowStatus {
+    return tally.error > 0 ? 'error' : tally.warn > 0 ? 'warn' : tally.good > 0 ? 'good' : 'off';
+}
 
 // Plain case-insensitive text match on any of the names; an empty query matches all.
 export function matchesName(query: string, ...names: string[]): boolean {
