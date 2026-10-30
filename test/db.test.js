@@ -980,7 +980,7 @@ describe('schema version stamp', () => {
     const os = require('node:os');
     const path = require('node:path');
     const Database = require('better-sqlite3');
-    const { SCHEMA_VERSION, DatabaseSchemaError } = require('../src/db/schema');
+    const { SCHEMA_VERSION, DatabaseSchemaError, checkSchemaVersion } = require('../src/db/schema');
 
     function withDbFile(fn) {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-db-version-'));
@@ -1031,6 +1031,23 @@ describe('schema version stamp', () => {
             new Database(file).close();
             createDb(file);
             assert.equal(userVersion(file), SCHEMA_VERSION);
+        });
+    });
+
+    test('checkSchemaVersion reads a database without changing it, even opened read-only', () => {
+        withDbFile((file) => {
+            createDb(file);
+            const ok = new Database(file, { readonly: true });
+            assert.doesNotThrow(() => checkSchemaVersion(ok));
+            ok.close();
+
+            const raw = new Database(file);
+            raw.pragma(`user_version = ${SCHEMA_VERSION + 1}`);
+            raw.close();
+            const old = new Database(file, { readonly: true });
+            assert.throws(() => checkSchemaVersion(old), DatabaseSchemaError);
+            old.close();
+            assert.equal(userVersion(file), SCHEMA_VERSION + 1);
         });
     });
 

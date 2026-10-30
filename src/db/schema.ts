@@ -8,7 +8,9 @@ export const SCHEMA_VERSION = 4;
 
 export class DatabaseSchemaError extends Error {}
 
-export function setupDatabaseSchema(db: Database.Database): void {
+// Throws DatabaseSchemaError unless the database is empty or stamped with this build's
+// version. Read-only, so `npm run dev` can run it on a database before deciding to wipe it.
+export function checkSchemaVersion(db: Database.Database): void {
     const found = db.pragma('user_version', { simple: true }) as number;
     const hasTables = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table'").get();
     if (found !== SCHEMA_VERSION && (found !== 0 || hasTables)) {
@@ -17,6 +19,10 @@ export function setupDatabaseSchema(db: Database.Database): void {
                 'There are no migrations: stop the service, move db.sqlite aside (the installer keeps a backup when it wipes) and start again to create a fresh database.',
         );
     }
+}
+
+export function setupDatabaseSchema(db: Database.Database): void {
+    checkSchemaVersion(db);
     db.pragma('foreign_keys = ON');
 
     // One transaction with the stamp, so a start interrupted halfway cannot leave tables

@@ -7,7 +7,7 @@
     "type": "commonjs",
     "scripts": {
         "start": "node dist/index.js",
-        "dev": "concurrently -n server,frontend,css -c cyan,yellow,magenta \"npx tsx watch src/index.ts\" \"npx tsc -p tsconfig.json --watch\" \"npx tailwindcss -i public/input.css -o public/output.css --watch\"",
+        "dev": "tsx scripts/dev-db-check.mjs && concurrently -n server,frontend,css -c cyan,yellow,magenta \"npx tsx watch src/index.ts\" \"npx tsc -p tsconfig.json --watch\" \"npx tailwindcss -i public/input.css -o public/output.css --watch\"",
         "srs": "mkdir -p objs && ./objs/srs -c srs.conf",
         "srs:stop": "sh -c 'if [ -f objs/srs.pid ]; then pid=$(cat objs/srs.pid); if kill -0 \"$pid\" 2>/dev/null; then kill \"$pid\" && echo \"Stopped SRS (PID $pid)\"; else echo \"Removing stale SRS pid file (PID $pid)\"; fi; rm -f objs/srs.pid; else echo \"No SRS pid file found\"; fi'",
         "goryu": "bash scripts/goryu-start.sh",

@@ -44,6 +44,11 @@ never use that file). The app has no built-in default: if you empty or delete th
 line it refuses to start on a fresh database, unless `BUNRYU_DASHBOARD_PASSWORD` is
 set. Later starts use the hash stored in the database.
 
+There are no migrations. When a change bumps the schema version, `npm run dev` finds
+the old `db.sqlite` before it starts the watchers and asks whether to wipe it. Answer
+`y` and the file is deleted and the app creates a fresh database; anything else leaves
+it untouched and does not start. Without a terminal it only prints the error and stops.
+
 ## Tests
 
 ```bash
