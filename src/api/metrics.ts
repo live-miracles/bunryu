@@ -1,9 +1,15 @@
 import os from 'os';
 import fs from 'fs';
-import { execFile } from 'child_process';
+import path from 'path';
 import type { Express } from 'express';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
-import { readProcRssBytes, createProcCpuTracker, readHostMemory } from '../utils/procStats.js';
+import { readAppConfig } from '../utils/appConfig.js';
+import {
+    readProcRssBytes,
+    createProcCpuTracker,
+    readHostMemory,
+    readDiskUsage,
+} from '../utils/procStats.js';
 import type { SrtRelayService } from '../services/srtRelay.js';
 
 const DISK_STATS_INTERVAL_MS = 30_000;
@@ -41,15 +47,31 @@ interface DiskStats {
 
 let diskStats: DiskStats | null = null;
 
+// The same filesystems the host disk alert watches (the data directory's and the
+// root), so the figure on the dashboard and the alert cannot disagree: the fuller of
+// the two, by the free space the alert measures.
 function updateDiskStats(): void {
-    execFile('df', ['-B1', '/'], (_err, stdout) => {
-        if (_err) return;
-        const parts = stdout.trim().split('\n')[1]?.trim().split(/\s+/);
-        if (!parts || parts.length < 3) return;
-        const total = parseInt(parts[1], 10);
-        const used = parseInt(parts[2], 10);
-        if (!isNaN(total) && !isNaN(used)) diskStats = { totalBytes: total, usedBytes: used };
-    });
+    const dirs = ['/'];
+    try {
+        dirs.unshift(path.dirname(readAppConfig().databasePath));
+    } catch {
+        /* no readable config: the root filesystem alone */
+    }
+    let fullest: { totalBytes: number; availableBytes: number } | null = null;
+    for (const dir of dirs) {
+        const disk = readDiskUsage(dir);
+        if (!disk) continue;
+        if (
+            !fullest ||
+            disk.availableBytes / disk.totalBytes < fullest.availableBytes / fullest.totalBytes
+        ) {
+            fullest = disk;
+        }
+    }
+    diskStats = fullest && {
+        totalBytes: fullest.totalBytes,
+        usedBytes: fullest.totalBytes - fullest.availableBytes,
+    };
 }
 
 interface NetStats {

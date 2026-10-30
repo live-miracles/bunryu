@@ -5,7 +5,6 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const { Readable, Writable } = require('node:stream');
 const fs = require('node:fs');
-const childProcess = require('node:child_process');
 
 class MockRequest extends Readable {
     constructor(method, url) {
@@ -80,18 +79,19 @@ function makeFakeSrtRelayService(pid) {
 // metrics.ts keeps disk/net/cpu/history state at module scope and only starts
 // its sampling intervals once ever (metricsStarted guard) — every test needs
 // a fully fresh require.
-function loadHarness(t, { dfOutput, dfError, fetchImpl, relayPid, procStatusByPid = {} } = {}) {
+function loadHarness(t, { disks, fetchImpl, relayPid, procStatusByPid = {} } = {}) {
     delete require.cache[require.resolve('../../src/api/metrics')];
     delete require.cache[require.resolve('../../src/utils/procStats')];
 
-    t.mock.method(childProcess, 'execFile', (cmd, args, ...rest) => {
-        const cb = rest[rest.length - 1];
-        if (cmd === 'df') {
-            queueMicrotask(() => cb(dfError ?? null, dfOutput ?? '', ''));
-            return;
-        }
-        queueMicrotask(() => cb(null, '', ''));
+    // The data directory's filesystem is whichever directory is not '/'. A filesystem
+    // left out of `disks` is unreadable.
+    const diskOf = (dir) => (dir === '/' ? disks?.root : disks?.data);
+    t.mock.method(fs, 'statfsSync', (dir) => {
+        const disk = diskOf(dir);
+        if (!disk) throw new Error('ENOENT');
+        return { bsize: 1, blocks: disk.total, bavail: disk.available };
     });
+    t.mock.method(fs, 'statSync', (dir) => ({ dev: dir === '/' ? 1 : 2 }));
 
     const originalReadFileSync = fs.readFileSync;
     t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
@@ -174,27 +174,31 @@ describe('Metrics API integration', () => {
         assert.deepEqual(beforeCursor.body, initial.body);
     });
 
-    test('disk stats parse valid `df -B1 /` output into totalBytes/usedBytes', async (t) => {
+    test('disk is the used share of the fuller of the data directory and the root filesystem', async (t) => {
         const { system } = loadHarness(t, {
-            dfOutput:
-                'Filesystem 1B-blocks Used Available Use% Mounted\n/dev/sda1 100000000000 42000000000 58000000000 42% /\n',
+            disks: {
+                root: { total: 100_000, available: 58_000 },
+                data: { total: 50_000, available: 5_000 },
+            },
         });
         await sleep(20);
 
         const res = await system();
-        assert.deepEqual(res.body.disk, { totalBytes: 100000000000, usedBytes: 42000000000 });
+        assert.deepEqual(res.body.disk, { totalBytes: 50_000, usedBytes: 45_000 });
     });
 
-    test('df failing (nonzero exit) leaves disk stats null instead of crashing', async (t) => {
-        const { system } = loadHarness(t, { dfError: new Error('df: command not found') });
+    test('an unreadable data directory falls back to the root filesystem', async (t) => {
+        const { system } = loadHarness(t, {
+            disks: { root: { total: 100_000, available: 58_000 } },
+        });
         await sleep(20);
 
         const res = await system();
-        assert.equal(res.body.disk, null);
+        assert.deepEqual(res.body.disk, { totalBytes: 100_000, usedBytes: 42_000 });
     });
 
-    test('malformed df output (missing columns) leaves disk stats null', async (t) => {
-        const { system } = loadHarness(t, { dfOutput: 'Filesystem\n/dev/sda1\n' });
+    test('no readable filesystem leaves disk stats null instead of crashing', async (t) => {
+        const { system } = loadHarness(t, {});
         await sleep(20);
 
         const res = await system();

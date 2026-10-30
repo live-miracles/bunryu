@@ -173,6 +173,7 @@ diagnostics are the record that survives a restart).
 - **Disk** checks the filesystem holding the database (which also holds the
   diagnostics and HLS previews) and the root filesystem (journald, SRS logs), once
   each when they are the same one. The event carries the path, so it says which filled.
+  The navbar's Disk figure is the fuller of the same two filesystems.
 
 The open alerts are listed in `/api/health` as `hostAlerts`, and the dashboard beeps
 once when the memory or disk alert opens (not CPU, whose thresholds are not yet proven
