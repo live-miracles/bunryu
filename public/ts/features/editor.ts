@@ -22,7 +22,17 @@ import type {
     ServerLogTail,
     SrsLogEvent,
 } from '../types.js';
-import { buildSrtOutputUrl, isSrtHostRequired, type SrtOutputSettings } from '../core/srt.js';
+import { parseSrtUrl, srtUrlFromForm } from '../core/srt.js';
+import {
+    SERVERS,
+    CUSTOM_RTMP_IDX,
+    CUSTOM_SRT_IDX,
+    buildDestinationUrl,
+    detectServer,
+    isDestinationUrl,
+    isRestreamIdx,
+    sanitizedDestinationFor,
+} from '../core/destination.js';
 export { showSrtBondingDetails } from './srt-bonding-details.js';
 
 // Upper bound on selectable audio tracks. Outputs are often configured before
@@ -407,167 +417,14 @@ export async function confirmDeletePipeline(id: string, btn?: HTMLButtonElement)
 
 // ── Output modal ──────────────────────────────────────
 
-const SERVERS = [
-    { label: 'Custom RTMP', prefix: '', keyLabel: 'RTMP URL', placeholder: 'rtmp://...' },
-    {
-        label: 'Custom SRT',
-        prefix: '',
-        keyLabel: 'SRT Settings',
-        placeholder: '',
-    },
-    {
-        label: 'YT RTMP',
-        prefix: 'rtmp://a.rtmp.youtube.com/live2/',
-        keyLabel: 'Stream Key',
-        placeholder: 'xxxx-xxxx-xxxx-xxxx',
-    },
-    {
-        label: 'YT RTMP (Backup)',
-        prefix: 'rtmp://b.rtmp.youtube.com/live2?backup=1/',
-        keyLabel: 'Stream Key',
-        placeholder: 'xxxx-xxxx-xxxx-xxxx',
-    },
-    {
-        label: 'Facebook RTMP',
-        prefix: 'rtmps://live-api-s.facebook.com:443/rtmp/',
-        keyLabel: 'Stream Key',
-        placeholder: 'xxxx-xxxx-xxxx-xxxx',
-    },
-    {
-        label: 'Instagram RTMPS',
-        prefix: '',
-        keyLabel: 'Stream Key',
-        placeholder: '1234567890?s_bl=1&s_prp=xxx-1&...',
-    },
-    { label: 'Restream RTMP', prefix: '', keyLabel: 'Pipeline', placeholder: '' },
-    { label: 'Restream SRT', prefix: '', keyLabel: 'Pipeline', placeholder: '' },
-] as const;
-
-const CUSTOM_RTMP_IDX = 0;
-const CUSTOM_SRT_IDX = 1;
-const INSTAGRAM_RTMP_IDX = 5;
-const RESTREAM_RTMP_IDX = 6;
-const RESTREAM_SRT_IDX = 7;
-
-function isRestreamIdx(idx: number): boolean {
-    return idx === RESTREAM_RTMP_IDX || idx === RESTREAM_SRT_IDX;
+function restreamTargets() {
+    return state.config.pipelines ?? [];
 }
 
 function serverOptionsHtml(selectedIdx: number): string {
     return SERVERS.map(
         (s, i) => `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${s.label}</option>`,
     ).join('');
-}
-
-function buildInstagramUrl(key: string): string {
-    const m = key.match(/[?&]s_prp=([^&]+)/);
-    const sPrp = m ? m[1] : '';
-    return `rtmps://edgetee-upload-${sPrp}.xx.fbcdn.net:443/rtmp/${key}`;
-}
-
-function detectInstagramKey(url: string): string | null {
-    const m = url.match(/^rtmps:\/\/edgetee-upload-[^.]+\.xx\.fbcdn\.net:443\/rtmp\/(.+)$/);
-    return m ? m[1] : null;
-}
-
-function detectServer(url: string): { idx: number; key: string } {
-    for (const p of state.config.pipelines ?? []) {
-        if (url === p.rtmpPublishUrlLocal) return { idx: RESTREAM_RTMP_IDX, key: String(p.id) };
-        if (url === p.srtPublishUrlLocal) return { idx: RESTREAM_SRT_IDX, key: String(p.id) };
-    }
-    const instagramKey = detectInstagramKey(url);
-    if (instagramKey !== null) return { idx: INSTAGRAM_RTMP_IDX, key: instagramKey };
-    for (let i = 0; i < SERVERS.length; i++) {
-        const { prefix } = SERVERS[i];
-        if (prefix && url.startsWith(prefix)) return { idx: i, key: url.slice(prefix.length) };
-    }
-    return { idx: url.startsWith('srt://') ? CUSTOM_SRT_IDX : CUSTOM_RTMP_IDX, key: url };
-}
-
-function isDestinationUrl(text: string): boolean {
-    return /^(rtmps?|srt):\/\//i.test(text);
-}
-
-// Drops the trailing path segment (the stream key) from a custom RTMP URL,
-// keeping only the server/app portion so it can be prefilled without leaking
-// the previous output's key. Leaves the URL untouched if it has no path
-// segment to strip (e.g. bare "rtmp://host").
-function stripRtmpStreamKey(url: string): string {
-    const m = url.match(/^([a-z]+:\/\/)(.*)$/i);
-    if (!m) return url;
-    const [, scheme, rest] = m;
-    const slashIdx = rest.lastIndexOf('/');
-    if (slashIdx === -1) return url;
-    return scheme + rest.slice(0, slashIdx + 1);
-}
-
-// Removes the streamid param from a custom SRT URL while preserving every
-// other setting (host, port, mode, latency, passphrase, keylen).
-function stripSrtStreamId(url: string): string {
-    const queryIdx = url.indexOf('?');
-    if (queryIdx === -1) return url;
-    const base = url.slice(0, queryIdx);
-    const params = url
-        .slice(queryIdx + 1)
-        .split('&')
-        .filter((part) => part.split('=', 1)[0] !== 'streamid');
-    return params.length > 0 ? `${base}?${params.join('&')}` : base;
-}
-
-type SrtFormSettings = Omit<SrtOutputSettings, 'port'> & { port: number | null };
-
-const DEFAULT_SRT_SETTINGS: SrtFormSettings = {
-    mode: 'caller',
-    host: '',
-    port: null,
-    latencyMs: null,
-    passphrase: '',
-    pbKeyLen: null,
-    streamId: '',
-};
-
-function decodeSrtParam(value: string): string {
-    try {
-        return decodeURIComponent(value.replace(/\+/g, '%20'));
-    } catch {
-        return value;
-    }
-}
-
-function parseSrtParams(query: string): Map<string, string> {
-    const params = new Map<string, string>();
-    for (const part of query.split('&')) {
-        if (!part) continue;
-        const eqIdx = part.indexOf('=');
-        const rawKey = eqIdx === -1 ? part : part.slice(0, eqIdx);
-        const rawValue = eqIdx === -1 ? '' : part.slice(eqIdx + 1);
-        params.set(decodeSrtParam(rawKey), decodeSrtParam(rawValue));
-    }
-    return params;
-}
-
-function parseSrtUrl(url: string): SrtFormSettings {
-    if (!url.startsWith('srt://')) return { ...DEFAULT_SRT_SETTINGS };
-    try {
-        const queryIdx = url.indexOf('?');
-        const parsed = new URL(queryIdx === -1 ? url : url.slice(0, queryIdx));
-        const params =
-            queryIdx === -1 ? new Map<string, string>() : parseSrtParams(url.slice(queryIdx + 1));
-        const latency = Number(params.get('latency') ?? '');
-        const port = Number(parsed.port || '');
-        const pbKeyLen = Number(params.get('pbkeylen') ?? '');
-        return {
-            mode: params.get('mode') === 'listener' ? 'listener' : 'caller',
-            host: parsed.hostname,
-            port: Number.isInteger(port) && port > 0 ? port : null,
-            latencyMs: Number.isInteger(latency) && latency > 0 ? Math.round(latency / 1000) : null,
-            passphrase: params.get('passphrase') ?? '',
-            pbKeyLen: pbKeyLen === 16 || pbKeyLen === 24 || pbKeyLen === 32 ? pbKeyLen : null,
-            streamId: params.get('streamid') ?? '',
-        };
-    } catch {
-        return { ...DEFAULT_SRT_SETTINGS };
-    }
 }
 
 export function syncSrtHostVisibility(): void {
@@ -755,20 +612,9 @@ function populateDestination(
     destination: { url: string; audioEncoding: string } | null,
 ): void {
     const { idx, key } = destination?.url
-        ? detectServer(destination.url)
+        ? detectServer(destination.url, restreamTargets())
         : { idx: CUSTOM_RTMP_IDX, key: '' };
     populateDestinationDetected(tracks, idx, key, destination?.audioEncoding ?? 'copy');
-}
-
-// Sanitizes a previous output's server/key for prefill so the unique-per-stream
-// identifier isn't silently reused: RTMP stream keys, SRT stream IDs, and the
-// selected Restream target pipeline are all dropped (blank), while the
-// server/connection settings around them are kept.
-function sanitizedDestinationFor(previousUrl: string): { idx: number; key: string } {
-    const { idx, key } = detectServer(previousUrl);
-    if (idx === CUSTOM_SRT_IDX) return { idx, key: stripSrtStreamId(key) };
-    if (idx === CUSTOM_RTMP_IDX) return { idx, key: stripRtmpStreamKey(key) };
-    return { idx, key: '' };
 }
 
 export function onOutServerChange(select: HTMLSelectElement): void {
@@ -787,7 +633,7 @@ export function onOutServerChange(select: HTMLSelectElement): void {
 export function onSinkKeyPaste(event: ClipboardEvent): void {
     const text = event.clipboardData?.getData('text').trim();
     if (!text || !isDestinationUrl(text)) return;
-    const { idx, key } = detectServer(text);
+    const { idx, key } = detectServer(text, restreamTargets());
     if (idx === CUSTOM_RTMP_IDX && key === text) return;
     event.preventDefault();
     const container = document.getElementById('out-sinks-container');
@@ -841,7 +687,7 @@ export function openAddOutput(pipelineId: string): void {
     (document.getElementById('out-video-encoding-input') as HTMLSelectElement).innerHTML =
         outVideoEncodingOptions(previous?.videoEncoding ?? 'copy');
     if (previous) {
-        const { idx, key } = sanitizedDestinationFor(previous.url);
+        const { idx, key } = sanitizedDestinationFor(previous.url, restreamTargets());
         populateDestinationDetected(pipelineTracks(pipelineId), idx, key, previous.audioEncoding);
     } else {
         populateDestinationDetected(pipelineTracks(pipelineId), CUSTOM_RTMP_IDX, '', 'copy');
@@ -887,66 +733,34 @@ export function openEditOutput(pipelineId: string, outId: string): void {
     modal.showModal();
 }
 
-function isValidSinkUrl(serverIdx: number, url: string): boolean {
-    if (serverIdx === CUSTOM_RTMP_IDX)
-        return url.startsWith('rtmp://') || url.startsWith('rtmps://');
-    if (serverIdx === CUSTOM_SRT_IDX) return url.startsWith('srt://');
-    return true;
-}
-
 function readSrtSettings(row: Element): { url: string } | { error: true } {
-    const hostEl = row.querySelector('.js-srt-host') as HTMLInputElement | null;
-    const portEl = row.querySelector('.js-srt-port') as HTMLInputElement | null;
-    const latencyEl = row.querySelector('.js-srt-latency') as HTMLInputElement | null;
-    const passphraseEl = row.querySelector('.js-srt-passphrase') as HTMLInputElement | null;
-    const modeEl = row.querySelector('.js-srt-mode') as HTMLSelectElement | null;
-    const keyLenEl = row.querySelector('.js-srt-keylen') as HTMLSelectElement | null;
-    const streamIdEl = row.querySelector('.js-srt-streamid') as HTMLInputElement | null;
-    if (!hostEl || !portEl || !latencyEl || !passphraseEl || !modeEl || !keyLenEl || !streamIdEl) {
-        return { error: true };
-    }
-
-    const mode = modeEl.value === 'listener' ? 'listener' : 'caller';
-    const host = hostEl.value.trim();
-    const port = Number(portEl.value.trim());
-    const latencyRaw = latencyEl.value.trim();
-    const latencyMs = latencyRaw ? Number(latencyRaw) : null;
-    const passphrase = passphraseEl.value.trim();
-    const pbKeyLen = keyLenEl.value ? (Number(keyLenEl.value) as 16 | 24 | 32) : null;
-    const streamId = streamIdEl.value.trim();
-
-    const portValid = Number.isInteger(port) && port >= 1 && port <= 65535;
-    const latencyValid = latencyMs === null || (Number.isInteger(latencyMs) && latencyMs > 0);
-    const passphraseValid = !passphrase || (passphrase.length >= 10 && passphrase.length <= 79);
-    const keyLenValid = !passphrase || pbKeyLen !== null;
-
-    hostEl.classList.toggle('input-error', isSrtHostRequired(mode) && !host);
-    portEl.classList.toggle('input-error', !portValid);
-    latencyEl.classList.toggle('input-error', !latencyValid);
-    passphraseEl.classList.toggle('input-error', !passphraseValid);
-    keyLenEl.classList.toggle('input-error', !keyLenValid);
-
-    if (
-        (isSrtHostRequired(mode) && !host) ||
-        !portValid ||
-        !latencyValid ||
-        !passphraseValid ||
-        !keyLenValid
-    ) {
-        return { error: true };
-    }
-
-    return {
-        url: buildSrtOutputUrl({
-            mode,
-            host,
-            port,
-            latencyMs,
-            passphrase,
-            pbKeyLen,
-            streamId,
-        }),
+    const field = (cls: string) =>
+        row.querySelector(cls) as HTMLInputElement | HTMLSelectElement | null;
+    const els = {
+        host: field('.js-srt-host'),
+        port: field('.js-srt-port'),
+        latency: field('.js-srt-latency'),
+        passphrase: field('.js-srt-passphrase'),
+        mode: field('.js-srt-mode'),
+        keyLen: field('.js-srt-keylen'),
+        streamId: field('.js-srt-streamid'),
     };
+    if (Object.values(els).some((el) => !el)) return { error: true };
+
+    const result = srtUrlFromForm({
+        mode: els.mode!.value,
+        host: els.host!.value,
+        port: els.port!.value,
+        latency: els.latency!.value,
+        passphrase: els.passphrase!.value,
+        keyLen: els.keyLen!.value,
+        streamId: els.streamId!.value,
+    });
+    const invalid = 'invalid' in result ? result.invalid : [];
+    for (const name of ['host', 'port', 'latency', 'passphrase', 'keyLen'] as const) {
+        els[name]!.classList.toggle('input-error', invalid.includes(name));
+    }
+    return 'url' in result ? { url: result.url } : { error: true };
 }
 
 export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
@@ -999,34 +813,16 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
             } else {
                 url = srt.url;
             }
-        } else if (isRestreamIdx(serverIdx)) {
-            const pipeline = (state.config.pipelines ?? []).find((p) => String(p.id) === key);
-            keyEl?.classList.toggle('select-error', !pipeline);
-            if (!pipeline) {
-                destinationValid = false;
-            } else {
-                url =
-                    serverIdx === RESTREAM_RTMP_IDX
-                        ? pipeline.rtmpPublishUrlLocal
-                        : pipeline.srtPublishUrlLocal;
-            }
-        } else if (serverIdx === INSTAGRAM_RTMP_IDX) {
-            if (keyEl instanceof HTMLInputElement) keyEl.classList.toggle('input-error', !key);
-            if (!key) {
-                destinationValid = false;
-            } else {
-                url = buildInstagramUrl(key);
-            }
         } else {
-            if (keyEl instanceof HTMLInputElement) keyEl.classList.toggle('input-error', !key);
-            if (!key) {
+            const built = buildDestinationUrl(serverIdx, key, restreamTargets());
+            keyEl?.classList.toggle(
+                isRestreamIdx(serverIdx) ? 'select-error' : 'input-error',
+                'error' in built,
+            );
+            if ('error' in built) {
                 destinationValid = false;
             } else {
-                url = SERVERS[serverIdx].prefix + key;
-                if (!isValidSinkUrl(serverIdx, url)) {
-                    if (keyEl instanceof HTMLInputElement) keyEl.classList.add('input-error');
-                    destinationValid = false;
-                }
+                url = built.url;
             }
         }
     }

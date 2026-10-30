@@ -250,6 +250,8 @@ only for a new module.
   `features/shared-encodes.ts` renders the Shared encodes card.
   `core/publish-modes.ts` has the Publish card's modes (which one the live input is on) and
   its rows, with the secrets masked.
+  `core/destination.ts` and `core/srt.ts` are the output form's rules between its fields and the
+  stored destination URL, both ways (server presets, the SRT fields), without the DOM.
   `core/media-spec.ts` formats the one-line video/audio descriptions the Overview
   and the pipeline panel's input stats share.
   `core/audio-meter.ts` has the preview meter's level maths (peak dBFS, release
