@@ -29,7 +29,7 @@ if (!process.stdin.isTTY) process.exit(1);
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const answer = await rl.question('[dev] Wipe it and start with a fresh database? [y/N] ');
 rl.close();
-if (!/^y(es)?$/i.test(answer.trim())) {
+if (!/^y$/i.test(answer.trim())) {
     console.error('[dev] Left the database as it is; not starting.');
     process.exit(1);
 }
