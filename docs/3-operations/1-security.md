@@ -72,8 +72,8 @@ they're hardened at the SRS/relay layer instead:
   before a connection is accepted at all. It can be replaced from Settings; see
   [SRS and SRT relay config](../1-getting-started/3-install.md#srs-and-srt-relay-config).
 - Every publish attempt (RTMP or SRT) is checked against a per-pipeline
-  stream key via SRS's `on_publish` hook; unknown keys are rejected before
-  any restream starts.
+  stream key via SRS's `on_publish` hook; unknown keys, and any app other than
+  `live`, are rejected before any restream starts.
 - `on_play` rejects any playback request not from loopback, so the public
   ports are ingest-only — nothing can pull a stream back out through SRS
   directly.

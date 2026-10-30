@@ -186,7 +186,7 @@ copied unchanged, and only the audio is re-encoded to AAC.
   own about 20 s after nobody is watching (see
   [Security](../3-operations/1-security.md)).
 
-Publishes with an unknown stream key are rejected by SRS before any output
-starts. Recent rejected attempts are listed under the pipeline list ("Rejected
+Publishes with an unknown stream key, or to any app other than `live`, are
+rejected by SRS before any output starts. Recent rejected attempts are listed under the pipeline list ("Rejected
 publish attempts"), which helps when an encoder is configured with a stale key;
 see [Security](../3-operations/1-security.md) for details.

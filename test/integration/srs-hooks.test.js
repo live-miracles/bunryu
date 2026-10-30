@@ -167,6 +167,18 @@ describe('SRS publish hook integration', () => {
         assert.deepEqual(res.body, { code: 0 });
     });
 
+    test('rejects an assigned stream key published to an app other than live', async () => {
+        const harness = createHarness(['key01_good']);
+
+        for (const app of ['Live', 'stream', undefined]) {
+            const res = await harness.publish({ app, stream: 'key01_good', ip: '203.0.113.5' });
+            assert.equal(res.status, 403, String(app));
+        }
+        const [entry] = (await harness.rejected()).body.rejected;
+        assert.equal(entry.label, 'key01');
+        assert.equal(entry.reason, 'assigned');
+    });
+
     test('rejects an unassigned stream key', async () => {
         const harness = createHarness(['key01_good']);
 

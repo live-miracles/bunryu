@@ -219,6 +219,13 @@ export function registerSrsHooks(
             return res.status(403).json({ code: 403 });
         }
 
+        // Pipelines are published, read and probed only under live/<key>. A valid key
+        // on another app would be allowed here and then never show up as the input.
+        if (hookApp !== 'live') {
+            noteRejection(stream, 'assigned', `app ${JSON.stringify(hookApp ?? null)} is not live`);
+            return res.status(403).json({ code: 403 });
+        }
+
         // SRS lets a same-key publish on a different protocol take over the
         // underlying source, but its own stats layer keeps the *original*
         // publisher's tcUrl/cid pinned — a same-key publish is treated as "a
