@@ -12,25 +12,26 @@ import { renderPipelines, renderMetrics } from './render.js';
 import { getUrlParam } from '../core/utils.js';
 import { noteDashboardSnapshot } from './sound-alerts.js';
 
-let refreshInFlight: Promise<void> | null = null;
+let refreshLoop: Promise<void> | null = null;
 let refreshQueued = false;
 
-export async function refreshDashboard(): Promise<void> {
-    if (refreshInFlight) {
+// A call made while a refresh is running queues one more pass and resolves when that
+// pass has rendered, so awaiting it after a change never returns on a fetch that
+// started before the change.
+export function refreshDashboard(): Promise<void> {
+    if (refreshLoop) {
         refreshQueued = true;
-        return refreshInFlight;
+        return refreshLoop;
     }
-
-    do {
-        refreshQueued = false;
-        const lastPromise = fetchAndRender();
-        refreshInFlight = lastPromise;
-        try {
-            await lastPromise;
-        } finally {
-            if (refreshInFlight === lastPromise) refreshInFlight = null;
-        }
-    } while (refreshQueued);
+    refreshLoop = (async () => {
+        do {
+            refreshQueued = false;
+            await fetchAndRender();
+        } while (refreshQueued);
+    })().finally(() => {
+        refreshLoop = null;
+    });
+    return refreshLoop;
 }
 
 let configStale = true;
