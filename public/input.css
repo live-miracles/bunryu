@@ -714,6 +714,15 @@
         color: transparent;
     }
 
+    /* .btn:hover resets the background shorthand, which would drop the text clip and leave
+       transparent text on the hover wash; keep the gradient and draw the wash as a shadow. */
+    .brand-text:hover {
+        background: linear-gradient(100deg, var(--grad-from), var(--grad-to));
+        -webkit-background-clip: text;
+        background-clip: text;
+        box-shadow: inset 0 0 0 100px color-mix(in oklab, var(--ink) 10%, transparent);
+    }
+
     .navbar {
         border-image: linear-gradient(
                 90deg,
