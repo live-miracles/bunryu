@@ -7,3 +7,5 @@ Stopping an output that is about to be deleted has an order that is easy to get 
 The one place that stops without retiring is a stream-key change. It keeps the shared-encode rows, which the reconciler starts again on the new key, so it stops them (desired state first, then `stopAndWait`) and deletes nothing.
 
 Considered: forgetting the per-output bookkeeping (run counters, last exit stderr, burst history) in `retire()` too. It would save a few bytes per output id ever created, and it would reuse run ids such as `out#1`, which breaks the one-grep-per-run guarantee in the diagnostics. So the maps are kept on purpose.
+
+One known edge: output ids are `<pipeline>-<seq>` with `seq` the highest existing plus one, so deleting a pipeline's newest output lets the next one reuse its id and inherit that id's leftover entries in those maps. The only effect is cosmetic: its first exit may log "same stderr as previous" and its first warning burst may skip one History write. Not worth a unique id scheme.
