@@ -1944,6 +1944,53 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
+    describe('when the SRS clients list cannot be read', () => {
+        async function bondedSnapshot(t, clientsOk, diagnostics) {
+            const stream = streamFixture({ tcUrl: 'srt://x:10080' });
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({ code: 0, streams: [stream] });
+                if (!clientsOk) throw new Error('timed out');
+                return jsonResponse({
+                    code: 0,
+                    clients: [{ id: 'cid-1', ip: '127.0.0.1', type: 'srt-publish', publish: true }],
+                });
+            });
+            const createHealthService = loadHealthService(t);
+            const service = createHealthService(
+                makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
+                makeFakeOutputService(),
+                makeFakeSrtRelayMutable(makeBondingStatus({ input: { legs: [] } })),
+                makeFakeInputState(),
+                diagnostics,
+            );
+            const app = express();
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval'] });
+            service.start();
+            await sleep(20);
+            const snapshot = await getSnapshot(app);
+            service.shutdown();
+            return snapshot.pipelines['1'].srtBonding;
+        }
+
+        test('the relay is accepted by SRS when its publisher is a loopback relay client', async (t) => {
+            const bonding = await bondedSnapshot(t, true, makeDiagnosticsSpy());
+            assert.equal(bonding.acceptedBySrs, true);
+            assert.equal(bonding.publishConflict, false);
+        });
+
+        test('a failed clients call is not a publish conflict, and is logged', async (t) => {
+            const diagnostics = makeDiagnosticsSpy();
+            const bonding = await bondedSnapshot(t, false, diagnostics);
+            assert.equal(bonding.publishConflict, false);
+            assert.equal(bonding.acceptedBySrs, true);
+            const failed = diagnostics.events.filter((e) => e.event === 'srs-clients-unavailable');
+            assert.equal(failed.length, 1);
+            assert.match(failed[0].message, /timed out/);
+        });
+    });
+
     describe('a main/backup group', () => {
         // In a backup group the standby leg is idle by design while the main leg runs.
         const legsWith = (...states) =>

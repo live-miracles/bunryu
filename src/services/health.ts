@@ -256,6 +256,7 @@ export function createHealthService(
     let prevRelayFailed = false;
     let lastDiagnosticsSnapshotAt = 0;
     let lastRcvbufErrors: number | null = null;
+    let clientsUnavailable = false;
 
     function pushSrsEvent(
         source: SrsEvent['source'],
@@ -493,8 +494,22 @@ export function createHealthService(
                 diagnostics?.event('srs-transition', { from: 'up', to: 'down', message: msg });
             }
         }
+        // The clients list only names publishers. Without it the poll cannot tell the
+        // relay from another publisher, so it makes no verdict on that (below) instead of
+        // reporting a publish conflict on every bonded input, and records the failure once.
+        const clientsKnown = clientsResult.status === 'fulfilled';
         if (clientsResult.status === 'fulfilled') {
             clients = clientsResult.value;
+            if (clientsUnavailable) {
+                clientsUnavailable = false;
+                diagnostics?.event('srs-clients-available');
+            }
+        } else if (!clientsUnavailable) {
+            clientsUnavailable = true;
+            const reason = clientsResult.reason;
+            const message = reason instanceof Error ? reason.message : String(reason);
+            console.warn(`[srs] clients list unavailable: ${message}`);
+            diagnostics?.event('srs-clients-unavailable', { message });
         }
         if (srsReachable && prevSrsReachable === false) {
             pushSrsEvent('srs', 'recovered', 'Reachable again');
@@ -653,7 +668,7 @@ export function createHealthService(
             });
             const relayAcceptedBySrs =
                 !!srtStream &&
-                srsClientLooksLikeRelayPublisher(publisher) &&
+                (!clientsKnown || srsClientLooksLikeRelayPublisher(publisher)) &&
                 !localSrtPublisherConflict;
             const relayPublishConflict = hasBondedRelayPublishConflict({
                 inputConnected: displayConnected,
