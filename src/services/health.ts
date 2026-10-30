@@ -14,12 +14,7 @@ import { readSrsConfigValues } from '../utils/srsConfig.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
-import type {
-    SrtRelayService,
-    SrtRelayStats,
-    SrtRelayStreamStatus,
-    SrtRelayLegState,
-} from './srtRelay.js';
+import type { SrtRelayService, SrtRelayStats, SrtRelayStreamStatus } from './srtRelay.js';
 import type { InputProtocol, InputState } from './inputState.js';
 import { createLoopFailureReporter, type DiagnosticsLogger } from '../utils/diagnostics.js';
 import { createHostAlertTracker } from '../utils/hostAlerts.js';
@@ -35,14 +30,6 @@ import { readRelayConfig } from '../utils/relayConfig.js';
 import { createRelayErrorLog } from '../utils/relayErrorLog.js';
 import { createSrtRecentTracker, type SrtRecent } from '../utils/srtRecent.js';
 import {
-    allowLegLogLine,
-    createLegLogState,
-    describeLegChange,
-    suppressedLegLinesMessage,
-    takeSuppressedLegLines,
-    type LegLogState,
-} from '../utils/legLog.js';
-import {
     describePublisherSource,
     nextPublisherLog,
     type PublisherLogState,
@@ -55,15 +42,15 @@ import {
     type ProbeResult,
 } from './mediaProbe.js';
 import { createProbeScheduler } from './probeScheduler.js';
+import { createLegTracker } from './legTracker.js';
 import {
-    counterDelta,
-    legQualityHealth,
     srtIntervalAlerts,
     type PipelineAlert,
     type RelayInputSample,
 } from '../utils/srtLinkAlerts.js';
 
 export type { PipelineAlert };
+export type { LegHistorySample, LegHistorySeries } from './legTracker.js';
 
 export { isProbeUsable };
 
@@ -190,31 +177,6 @@ interface PipelineHealth {
         };
         output: { recent: SrtRecent | null };
     };
-}
-
-export interface LegHistorySample {
-    ts: number;
-    state: string;
-    health: 'ok' | 'warn' | 'error';
-    recvRateMbps: number | null;
-    rttMs: number | null;
-    latencyMs: number | null;
-    lossPct: number | null;
-    dropPct: number | null;
-    retransmissionPct: number | null;
-    belated: number | null;
-    receivedPackets?: number | null;
-    lossPackets?: number | null;
-    dropPackets?: number | null;
-    lossTotal?: number | null;
-    dropTotal?: number | null;
-    retransmittedPackets?: number | null;
-}
-
-export interface LegHistorySeries {
-    ip: string;
-    port: number;
-    samples: LegHistorySample[];
 }
 
 export interface HealthSnapshot {
@@ -491,30 +453,15 @@ export function createHealthService(
         return ((frames - oldest.frames) * 1000) / elapsedMs;
     }
     const relayInputSamples = new Map<number, RelayInputSample>();
-    const legPacketSamples = new Map<
-        number,
-        Map<
-            string,
-            {
-                state: SrtRelayLegState;
-                packets: number | null;
-                noFlowSinceMs: number | null;
-                recvLossTotal: number | null;
-                recvDropTotal: number | null;
-                retransTotal: number | null;
-                belatedTotal: number | null;
-            }
-        >
-    >();
-    const legHistory = new Map<number, Map<string, LegHistorySeries>>();
+    const legTracker = createLegTracker({
+        historyMaxSamples: LEG_HISTORY_MAX_SAMPLES,
+        pollIntervalMs: POLL_INTERVAL_MS,
+        healthWindowMs: LEG_HEALTH_WINDOW_MS,
+        appendPipelineLog: (pipelineId, event, message) =>
+            db.appendPipelineLog(pipelineId, event, message),
+        diagnostics,
+    });
     const srtRecent = createSrtRecentTracker();
-    // The relay drops a failed leg from its legs[] instead of reporting it broken,
-    // so a lost leg shows only as a smaller count than the group has had. Keyed by
-    // pipeline; reset when the input goes away.
-    const legGroups = new Map<number, { expected: number; shortSinceMs: number | null }>();
-    // Which legs (ip:port) a bonded input had at the last poll, for the pipeline log and
-    // the diagnostics. Keyed by pipeline; reset when the input goes away. See utils/legLog.ts.
-    const legLogs = new Map<number, LegLogState>();
     // Goryu's latest error per stream, kept in the pipeline log and the diagnostics before
     // the relay drops it with the session. Repeats are merged: utils/relayErrorLog.ts.
     const relayErrorLog = createRelayErrorLog();
@@ -554,37 +501,6 @@ export function createHealthService(
     };
     // Whether the current publisher's source address has been logged. See utils/publisherLog.ts.
     const publisherLogs = new Map<number, PublisherLogState>();
-    const noteLegChanges = (
-        pipelineId: number,
-        legs: { ip: string; port: number }[],
-        now: number,
-    ): void => {
-        const keys = legs.map((leg) => `${leg.ip}:${leg.port}`);
-        const state = legLogs.get(pipelineId);
-        const change = describeLegChange(state?.keys ?? null, keys);
-        const current = state ?? createLegLogState(keys, now);
-        current.keys = keys;
-        legLogs.set(pipelineId, current);
-        const appendLine = (event: string, message: string): void => {
-            try {
-                db.appendPipelineLog(pipelineId, event, message);
-            } catch {
-                /* non-critical */
-            }
-        };
-        const hidden = takeSuppressedLegLines(current, now);
-        if (hidden > 0) appendLine('legs', suppressedLegLinesMessage(hidden));
-        if (!change) return;
-        diagnostics?.event('bonded-legs-changed', {
-            pipelineId,
-            from: change.from,
-            to: change.to,
-            joined: change.joined,
-            left: change.left,
-            legs: keys,
-        });
-        if (allowLegLogLine(current, now)) appendLine('legs', change.message);
-    };
     // The ffprobe checks of each connected publisher. A format that differs from the
     // previous publisher's restarts the outputs that were already running.
     const probes = createProbeScheduler({
@@ -875,19 +791,8 @@ export function createHealthService(
         for (const pipelineId of inputFrameSamples.keys()) {
             if (!activePipelineIds.has(pipelineId)) inputFrameSamples.delete(pipelineId);
         }
-        for (const pipelineId of legPacketSamples.keys()) {
-            if (!activePipelineIds.has(pipelineId)) legPacketSamples.delete(pipelineId);
-        }
-        for (const pipelineId of legHistory.keys()) {
-            if (!activePipelineIds.has(pipelineId)) legHistory.delete(pipelineId);
-        }
+        legTracker.keepOnly(activePipelineIds);
         srtRecent.keepOnly(activePipelineIds);
-        for (const pipelineId of legGroups.keys()) {
-            if (!activePipelineIds.has(pipelineId)) legGroups.delete(pipelineId);
-        }
-        for (const pipelineId of legLogs.keys()) {
-            if (!activePipelineIds.has(pipelineId)) legLogs.delete(pipelineId);
-        }
         relayErrorLog.keepOnly(activePipelineIds);
         probes.keepOnly(activePipelineIds);
 
@@ -1178,202 +1083,12 @@ export function createHealthService(
             if (previousRelaySample && rawBondingStatus.inputActive) {
                 alerts.push(...srtIntervalAlerts(previousRelaySample, currentRelaySample, now));
             }
-            let expectedLegs = relayInput.legs.length;
-            if (rawBondingStatus.inputActive && relayInput.bonded) {
-                const group = legGroups.get(pipeline.id) ?? { expected: 0, shortSinceMs: null };
-                group.expected = Math.max(group.expected, relayInput.legs.length);
-                if (relayInput.legs.length < group.expected) group.shortSinceMs ??= now;
-                else group.shortSinceMs = null;
-                legGroups.set(pipeline.id, group);
-                noteLegChanges(pipeline.id, relayInput.legs, now);
-                expectedLegs = group.expected;
-                if (group.shortSinceMs !== null) {
-                    const down = group.expected - relayInput.legs.length;
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'bonded-leg-down',
-                        message: `${down} of ${group.expected} bonded legs ${down === 1 ? 'is' : 'are'} down.`,
-                        sinceMs: group.shortSinceMs,
-                    });
-                }
-            } else {
-                legGroups.delete(pipeline.id);
-                legLogs.delete(pipeline.id);
-            }
-            const previousLegs = legPacketSamples.get(pipeline.id) ?? new Map();
-            const currentLegs = new Map<
-                string,
-                {
-                    state: SrtRelayLegState;
-                    packets: number | null;
-                    noFlowSinceMs: number | null;
-                    recvLossTotal: number | null;
-                    recvDropTotal: number | null;
-                    retransTotal: number | null;
-                    belatedTotal: number | null;
-                }
-            >();
-            const legHealth = new Map<
-                string,
-                { health: 'ok' | 'warn' | 'error'; reason: string | null }
-            >();
-            // A plain input is one link with no redundancy: same health rules,
-            // but it is the whole connection rather than one leg of a group.
-            const linkNoun = relayInput.bonded ? 'Leg' : 'Connection';
-            const linkAlertPrefix = (transportKey: string): string =>
-                relayInput.bonded ? `Bonded leg ${transportKey}` : `SRT input from ${transportKey}`;
-            const runningLegs = relayInput.legs.filter((leg) => leg.state === 'running').length;
-            for (const leg of relayInput.legs) {
-                const key = leg.ip;
-                const transportKey = `${leg.ip}:${leg.port}`;
-                const otherLegRunning = runningLegs > (leg.state === 'running' ? 1 : 0);
-                const packets = leg.recvUniquePacketsTotal ?? leg.recvPacketsTotal;
-                const previousLeg = previousLegs.get(key);
-                const noFlowSinceMs =
-                    leg.state === 'running' &&
-                    previousLeg &&
-                    packets !== null &&
-                    previousLeg.packets === packets
-                        ? (previousLeg.noFlowSinceMs ?? now)
-                        : null;
-                currentLegs.set(key, {
-                    state: leg.state,
-                    packets,
-                    noFlowSinceMs,
-                    recvLossTotal: leg.recvLossTotal,
-                    recvDropTotal: leg.recvDropTotal,
-                    retransTotal: leg.retransTotal,
-                    belatedTotal: leg.belatedTotal,
-                });
-                let health: 'ok' | 'warn' | 'error' = 'ok';
-                let reason: string | null = null;
-                if (leg.state === 'unknown') {
-                    health = 'error';
-                    reason = `${linkNoun} state is ${leg.state}.`;
-                } else if (leg.state === 'idle' && otherLegRunning) {
-                    // The standby of a main/backup group: idle by design while the main
-                    // leg carries the stream, and it takes over if that leg fails.
-                } else if (leg.state === 'pending' || leg.state === 'idle') {
-                    health = 'warn';
-                    reason = `${linkNoun} is ${leg.state}.`;
-                }
-                if (noFlowSinceMs !== null && now - noFlowSinceMs >= 10_000) {
-                    health = health === 'error' ? health : 'warn';
-                    reason = `${linkNoun} is connected but has stopped delivering packets.`;
-                    alerts.push({
-                        severity: 'warning',
-                        code: 'bonded-leg-no-flow',
-                        message: `${linkAlertPrefix(transportKey)} is connected but has stopped delivering packets.`,
-                        sinceMs: noFlowSinceMs,
-                    });
-                }
-                legHealth.set(transportKey, { health, reason });
-                if (previousLeg && previousLeg.state !== leg.state) {
-                    diagnostics?.event('bonded-leg-transition', {
-                        pipelineId: pipeline.id,
-                        leg: transportKey,
-                        bonded: relayInput.bonded,
-                        from: previousLeg.state,
-                        to: leg.state,
-                        health,
-                        reason,
-                    });
-                }
-            }
-            legPacketSamples.set(pipeline.id, currentLegs);
-            const pipelineLegHistory =
-                legHistory.get(pipeline.id) ?? new Map<string, LegHistorySeries>();
-            for (const leg of relayInput.legs) {
-                const key = leg.ip;
-                const transportKey = `${leg.ip}:${leg.port}`;
-                const previousLeg = previousLegs.get(key);
-                const packets = leg.recvUniquePacketsTotal ?? leg.recvPacketsTotal;
-                const receivedDelta = counterDelta(packets, previousLeg?.packets);
-                const lossDelta = counterDelta(leg.recvLossTotal, previousLeg?.recvLossTotal);
-                const dropDelta = counterDelta(leg.recvDropTotal, previousLeg?.recvDropTotal);
-                const retransDelta = counterDelta(leg.retransTotal, previousLeg?.retransTotal);
-                const belatedDelta = counterDelta(leg.belatedTotal, previousLeg?.belatedTotal);
-                const series = pipelineLegHistory.get(key) ?? {
-                    ip: leg.ip,
-                    port: leg.port,
-                    samples: [],
-                };
-                series.port = leg.port;
-                const sample: LegHistorySample = {
-                    ts: now,
-                    state: leg.state,
-                    health: legHealth.get(transportKey)?.health ?? 'ok',
-                    recvRateMbps: leg.recvRateMbps,
-                    rttMs: leg.rttMs,
-                    latencyMs: leg.latencyMs,
-                    lossPct:
-                        receivedDelta && lossDelta !== null
-                            ? (lossDelta / receivedDelta) * 100
-                            : null,
-                    dropPct:
-                        receivedDelta && dropDelta !== null
-                            ? (dropDelta / receivedDelta) * 100
-                            : null,
-                    retransmissionPct:
-                        receivedDelta && retransDelta !== null
-                            ? (retransDelta / receivedDelta) * 100
-                            : null,
-                    belated: belatedDelta,
-                    receivedPackets: receivedDelta,
-                    lossPackets: lossDelta,
-                    dropPackets: dropDelta,
-                    lossTotal: leg.recvLossTotal,
-                    dropTotal: leg.recvDropTotal,
-                    retransmittedPackets: retransDelta,
-                };
-                series.samples.push(sample);
-                const windowSamples = series.samples.filter(
-                    (historySample) => historySample.ts >= now - LEG_HEALTH_WINDOW_MS,
-                );
-                const receivedPackets = windowSamples.reduce(
-                    (total, historySample) => total + (historySample.receivedPackets ?? 0),
-                    0,
-                );
-                const lossPackets = windowSamples.reduce(
-                    (total, historySample) => total + (historySample.lossPackets ?? 0),
-                    0,
-                );
-                const dropPackets = windowSamples.reduce(
-                    (total, historySample) => total + (historySample.dropPackets ?? 0),
-                    0,
-                );
-                const retransmittedPackets = windowSamples.reduce(
-                    (total, historySample) => total + (historySample.retransmittedPackets ?? 0),
-                    0,
-                );
-                const { health, reason } = legQualityHealth(
-                    { receivedPackets, lossPackets, dropPackets, retransmittedPackets },
-                    leg.latencyMs,
-                    linkNoun,
-                    legHealth.get(transportKey) ?? { health: 'ok', reason: null },
-                );
-                sample.health = health;
-                legHealth.set(transportKey, { health, reason });
-                if (health !== 'ok' && reason) {
-                    alerts.push({
-                        severity: health === 'error' ? 'error' : 'warning',
-                        code: 'bonded-leg-quality',
-                        message: `${linkAlertPrefix(transportKey)}: ${reason}`,
-                        sinceMs: windowSamples[0]?.ts ?? now,
-                    });
-                }
-                if (series.samples.length > LEG_HISTORY_MAX_SAMPLES) series.samples.shift();
-                pipelineLegHistory.set(key, series);
-            }
-            // Cellular legs change IP often; a leg that has been gone longer than
-            // the history covers would otherwise be kept for good.
-            for (const [key, series] of pipelineLegHistory) {
-                const lastTs = series.samples.at(-1)?.ts ?? 0;
-                if (now - lastTs > LEG_HISTORY_MAX_SAMPLES * POLL_INTERVAL_MS) {
-                    pipelineLegHistory.delete(key);
-                }
-            }
-            legHistory.set(pipeline.id, pipelineLegHistory);
+            const {
+                expectedLegs,
+                legHealth,
+                alerts: legAlerts,
+            } = legTracker.observe(pipeline.id, relayInput, rawBondingStatus.inputActive, now);
+            alerts.push(...legAlerts);
             const publisher = s?.publish?.cid ? publisherByCid.get(s.publish.cid) : undefined;
             {
                 const logged = nextPublisherLog(
@@ -1676,7 +1391,8 @@ export function createHealthService(
                 : to - LEG_HISTORY_MAX_WINDOW_MS;
             const requestedAfter = Number(req.query.after);
             const after = Number.isFinite(requestedAfter) ? requestedAfter : null;
-            const series = [...(legHistory.get(pipelineId)?.values() ?? [])].map((leg) => ({
+            const legSeries = legTracker.history(pipelineId);
+            const series = legSeries.map((leg) => ({
                 ...leg,
                 samples: leg.samples.filter(
                     (sample) =>
@@ -1685,9 +1401,7 @@ export function createHealthService(
                         (after === null || sample.ts > after),
                 ),
             }));
-            const allSamples = [...(legHistory.get(pipelineId)?.values() ?? [])].flatMap(
-                (leg) => leg.samples,
-            );
+            const allSamples = legSeries.flatMap((leg) => leg.samples);
             const oldestTs =
                 allSamples.length > 0 ? Math.min(...allSamples.map((sample) => sample.ts)) : null;
             res.json({
