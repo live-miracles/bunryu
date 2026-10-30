@@ -903,7 +903,11 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
     modal.showModal();
 
     const logs = await api.getPipelineLogs(pipelineId);
-    if (!logs || logs.length === 0) {
+    if (!logs) {
+        contentEl.innerHTML = '<p class="text-muted text-sm">Could not load the history.</p>';
+        return;
+    }
+    if (logs.length === 0) {
         contentEl.innerHTML = '<p class="text-muted text-sm">No history recorded yet.</p>';
         return;
     }
@@ -916,9 +920,9 @@ export async function showPipelineLogs(pipelineId: string): Promise<void> {
             (
                 l,
             ) => `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-base-200 py-1.5 last:border-0">
-                <span class="badge badge-xs leading-none ${l.event === 'online' ? 'badge-success' : 'badge-neutral'} shrink-0 uppercase">${l.event}</span>
+                <span class="badge badge-xs leading-none ${l.event === 'online' ? 'badge-success' : 'badge-neutral'} shrink-0 uppercase">${escapeHtml(l.event)}</span>
                 <span class="text-xs opacity-70 shrink-0">${formatLocalDateTime(l.ts)}</span>
-                <span class="min-w-0 basis-full break-words text-xs opacity-80 sm:basis-auto">${l.message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+                <span class="min-w-0 basis-full break-words text-xs opacity-80 sm:basis-auto">${escapeHtml(l.message)}</span>
             </div>`,
         )
         .join('');
@@ -1042,7 +1046,11 @@ export async function showOutputError(pipelineId: string, outId: string): Promis
     modal.showModal();
 
     const history = await api.getOutputErrorHistory(pipelineId, outId);
-    renderOutputErrorHistory(contentEl, history ?? []);
+    if (!history) {
+        contentEl.innerHTML = '<p class="text-muted text-sm">Could not load the history.</p>';
+        return;
+    }
+    renderOutputErrorHistory(contentEl, history);
 }
 
 // Unlike output errors, the relay only ever carries one lastError/lastErrorAt
