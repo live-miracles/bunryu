@@ -95,7 +95,7 @@ hover for what is wrong on each side, and it is grey while no output uses the en
 (after a confirmation; its outputs reconnect), the encoding as badges (the video
 encoding unless it is `copy`, and the audio track as `T1`, `T2`, …, where `T1` is
 track 0), its uptime, how many outputs use it and how many are reading it now ("2 outs · 1
-read"), CPU, memory (and the bitrate when it is unusual, as on an output
+read"), its bitrate, CPU and memory (the bitrate only when it is unusual, as on an output
 card), the failure count and **History**, followed by the last error. While an output's encode is not up, the
 output shows a warning ("Waiting for Shared encode …", or "Shared encode failed:
 …"), not an error. The pipeline's "N readers" counts only what reads the input
@@ -162,16 +162,22 @@ you type. An input matches on its name, stream key or publish URL; an output on 
 name, its pipeline's name or its destination URL, so a full URL or a stream key finds it. The heading badge
 shows how many rows are left ("20 of 500").
 
-The output card shows status, uptime, CPU and memory. It adds the bitrate only when it is
-unusual: below 60% or above 140% of the input's, when the output copies the video and the
-input's rate is known, or below 200 kbps. An output with a video encode always shows it
-(there is nothing to compare with). When the output's speed
-(media produced per second of wall time, 1.00x is realtime, measured over 30 s windows)
-is below 0.95x the badge adds it in yellow ("0.88x"); above 1.05x it adds it in the
-normal color, which is usually a backlog draining after a stall. In between it is not
-shown. The badge's tooltip names the figures it shows. The speed is not shown for the first minute after a
-start. An output that failed
-shows its failed attempts since it was last started and, while it waits to try again,
+The output card shows status and uptime, and a small badge for each figure that is off, each
+with its own tooltip; a healthy output has none (every figure, per output, is in the
+Overview's Outputs table). The badges are:
+
+- **Bitrate**, when it is below 60% or above 140% of the input's (the output copies the
+  video and the input's rate is known), or below 200 kbps. Without an input rate to compare
+  with, only the 200 kbps floor applies.
+- **CPU**, from 50% of a core on an output that copies the video. An output with a video
+  encode is expected to be busy, so its CPU is not flagged.
+- **Memory**, from 70% of the output's limit (yellow; red from 90%).
+- **Speed** (media produced per second of wall time, 1.00x is realtime, measured over 30 s
+  windows), when below 0.95x in yellow ("0.88x"), or above 1.05x in the normal colour, which
+  is usually a backlog draining after a stall. In between it is not shown. The speed is not shown for the first minute after a
+  start.
+
+An output that failed shows its failed attempts since it was last started and, while it waits to try again,
 when the next attempt is due ("retry in 8 s"). Problems appear on
 the card as warnings, each with how long ago it began ("since 3 min ago"), and every crash, watchdog restart and finished warning
 episode is kept in the output's **History** with the FFmpeg stderr tail,

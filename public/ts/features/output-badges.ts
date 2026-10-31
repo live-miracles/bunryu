@@ -18,6 +18,9 @@ const SPEED_BADGE_HIGH = 1.05;
 // FFmpeg reports an average since the output started, not the current rate.
 const BITRATE_BADGE_LOW = 0.6;
 const BITRATE_BADGE_HIGH = 1.4;
+// A copy output costs 1 to 4% of a core (docs/1-getting-started/4-sizing.md), so CPU is
+// shown only from this much. An output with a video encode is expected to be busy: no CPU.
+const CPU_BADGE_PERCENT = 50;
 
 export const ICON_COPY = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 export const ICON_HISTORY = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3 2"/></svg>`;
@@ -47,11 +50,18 @@ function formatOutputMemory(output: OutputView): string | null {
     return formatBytes(output.memoryUsageBytes);
 }
 
-// "bitrate / CPU / RSS" badge of a running output (plus the speed when it is off
-// realtime); empty when nothing is known. The speed is otherwise not shown at all, and
-// neither is the bitrate while it is as expected (see BITRATE_BADGE_LOW): that needs the
-// input, an output with a video encode or without a known input bitrate always shows it.
-export function outputMetricsBadge(output: OutputView, input?: InputHealth): string {
+// The badges of a running output: one per figure that is off, so a healthy output has
+// none and the Overview's Outputs table is where the full set is read. The bitrate shows
+// when it is below the minimum or, for a copy of a live input with a known rate, outside the
+// band around it (see BITRATE_BADGE_LOW); the CPU when a copy output uses CPU_BADGE_PERCENT
+// or more; the memory from the warning level; the speed when off realtime. `showAll` is
+// for a shared encode, whose cost is the point: one badge with bitrate (unless as
+// expected), CPU and RSS. Empty when nothing is shown.
+export function outputMetricsBadge(
+    output: OutputView,
+    input?: InputHealth,
+    showAll = false,
+): string {
     if (
         output.status !== 'running' ||
         (output.bitrateKbps === null &&
@@ -70,33 +80,56 @@ export function outputMetricsBadge(output: OutputView, input?: InputHealth): str
     const speed = output.speed ?? null;
     const slow = speed !== null && speed < SPEED_BADGE_LOW;
     const offRealtime = speed !== null && (slow || speed > SPEED_BADGE_HIGH);
+    const copiesVideo = output.videoEncoding === 'copy';
     const expected =
-        output.videoEncoding === 'copy' && input?.live && input.recvBitrateKbps
-            ? input.recvBitrateKbps
-            : null;
+        copiesVideo && input?.live && input.recvBitrateKbps ? input.recvBitrateKbps : null;
     const bitrateAsExpected =
         output.bitrateKbps !== null &&
         expected !== null &&
         output.bitrateKbps >= LOW_BITRATE_KBPS &&
         output.bitrateKbps >= expected * BITRATE_BADGE_LOW &&
         output.bitrateKbps <= expected * BITRATE_BADGE_HIGH;
-    const shown: Array<[text: string | null, label: string]> = [
-        [
-            output.bitrateKbps !== null && !bitrateAsExpected
-                ? formatBitrate(output.bitrateKbps)
-                : null,
-            'bitrate',
-        ],
-        [
-            output.cpuPercent !== null ? formatCpuPercent(output.cpuPercent) : null,
-            'CPU (% of a core)',
-        ],
-        [output.memoryUsageBytes !== null ? formatOutputMemory(output) : null, 'memory'],
-        [offRealtime ? `${speed.toFixed(2)}x` : null, 'speed (x realtime)'],
+    const bitrateOff =
+        output.bitrateKbps !== null &&
+        (showAll
+            ? !bitrateAsExpected
+            : output.bitrateKbps < LOW_BITRATE_KBPS || (expected !== null && !bitrateAsExpected));
+    const cpuOff =
+        output.cpuPercent !== null &&
+        (showAll || (copiesVideo && output.cpuPercent >= CPU_BADGE_PERCENT));
+    const memoryOff =
+        output.memoryUsageBytes !== null &&
+        (showAll || (memPercent !== null && memPercent >= METRIC_WARN_PERCENT));
+    const shown: Array<{ text: string | null; label: string; cls: string }> = [
+        {
+            text: bitrateOff ? formatBitrate(output.bitrateKbps as number) : null,
+            label: 'bitrate',
+            cls: '',
+        },
+        {
+            text: cpuOff ? formatCpuPercent(output.cpuPercent as number) : null,
+            label: 'CPU (% of a core)',
+            cls: '',
+        },
+        { text: memoryOff ? formatOutputMemory(output) : null, label: 'memory', cls: memCls },
+        {
+            text: offRealtime ? `${speed.toFixed(2)}x` : null,
+            label: 'speed (x realtime)',
+            cls: slow ? 'badge-warning' : '',
+        },
     ];
-    const present = shown.filter(([text]) => text !== null);
+    const present = shown.filter((part) => part.text !== null);
     if (present.length === 0) return '';
-    const cls = memCls || (slow ? 'badge-warning' : '');
-    // The tooltip names only what the badge shows, in the same order.
-    return `<span class="badge badge-sm whitespace-nowrap ${cls}" title="${present.map(([, label]) => label).join(' / ')}">${present.map(([text]) => text).join(' / ')}</span>`;
+    if (showAll) {
+        // One badge, its tooltip naming the figures in the same order.
+        const cls = memCls || (slow ? 'badge-warning' : '');
+        return `<span class="badge badge-sm whitespace-nowrap ${cls}" title="${present.map((part) => part.label).join(' / ')}">${present.map((part) => part.text).join(' / ')}</span>`;
+    }
+    // One badge per figure, each with its own colour and tooltip.
+    return present
+        .map(
+            (part) =>
+                `<span class="badge badge-sm whitespace-nowrap ${part.cls}" title="${part.label}">${part.text}</span>`,
+        )
+        .join('');
 }

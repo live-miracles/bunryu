@@ -115,7 +115,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
         uptimeMs !== null
             ? `<span class="tabular-nums text-xs text-muted whitespace-nowrap">${escapeHtml(formatUptime(uptimeMs))}</span>`
             : '';
-    const badges: string[] = [outputMetricsBadge(rendition, input)];
+    const badges: string[] = [outputMetricsBadge(rendition, input, true)];
     const readers = rendition.readers ?? 0;
     const counts = `<span class="badge badge-sm badge-soft whitespace-nowrap" title="Outputs that pull this encode, and clients currently reading it from SRS">${plural(rendition.dependents.length, 'out', 'outs')} · ${plural(readers, 'read', 'reads')}</span>`;
     if (rendition.failures > 0) {
