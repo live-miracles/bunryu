@@ -13,11 +13,12 @@
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <link rel="stylesheet" type="text/css" href="output.css" />
     <script>
-      // Apply a pinned theme before first paint (see features/theme.ts).
+      // Apply the theme before first paint: the stored choice, else dark (see features/theme.ts).
+      let t = null;
       try {
-        const t = localStorage.getItem('bunryu.theme');
-        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        t = localStorage.getItem('bunryu.theme');
       } catch {}
+      document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
     </script>
     <!-- Vendored (hls.js 1.7.3, Apache-2.0): the dashboard is an ops tool that
          must work without internet access to a CDN, and an unpinned CDN script
@@ -247,7 +248,13 @@
           <div class="flex flex-wrap items-end gap-3">
             <fieldset class="fieldset">
               <legend class="fieldset-legend">Pipeline Name</legend>
-              <input type="text" id="pipe-name-input" class="input w-48" placeholder="My Stream" oninput="this.classList.remove('input-error')" />
+              <input
+                type="text"
+                id="pipe-name-input"
+                autocomplete="off"
+                class="input w-48"
+                placeholder="My Stream"
+                oninput="this.classList.remove('input-error')" />
             </fieldset>
             <fieldset class="fieldset">
               <legend class="fieldset-legend">Stream Key</legend>
@@ -278,6 +285,7 @@
           <input
             type="text"
             id="pipe-group-name-input"
+            autocomplete="off"
             class="input w-full"
             placeholder="Main"
             maxlength="80"
@@ -358,7 +366,13 @@
           <div class="flex flex-wrap items-end gap-3">
             <fieldset class="fieldset flex-1 max-sm:w-full">
               <legend class="fieldset-legend">Output Name</legend>
-              <input type="text" id="out-name-input" class="input w-full" placeholder="YouTube" oninput="this.classList.remove('input-error')" />
+              <input
+                type="text"
+                id="out-name-input"
+                autocomplete="off"
+                class="input w-full"
+                placeholder="YouTube"
+                oninput="this.classList.remove('input-error')" />
             </fieldset>
             <fieldset class="fieldset max-sm:w-full">
               <legend class="fieldset-legend">Video Encoding</legend>
@@ -1039,6 +1053,7 @@
                   <input
                     type="text"
                     id="settings-server-name-input"
+                    autocomplete="off"
                     class="input w-full"
                     placeholder="Bunryu"
                     oninput="this.classList.remove('input-error')" />
@@ -1048,6 +1063,7 @@
                   <input
                     type="text"
                     id="settings-public-host-input"
+                    autocomplete="off"
                     class="input w-full font-mono text-sm"
                     placeholder="stream.example.com or 203.0.113.10" />
                 </fieldset>
@@ -1071,8 +1087,10 @@
               </div>
             </div>
 
-            <!-- Change Password -->
-            <div class="space-y-2">
+            <!-- Change Password: its own form, so the browser pairs these password fields with the
+                 username below and not with the other text inputs on the page. -->
+            <form class="space-y-2" onsubmit="return false;">
+              <input type="text" name="username" value="admin" autocomplete="username" readonly tabindex="-1" aria-hidden="true" class="sr-only" />
               <div class="flex gap-3">
                 <fieldset class="fieldset min-w-0 flex-1">
                   <legend class="fieldset-legend">Current Password</legend>
@@ -1242,7 +1260,7 @@
                   <button type="button" class="btn btn-sm btn-accent" onclick="settingsPasswordFormBtn(this)">Save</button>
                 </div>
               </div>
-            </div>
+            </form>
 
             <!-- Regenerate Stream Keys -->
             <div class="flex items-center justify-between gap-3">

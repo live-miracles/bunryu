@@ -2,8 +2,8 @@
 
 /* Design tokens in the style of Linear: a near-black canvas and charcoal panels (a white
    canvas and white panels by day), hairline borders instead of shadows, one lavender accent.
-   Each token is a light-dark() pair, so the dashboard follows the system and the navbar toggle
-   only has to pin color-scheme (data-theme on <html>). Status colours are for status only. */
+   Each token is a light-dark() pair, so the navbar toggle only has to pin color-scheme
+   (data-theme on <html>; the pages start on dark). Status colours are for status only. */
 :root {
     color-scheme: light dark;
     --page: light-dark(#f6f7f8, #010102);

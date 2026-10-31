@@ -1288,9 +1288,9 @@ destructive buttons are tinted, not solid. The Japanese motifs stay, quietly and
 no data is read: seigaiha waves along the navbar and the wave crest on the login page,
 both SVG masks filled with the accent, static (no animation cost on a dashboard open for
 hours), so one file serves both themes. The panels and tables are flat. Each token is a
-`light-dark()` pair, so the dashboard follows the system theme with no second copy of the
-palette; the navbar's sun/moon toggle pins the opposite theme per browser
-(`features/theme.ts`).
+`light-dark()` pair, so there is no second copy of the palette. The dashboard opens dark the
+first time, whatever the system prefers; the
+navbar's sun/moon toggle pins the other theme per browser (`features/theme.ts`).
 Status dots, split dots and card tints use brighter `--dot-*` tokens than the status text
 colours (an amber that reads as text on white is brown as a dot), and the charts resolve
 `--chart-*` through the browser because a canvas cannot read `var()` or `light-dark()`.

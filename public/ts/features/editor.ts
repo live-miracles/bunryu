@@ -345,22 +345,22 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
             fieldsetHtml(
                 'Hostname',
                 '',
-                `<input type="text" id="out-srt-host-input" name="srtHost" class="input input-sm w-40 max-sm:w-full font-mono text-xs js-srt-host" placeholder="xxx.xxx.xxx.xxx" value="${escapeHtml(srt.host)}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="text" id="out-srt-host-input" autocomplete="off" name="srtHost" class="input input-sm w-40 max-sm:w-full font-mono text-xs js-srt-host" placeholder="xxx.xxx.xxx.xxx" value="${escapeHtml(srt.host)}" oninput="this.classList.remove('input-error')" />`,
             ),
             fieldsetHtml(
                 'Port',
                 '',
-                `<input type="number" min="1" max="65535" id="out-srt-port-input" name="srtPort" class="input input-sm w-20 max-sm:w-full font-mono text-xs js-srt-port" placeholder="10000" value="${srt.port ?? ''}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="number" min="1" max="65535" id="out-srt-port-input" autocomplete="off" name="srtPort" class="input input-sm w-20 max-sm:w-full font-mono text-xs js-srt-port" placeholder="10000" value="${srt.port ?? ''}" oninput="this.classList.remove('input-error')" />`,
             ),
             fieldsetHtml(
                 'Latency (ms)',
                 '',
-                `<input type="number" min="1" step="1" id="out-srt-latency-input" name="srtLatency" class="input input-sm w-28 max-sm:w-full font-mono text-xs js-srt-latency" placeholder="240" value="${srt.latencyMs ?? ''}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="number" min="1" step="1" id="out-srt-latency-input" autocomplete="off" name="srtLatency" class="input input-sm w-28 max-sm:w-full font-mono text-xs js-srt-latency" placeholder="240" value="${srt.latencyMs ?? ''}" oninput="this.classList.remove('input-error')" />`,
             ),
             fieldsetHtml(
                 'Passphrase',
                 '',
-                `<input type="text" id="out-srt-passphrase-input" name="srtPassphrase" class="input input-sm w-56 max-sm:w-full font-mono text-xs js-srt-passphrase" placeholder="Passphrase" pattern=".{10,79}" title="10 to 79 characters, or empty for none" value="${escapeHtml(srt.passphrase)}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="text" id="out-srt-passphrase-input" autocomplete="off" name="srtPassphrase" class="input input-sm w-56 max-sm:w-full font-mono text-xs js-srt-passphrase" placeholder="Passphrase" pattern=".{10,79}" title="10 to 79 characters, or empty for none" value="${escapeHtml(srt.passphrase)}" oninput="this.classList.remove('input-error')" />`,
             ),
             fieldsetHtml(
                 'Key Length',
@@ -375,7 +375,7 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
             fieldsetHtml(
                 'Stream ID',
                 '',
-                `<input type="text" id="out-srt-streamid-input" name="srtStreamId" class="input input-sm w-80 max-sm:w-full font-mono text-xs js-srt-streamid" placeholder="Stream ID" value="${escapeHtml(srt.streamId)}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="text" id="out-srt-streamid-input" autocomplete="off" name="srtStreamId" class="input input-sm w-80 max-sm:w-full font-mono text-xs js-srt-streamid" placeholder="Stream ID" value="${escapeHtml(srt.streamId)}" oninput="this.classList.remove('input-error')" />`,
             ),
         ].join('');
     }
@@ -383,7 +383,7 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
     return fieldsetHtml(
         s.keyLabel,
         'flex-1',
-        `<input type="text" id="out-sink-key-input" name="sinkKey" class="input input-sm w-full font-mono text-xs js-sink-key"
+        `<input type="text" id="out-sink-key-input" autocomplete="off" name="sinkKey" class="input input-sm w-full font-mono text-xs js-sink-key"
                placeholder="${s.placeholder}" value="${escapeHtml(key)}"${server === 'custom-rtmp' ? ' pattern="rtmps?://.+" title="Starts with rtmp:// or rtmps://"' : ''}
                oninput="this.classList.remove('input-error')" onpaste="onSinkKeyPaste(event)" />`,
     );

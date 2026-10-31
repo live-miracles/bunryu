@@ -1,7 +1,8 @@
-// The navbar's light/dark toggle. Until it is clicked the page follows the system (the CSS
-// tokens are light-dark() pairs); a click pins the opposite of what is showing through
-// data-theme on <html>, and the choice is kept per browser. The inline script in
-// index.html's head applies a stored choice before first paint so the page does not flash.
+// The navbar's light/dark toggle. The page is dark until the toggle is clicked (the CSS
+// tokens are light-dark() pairs, so data-theme on <html> only pins color-scheme); a click
+// pins the opposite of what is showing, and the choice is kept per browser. The inline
+// script in index.html's head applies the stored choice, or dark, before first paint so the
+// page does not flash.
 
 type Theme = 'light' | 'dark';
 
@@ -12,12 +13,8 @@ const ICON: Record<Theme, string> = {
     dark: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />',
 };
 
-const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
-
 function current(): Theme {
-    const pinned = document.documentElement.dataset.theme;
-    if (pinned === 'light' || pinned === 'dark') return pinned;
-    return systemDark.matches ? 'dark' : 'light';
+    return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 }
 
 // The button shows the theme a click switches to: a sun in the dark, a moon in the light.
@@ -33,8 +30,6 @@ function syncButton(): void {
 
 export function initTheme(): void {
     syncButton();
-    // Not pinned: the icon has to follow the system when it changes.
-    systemDark.addEventListener('change', syncButton);
     document.getElementById('theme-btn')?.addEventListener('click', () => {
         const next: Theme = current() === 'dark' ? 'light' : 'dark';
         document.documentElement.dataset.theme = next;
