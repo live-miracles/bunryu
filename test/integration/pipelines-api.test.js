@@ -232,6 +232,34 @@ describe('Pipelines API integration', () => {
             assert.deepEqual(harness.previewService.stopped, [p1.id]);
         });
 
+        test('refuses a stream key that would make an output loop back into its pipeline', async () => {
+            const harness = createHarness();
+            const a = harness.db.createPipeline();
+            const b = harness.db.createPipeline();
+            const spare = harness.db
+                .listStreamKeys()
+                .find((k) => k.id !== a.streamKeyId && k.id !== b.streamKeyId);
+            // A feeds B, and B feeds the spare key. Putting A on the spare key closes the circle.
+            harness.db.createOutput({
+                pipelineId: a.id,
+                name: 'A to B',
+                url: `rtmp://127.0.0.1:21935/live/${b.streamKey}`,
+            });
+            harness.db.createOutput({
+                pipelineId: b.id,
+                name: 'B to spare',
+                url: `rtmp://127.0.0.1:21935/live/${spare.key}`,
+            });
+            const res = await harness.request('POST', `/api/pipelines/${a.id}`, {
+                name: a.name,
+                streamKeyId: spare.id,
+            });
+            assert.equal(res.status, 409);
+            assert.match(res.body.error, /restream loop/);
+            assert.equal(harness.db.getPipeline(a.id).streamKeyId, a.streamKeyId);
+            assert.equal(harness.previewService.stopped.length, 0);
+        });
+
         test('rejects a streamKeyId that is not an existing key, before stopping anything', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();

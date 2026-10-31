@@ -135,6 +135,39 @@ describe('enforceDestinationPolicy', () => {
         );
     });
 
+    test('stops outputs that loop back into their own pipeline, leaving a one-way restream running', async () => {
+        const state = new Map();
+        const outputs = [
+            { id: 'self', pipelineId: 1, name: 'self', url: 'rtmp://127.0.0.1:21935/live/k1' },
+            { id: 'ab', pipelineId: 1, name: 'A to B', url: 'rtmp://127.0.0.1:21935/live/k2' },
+            { id: 'ba', pipelineId: 2, name: 'B to A', url: 'rtmp://127.0.0.1:21935/live/k1' },
+            { id: 'cb', pipelineId: 3, name: 'C to B', url: 'rtmp://127.0.0.1:21935/live/k2' },
+            { id: 'out', pipelineId: 3, name: 'out', url: 'rtmp://8.8.8.8/live/x' },
+        ];
+        const stopped = [];
+        const db = {
+            listOutputs: () => outputs,
+            listPipelines: () => [
+                { id: 1, name: 'A', streamKey: 'k1' },
+                { id: 2, name: 'B', streamKey: 'k2' },
+                { id: 3, name: 'C', streamKey: 'k3' },
+            ],
+            setOutputDesiredState: (id, value) => state.set(id, { ...state.get(id), value }),
+            setOutputLastError: (id, message, kind) =>
+                state.set(id, { ...state.get(id), message, kind }),
+        };
+
+        const count = await enforceDestinationPolicy(db, { stop: (id) => stopped.push(id) });
+
+        // A to B and B to A loop together, and A's own self output loops; C to B only feeds B.
+        assert.deepEqual(stopped.sort(), ['ab', 'ba', 'self']);
+        assert.equal(count, 3);
+        assert.match(state.get('self').message, /^Output stopped: .*own input/);
+        assert.match(state.get('ab').message, /restream loop/);
+        assert.equal(state.has('cb'), false);
+        assert.equal(state.has('out'), false);
+    });
+
     test('keeps shared-encode (rendition) outputs: own RTMP port on loopback passes at boot', async () => {
         const outputs = [
             { id: 'r', name: 'Shared encode', url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0' },

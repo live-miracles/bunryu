@@ -835,6 +835,34 @@ migrated with `git show 79d20ce:scripts/migrate-db-2-to-3.mjs`.
 
 **Revisit when:** a real event needs interpreter audio mixed into the program.
 
+### An output may not publish into its own pipeline, directly or through other pipelines
+
+**Decision (October 2026):** creating or editing an output, and moving a pipeline to
+another stream key, is refused when the destination is this server's own
+`live/<key>` and that key is the pipeline's own input or the chain of such outputs
+leads back to it. The rows saved before the rule are stopped at startup, with the
+reason in their History. It is decided by stream key, not pipeline id: pipelines may
+share a key (the dashboard warns but allows it), and then they read the
+same stream, so an output of either one publishing into that key still feeds itself.
+
+**Why:** the destination rules allowed loopback on the server's own ports so pipelines
+can restream into each other, and nothing stopped an operator pasting the pipeline's
+own publish URL. **Observed** on the test stack (2026-10-31, SRS 6.0-r2, FFmpeg
+7.1.4): a copy output pulling a live pipeline and pushing to the same key is refused
+by SRS (`Error opening output ... Input/output error`) while the input keeps running,
+so the stream is not corrupted, but the output could never work, and it would sit in
+the retry loop for as long as the event runs. Refusing it when it is typed tells the
+operator at once.
+
+**Limits:** only outputs on this server's own ingest are followed. A destination
+that reaches the server through a NAT-ed public address that is not on one of its
+interfaces, or through another machine, looks like a remote host and is not
+recognised.
+
+**Revisit when:** a loop shows up that the check misses (for example through a relay
+on another host) or SRS starts letting a second publisher take over a live stream,
+which would turn a failing output into a feedback loop.
+
 ## Sizing
 
 ### Sizing guidance is a measured table, not a calculator

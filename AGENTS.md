@@ -253,6 +253,10 @@ only for a new module.
   serves the Logs page's Events table, which `utils/activityFeed.ts` merges on request from the
   pipeline log lines, each output's History and the Server events. `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.
+- `src/utils/destination.ts` is the output destination policy (blocked and loopback hosts,
+  the reserved `internal` app, `ownIngestKey`: the stream key a destination publishes into on
+  this server); `restreamLoop.ts` uses it to refuse an output that feeds its own pipeline's
+  input, directly or through other pipelines (outputs API, key reassignment, startup re-check).
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments and the minimal environment every
   FFmpeg/ffprobe child gets (`ffmpegEnv`); `ffmpegCheck.ts` is the startup check of the
   build's protocols, encoders and filters; `appConfig.ts` reads

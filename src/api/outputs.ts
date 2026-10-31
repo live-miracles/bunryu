@@ -6,6 +6,7 @@ import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
 import { isRenditionOutput, splitOutputs } from '../utils/renditions.js';
 import { parseName } from '../utils/inputLimits.js';
+import { createRestreamLoopChecker, type RestreamLoopChecker } from '../utils/restreamLoop.js';
 
 // Validate an output's destination from the request body. It needs a valid URL
 // and audio track selection; multiple tracks are only valid for an SRT
@@ -49,7 +50,12 @@ type ParsedOutputConfig =
     | { config: OutputConfig }
     | { error: string; kind: 'name' | 'policy' | 'field'; name: string };
 
-async function parseOutputConfig(body: unknown): Promise<ParsedOutputConfig> {
+async function parseOutputConfig(
+    body: unknown,
+    pipelineId: number,
+    checkLoop: RestreamLoopChecker,
+    skipOutputId?: string,
+): Promise<ParsedOutputConfig> {
     const b = body as Record<string, unknown> | null | undefined;
     const parsedName = parseName(b?.name);
     if ('error' in parsedName) return { error: parsedName.error, kind: 'name', name: '' };
@@ -67,6 +73,8 @@ async function parseOutputConfig(body: unknown): Promise<ParsedOutputConfig> {
     }
     const blockedReason = await checkOutputDestination(destination.url);
     if (blockedReason) return { error: blockedReason, kind: 'policy', name };
+    const loopReason = await checkLoop(pipelineId, destination.url, { skipOutputId });
+    if (loopReason) return { error: loopReason, kind: 'policy', name };
     return { config: { name, videoEncoding, ...destination } };
 }
 
@@ -82,7 +90,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (!db.getPipeline(pipelineId))
             return res.status(404).json({ error: 'Pipeline not found' });
 
-        const parsed = await parseOutputConfig(req.body);
+        const parsed = await parseOutputConfig(req.body, pipelineId, createRestreamLoopChecker(db));
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
 
         let output: ReturnType<Db['createOutput']>;
@@ -109,8 +117,9 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             return res.status(400).json({ error: 'outputs array is required' });
 
         const validated: OutputConfig[] = [];
+        const checkLoop = createRestreamLoopChecker(db);
         for (const item of rawOutputs) {
-            const parsed = await parseOutputConfig(item);
+            const parsed = await parseOutputConfig(item, pipelineId, checkLoop);
             if ('error' in parsed) {
                 const error =
                     parsed.kind === 'name'
@@ -201,13 +210,18 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         // Like name and videoEncoding, a field left out keeps its stored value,
         // so a script sending only { name } can't silently reset the audio tracks.
         const body = (req.body ?? {}) as Record<string, unknown>;
-        const parsed = await parseOutputConfig({
-            name: body.name === undefined ? output.name : body.name,
-            videoEncoding: body.videoEncoding ?? output.videoEncoding,
-            url: body.url === undefined ? output.url : body.url,
-            audioEncoding:
-                body.audioEncoding === undefined ? output.audioEncoding : body.audioEncoding,
-        });
+        const parsed = await parseOutputConfig(
+            {
+                name: body.name === undefined ? output.name : body.name,
+                videoEncoding: body.videoEncoding ?? output.videoEncoding,
+                url: body.url === undefined ? output.url : body.url,
+                audioEncoding:
+                    body.audioEncoding === undefined ? output.audioEncoding : body.audioEncoding,
+            },
+            output.pipelineId,
+            createRestreamLoopChecker(db),
+            outId,
+        );
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
         const { name } = parsed.config;
 

@@ -92,6 +92,11 @@ ordinary output row owned by the server, so the API exposes it as one:
 - **You cannot create outputs in the `internal` app.** Create, bulk create and
   update refuse a destination that resolves to this host with a path under
   `/internal/` (`400`, "the internal app is reserved for shared encodes").
+- **You cannot create a restream loop.** Create, bulk create and update refuse a
+  destination that publishes into this server's own `live/<key>` when that key is the
+  pipeline's own input or the chain of restreams leads back to it (`400`). Moving a
+  pipeline to another stream key (`POST /api/pipelines/:id` with `streamKeyId`) is
+  refused with `409` when one of its outputs would then loop back.
 - **Output stats carry extra fields** (`GET /api/health`, per output): `role`
   (`"rendition"` for a shared encode, else `"output"`), `renditionId` (the shared
   encode a running shared output is pulling, else `null`), and, for a shared

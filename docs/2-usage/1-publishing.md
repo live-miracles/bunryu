@@ -117,7 +117,8 @@ another on the same server:
 1. Create two pipelines, A and B.
 2. Add an output to A with the destination
    `rtmp://localhost:21935/live/<stream-key-of-B>`. An output may connect to
-   loopback only on the server's own RTMP/SRT ports.
+   loopback only on the server's own RTMP/SRT ports. An output cannot point back at
+   its own pipeline.
 3. Run the command above with A's stream key.
 
 A goes live and its output shows running, and B goes live with the forwarded

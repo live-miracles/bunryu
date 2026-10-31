@@ -359,6 +359,85 @@ describe('Outputs API integration', () => {
         });
     });
 
+    describe('restream loops', () => {
+        const own = (key) => `rtmp://127.0.0.1:21935/live/${key}`;
+
+        test('rejects an output that publishes into its own pipeline, on create, bulk and edit', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const create = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                name: 'Loop',
+                url: own(p.streamKey),
+            });
+            assert.equal(create.status, 400);
+            assert.match(create.body.error, /own input/);
+
+            const srt = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                name: 'Loop',
+                url: `srt://127.0.0.1:10080?streamid=#!::r=live/${p.streamKey},m=publish`,
+            });
+            assert.equal(srt.status, 400);
+
+            const bulk = await harness.request('POST', `/api/pipelines/${p.id}/outputs/bulk`, {
+                outputs: [
+                    { name: 'fine', url: 'rtmp://192.168.1.10/live/k' },
+                    { name: 'Loop', url: own(p.streamKey) },
+                ],
+            });
+            assert.equal(bulk.status, 400);
+            assert.match(bulk.body.error, /^Loop: /);
+            assert.equal(harness.db.listOutputs().length, 0);
+
+            const o = harness.db.createOutput({
+                pipelineId: p.id,
+                name: 'O',
+                url: 'rtmp://h.example/x',
+            });
+            const upd = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
+                name: 'O',
+                url: own(p.streamKey),
+            });
+            assert.equal(upd.status, 400);
+            assert.equal(harness.db.getOutput(o.id).url, 'rtmp://h.example/x');
+        });
+
+        test('rejects a loop through another pipeline but allows a one-way restream', async () => {
+            const harness = createHarness();
+            const a = harness.db.createPipeline();
+            const b = harness.db.createPipeline();
+            const ok = await harness.request('POST', `/api/pipelines/${a.id}/outputs`, {
+                name: 'A to B',
+                url: own(b.streamKey),
+            });
+            assert.equal(ok.status, 201);
+            const loop = await harness.request('POST', `/api/pipelines/${b.id}/outputs`, {
+                name: 'B to A',
+                url: own(a.streamKey),
+            });
+            assert.equal(loop.status, 400);
+            assert.match(loop.body.error, /restream loop/);
+            // Editing the existing A to B output to the same destination is not a loop.
+            const edit = await harness.request(
+                'POST',
+                `/api/pipelines/${a.id}/outputs/${ok.body.id}`,
+                { name: 'A to B 2' },
+            );
+            assert.equal(edit.status, 200);
+        });
+
+        test('a pipeline sharing the key cannot publish into it either', async () => {
+            const harness = createHarness();
+            const a = harness.db.createPipeline();
+            const b = harness.db.createPipeline();
+            harness.db.updatePipeline(b.id, 'B', a.streamKeyId);
+            const res = await harness.request('POST', `/api/pipelines/${b.id}/outputs`, {
+                name: 'Loop',
+                url: own(a.streamKey),
+            });
+            assert.equal(res.status, 400);
+        });
+    });
+
     describe('input bounds', () => {
         test('rejects over-long, empty, control-character and non-string output names', async () => {
             const harness = createHarness();

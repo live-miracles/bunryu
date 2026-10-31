@@ -1,6 +1,8 @@
 import dns from 'dns';
 import net from 'net';
+import os from 'os';
 import { readSrsConfigValues } from './srsConfig.js';
+import { extractStreamResource } from './srs.js';
 import { RENDITION_APP } from './renditions.js';
 
 // The server connects to whatever host an operator types into an output URL, so a
@@ -100,4 +102,36 @@ export async function isInternalAppDestination(url: string): Promise<boolean> {
     if (!m || !(m[2] ?? '').startsWith(`/${RENDITION_APP}/`)) return false;
     const addresses = await resolveAddresses(m[1]);
     return addresses.some((address) => classifyAddress(address) === 'loopback');
+}
+
+function isThisHost(address: string): boolean {
+    if (classifyAddress(address) === 'loopback') return true;
+    return Object.values(os.networkInterfaces()).some((list) =>
+        list?.some((iface) => iface.address === address),
+    );
+}
+
+// The stream key an output publishes into on this server's own ingest (`live/<key>` on
+// its RTMP or SRT port, on loopback or one of this machine's own addresses), or null for
+// any other destination. Restream loop detection compares it with pipelines' input keys.
+// A public address that is NAT-ed to this machine and not on one of its interfaces looks
+// like any remote host, so it is not recognised.
+export async function ownIngestKey(url: string): Promise<string | null> {
+    if (isSrtListener(url)) return null;
+    const dest = parseDestination(url);
+    if (!dest || dest.port === null) return null;
+    const own = readSrsConfigValues();
+    if (dest.port !== own.rtmpPort && dest.port !== own.srtPort) return null;
+
+    let resource: string | null;
+    if (/^srt:/i.test(url)) {
+        resource = extractStreamResource(url);
+    } else {
+        resource = /^rtmps?:\/\/[^/?#]+(\/[^?#]*)/i.exec(url)?.[1]?.replace(/^\/+/, '') ?? null;
+    }
+    const m = /^live\/([^/?#,]+)/.exec(resource ?? '');
+    if (!m) return null;
+
+    const addresses = await resolveAddresses(dest.host);
+    return addresses.some(isThisHost) ? m[1] : null;
 }

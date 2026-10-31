@@ -17,6 +17,12 @@ ports. The latter allows pipeline-to-pipeline restreams, for example feeding a
 second pipeline from an output of the first. See
 [Security](../3-operations/1-security.md) for the full rules.
 
+An output cannot send a pipeline back into itself. A destination on this server's
+own ingest (`live/<stream key>`) is refused when that key is the pipeline's own
+input, and when the pipeline it feeds leads back to it through other restreams
+(A to B and B to A). Pipelines that share a key read the same stream, so the same
+holds for them. The same rule applies when you move a pipeline to another stream key.
+
 ## Video encoding
 
 | Encoding | What it does | CPU cost |

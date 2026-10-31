@@ -5,6 +5,7 @@ import type { OutputService } from '../services/outputs.js';
 import type { PreviewService } from '../services/preview.js';
 import type { SrtRelayService } from '../services/srtRelay.js';
 import { splitOutputs } from '../utils/renditions.js';
+import { createRestreamLoopChecker } from '../utils/restreamLoop.js';
 
 export function registerPipelineApi(
     app: Express,
@@ -82,6 +83,20 @@ export function registerPipelineApi(
                 return res
                     .status(409)
                     .json({ error: 'Stop all outputs before changing the stream key' });
+            }
+            // The pipeline's outputs were checked against the key it had. On the new key
+            // one of them may publish into a pipeline that leads back to it.
+            const newKey = db.listStreamKeys().find((k) => k.id === streamKeyId)?.key;
+            const checkLoop = createRestreamLoopChecker(db);
+            for (const o of outputs) {
+                const loop = newKey
+                    ? await checkLoop(id, o.url, { streamKey: newKey, skipOutputId: o.id })
+                    : null;
+                if (loop) {
+                    return res.status(409).json({
+                        error: `Output "${o.name}" would loop back into this pipeline on that stream key: ${loop}`,
+                    });
+                }
             }
             // A shared encode pulls the input by its key. Stop the ones still running
             // (desired-stopped first, see the pipeline delete below) so the next one
