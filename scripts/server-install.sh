@@ -46,9 +46,9 @@ SRS_URL="https://github.com/ossrs/srs/releases/download/${SRS_RELEASE_TAG}/${SRS
 
 # Pinned goryu binary — published from the standalone relay repo.
 # The Dockerfile pins the same SRS, relay and FFmpeg builds; bump both together.
-SRT_RELEASE_TAG="${SRT_RELEASE_TAG:-v3.4.0}"
+SRT_RELEASE_TAG="${SRT_RELEASE_TAG:-v3.5.0}"
 SRT_FILENAME="goryu-linux-x86_64.tar.gz"
-SRT_SHA256="${SRT_SHA256:-312c7b878def0be835ebd93545fe9241631ea8a806394aeb2320993598b9ed9c}"
+SRT_SHA256="${SRT_SHA256:-92b9a0aeb04a3d4ae1d6d0e4dc88ce0d2ec7f92f4c7da84cfd1b35edf05884fe}"
 SRT_URL="${SRT_URL:-https://github.com/live-miracles/goryu/releases/download/${SRT_RELEASE_TAG}/${SRT_FILENAME}}"
 
 # Mirrored into our own releases since BtbN prunes autobuild tags after ~2 years.
