@@ -259,11 +259,11 @@
         background: transparent;
     }
 
+    /* The selected segment is filled with the accent: a panel-coloured one merged with the card. */
     .join .join-item.btn-accent.btn-soft {
-        background: light-dark(var(--panel), #1c1d1f);
-        box-shadow: 0 0 0 1px var(--line);
-        color: var(--ink);
-        font-weight: 500;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-weight: 600;
     }
 
     /* ── Badges ────────────────────────────────────────────── */
