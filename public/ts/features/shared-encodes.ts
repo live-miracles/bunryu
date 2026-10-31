@@ -150,7 +150,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     // the card is too narrow for them. The card's own title already says "Shared
     // encodes", so the row shows just the encoding.
     return `
-    <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-shared-encode="${escapeHtml(rendition.id)}">
+    <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0" data-shared-encode="${escapeHtml(rendition.id)}">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 shrink-0 font-semibold">
                 ${renderStatusDot(rendition, input, deps)}

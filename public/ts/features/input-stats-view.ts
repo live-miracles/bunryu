@@ -76,7 +76,7 @@ export function renderInputStats(input: InputHealth, options: InputStatsOptions)
     // Same one-line video and audio descriptions as the Overview's Stream
     // Specification column, labelled by row.
     return `
-        <div class="my-1 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-xs">
+        <div class="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-0.5 text-xs">
             <span class="text-muted">Source</span>
             <div class="flex min-w-0 justify-between gap-2"><span class="font-mono">${source}</span>${probed}</div>
             ${row('Video', v ? escapeHtml(v) : '—')}

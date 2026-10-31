@@ -212,7 +212,7 @@ export function renderOutputCard(
     // A stopped output only has a lastError when it was stopped after repeated
     // failed attempts (the server clears it when the output starts again).
     const lastErrorHtml = lastErrorLine
-        ? `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
+        ? `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
                 ${retryBadge}
                 ${lastErrorTs}
                 ${retryInHtml}
@@ -231,7 +231,7 @@ export function renderOutputCard(
             ({
                 message,
                 sinceMs,
-            }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 mt-0.5 min-w-0">
+            }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
                 <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${hintHtml(errorHint(message))}${sinceHtml(sinceMs)}
            </div>`,
@@ -248,7 +248,7 @@ export function renderOutputCard(
     const isPending = deps.pendingOutputs.has(output.id);
 
     return `
-    <div class="bg-base-100 px-3 py-2 border border-base-content/10 rounded-xl w-full min-w-0 space-y-0.5" data-output-card="${output.id}" ${cardTint}>
+    <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0" data-output-card="${output.id}" ${cardTint}>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">
                 <div aria-label="status" class="status status-lg mx-1 shrink-0" style="background-color: ${statusHex}"></div>

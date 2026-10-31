@@ -253,10 +253,10 @@ only for a new module.
   read SRS and relay config.
 - `src/db/` - SQLite schema and access (output History lives in
   `outputs.last_error` as JSON).
-- `public/input.css` - the dashboard's design tokens (`light-dark()` pairs shared with the org
-  site) and its few components (`btn`, `badge`, `input`, `modal`, `tabs`, `table`, `banner`),
+- `public/input.css` - the dashboard's design tokens (`light-dark()` pairs, in the style of
+  Linear) and its few components (`btn`, `badge`, `input`, `modal`, `tabs`, `table`, `banner`),
   compiled by Tailwind to untracked `public/output.css`; there is no component library.
-  `public/patterns/` has the Japanese pattern SVGs (masks and tiles) the backgrounds use.
+  `public/patterns/` has the Japanese pattern SVG masks the navbar uses (`seigaiha`).
   `public/ts/features/theme.ts` is the navbar's light/dark toggle.
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
   `core/status.ts` is the verdict on an output or input (`outputHealth`, `inputHealth`:

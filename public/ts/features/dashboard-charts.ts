@@ -149,7 +149,7 @@ export function drawChart(
 }
 
 export function chartCard(id: string, label: string, currentVal: string): string {
-    return `<div class="border-base-content/10 bg-base-100/50 rounded-xl border p-3">
+    return `<div class="border-base-content/10 bg-base-100/50 rounded-lg border p-2.5">
         <div class="mb-2 flex items-center justify-between">
             <span class="text-xs font-semibold text-muted">${label}</span>
             <span class="text-xs font-semibold tabular-nums">${currentVal}</span>

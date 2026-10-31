@@ -1,45 +1,39 @@
 @import 'tailwindcss';
 
-/* Design tokens, shared with the org site (live-miracles.github.io/ui/styles.css): the
-   palette of Hokusai's Great Wave (indigo ink on warm paper by day, the same sea at night),
-   one blue accent, hairline dividers instead of shadows. Each token is a
-   light-dark() pair, so the dashboard follows the system and the navbar toggle only has to pin
-   color-scheme (data-theme on <html>). Status colours are for status only. */
+/* Design tokens in the style of Linear: a near-black canvas and charcoal panels (a white
+   canvas and white panels by day), hairline borders instead of shadows, one lavender accent.
+   Each token is a light-dark() pair, so the dashboard follows the system and the navbar toggle
+   only has to pin color-scheme (data-theme on <html>). Status colours are for status only. */
 :root {
     color-scheme: light dark;
-    --page: light-dark(#f4efe5, #060b18);
-    --panel: light-dark(#fdfbf7, #0c1428);
-    --field: light-dark(#f4efe5, #172240);
-    --ink: light-dark(#14213d, #eef2fa);
-    --muted: light-dark(#5c677d, #9aa7bf);
-    --line: light-dark(rgb(20 33 61 / 0.12), rgb(255 255 255 / 0.12));
-    --chip: light-dark(rgb(20 33 61 / 0.06), rgb(255 255 255 / 0.08));
-    /* The print's blue, coral and cream: glows behind the page and the panels. */
-    --glow-a: light-dark(rgb(52 120 196 / 0.2), rgb(60 130 220 / 0.3));
-    --glow-b: light-dark(rgb(232 130 100 / 0.18), rgb(240 120 90 / 0.2));
-    --glow-c: light-dark(rgb(236 200 120 / 0.2), rgb(240 190 100 / 0.1));
-    --grad-from: light-dark(#1b5fb0, #7db8ff);
-    --grad-to: light-dark(#d9694f, #ffa982);
-    --pattern-strength: light-dark(26%, 34%);
-    --accent: light-dark(#1b5fb0, #6db3ff);
-    --on-accent: light-dark(#ffffff, #06142b);
-    --ok: light-dark(#1a7f37, #30d158);
-    --warn: light-dark(#946200, #ffd60a);
-    --bad: light-dark(#d1242f, #ff453a);
+    --page: light-dark(#f6f7f8, #010102);
+    --panel: light-dark(#ffffff, #0f1011);
+    --field: light-dark(#f3f4f6, #141516);
+    --ink: light-dark(#1b1c1e, #f7f8f8);
+    --muted: light-dark(#62666d, #8a8f98);
+    --line: light-dark(rgb(0 0 0 / 0.09), #23252a);
+    --chip: light-dark(rgb(0 0 0 / 0.05), rgb(255 255 255 / 0.06));
+    /* The navbar's wave lines: a fainter lavender on white, a lighter one on the near-black. */
+    --pattern: light-dark(rgb(94 106 210 / 0.3), rgb(150 160 255 / 0.55));
+    --accent: light-dark(#5e6ad2, #6a76e8);
+    --on-accent: #ffffff;
+    --ok: light-dark(#1a7f37, #4cb782);
+    --warn: light-dark(#946200, #f2c94c);
+    --bad: light-dark(#d1242f, #f06565);
     --on-status: light-dark(#ffffff, #000000);
     /* Brighter than the text colours above: status dots, split dots and card tints. */
-    --dot-ok: light-dark(#34c759, #30d158);
-    --dot-warn: light-dark(#ffb800, #ffd60a);
-    --dot-bad: light-dark(#ff3b30, #ff453a);
-    --dot-off: light-dark(#aeaeb2, #636366);
-    --chart-cpu: light-dark(#0a84ff, #0a84ff);
+    --dot-ok: light-dark(#27a644, #4cb782);
+    --dot-warn: light-dark(#e5a50a, #f2c94c);
+    --dot-bad: light-dark(#e5484d, #eb5757);
+    --dot-off: light-dark(#b4b8bf, #62666d);
+    --chart-cpu: light-dark(#5e6ad2, #7a85ea);
     --chart-ram: light-dark(#af52de, #bf5af2);
-    --chart-rx: light-dark(#34c759, #30d158);
-    --chart-tx: light-dark(#ff9500, #ff9f0a);
-    --tip: light-dark(#14213d, #16213d);
-    --on-tip: #eef2fa;
-    --backdrop: light-dark(rgb(20 33 61 / 0.32), rgb(2 5 14 / 0.65));
-    --radius-card: 18px;
+    --chart-rx: light-dark(#27a644, #4cb782);
+    --chart-tx: light-dark(#e08a00, #f2994a);
+    --tip: light-dark(#1b1c1e, #23252a);
+    --on-tip: #f7f8f8;
+    --backdrop: light-dark(rgb(0 0 0 / 0.32), rgb(0 0 0 / 0.7));
+    --radius-card: 12px;
     --radius-control: 8px;
 }
 
@@ -74,7 +68,7 @@
     --radius-box: var(--radius-card);
     --radius-field: var(--radius-control);
     --font-sans:
-        -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, 'Segoe UI', Roboto,
+        'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto,
         sans-serif;
     --font-mono:
         ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
@@ -85,52 +79,15 @@
         background: var(--page);
         color: var(--ink);
         font-family: var(--font-sans);
-        font-size: 15px;
-        line-height: 1.47;
-        letter-spacing: -0.01em;
+        font-size: 14px;
+        line-height: 1.5;
+        letter-spacing: -0.006em;
         -webkit-font-smoothing: antialiased;
     }
 
     :focus-visible {
-        outline: 2px solid var(--accent);
+        outline: 2px solid color-mix(in oklab, var(--accent) 60%, transparent);
         outline-offset: 2px;
-    }
-
-    /* The page: the print's glows in the corners, an asanoha (hemp leaf) pattern fading out
-       from the top right and seigaiha waves rising from the bottom. Both patterns are SVG
-       masks (white lines on black, read by luminance) filled with the accent, so one file
-       serves both themes. Static on purpose: no animation cost on a dashboard open for
-       hours. The panels cover most of it; it shows around and between them. */
-    body {
-        background:
-            radial-gradient(60% 55% at 0% 0%, var(--glow-a), transparent 70%) fixed no-repeat,
-            radial-gradient(50% 50% at 100% 0%, var(--glow-b), transparent 70%) fixed no-repeat,
-            radial-gradient(70% 40% at 50% 100%, var(--glow-c), transparent 70%) fixed no-repeat,
-            var(--page);
-    }
-
-    body::before,
-    body::after {
-        content: '';
-        position: fixed;
-        z-index: -1;
-        pointer-events: none;
-        background: color-mix(in srgb, var(--accent) var(--pattern-strength), transparent);
-        mask-mode: luminance;
-        mask-composite: intersect;
-    }
-
-    body::before {
-        inset: 0 0 auto;
-        height: 55vh;
-        mask-image:
-            radial-gradient(ellipse 55% 100% at 100% 0%, #fff, #000), url('patterns/asanoha.svg');
-    }
-
-    body::after {
-        inset: auto 0 0;
-        height: 35vh;
-        mask-image: linear-gradient(to top, #fff 0%, #000 90%), url('patterns/seigaiha.svg');
     }
 
     * {
@@ -144,82 +101,13 @@
 }
 
 @layer components {
-    /* Surfaces: the three working columns are flat white (dark grey) cards with a hairline. */
-    /* The panel's own layers do not scroll with its content: two glows from the print's
-       palette. Each panel sets where they sit and which colours they use (the tint-*
-       classes), so neighbouring panels do not repeat each other. */
+    /* Surfaces: the working columns are panels one step above the canvas, with a hairline
+       and a faint lit top edge. */
     .panel {
-        --glow-size: 300px;
-        --g1: var(--glow-a);
-        --g1-at: 0% 100%;
-        --g2: var(--glow-b);
-        --g2-at: 100% 100%;
-        background:
-            radial-gradient(circle var(--glow-size) at var(--g1-at), var(--g1), transparent 70%)
-                no-repeat,
-            radial-gradient(circle var(--glow-size) at var(--g2-at), var(--g2), transparent 70%)
-                no-repeat,
-            var(--panel);
+        background: var(--panel);
         border: 1px solid var(--line);
         border-radius: var(--radius-card);
-    }
-
-    /* Seigaiha waves rising from the bottom edge, under a fade of the panel colour, so empty
-       space below the content looks like water. Only where there is room for them: the dense
-       tables and forms go without. */
-    .panel-waves {
-        background:
-            linear-gradient(to bottom, var(--panel) 40%, transparent 100%) no-repeat,
-            url('patterns/waves-tile.svg') 0 100% / 60px 30px repeat,
-            radial-gradient(circle var(--glow-size) at var(--g1-at), var(--g1), transparent 70%)
-                no-repeat,
-            radial-gradient(circle var(--glow-size) at var(--g2-at), var(--g2), transparent 70%)
-                no-repeat,
-            var(--panel);
-    }
-
-    .tint-sea {
-        --g1: var(--glow-a);
-        --g1-at: 0% 100%;
-        --g2: var(--glow-c);
-        --g2-at: 100% 100%;
-    }
-
-    .tint-dawn {
-        --g1: var(--glow-b);
-        --g1-at: 100% 0%;
-        --g2: var(--glow-c);
-        --g2-at: 0% 100%;
-    }
-
-    /* For a panel with a sticky header: no glow at the top, where the header's solid
-       background would stop at the scrollbar and leave the glow showing beside it. */
-    .tint-dusk {
-        --g1: var(--glow-b);
-        --g1-at: 100% 65%;
-        --g2: var(--glow-c);
-        --g2-at: 0% 90%;
-    }
-
-    .tint-gold {
-        --g1: var(--glow-c);
-        --g1-at: 50% 100%;
-        --g2: var(--glow-b);
-        --g2-at: 100% 100%;
-    }
-
-    .tint-mist {
-        --g1: var(--glow-a);
-        --g1-at: 0% 0%;
-        --g2: var(--glow-b);
-        --g2-at: 100% 100%;
-    }
-
-    .tint-ember {
-        --g1: var(--glow-b);
-        --g1-at: 100% 0%;
-        --g2: var(--glow-a);
-        --g2-at: 0% 100%;
+        box-shadow: inset 0 1px 0 light-dark(rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.04));
     }
 
     /* Secondary text (labels, units, timestamps). Dimmed far enough to recede but not
@@ -246,11 +134,11 @@
         height: var(--h);
         padding: 0 0.9rem;
         border: 1px solid transparent;
-        border-radius: 9999px;
+        border-radius: var(--radius-control);
         background: var(--chip);
         color: var(--ink);
-        font-size: 0.875rem;
-        font-weight: 400;
+        font-size: 0.8125rem;
+        font-weight: 500;
         line-height: 1;
         white-space: nowrap;
         cursor: pointer;
@@ -267,7 +155,7 @@
     }
 
     .btn:active {
-        transform: scale(0.95);
+        transform: scale(0.98);
     }
 
     .btn-sm {
@@ -286,10 +174,6 @@
     .btn-circle {
         width: var(--h);
         padding: 0;
-    }
-
-    .btn-square {
-        border-radius: var(--radius-control);
     }
 
     .btn-ghost {
@@ -322,7 +206,7 @@
 
     .btn-accent:hover,
     .btn-primary:hover {
-        background: color-mix(in oklab, var(--accent) 88%, var(--ink));
+        background: color-mix(in oklab, var(--accent) 82%, white);
     }
 
     /* Warning and destructive actions are tinted, not solid: colour is for status only. */
@@ -365,7 +249,7 @@
         display: inline-flex;
         gap: 2px;
         padding: 2px;
-        border-radius: 9999px;
+        border-radius: var(--radius-control);
         background: var(--chip);
     }
 
@@ -374,9 +258,10 @@
     }
 
     .join .join-item.btn-accent.btn-soft {
-        background: var(--panel);
+        background: light-dark(var(--panel), #1c1d1f);
+        box-shadow: 0 0 0 1px var(--line);
         color: var(--ink);
-        font-weight: 600;
+        font-weight: 500;
     }
 
     /* ── Badges ────────────────────────────────────────────── */
@@ -454,7 +339,7 @@
     .textarea {
         height: 2rem;
         padding: 0 0.75rem;
-        border: 1px solid transparent;
+        border: 1px solid var(--line);
         border-radius: var(--radius-control);
         background: var(--field);
         color: var(--ink);
@@ -475,7 +360,7 @@
     .input:hover,
     .select:hover,
     .textarea:hover {
-        border-color: var(--line);
+        border-color: light-dark(rgb(0 0 0 / 0.18), #34343a);
     }
 
     .input:focus,
@@ -483,7 +368,7 @@
     .textarea:focus {
         outline: none;
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 28%, transparent);
+        box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
     }
 
     .input:disabled,
@@ -621,7 +506,7 @@
         display: inline-flex;
         gap: 2px;
         padding: 2px;
-        border-radius: 9999px;
+        border-radius: var(--radius-control);
         background: var(--chip);
     }
 
@@ -631,9 +516,10 @@
         justify-content: center;
         height: 1.75rem;
         padding: 0 0.85rem;
-        border-radius: 9999px;
+        border-radius: 6px;
         color: var(--muted);
         font-size: 0.8125rem;
+        font-weight: 500;
         cursor: pointer;
         user-select: none;
         transition:
@@ -646,9 +532,10 @@
     }
 
     .tab-active {
-        background: var(--panel);
+        background: light-dark(var(--panel), #1c1d1f);
+        box-shadow: 0 0 0 1px var(--line);
         color: var(--ink);
-        font-weight: 600;
+        font-weight: 500;
     }
 
     /* ── Tables ────────────────────────────────────────────── */
@@ -702,8 +589,8 @@
     }
 
     .menu > li > * {
-        padding: 0.5rem 0.75rem;
-        border-radius: 10px;
+        padding: 0.375rem 0.65rem;
+        border-radius: var(--radius-control);
     }
 
     .menu > li > *:hover {
@@ -770,34 +657,34 @@
     }
 
     /* ── Navbar and banners ────────────────────────────────── */
-    /* The wordmark in the print's blue-to-coral gradient. */
     .brand-text {
-        background: linear-gradient(100deg, var(--grad-from), var(--grad-to));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
+        color: var(--ink);
     }
 
-    /* .btn:hover resets the background shorthand, which would drop the text clip and leave
-       transparent text on the hover wash; keep the gradient and draw the wash as a shadow. */
-    .brand-text:hover {
-        background: linear-gradient(100deg, var(--grad-from), var(--grad-to));
-        -webkit-background-clip: text;
-        background-clip: text;
-        box-shadow: inset 0 0 0 100px color-mix(in oklab, var(--ink) 10%, transparent);
-    }
-
+    /* Seigaiha waves along the navbar: only the pattern's lines, in the accent, strongest
+       at the left, gone before the figures on the right. A mask (white lines on black, read by
+       luminance), so one file serves both themes; static, no animation cost. */
     .navbar {
-        border-image: linear-gradient(
-                90deg,
-                color-mix(in oklab, var(--grad-from) 55%, transparent),
-                color-mix(in oklab, var(--grad-to) 55%, transparent)
-            )
-            1;
+        position: relative;
+        isolation: isolate;
         display: flex;
         align-items: center;
         min-height: 3.25rem;
         padding: 0.25rem 1rem;
+        border-image: none;
+        border-color: var(--line);
+    }
+
+    .navbar::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background: var(--pattern);
+        mask-image: linear-gradient(to right, #fff 0%, #000 45%), url('patterns/seigaiha.svg');
+        mask-mode: luminance;
+        mask-composite: intersect;
     }
 
     /* Below lg the navbar sticks to the top, so it needs a body to read over. */
@@ -830,7 +717,7 @@
         align-items: center;
         gap: 0.6rem;
         padding: 0.6rem 1rem;
-        border-radius: 12px;
+        border-radius: var(--radius-control);
         background: var(--tip);
         color: var(--on-tip);
         font-size: 0.875rem;

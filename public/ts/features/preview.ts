@@ -535,14 +535,14 @@ function setPreviewMaximized(on: boolean): void {
         // covers the viewport the page header would otherwise show through and make
         // the player controls hard to read against it.
         card.classList.add('bg-base-100');
-        card.classList.remove('rounded-xl', 'bg-base-100/50');
+        card.classList.remove('rounded-lg', 'bg-base-100/50');
         stageHost?.classList.add('flex-1', 'min-h-0');
         stage?.classList.add('h-full');
         player?.classList.remove('aspect-video');
         player?.classList.add('flex-1', 'h-full');
     } else {
         card.classList.remove('fixed', 'inset-0', 'z-50', 'flex', 'flex-col', 'rounded-none');
-        card.classList.add('rounded-xl', 'bg-base-100/50');
+        card.classList.add('rounded-lg', 'bg-base-100/50');
         card.classList.remove('bg-base-100');
         stageHost?.classList.remove('flex-1', 'min-h-0');
         stage?.classList.remove('h-full');

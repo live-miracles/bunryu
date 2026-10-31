@@ -1205,21 +1205,17 @@ carries each output's shared encode.
 
 **Decision (October 2026):** `public/input.css` defines the dashboard's tokens and the few
 components it uses (buttons, badges, fields, dialogs, tabs, tables, the pipeline list,
-banners) on top of Tailwind's utilities. daisyUI is removed. The tokens match the org
-site (`live-miracles.github.io/ui/styles.css`): the palette of Hokusai's Great Wave (indigo
-ink on warm paper by day, the same sea at night), one blue accent, hairline dividers and
-no shadows, with Apple's restraint in type, spacing and radii. The Japanese motifs stay,
-quietly: glows in the print's blue, coral and cream behind the page and in each panel
-(every panel places and colours them differently, so neighbouring panels do not repeat
-each other), seigaiha waves rising from the bottom of the sidebar only, an asanoha corner on
-the page, the blue-to-coral gradient on the wordmark and under the navbar, and the wave
-crest on the login page. The dense views keep to glows, so no pattern runs behind a table.
-All of it is
-static (no animation cost on a dashboard open for hours) and is background layers or SVG
-masks filled with the accent, so one file serves both themes. Green, amber and red mean
-status and nothing else, and warnings and destructive buttons are tinted, not solid. Each
-token is a `light-dark()` pair, so the dashboard follows the system theme with no second
-copy of the palette; the navbar's sun/moon toggle pins the opposite theme per browser (`features/theme.ts`).
+banners) on top of Tailwind's utilities. daisyUI is removed. The look follows Linear: a
+near-black canvas with charcoal panels (white on white by day), hairline borders instead
+of shadows, 8px controls and 12px panels, one lavender accent, dense 14px type. Colour is
+for status: green, amber and red mean status and nothing else, and warnings and
+destructive buttons are tinted, not solid. The Japanese motifs stay, quietly and only where
+no data is read: seigaiha waves along the navbar and the wave crest on the login page,
+both SVG masks filled with the accent, static (no animation cost on a dashboard open for
+hours), so one file serves both themes. The panels and tables are flat. Each token is a
+`light-dark()` pair, so the dashboard follows the system theme with no second copy of the
+palette; the navbar's sun/moon toggle pins the opposite theme per browser
+(`features/theme.ts`).
 Status dots, split dots and card tints use brighter `--dot-*` tokens than the status text
 colours (an amber that reads as text on white is brown as a dot), and the charts resolve
 `--chart-*` through the browser because a canvas cannot read `var()` or `light-dark()`.
@@ -1227,7 +1223,10 @@ colours (an amber that reads as text on white is brown as a dot), and the charts
 **Why:** daisyUI's `dim` theme was one dark look with its own radii and colours, and the
 dashboard overrode it in about 190 lines (menu wrapping, table header and tab contrast, the
 wave background). The markup uses only a dozen of its components, so owning them is less
-CSS than overriding the rest, and the page matches the website. The class names the markup
+CSS than overriding the rest. Linear's restraint suits a console read for hours: nothing
+but a status dot or badge has colour, so a problem stands out. Earlier versions (Apple's
+type and radii, then Hokusai glows and patterns behind every panel) were tried and dropped:
+the glows and waves behind the data competed with it. The class names the markup
 already uses (`btn`, `badge`, `modal`, `select`, `fieldset`, and the `base-*`, `success`,
 `warning`, `error` colours) are kept and mapped onto the tokens, so the redesign did not
 have to touch the rendering code.
