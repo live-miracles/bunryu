@@ -85,8 +85,8 @@ Groups fold related pipelines together in the sidebar. Everything is done in the
 and each change is saved at once:
 
 - **Add:** the folder button beside **+** at the top of the list asks for a name.
-- **Rename or delete:** the pencil and bin on a group's header (always shown on a touch
-  screen, on hover elsewhere). Deleting asks first and does not delete the pipelines in it:
+- **Rename or delete:** the pencil and bin on a group's header (shown on hover; a touch
+  screen does not show them). Deleting asks first and does not delete the pipelines in it:
   they move out of any group.
 - **Reorder:** drag a group by its name; drag a pipeline onto a group to move it in.
   A pipeline's group can also be set in its edit dialog.

@@ -793,10 +793,10 @@ function renderGroupHeader(
            ${statusBadge(outs.off, 'badge-ghost')}`
         : '';
 
-    // Rename and delete show on hover or keyboard focus, and always on a touch screen,
-    // which has no hover.
+    // Rename and delete show on hover or keyboard focus. A touch screen has no hover and
+    // is for looking, not configuring, so it never shows them.
     const actionClass =
-        'btn btn-xs btn-square btn-ghost opacity-0 focus-visible:opacity-100 group-hover/group:opacity-100 [@media(hover:none)]:opacity-100';
+        'btn btn-xs btn-square btn-ghost opacity-0 focus-visible:opacity-100 group-hover/group:opacity-100 [@media(hover:none)]:hidden';
     const name = escapeHtml(group.name);
 
     return `<li data-group-id="${group.id}">
