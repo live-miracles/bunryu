@@ -1,5 +1,5 @@
 import * as api from '../core/api.js';
-import { state } from '../core/state.js';
+import { healthNowMs, state } from '../core/state.js';
 import {
     escapeHtml,
     formatBitrate,
@@ -207,7 +207,10 @@ export function renderStatusView(): void {
         wireStatusView(el);
     }
 
-    const cards = buildStatusCards(state.pipelines);
+    const cards = buildStatusCards(state.pipelines, {
+        relayProcessRunning: state.health.srtRelay?.status === 'running',
+        nowMs: healthNowMs(),
+    });
     const totals = statusTotals(cards);
     const groups = groupStatusCards(cards, state.config.groups ?? [], issuesOnly);
 

@@ -69,6 +69,7 @@ const pipeline = (id, input, outs, extra = {}) => ({
     id: String(id),
     name: `Pipeline ${id}`,
     groupId: null,
+    alerts: [],
     srtBonding: { acceptedBySrs: false, input: { bonded: false } },
     input,
     outs,
@@ -76,9 +77,101 @@ const pipeline = (id, input, outs, extra = {}) => ({
     ...extra,
 });
 
+const NOW = 1_000_000;
+const RELAY_UP = { relayProcessRunning: true, nowMs: NOW };
+const cardsOf = (pipelines, relay = RELAY_UP) => buildStatusCards(pipelines, relay);
+
+// A bonded relay input whose SRS side is accepted and flowing, with the given legs.
+const relayPipeline = (legs, srtBonding = {}, extra = {}) =>
+    pipeline(1, liveInput({ isSrt: true }), [output('a')], {
+        srtBonding: {
+            inputActive: true,
+            outputConnected: true,
+            acceptedBySrs: true,
+            publishConflict: false,
+            localSrtPublisherConflict: false,
+            retryFailures: 0,
+            forwardedPackets: 500,
+            lastPacketAt: NOW - 1000,
+            lastInputPacketAt: NOW - 1000,
+            lastError: null,
+            input: { bonded: true, expectedLegs: legs.length, legs },
+            ...srtBonding,
+        },
+        ...extra,
+    });
+const okLeg = (ip) => ({ ip, state: 'running', health: 'ok', healthReason: null });
+
 describe('buildStatusCards', () => {
+    test('a bonded relay leg with a warning shows on the card, as it does in the sidebar', () => {
+        const [card] = cardsOf([
+            relayPipeline([
+                okLeg('203.0.113.10'),
+                {
+                    ip: '203.0.113.11',
+                    state: 'running',
+                    health: 'warn',
+                    healthReason: 'Leg packet quality is degraded over the last minute',
+                },
+            ]),
+        ]);
+        assert.equal(card.type, 'Bonded');
+        assert.equal(card.inputStatus, 'warn');
+        assert.match(card.inputMessage, /Leg 203\.0\.113\.11: Leg packet quality is degraded/);
+        assert.equal(card.severity, 'warn');
+        assert.equal(card.hasIssue, true);
+        assert.equal(statusTotals([card]).inputs.problem, 1);
+    });
+
+    test('a lost bonded leg warns on the card even when the media input itself is fine', () => {
+        const [card] = cardsOf([
+            relayPipeline([okLeg('203.0.113.10')], {
+                input: { bonded: true, expectedLegs: 2, legs: [okLeg('203.0.113.10')] },
+            }),
+        ]);
+        assert.equal(card.inputStatus, 'warn');
+        assert.match(card.inputMessage, /1 of 2 bonded legs down/);
+    });
+
+    test('a relay forward that cannot reach SRS makes the card an error', () => {
+        const [card] = cardsOf([
+            relayPipeline([okLeg('a'), okLeg('b')], {
+                outputConnected: false,
+                lastError: 'refused',
+            }),
+        ]);
+        assert.equal(card.inputStatus, 'error');
+        assert.match(card.inputMessage, /Relay output reconnecting: refused/);
+        assert.equal(card.severity, 'error');
+    });
+
+    test('a healthy relay leaves the card good, and a relay that is down is ignored', () => {
+        const healthy = relayPipeline([okLeg('a'), okLeg('b')]);
+        assert.equal(cardsOf([healthy])[0].inputStatus, 'good');
+        assert.equal(cardsOf([healthy])[0].hasIssue, false);
+        const lostLeg = relayPipeline([okLeg('a')], {
+            input: { bonded: true, expectedLegs: 2, legs: [okLeg('a')] },
+        });
+        const down = cardsOf([lostLeg], { relayProcessRunning: false, nowMs: NOW })[0];
+        assert.equal(down.inputStatus, 'good');
+    });
+
+    test('an input problem stays the first message when the relay has one too', () => {
+        const [card] = cardsOf([
+            relayPipeline(
+                [okLeg('a')],
+                { input: { bonded: true, expectedLegs: 2, legs: [okLeg('a')] } },
+                {
+                    input: liveInput({ isSrt: true, mediaOk: false, mediaError: 'No video' }),
+                },
+            ),
+        ]);
+        assert.equal(card.inputStatus, 'error');
+        assert.match(card.inputMessage, /No video/);
+    });
+
     test('a live input with running outputs is healthy', () => {
-        const [card] = buildStatusCards([pipeline(1, liveInput(), [output('a'), output('b')])]);
+        const [card] = cardsOf([pipeline(1, liveInput(), [output('a'), output('b')])]);
         assert.equal(card.inputStatus, 'good');
         assert.deepEqual(
             card.dots.map((d) => d.status),
@@ -90,14 +183,14 @@ describe('buildStatusCards', () => {
     });
 
     test('a dot carries the output name and what is wrong', () => {
-        const [card] = buildStatusCards([pipeline(1, liveInput(), [warning('a')])]);
+        const [card] = cardsOf([pipeline(1, liveInput(), [warning('a')])]);
         assert.equal(card.dots[0].name, 'Out a');
         assert.equal(card.dots[0].status, 'warn');
         assert.equal(card.dots[0].message, 'Timestamp discontinuities');
     });
 
     test('a failed output is an error and the card an issue', () => {
-        const [card] = buildStatusCards([pipeline(1, liveInput(), [output('a'), failed('b')])]);
+        const [card] = cardsOf([pipeline(1, liveInput(), [output('a'), failed('b')])]);
         assert.deepEqual(
             card.dots.map((d) => d.status),
             ['good', 'error'],
@@ -107,26 +200,26 @@ describe('buildStatusCards', () => {
     });
 
     test('a stopped output is neither a problem nor healthy', () => {
-        const [card] = buildStatusCards([pipeline(1, liveInput(), [output('a'), stopped('b')])]);
+        const [card] = cardsOf([pipeline(1, liveInput(), [output('a'), stopped('b')])]);
         assert.equal(card.dots[1].status, 'off');
         assert.equal(card.hasIssue, false);
     });
 
     test('an offline input with no running outputs is not an issue', () => {
-        const [card] = buildStatusCards([pipeline(1, offInput(), [stopped('a'), stopped('b')])]);
+        const [card] = cardsOf([pipeline(1, offInput(), [stopped('a'), stopped('b')])]);
         assert.equal(card.inputStatus, 'off');
         assert.equal(card.hasIssue, false);
         assert.equal(card.type, '');
     });
 
     test('an offline input whose outputs should be running is an issue through them', () => {
-        const [card] = buildStatusCards([pipeline(1, offInput(), [output('a')])]);
+        const [card] = cardsOf([pipeline(1, offInput(), [output('a')])]);
         assert.equal(card.dots[0].status, 'warn');
         assert.equal(card.hasIssue, true);
     });
 
     test('an input with a media problem is an issue even when its outputs are fine', () => {
-        const [card] = buildStatusCards([
+        const [card] = cardsOf([
             pipeline(1, liveInput({ mediaOk: false, mediaError: 'No video' }), [output('a')]),
         ]);
         assert.equal(card.inputStatus, 'error');
@@ -136,7 +229,7 @@ describe('buildStatusCards', () => {
     });
 
     test('the type shows how the input arrives', () => {
-        const type = (p) => buildStatusCards([p])[0].type;
+        const type = (p) => cardsOf([p])[0].type;
         assert.equal(type(pipeline(1, liveInput({ isSrt: true }), [])), 'SRT');
         const relay = (bonded) => ({ acceptedBySrs: true, input: { bonded } });
         assert.equal(type(pipeline(1, liveInput(), [], { srtBonding: relay(true) })), 'Bonded');
@@ -146,7 +239,7 @@ describe('buildStatusCards', () => {
 
 describe('statusTotals', () => {
     test('counts inputs and outputs, and the pipelines with issues', () => {
-        const cards = buildStatusCards([
+        const cards = cardsOf([
             pipeline(1, liveInput(), [output('a'), warning('b'), failed('c'), stopped('d')]),
             pipeline(2, offInput(), [stopped('e')]),
             pipeline(3, liveInput({ mediaOk: false, mediaError: 'x' }), []),
@@ -168,7 +261,7 @@ describe('statusTotals', () => {
 });
 
 describe('groupStatusCards', () => {
-    const cards = buildStatusCards([
+    const cards = cardsOf([
         pipeline(1, liveInput(), [output('a')], { groupId: 20 }),
         pipeline(2, liveInput(), [failed('b')], { groupId: 10 }),
         pipeline(3, liveInput(), [output('c')], { groupId: null }),
@@ -212,7 +305,7 @@ describe('groupStatusCards', () => {
     });
 
     test('issues only with no issues anywhere is empty', () => {
-        const healthy = buildStatusCards([pipeline(1, liveInput(), [output('a')])]);
+        const healthy = cardsOf([pipeline(1, liveInput(), [output('a')])]);
         assert.deepEqual(groupStatusCards(healthy, [], true), []);
     });
 });

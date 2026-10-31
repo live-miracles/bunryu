@@ -1,5 +1,6 @@
 import type { ActivityEvent, PipelineGroup, PipelineView } from '../types.js';
 import { inputHealth, outputHealth, type InputStatus, type OutStatus } from './status.js';
+import { relayHealth, relayIssueList } from './relay-status.js';
 import { isProblem, tallyStatuses, type StatusTally } from './overview-filter.js';
 
 // The Status view: one card per pipeline with a dot for every output. Pure functions that
@@ -35,9 +36,33 @@ function inputTypeLabel(p: PipelineView): string {
     return p.input.isSrt ? 'SRT' : 'RTMP';
 }
 
-export function buildStatusCards(pipelines: PipelineView[]): StatusCard[] {
+// What the relay path needs to be judged: whether the relay process runs, and the time.
+export interface RelayContext {
+    relayProcessRunning: boolean;
+    nowMs: number;
+}
+
+const SEVERITY: Record<OutStatus, number> = { off: 0, good: 0, warn: 1, error: 2 };
+
+// The input as the sidebar shows it: the media input and, for an SRT input through the
+// relay, the relay path in front of it (a degraded leg, a lost leg, a stalled forward).
+// An input nobody publishes to stays off.
+function cardInput(p: PipelineView, relay: RelayContext): { status: InputStatus; message: string } {
+    const input = inputHealth(p.input);
+    const path = relayHealth(p, relay.relayProcessRunning, relay.nowMs);
+    let status = input.status;
+    if (status !== 'off') {
+        for (const half of [path.input, path.output]) {
+            if (SEVERITY[half] > SEVERITY[status]) status = half;
+        }
+    }
+    const issues = [...input.issues, ...relayIssueList(path)];
+    return { status, message: issues[0]?.message ?? '' };
+}
+
+export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext): StatusCard[] {
     return pipelines.map((p) => {
-        const input = inputHealth(p.input);
+        const input = cardInput(p, relay);
         const dots = p.outs.map((o): StatusDot => {
             const health = outputHealth(o, p.input);
             return {
@@ -60,7 +85,7 @@ export function buildStatusCards(pipelines: PipelineView[]): StatusCard[] {
             groupId: p.groupId,
             type: inputTypeLabel(p),
             inputStatus: input.status,
-            inputMessage: input.issues[0]?.message ?? '',
+            inputMessage: input.message,
             dots,
             tally,
             hasIssue: isProblem(input.status) || tally.warn > 0 || tally.error > 0,
