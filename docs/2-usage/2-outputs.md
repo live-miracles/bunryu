@@ -96,7 +96,10 @@ hover for what is wrong on each side, and it is grey while no output uses the en
 encoding unless it is `copy`, and the audio track as `T1`, `T2`, …, where `T1` is
 track 0), its uptime, how many outputs use it and how many are reading it now ("2 outs · 1
 read"), its bitrate, CPU and memory (the bitrate only when it is unusual, as on an output
-card), the failure count and **History**, followed by the last error. While an output's encode is not up, the
+card), the failure count and **History**, followed by the last error. Like an output card, it
+shows a figure (bitrate, CPU, memory, speed) only when it is off, one badge each; an encode with
+a video encode is expected to be busy, so its CPU is not flagged. The Overview lists every
+encode in a **Shared encodes** table under Outputs, with all figures as columns. While an output's encode is not up, the
 output shows a warning ("Waiting for Shared encode …", or "Shared encode failed:
 …"), not an error. The pipeline's "N readers" counts only what reads the input
 itself, not outputs that read a shared encode.
@@ -161,6 +164,13 @@ are affected, with the reason. The search box on each table's heading line filte
 you type. An input matches on its name, stream key or publish URL; an output on its own
 name, its pipeline's name or its destination URL, so a full URL or a stream key finds it. The heading badge
 shows how many rows are left ("20 of 500").
+
+Under Outputs, a **Shared encodes** table (shown only while the server has any) has one row
+per [shared encode](#shared-encodes): its pipeline and encoding ("720p · T2"), status, issues,
+uptime, bitrate, CPU, RAM, how many outputs use it and how many are reading it, and the
+stream specification. The tabs and the Outputs search box filter it too (the search matches the
+pipeline name or the encoding). Its CPU and RAM are part of the Outs column of the usage table
+at the top.
 
 The output card shows status and uptime, and a small badge for each figure that is off, each
 with its own tooltip; a healthy output has none (every figure, per output, is in the

@@ -54,6 +54,19 @@ export function sharedEncodeIndicator(
     return { ffmpeg, input, idle: false };
 }
 
+// The encode as the Overview names it: "720p · T2", the video unless it is copy and the
+// audio track as T<n> (T1 is track 0).
+export function sharedEncodeLabel(rendition: OutputView): string {
+    const parts: string[] = [];
+    if (rendition.videoEncoding !== 'copy') parts.push(rendition.videoEncoding);
+    if (rendition.audioEncoding !== 'copy') parts.push(`T${parseInt(rendition.audioEncoding) + 1}`);
+    return parts.join(' · ');
+}
+
+export function sharedEncodeUsage(rendition: OutputView): string {
+    return `${plural(rendition.dependents.length, 'out', 'outs')} · ${plural(rendition.readers ?? 0, 'read', 'reads')}`;
+}
+
 function plural(n: number, one: string, many: string): string {
     return `${n} ${n === 1 ? one : many}`;
 }
@@ -115,9 +128,8 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
         uptimeMs !== null
             ? `<span class="tabular-nums text-xs text-muted whitespace-nowrap">${escapeHtml(formatUptime(uptimeMs))}</span>`
             : '';
-    const badges: string[] = [outputMetricsBadge(rendition, input, true)];
-    const readers = rendition.readers ?? 0;
-    const counts = `<span class="badge badge-sm badge-soft whitespace-nowrap" title="Outputs that pull this encode, and clients currently reading it from SRS">${plural(rendition.dependents.length, 'out', 'outs')} · ${plural(readers, 'read', 'reads')}</span>`;
+    const badges: string[] = [outputMetricsBadge(rendition, input)];
+    const counts = `<span class="badge badge-sm badge-soft whitespace-nowrap" title="Outputs that pull this encode, and clients currently reading it from SRS">${sharedEncodeUsage(rendition)}</span>`;
     if (rendition.failures > 0) {
         badges.push(
             `<span class="badge badge-sm badge-error gap-1 shrink-0" title="${rendition.failures} retr${rendition.failures === 1 ? 'y' : 'ies'}">${ICON_ITERATION_CW}${rendition.failures}</span>`,

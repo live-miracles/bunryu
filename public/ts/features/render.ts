@@ -48,7 +48,7 @@ import {
     type DupRef,
 } from './output-card.js';
 import { ICON_PENCIL, ICON_TRASH, outputStatusCounts } from './output-badges.js';
-import { renderSharedEncodes } from './shared-encodes.js';
+import { renderSharedEncodes, sharedEncodeLabel, sharedEncodeUsage } from './shared-encodes.js';
 import {
     hasCurrentRelayError,
     inputAggregateStatsAreDropOnly,
@@ -1056,6 +1056,49 @@ function renderOverview(): void {
         }
     }
 
+    // ── Shared encodes ────────────────────────────────────
+    // Server-managed FFmpeg processes that several outputs of a pipeline read; they
+    // are not outputs (not counted among them) but cost CPU and RAM like one.
+    const renditionList = state.pipelines.flatMap((p) => p.renditions.map((r) => ({ p, r })));
+    const encodeProblemCount = renditionList.filter(({ p, r }) =>
+        isProblem(outStatus(r, p.input)),
+    ).length;
+    const encodeActiveCount = renditionList.filter(
+        ({ p, r }) => !isOffline(outStatus(r, p.input)),
+    ).length;
+    let encodeRows = '';
+    let encodesShown = 0;
+    for (const { p, r } of renditionList) {
+        const st = outStatus(r, p.input);
+        if (problemsOnly && !isProblem(st)) continue;
+        if (activeOnly && isOffline(st)) continue;
+        if (!matchesName(state.outputSearch, p.name, sharedEncodeLabel(r))) continue;
+        encodesShown += 1;
+        const media = r.status === 'running' ? deriveOutputMedia(p.input, r) : null;
+        const uptimeMs = r.startedAtMs !== null ? Date.now() - r.startedAtMs : null;
+        const errorBadge =
+            r.failures > 0
+                ? `<span class="text-error inline-flex items-center align-middle" title="${r.failures} error${r.failures === 1 ? '' : 's'} since this encode was last started">${ICON_ERROR}</span>`
+                : '';
+        encodeRows += `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
+            <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(sharedEncodeLabel(r))} ${errorBadge}</td>
+            <td>${overviewStatusBadge(st)}</td>
+            <td>${renderOverviewIssues(outputIssues(r, p.input))}</td>
+            <td class="tabular-nums text-xs">${uptimeMs !== null ? formatUptime(uptimeMs) : '—'}</td>
+            ${td(formatBitrate(r.bitrateKbps))}
+            <td class="tabular-nums text-xs">${r.cpuPercent != null ? formatCpuPercent(r.cpuPercent) : '—'}</td>
+            <td class="tabular-nums text-xs ${memorySeverityClass(outputMemoryPercent(r))}">${formatOutputMemory(r) ?? '—'}</td>
+            <td class="tabular-nums text-xs">${sharedEncodeUsage(r)}</td>
+            <td class="font-mono text-xs">${streamSpec(media?.video ?? null, null, media?.audio ?? null)}</td>
+        </tr>`;
+    }
+    if (renditionList.length > 0 && encodeRows === '') {
+        encodeRows =
+            state.outputSearch.trim() !== ''
+                ? noMatchRowHtml(9, 'shared encodes', state.outputSearch)
+                : `<tr><td colspan="9" class="py-4 text-center text-muted">${problemsOnly ? 'No shared encode issues.' : 'No active shared encodes.'}</td></tr>`;
+    }
+
     const thead = (cols: string[]) =>
         `<thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead>`;
 
@@ -1153,7 +1196,7 @@ function renderOverview(): void {
             srsDownlinkKbps += p.input.recvBitrateKbps;
             srsDownlinkKnown = true;
         }
-        for (const o of p.outs) {
+        for (const o of [...p.outs, ...p.renditions]) {
             addCpu(o.cpuPercent);
             addRam(o.memoryUsageBytes);
             if (o.cpuPercent != null) {
@@ -1192,13 +1235,13 @@ function renderOverview(): void {
     const sysDownlinkKbps = m.net ? (m.net.rxBytesPerSec * 8) / 1000 : null;
     const sysUplinkKbps = m.net ? (m.net.txBytesPerSec * 8) / 1000 : null;
     const appColTitle =
-        'App = node + SRS + relay + every running ffmpeg output (downlink: SRS direct inputs + SRT relay links; uplink: every running ffmpeg output).';
+        'App = node + SRS + relay + every running ffmpeg output and shared encode (downlink: SRS direct inputs + SRT relay links; uplink: every running ffmpeg output).';
     const systemColTitle = 'System = whole-machine usage, including processes outside Bunryu.';
     const cpuRowTitle = 'CPU is relative to one core: 100% = one full core, so it can exceed 100%.';
     const downlinkRowTitle =
         'Per process: SRS = publishers sending directly to SRS; Relay = SRT links pulled in by the relay.';
     const uplinkRowTitle =
-        'Per process: Outs = every running ffmpeg output pushing to a destination.';
+        'Per process: Outs = every running ffmpeg output pushing to a destination (CPU and RAM also count shared encodes).';
     const cell = (value: string, title = ''): string =>
         `<td class="tabular-nums text-xs"${title ? ` title="${title}"` : ''}>${value}</td>`;
 
@@ -1257,9 +1300,11 @@ function renderOverview(): void {
         </table>
     </div>`;
 
-    const totalAll = activeRelayPipelines.length + state.pipelines.length + totalOuts;
-    const totalActive = relayActiveCount + inputActiveCount + outputActiveCount;
-    const totalProblems = relayProblemCount + inputProblemCount + outputProblemCount;
+    const totalAll =
+        activeRelayPipelines.length + state.pipelines.length + totalOuts + renditionList.length;
+    const totalActive = relayActiveCount + inputActiveCount + outputActiveCount + encodeActiveCount;
+    const totalProblems =
+        relayProblemCount + inputProblemCount + outputProblemCount + encodeProblemCount;
     const filterChips = `
     <div role="tablist" class="tabs tabs-lift mb-4">
         <a role="tab" id="ov-filter-all" aria-selected="${state.overviewFilter === 'all'}" class="tab gap-1 ${state.overviewFilter === 'all' ? 'tab-active' : ''}">
@@ -1297,6 +1342,20 @@ function renderOverview(): void {
             </table>
         </div>`;
 
+    // No shared encodes at all: omit the section, like the SRT Relay's. The Outputs search
+    // box filters it too, so it has none of its own.
+    const encodesSectionHtml =
+        renditionList.length === 0
+            ? ''
+            : `
+        <h2 class="mt-6 mb-2 text-lg font-bold">Shared encodes <span class="badge badge-neutral badge-sm ml-1">${countLabel(encodesShown, renditionList.length)}</span></h2>
+        <div class="overflow-x-auto">
+            <table class="table table-sm">
+                ${thead(['Pipeline · Encode', 'Status', 'Issues', 'Uptime', 'Bitrate', 'CPU', 'RAM', 'Used by', 'Stream Specification'])}
+                <tbody>${encodeRows}</tbody>
+            </table>
+        </div>`;
+
     // The whole Overview is rebuilt on every refresh, so a search box being typed in
     // would lose focus and caret: remember them and put them back afterwards.
     const focused = document.activeElement;
@@ -1331,7 +1390,8 @@ function renderOverview(): void {
                 ${thead(['Pipeline · Output', 'Status', 'Issues', 'Uptime', 'Bitrate', 'CPU', 'RAM', 'Type', 'Stream Specification'])}
                 <tbody>${outputRows}</tbody>
             </table>
-        </div>`,
+        </div>
+        ${encodesSectionHtml}`,
     );
 
     if (typingIn) {

@@ -56,14 +56,9 @@ function formatOutputMemory(output: OutputView): string | null {
 // none and the Overview's Outputs table is where the full set is read. The bitrate shows
 // when it is below the minimum or, for a copy of a live input with a known rate, outside the
 // band around it (see BITRATE_BADGE_LOW); the CPU when a copy output uses CPU_BADGE_PERCENT
-// or more; the memory from the warning level; the speed when off realtime. `showAll` is
-// for a shared encode, whose cost is the point: one badge with bitrate (unless as
-// expected), CPU and RSS. Empty when nothing is shown.
-export function outputMetricsBadge(
-    output: OutputView,
-    input?: InputHealth,
-    showAll = false,
-): string {
+// or more; the memory from the warning level; the speed when off realtime. A shared
+// encode is judged the same way. Empty when nothing is shown.
+export function outputMetricsBadge(output: OutputView, input?: InputHealth): string {
     if (
         output.status !== 'running' ||
         (output.bitrateKbps === null &&
@@ -93,15 +88,13 @@ export function outputMetricsBadge(
         output.bitrateKbps <= expected * BITRATE_BADGE_HIGH;
     const bitrateOff =
         output.bitrateKbps !== null &&
-        (showAll
-            ? !bitrateAsExpected
-            : output.bitrateKbps < LOW_BITRATE_KBPS || (expected !== null && !bitrateAsExpected));
+        (output.bitrateKbps < LOW_BITRATE_KBPS || (expected !== null && !bitrateAsExpected));
     const cpuOff =
-        output.cpuPercent !== null &&
-        (showAll || (copiesVideo && output.cpuPercent >= CPU_BADGE_PERCENT));
+        output.cpuPercent !== null && copiesVideo && output.cpuPercent >= CPU_BADGE_PERCENT;
     const memoryOff =
         output.memoryUsageBytes !== null &&
-        (showAll || (memPercent !== null && memPercent >= METRIC_WARN_PERCENT));
+        memPercent !== null &&
+        memPercent >= METRIC_WARN_PERCENT;
     const shown: Array<{ text: string | null; label: string; cls: string }> = [
         {
             text: bitrateOff ? formatBitrate(output.bitrateKbps as number) : null,
@@ -122,11 +115,6 @@ export function outputMetricsBadge(
     ];
     const present = shown.filter((part) => part.text !== null);
     if (present.length === 0) return '';
-    if (showAll) {
-        // One badge, its tooltip naming the figures in the same order.
-        const cls = memCls || (slow ? 'badge-warning' : '');
-        return `<span class="badge badge-sm whitespace-nowrap ${cls}" title="${present.map((part) => part.label).join(' / ')}">${present.map((part) => part.text).join(' / ')}</span>`;
-    }
     // One badge per figure, each with its own colour and tooltip.
     return present
         .map(

@@ -6,6 +6,8 @@ const { parsePipelines } = require('../public/ts/core/pipeline');
 const {
     renderSharedEncodeRows,
     sharedEncodeIndicator,
+    sharedEncodeLabel,
+    sharedEncodeUsage,
     SHARED_ENCODE_RESTART_LOCKOUT_MS,
 } = require('../public/ts/features/shared-encodes');
 const { sharedEncodeIssue } = require('../public/ts/core/status');
@@ -273,6 +275,26 @@ describe('sharedEncodeIssue', () => {
     });
 });
 
+describe('sharedEncodeLabel and sharedEncodeUsage', () => {
+    const r = (video, audio, dependents = [], readers = null) => ({
+        videoEncoding: video,
+        audioEncoding: audio,
+        dependents,
+        readers,
+    });
+
+    test('names the video unless it is copy and the audio track as T<n>', () => {
+        assert.equal(sharedEncodeLabel(r('720p', '1')), '720p · T2');
+        assert.equal(sharedEncodeLabel(r('copy', '0')), 'T1');
+        assert.equal(sharedEncodeLabel(r('1080p', 'copy')), '1080p');
+    });
+
+    test('counts the outputs that use it and the clients reading it', () => {
+        assert.equal(sharedEncodeUsage(r('copy', '0', [{}], null)), '1 out · 0 reads');
+        assert.equal(sharedEncodeUsage(r('copy', '0', [{}, {}], 1)), '2 outs · 1 read');
+    });
+});
+
 describe('Shared encodes card', () => {
     const side = (status, issues = []) => ({ status, issues });
     const deps = (overrides = {}) => ({
@@ -314,7 +336,20 @@ describe('Shared encodes card', () => {
         assert.match(html, />T2</);
         assert.match(html, /2 outs · 2 reads/);
         assert.match(html, /1m 5s/);
-        assert.match(html, /3\.0 Mbps \/ 41% \//);
+        // An encode is expected to be busy: a figure shows only when it is off.
+        assert.ok(!/title="(bitrate|CPU|memory)/.test(html), 'a healthy encode has no figures');
+    });
+
+    test('shows each figure that is off as its own badge, like an output card', () => {
+        const html = renderSharedEncodeRows(
+            pipelineWith({ bitrateKbps: 120, memoryUsageBytes: 600 * 1024 * 1024, speed: 0.8 }),
+            deps(),
+        );
+
+        assert.match(html, /title="bitrate">120 kbps</);
+        assert.match(html, /title="memory"/);
+        assert.match(html, /title="speed \(x realtime\)"/);
+        assert.ok(!/title="CPU/.test(html), 'CPU of a video encode is never flagged');
     });
 
     describe('status dot', () => {
@@ -547,7 +582,7 @@ describe('Shared encodes card', () => {
 
     test('one wrapping row like an output card: dot, Restart, every badge, History pushed to the end', () => {
         const html = renderSharedEncodeRows(
-            pipelineWith({ hasErrorHistory: true, failures: 2 }),
+            pipelineWith({ hasErrorHistory: true, failures: 2, bitrateKbps: 120 }),
             deps(),
         );
         const at = (needle) => html.indexOf(needle);
@@ -558,7 +593,7 @@ describe('Shared encodes card', () => {
             at('>T2<'),
             at('1m 5s'),
             at('2 outs · 2 reads'),
-            at('3.0 Mbps'),
+            at('120 kbps'),
             at('badge-error'),
             at('data-action="error-info"'),
         ];
