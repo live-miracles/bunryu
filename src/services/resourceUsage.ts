@@ -1,7 +1,7 @@
 import os from 'os';
 import path from 'path';
 import { readAppConfig } from '../utils/appConfig.js';
-import { readSrsConfigValues } from '../utils/srsConfig.js';
+import { fetchSrsSummaries } from '../utils/srs.js';
 import {
     createProcCpuTracker,
     readDiskUsage,
@@ -25,7 +25,6 @@ const DISK_STATS_INTERVAL_MS = 30_000;
 const NET_STATS_INTERVAL_MS = 3_000;
 const SAMPLE_INTERVAL_MS = 5_000;
 const PROC_STATS_INTERVAL_MS = 10_000;
-const PROC_STATS_FETCH_TIMEOUT_MS = 2000;
 const HISTORY_MAX = 1440; // 2 hours at 5 s — client trims to desired window
 
 export interface ProcessUsage {
@@ -96,14 +95,7 @@ const hostReaders: ResourceUsageReaders = {
     netCounters: readNetCounters,
     processRssBytes: readProcRssBytes,
     createCpuTracker: createProcCpuTracker,
-    srsSummaries: async () => {
-        const res = await fetch(`${readSrsConfigValues().apiUrl}/api/v1/summaries`, {
-            signal: AbortSignal.timeout(PROC_STATS_FETCH_TIMEOUT_MS),
-            headers: { Connection: 'close' },
-        });
-        if (!res.ok) throw new Error(`SRS summaries HTTP ${res.status}`);
-        return res.json();
-    },
+    srsSummaries: fetchSrsSummaries,
     pid: process.pid,
     uptimeSeconds: () => process.uptime(),
 };

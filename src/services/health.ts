@@ -1,9 +1,9 @@
 import type { Express } from 'express';
 import path from 'path';
 import {
-    fetchSrsClientsForHealth,
-    fetchSrsStreams,
+    httpSrsApi,
     extractStreamResource,
+    type SrsApi,
     type SrsStream,
     type SrsClient,
     type SrsStreamVideo,
@@ -228,6 +228,7 @@ export function createHealthService(
     inputState: InputState,
     diagnostics?: DiagnosticsLogger,
     getProcessUsage?: () => ProcessUsages,
+    srs: SrsApi = httpSrsApi,
 ) {
     let snapshot: HealthSnapshot = {
         generatedAt: new Date().toISOString(),
@@ -469,8 +470,8 @@ export function createHealthService(
         let clients: SrsClient[] = [];
         let srsReachable = true;
         const [streamsResult, clientsResult] = await Promise.allSettled([
-            fetchSrsStreams(),
-            fetchSrsClientsForHealth(),
+            srs.streams(),
+            srs.clients(),
         ]);
         if (streamsResult.status === 'fulfilled') {
             streams = streamsResult.value;

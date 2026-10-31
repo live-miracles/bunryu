@@ -259,7 +259,9 @@ only for a new module.
   `bunryu.json` (watchdog defaults; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `configCheck.ts` / `startupGate.ts` read
   the three config files first thing at startup and exit 78 if one is missing or invalid; `srtPassphrase.ts` generates a new SRT passphrase and writes it to `srs.conf` and `goryu.json` (Settings reset); `diagnostics.ts` is the rotated JSONL
   writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
-  read SRS and relay config.
+  read SRS and relay config; `utils/srs.ts` is the SRS HTTP API client (streams, clients, kick,
+  summaries, version) and the pull/publish URLs, and its `SrsApi` is the slot the health poll
+  takes, so a test says which streams and clients SRS has instead of faking `fetch`.
 - `src/db/` - SQLite schema and access (output History lives in
   `outputs.last_error` as JSON).
 - `public/input.css` - the dashboard's design tokens (`light-dark()` pairs, in the style of

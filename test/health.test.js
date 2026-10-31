@@ -235,6 +235,17 @@ function jsonResponse(body, ok = true, status = 200) {
     return { ok, status, json: async () => body };
 }
 
+// SRS as the health poll sees it: the streams and clients it has, or an Error to make that
+// call fail. A function is asked again at every poll, so SRS can change between polls.
+function fakeSrs({ streams = [], clients = [] } = {}) {
+    const answer = (value) => async () => {
+        const current = typeof value === 'function' ? value() : value;
+        if (current instanceof Error) throw current;
+        return current;
+    };
+    return { streams: answer(streams), clients: answer(clients) };
+}
+
 function makeFakeDb(pipelines, outputs = []) {
     const logs = [];
     return {
@@ -471,9 +482,7 @@ describe('createHealthService poll orchestration', () => {
     });
 
     test('marks srsReachable false and logs a down event when the streams fetch rejects', async (t) => {
-        t.mock.method(globalThis, 'fetch', async () => {
-            throw new Error('ECONNREFUSED');
-        });
+        const down = new Error('ECONNREFUSED');
         const createHealthService = loadHealthService(t);
         const db = makeFakeDb([]);
         const service = createHealthService(
@@ -481,6 +490,9 @@ describe('createHealthService poll orchestration', () => {
             makeFakeOutputService(),
             makeFakeSrtRelay(),
             makeFakeInputState(),
+            undefined,
+            undefined,
+            fakeSrs({ streams: down, clients: down }),
         );
         const app = express();
         service.registerRoutes(app);
@@ -532,15 +544,16 @@ describe('createHealthService poll orchestration', () => {
     });
 
     test('does not log a second down event on consecutive unreachable polls', async (t) => {
-        t.mock.method(globalThis, 'fetch', async () => {
-            throw new Error('down');
-        });
+        const down = new Error('down');
         const createHealthService = loadHealthService(t);
         const service = createHealthService(
             makeFakeDb([]),
             makeFakeOutputService(),
             makeFakeSrtRelay(),
             makeFakeInputState(),
+            undefined,
+            undefined,
+            fakeSrs({ streams: down, clients: down }),
         );
         const app = express();
         service.registerRoutes(app);
@@ -581,18 +594,15 @@ describe('createHealthService poll orchestration', () => {
     });
 
     test('a clients-endpoint failure alone does not flip srsReachable false (streams endpoint is load-bearing)', async (t) => {
-        t.mock.method(globalThis, 'fetch', async (url) => {
-            if (String(url).includes('/streams/')) {
-                return jsonResponse({ code: 0, streams: [] });
-            }
-            throw new Error('clients endpoint down');
-        });
         const createHealthService = loadHealthService(t);
         const service = createHealthService(
             makeFakeDb([]),
             makeFakeOutputService(),
             makeFakeSrtRelay(),
             makeFakeInputState(),
+            undefined,
+            undefined,
+            fakeSrs({ streams: [], clients: new Error('clients endpoint down') }),
         );
         const app = express();
         service.registerRoutes(app);
@@ -612,17 +622,16 @@ describe('createHealthService poll orchestration', () => {
     // chain and ffprobe scheduling underneath each poll still resolve normally.
     test('logs an up event once SRS becomes reachable again after an outage', async (t) => {
         let failing = true;
-        t.mock.method(globalThis, 'fetch', async (url) => {
-            if (failing) throw new Error('down');
-            if (String(url).includes('/streams/')) return jsonResponse({ code: 0, streams: [] });
-            return jsonResponse({ code: 0, clients: [] });
-        });
+        const down = new Error('down');
         const createHealthService = loadHealthService(t);
         const service = createHealthService(
             makeFakeDb([]),
             makeFakeOutputService(),
             makeFakeSrtRelay(),
             makeFakeInputState(),
+            undefined,
+            undefined,
+            fakeSrs({ streams: () => (failing ? down : []), clients: () => (failing ? down : []) }),
         );
         const app = express();
         service.registerRoutes(app);
@@ -648,31 +657,21 @@ describe('createHealthService poll orchestration', () => {
     test('hides a pipeline as offline during an SRS outage even though it was live moments before', async (t) => {
         let reachable = true;
         const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
-        t.mock.method(globalThis, 'fetch', async (url) => {
-            if (!reachable) throw new Error('down');
-            if (String(url).includes('/streams/')) {
-                return jsonResponse({
-                    code: 0,
-                    streams: [
-                        {
-                            id: 's1',
-                            name: 'key01',
-                            vhost: '__defaultVhost__',
-                            app: 'live',
-                            tcUrl: 'rtmp://x/live',
-                            live_ms: 0,
-                            publish: { active: true, cid: 'cid-1' },
-                            kbps: { recv_30s: 100, send_30s: 100 },
-                            clients: 1,
-                            frames: 0,
-                            recv_bytes: 0,
-                            send_bytes: 0,
-                        },
-                    ],
-                });
-            }
-            return jsonResponse({ code: 0, clients: [] });
-        });
+        const down = new Error('down');
+        const liveStream = {
+            id: 's1',
+            name: 'key01',
+            vhost: '__defaultVhost__',
+            app: 'live',
+            tcUrl: 'rtmp://x/live',
+            live_ms: 0,
+            publish: { active: true, cid: 'cid-1' },
+            kbps: { recv_30s: 100, send_30s: 100 },
+            clients: 1,
+            frames: 0,
+            recv_bytes: 0,
+            send_bytes: 0,
+        };
         const createHealthService = loadHealthService(t);
         const db = makeFakeDb([pipeline]);
         const service = createHealthService(
@@ -680,6 +679,12 @@ describe('createHealthService poll orchestration', () => {
             makeFakeOutputService(),
             makeFakeSrtRelay(),
             makeFakeInputState(),
+            undefined,
+            undefined,
+            fakeSrs({
+                streams: () => (reachable ? [liveStream] : down),
+                clients: () => (reachable ? [] : down),
+            }),
         );
         const app = express();
         service.registerRoutes(app);

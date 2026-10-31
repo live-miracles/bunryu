@@ -5,6 +5,8 @@ const SRS_CLIENT_FETCH_TIMEOUT_MS = 3000;
 const SRS_CLIENT_HEALTH_FETCH_TIMEOUT_MS = 1000;
 const SRS_CLIENT_HEALTH_FETCH_COUNT = 1000;
 const SRS_STREAMS_FETCH_TIMEOUT_MS = 5000;
+const SRS_SUMMARIES_FETCH_TIMEOUT_MS = 2000;
+const SRS_VERSION_FETCH_TIMEOUT_MS = 2000;
 // SRS's /api/v1/streams silently caps the response at 10 entries unless an
 // explicit count is given (undocumented default; see ossrs/srs#4358 and
 // ossrs/srs#4580) — with more than 10 concurrent streams across pipelines,
@@ -143,6 +145,42 @@ export async function fetchSrsStreams(): Promise<SrsStream[]> {
     const data = (await res.json()) as { code: number; streams: SrsStream[] };
     return data.streams || [];
 }
+
+// SRS's own CPU and memory use, as GET /api/v1/summaries answers it. Throws when SRS
+// does not answer well.
+export async function fetchSrsSummaries(): Promise<unknown> {
+    const res = await fetch(`${readSrsConfigValues().apiUrl}/api/v1/summaries`, {
+        signal: AbortSignal.timeout(SRS_SUMMARIES_FETCH_TIMEOUT_MS),
+        headers: { Connection: 'close' },
+    });
+    if (!res.ok) throw new Error(`SRS summaries HTTP ${res.status}`);
+    return res.json();
+}
+
+// SRS's version, or null when it does not answer or does not say.
+export async function fetchSrsVersion(): Promise<string | null> {
+    try {
+        const res = await fetch(`${readSrsConfigValues().apiUrl}/api/v1/versions`, {
+            signal: AbortSignal.timeout(SRS_VERSION_FETCH_TIMEOUT_MS),
+        });
+        const data = (await res.json()) as { data?: { version?: string } };
+        return data?.data?.version ?? null;
+    } catch {
+        return null;
+    }
+}
+
+// What the health poll reads from SRS. The default asks its HTTP API; a test passes a
+// fake that says which streams and clients SRS has.
+export interface SrsApi {
+    streams(): Promise<SrsStream[]>;
+    clients(): Promise<SrsClient[]>;
+}
+
+export const httpSrsApi: SrsApi = {
+    streams: fetchSrsStreams,
+    clients: fetchSrsClientsForHealth,
+};
 
 export function rtmpPullUrl(streamKey: string): string {
     const srs = readSrsConfigValues();

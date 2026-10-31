@@ -4,12 +4,11 @@ import os from 'os';
 import path from 'path';
 import type { Express } from 'express';
 import { readAppConfig } from '../utils/appConfig.js';
-import { readSrsConfigValues } from '../utils/srsConfig.js';
+import { fetchSrsVersion } from '../utils/srs.js';
 import { ffmpegEnv } from '../utils/ffmpeg.js';
 import { readUdpBufferCeilings } from '../utils/procStats.js';
 
 const VERSION_EXEC_TIMEOUT_MS = 3000;
-const VERSION_FETCH_TIMEOUT_MS = 2000;
 const SRT_RELAY_BIN_CANDIDATES = ['/usr/local/bin/goryu', './objs/goryu'];
 const SRT_RELAY_LIB_DIR_CANDIDATES = ['/usr/local/lib/bunryu-srt', './objs/lib'];
 
@@ -57,16 +56,7 @@ function readCpuModel(): string {
 }
 
 async function getSrsVersion(): Promise<string> {
-    const srsApiUrl = readSrsConfigValues().apiUrl;
-    try {
-        const resp = await fetch(`${srsApiUrl}/api/v1/versions`, {
-            signal: AbortSignal.timeout(VERSION_FETCH_TIMEOUT_MS),
-        });
-        const data = (await resp.json()) as { data?: { version?: string } };
-        return data?.data?.version ?? 'unknown';
-    } catch {
-        return 'unknown';
-    }
+    return (await fetchSrsVersion()) ?? 'unknown';
 }
 
 async function getSrtRelayVersion(): Promise<string> {
