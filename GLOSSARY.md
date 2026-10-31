@@ -77,6 +77,10 @@ _Avoid_: incident (that is a written fail report)
 **Host alert**:
 A resource condition of the whole machine: CPU pressure, low memory or low disk.
 
+**Resource usage**:
+What the host and the three managed processes (this server, SRS and the relay) are using of CPU, RAM, disk and network, sampled on timers. The Overview's charts and System usage table and the diagnostics snapshot show the same samples.
+_Avoid_: telemetry, metrics (only the API path keeps the word)
+
 **Watchdog**:
 A bounded loop that finds a stuck output and restarts it. Each one has a stated reason and a limit, so none can cause a restart storm.
 _Avoid_: monitor, supervisor

@@ -72,6 +72,58 @@ export function readDiskUsage(dir: string): DiskUsage | null {
     }
 }
 
+// The filesystems the host disk alert watches, and the dashboard's disk figure reads: the
+// data directory's (database, diagnostics, HLS previews) and the root's (journald, SRS
+// logs). One entry per filesystem, so two paths on one mount count once. A null data
+// directory (no readable config) leaves the root alone.
+export function watchedFilesystems(
+    dataDir: string | null,
+    read: (dir: string) => DiskUsage | null = readDiskUsage,
+): { dir: string; disk: DiskUsage }[] {
+    const seen = new Set<number>();
+    const found: { dir: string; disk: DiskUsage }[] = [];
+    for (const dir of dataDir === null ? ['/'] : [dataDir, '/']) {
+        const disk = read(dir);
+        if (!disk || seen.has(disk.device)) continue;
+        seen.add(disk.device);
+        found.push({ dir, disk });
+    }
+    return found;
+}
+
+export interface NetCounters {
+    rx: number;
+    tx: number;
+}
+
+// Bytes received and sent on every interface but loopback, from /proc/net/dev text.
+export function parseNetDev(text: string): NetCounters {
+    let rx = 0;
+    let tx = 0;
+    for (const line of text.split('\n')) {
+        const trimmed = line.trim();
+        const colon = trimmed.indexOf(':');
+        if (colon < 0) continue;
+        if (trimmed.slice(0, colon).trim() === 'lo') continue;
+        const fields = trimmed
+            .slice(colon + 1)
+            .trim()
+            .split(/\s+/);
+        rx += parseInt(fields[0], 10) || 0;
+        tx += parseInt(fields[8], 10) || 0;
+    }
+    return { rx, tx };
+}
+
+// null where /proc/net/dev does not exist (not Linux).
+export function readNetCounters(): NetCounters | null {
+    try {
+        return parseNetDev(fs.readFileSync('/proc/net/dev', 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
 export interface UdpBufferCeilings {
     // The kernel silently caps a socket's requested buffer at these (see the
     // UDP buffer ceiling section of the configuration docs); null if unreadable.

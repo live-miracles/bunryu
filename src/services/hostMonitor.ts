@@ -9,6 +9,7 @@ import {
     readDiskUsage,
     readHostMemory,
     topProcessesByRss,
+    watchedFilesystems,
 } from '../utils/procStats.js';
 
 // Host resource alerts (memory, CPU, disk). Each transition is a journal line, a
@@ -177,11 +178,7 @@ export function createHostMonitor(options: HostMonitorOptions) {
     }
 
     function checkDisk(): void {
-        const seen = new Set<number>();
-        for (const dir of [readers.dataDir(), '/']) {
-            const disk = readers.diskUsage(dir);
-            if (!disk || seen.has(disk.device)) continue;
-            seen.add(disk.device);
+        for (const { dir, disk } of watchedFilesystems(readers.dataDir(), readers.diskUsage)) {
             let tracker = diskAlerts.get(disk.device);
             if (!tracker) {
                 tracker = createHostAlertTracker({

@@ -11,10 +11,11 @@ import type { Db } from './types.js';
 import { createOutputService } from './services/outputs.js';
 import { createSrtRelayService } from './services/srtRelay.js';
 import { createHealthService } from './services/health.js';
+import { createResourceUsage } from './services/resourceUsage.js';
 import { registerPipelineApi } from './api/pipelines.js';
 import { registerOutputApi } from './api/outputs.js';
 import { registerConfigApi } from './api/config.js';
-import { registerMetricsApi, getProcessUsage } from './api/metrics.js';
+import { registerMetricsApi } from './api/metrics.js';
 import { registerSettingsApi } from './api/settings.js';
 import { createPreviewService } from './services/preview.js';
 import { registerPreviewApi, registerHlsRoute } from './api/preview.js';
@@ -124,6 +125,7 @@ const inputState = createInputState();
 const rejectedPublishes = createRejectedPublishes();
 const outputService = createOutputService(db, inputState, diagnostics);
 const srtRelayService = createSrtRelayService(diagnostics);
+const resourceUsage = createResourceUsage({ relayPid: () => srtRelayService.getStats().pid });
 const previewService = createPreviewService(db, inputState);
 const renditionReconciler = createRenditionReconciler(db, outputService, diagnostics);
 const healthService = createHealthService(
@@ -132,7 +134,7 @@ const healthService = createHealthService(
     srtRelayService,
     inputState,
     diagnostics,
-    getProcessUsage,
+    resourceUsage.processUsage,
 );
 
 // SRS hooks are unauthenticated and trusted, so they live on their own
@@ -160,7 +162,8 @@ registerOutputApi(app, db, outputService);
 registerPreviewApi(app, previewService);
 registerSettingsApi(app, db, inputState, outputService, diagnostics);
 registerVersionApi(app);
-registerMetricsApi(app, srtRelayService);
+resourceUsage.start();
+registerMetricsApi(app, resourceUsage);
 healthService.registerRoutes(app);
 registerSrsLogsApi(app, healthService.getSrsEvents);
 registerEventsApi(app, db, healthService.getSrsEvents);
@@ -302,6 +305,7 @@ function shutdown(signal: string): void {
     step('renditions', () => renditionReconciler.shutdown());
     const killedOutputIds = step('outputs', () => outputService.shutdown()) ?? [];
     step('health', () => healthService.shutdown());
+    step('resourceUsage', () => resourceUsage.stop());
     step('relay', () => srtRelayService.shutdown());
     step('preview', () => previewService.shutdown());
     // The killed outputs' exit handlers never run before process.exit, so this

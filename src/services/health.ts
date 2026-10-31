@@ -39,6 +39,7 @@ import { createInputLifecycle, type PollStaggers } from './inputLifecycle.js';
 import { pipelineDiagnosticsOf } from './healthDiagnostics.js';
 import { createPipelineMaps } from '../utils/pipelineMaps.js';
 import { createHostMonitor, type HostAlertKind } from './hostMonitor.js';
+import type { ProcessUsages } from './resourceUsage.js';
 import {
     srtIntervalAlerts,
     type PipelineAlert,
@@ -220,24 +221,13 @@ export function hasBondedRelayPublishConflict(params: {
     return params.inputConnected && params.relayInputActive && !params.relayAcceptedBySrs;
 }
 
-interface ProcessUsage {
-    cpuPercent: number | null;
-    ramBytes: number | null;
-}
-
-export type ProcessUsageSource = () => {
-    node: ProcessUsage;
-    srs: ProcessUsage;
-    relay: ProcessUsage;
-};
-
 export function createHealthService(
     db: Db,
     outputService: OutputService,
     srtRelayService: SrtRelayService,
     inputState: InputState,
     diagnostics?: DiagnosticsLogger,
-    getProcessUsage?: ProcessUsageSource,
+    getProcessUsage?: () => ProcessUsages,
 ) {
     let snapshot: HealthSnapshot = {
         generatedAt: new Date().toISOString(),

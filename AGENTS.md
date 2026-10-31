@@ -237,6 +237,12 @@ only for a new module.
     - `hostMonitor.ts` turns the host's memory, CPU pressure and disk readings into host
       alerts and Server events (readings are injectable).
     - `healthDiagnostics.ts` trims each pipeline's health for the per-minute snapshot event.
+- `src/services/resourceUsage.ts` - samples the host's CPU, RAM, disk and network and the CPU/RAM
+  of this server, SRS and the relay on timers, and keeps two hours of history (`createResourceUsage`;
+  the readers and the clock are injectable). `api/metrics.ts` only serves it; the health poll's
+  diagnostics snapshot and CPU suspects read the same samples. `utils/procStats.ts` has the
+  readings, including `watchedFilesystems`, the one rule for which disks the dashboard figure
+  and the host disk alert look at.
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `preview.ts`
   (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.

@@ -15,6 +15,9 @@ const {
     findPidsByExecutable,
     createProcCpuTracker,
     formatMb,
+    watchedFilesystems,
+    parseNetDev,
+    readNetCounters,
 } = require('../src/utils/procStats');
 
 // Builds a minimal /proc/<pid>/stat line. `comm` may contain spaces/parens to
@@ -451,5 +454,67 @@ describe('topProcessesByRss', () => {
             throw new Error('ENOENT');
         });
         assert.deepEqual(topProcessesByRss(5), []);
+    });
+});
+
+describe('watchedFilesystems', () => {
+    const disk = (device) => ({ device, totalBytes: 100, availableBytes: 50 });
+    const reading = (byDir) => (dir) => byDir[dir] ?? null;
+
+    test('is the data directory’s filesystem and the root’s, data first', () => {
+        const found = watchedFilesystems('/data', reading({ '/data': disk(2), '/': disk(1) }));
+        assert.deepEqual(
+            found.map((f) => [f.dir, f.disk.device]),
+            [
+                ['/data', 2],
+                ['/', 1],
+            ],
+        );
+    });
+
+    test('lists a filesystem once when the data directory is on the root’s', () => {
+        const found = watchedFilesystems('/data', reading({ '/data': disk(1), '/': disk(1) }));
+        assert.deepEqual(
+            found.map((f) => f.dir),
+            ['/data'],
+        );
+    });
+
+    test('leaves out a filesystem that cannot be read', () => {
+        const found = watchedFilesystems('/data', reading({ '/': disk(1) }));
+        assert.deepEqual(
+            found.map((f) => f.dir),
+            ['/'],
+        );
+        assert.deepEqual(watchedFilesystems('/data', reading({})), []);
+    });
+
+    test('without a data directory it is the root alone', () => {
+        const found = watchedFilesystems(null, reading({ '/data': disk(2), '/': disk(1) }));
+        assert.deepEqual(
+            found.map((f) => f.dir),
+            ['/'],
+        );
+    });
+});
+
+describe('parseNetDev', () => {
+    const header = 'Inter-|   Receive\n face |bytes packets\n';
+
+    test('adds received and sent bytes of every interface but loopback', () => {
+        const text = `${header}  lo: 100 1 0 0 0 0 0 0 100 1 0 0 0 0 0 0\neth0: 5000 10 0 0 0 0 0 0 8000 20 0 0 0 0 0 0\nwlan0: 1 1 0 0 0 0 0 0 2 1 0 0 0 0 0 0\n`;
+        assert.deepEqual(parseNetDev(text), { rx: 5001, tx: 8002 });
+    });
+
+    test('is zero for a file with no interfaces', () => {
+        assert.deepEqual(parseNetDev(header), { rx: 0, tx: 0 });
+        assert.deepEqual(parseNetDev(''), { rx: 0, tx: 0 });
+    });
+
+    test('readNetCounters is null where the file cannot be read', (t) => {
+        t.mock.method(fs, 'readFileSync', () => {
+            throw new Error('ENOENT');
+        });
+        assert.equal(readNetCounters(), null);
     });
 });
