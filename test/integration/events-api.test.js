@@ -94,6 +94,9 @@ describe('GET /api/events', () => {
             url: 'rtmp://192.0.2.1/live/x',
         });
         db.appendPipelineLog(pipeline.id, 'offline', 'Input disconnected');
+        // Events are ordered by time: two in one millisecond keep their source order, which
+        // would make the expected order below depend on the clock.
+        await new Promise((resolve) => setTimeout(resolve, 5));
         db.setOutputLastError(output.id, 'Connection refused', 'crash');
 
         const res = await get(app, '/api/events');

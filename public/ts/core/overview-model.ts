@@ -94,7 +94,8 @@ interface Candidate<Row> {
 }
 
 interface TableWords {
-    noun: string;
+    // What the table lists, for "No <noun> match …"; absent for a table with no search box.
+    noun?: string;
     noProblems: string;
     noActive: string;
     // Shown when there is nothing to list at all; null leaves the table out.
@@ -120,7 +121,7 @@ function buildTable<Row>(
         empty = words.none;
     } else if (rows.length === 0) {
         empty =
-            search.trim() !== ''
+            words.noun !== undefined && search.trim() !== ''
                 ? `No ${words.noun} match “${search.trim()}”.`
                 : filter === 'problems'
                   ? words.noProblems
@@ -204,7 +205,6 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
         filter,
         '',
         {
-            noun: 'relay sessions',
             noProblems: 'No relay issues.',
             noActive: 'No active relay sessions.',
             none: null,

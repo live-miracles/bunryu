@@ -6,6 +6,7 @@ import {
     getMetricsHistory,
     isServerUnreachable,
 } from '../core/api.js';
+import { mergeMetricSamples } from '../core/metrics-history.js';
 import { parsePipelines } from '../core/pipeline.js';
 import { state } from '../core/state.js';
 import { renderPipelines, renderMetrics } from './render.js';
@@ -35,13 +36,6 @@ export function refreshDashboard(): Promise<void> {
 }
 
 let configStale = true;
-
-function mergeMetricsHistory(samples: import('../types.js').MetricSample[]): void {
-    if (samples.length === 0) return;
-    const byTimestamp = new Map(state.metricsHistory.map((sample) => [sample.ts, sample]));
-    for (const sample of samples) byTimestamp.set(sample.ts, sample);
-    state.metricsHistory = [...byTimestamp.values()].sort((a, b) => a.ts - b.ts);
-}
 
 // The configRev the currently loaded /api/config corresponds to. Each health poll
 // carries the server's current rev; when it no longer matches what we loaded, the
@@ -143,7 +137,9 @@ async function fetchAndRender(): Promise<void> {
         state.rejectedOmitted = rejectedResult.omitted;
     }
     if (metricsResult) state.metrics = metricsResult;
-    if (historyResult) mergeMetricsHistory(historyResult);
+    if (historyResult) {
+        state.metricsHistory = mergeMetricSamples(state.metricsHistory, historyResult);
+    }
     state.pipelines = parsePipelines(state.config, state.health);
     renderPipelines();
     renderMetrics();
