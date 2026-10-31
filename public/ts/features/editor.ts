@@ -951,6 +951,8 @@ export function showRelayError(pipelineId: string): void {
 
 function resetLogsModalLayout(modal: HTMLDialogElement): void {
     modal.classList.remove('srt-details-modal');
+    // The SRT details poll refreshes only while this names its pipeline.
+    delete modal.dataset.srtPipelineId;
     const box = modal.querySelector('.modal-box') as HTMLElement | null;
     box?.style.removeProperty('width');
     box?.style.removeProperty('max-width');

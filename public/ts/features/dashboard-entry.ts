@@ -209,8 +209,11 @@ window.previewToggleBtn = async () => {
         stopCurrentPreview,
         attachHls,
         setPreviewStarting,
+        endPreviewStarting,
+        isPreviewStarting,
         syncPreviewControls,
     } = await import('./preview.js');
+    if (isPreviewStarting()) return;
     if (getPreviewPipelineId()) {
         stopCurrentPreview();
         return;
@@ -223,6 +226,7 @@ window.previewToggleBtn = async () => {
     // The server accepts at most 50; a publisher can advertise more.
     const audioTrackCount = Math.min(50, Math.max(1, pipeline?.input.audioTracks.length ?? 1));
     const result = await startPreview(id, audioTrackCount);
+    endPreviewStarting();
     if (result?.hlsUrl && getUrlParam('p') !== id) {
         // The user moved to another pipeline while this one was starting, and
         // stopCurrentPreview() had nothing to stop yet: stop it here instead of

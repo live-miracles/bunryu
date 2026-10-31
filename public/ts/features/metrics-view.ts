@@ -3,6 +3,7 @@ import { state } from '../core/state.js';
 import type { PipelineView } from '../types.js';
 import {
     getPreviewPipelineId,
+    isPreviewStarting,
     populatePreviewTrackSelect,
     stopCurrentPreview,
     syncPreviewControls,
@@ -59,5 +60,5 @@ export function renderPreview(pipeline: PipelineView): void {
     if (activePid && activePid !== pipeline.id) stopCurrentPreview();
 
     populatePreviewTrackSelect(pipeline);
-    syncPreviewControls(getPreviewPipelineId() === pipeline.id);
+    if (!isPreviewStarting()) syncPreviewControls(getPreviewPipelineId() === pipeline.id);
 }

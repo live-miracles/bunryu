@@ -24,6 +24,9 @@ interface HlsLike {
 }
 
 let previewPipelineId: string | null = null;
+// The server is starting a preview: the button stays on "Starting…" through polls and a
+// second click does nothing until it answers.
+let previewStarting = false;
 let previewHlsUrl: string | null = null;
 let hlsInstance: HlsLike | null = null;
 
@@ -362,7 +365,16 @@ export function syncPreviewControls(playing: boolean): void {
     }
 }
 
+export function isPreviewStarting(): boolean {
+    return previewStarting;
+}
+
+export function endPreviewStarting(): void {
+    previewStarting = false;
+}
+
 export function setPreviewStarting(): void {
+    previewStarting = true;
     document.getElementById('preview-btn-play-icon')?.classList.add('hidden');
     document.getElementById('preview-btn-stop-icon')?.classList.add('hidden');
     document.getElementById('preview-btn-spinner')?.classList.remove('hidden');
@@ -392,6 +404,9 @@ export function stopCurrentPreview(): void {
 }
 
 export function attachHls(pipelineId: string, hlsUrl: string): void {
+    // Never leave an earlier player polling the same video.
+    hlsInstance?.destroy();
+    hlsInstance = null;
     previewPipelineId = pipelineId;
     previewHlsUrl = hlsUrl;
     startKeepalive(pipelineId);

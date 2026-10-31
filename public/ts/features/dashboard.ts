@@ -86,6 +86,9 @@ async function fetchAndRender(): Promise<void> {
             inOverview ? getMetricsHistory(latestMetricTs) : Promise.resolve(null),
         ]);
 
+    // A config fetch that failed is retried on the next poll; otherwise a failed first
+    // load would leave the dashboard empty until the page is reloaded.
+    if (doConfig && !configResult) configStale = true;
     if (configResult) {
         state.config = configResult;
         loadedConfigRev = configResult.configRev ?? loadedConfigRev;
@@ -105,7 +108,7 @@ async function fetchAndRender(): Promise<void> {
     // Recompute even when health couldn't be fetched: if the server itself is
     // unreachable, the connection banner already covers it, so suppress the
     // SRS-down banner to avoid showing two alerts at once.
-    const showSrsBanner = !isServerUnreachable() && !!state.health && !state.health.srsReachable;
+    const showSrsBanner = !isServerUnreachable() && state.health.srsReachable === false;
     const srsBanner = document.getElementById('srs-banner');
     srsBanner?.classList.toggle('hidden', !showSrsBanner);
     srsBanner?.classList.toggle('flex', showSrsBanner);

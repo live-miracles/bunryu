@@ -71,15 +71,20 @@ export function showError(msg: unknown): void {
 
 const isMutating = (method: string) => !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
 
+// A read that gets no answer (a half-open connection) is abandoned, so the refresh loop
+// is not stuck behind it. A change is never abandoned: it may have been applied.
+const READ_TIMEOUT_MS = 15_000;
+
 async function apiRequest<T>(
     url: string,
     opts: { method?: string; body?: unknown; silent?: boolean; timeoutMs?: number } = {},
 ): Promise<T | null> {
     const method = opts.method?.toUpperCase() || 'GET';
     const fetchOpts: RequestInit = { method };
-    const controller = opts.timeoutMs ? new AbortController() : undefined;
+    const timeoutMs = opts.timeoutMs ?? (isMutating(method) ? undefined : READ_TIMEOUT_MS);
+    const controller = timeoutMs ? new AbortController() : undefined;
     if (controller) fetchOpts.signal = controller.signal;
-    const timeout = controller ? setTimeout(() => controller.abort(), opts.timeoutMs) : undefined;
+    const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
     if (opts.body !== undefined) {
         fetchOpts.headers = { 'Content-Type': 'application/json' };
         fetchOpts.body = JSON.stringify(opts.body);
