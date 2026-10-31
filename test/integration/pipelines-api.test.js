@@ -80,9 +80,13 @@ function makeFakePreviewService() {
 function makeFakeOutputService() {
     const stoppedAndWaited = [];
     const retired = [];
+    // Outputs whose FFmpeg has not exited yet, though the operator stopped them.
+    const stillRunning = new Set();
     return {
         stoppedAndWaited,
         retired,
+        stillRunning,
+        getStats: (outputId) => ({ status: stillRunning.has(outputId) ? 'running' : 'stopped' }),
         async stopAndWait(outputId) {
             stoppedAndWaited.push(outputId);
         },
@@ -294,6 +298,27 @@ describe('Pipelines API integration', () => {
             assert.deepEqual(harness.previewService.stopped, [p1.id]);
         });
 
+        test('an output the operator stopped does not block a key change while its process is still winding down', async () => {
+            // Only intent counts here: a stopped output is not restarted by its close
+            // handler, and nothing it still holds can break by the key changing.
+            const harness = createHarness();
+            const p1 = harness.db.createPipeline();
+            const p2 = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p1.id, name: 'U', url: 'rtmp://u' });
+            harness.db.setOutputDesiredState(o.id, 'stopped');
+            harness.outputService.stillRunning.add(o.id);
+
+            const res = await harness.request('POST', `/api/pipelines/${p1.id}`, {
+                name: p1.name,
+                streamKeyId: p2.streamKeyId,
+            });
+
+            assert.equal(res.status, 200);
+            assert.equal(res.body.streamKeyId, p2.streamKeyId);
+            assert.equal(harness.db.getOutput(o.id).desiredState, 'stopped');
+            assert.deepEqual(harness.outputService.stoppedAndWaited, []);
+        });
+
         test('a rendition-only change of key still refuses while a user output runs, touching no encode', async () => {
             const harness = createHarness();
             const p1 = harness.db.createPipeline();
@@ -435,6 +460,20 @@ describe('Pipelines API integration', () => {
             assert.equal(res.status, 200);
             assert.equal(harness.db.getPipeline(p.id), undefined);
             assert.deepEqual(new Set(harness.outputService.retired), new Set([r.id, user.id]));
+        });
+
+        test('an output the operator stopped but whose process is still winding down is retired, so it is awaited before the row goes', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'U', url: 'rtmp://u' });
+            harness.db.setOutputDesiredState(o.id, 'stopped');
+            harness.outputService.stillRunning.add(o.id);
+
+            const res = await harness.request('DELETE', `/api/pipelines/${p.id}`);
+
+            assert.equal(res.status, 200);
+            assert.deepEqual(harness.outputService.retired, [o.id]);
+            assert.equal(harness.db.getPipeline(p.id), undefined);
         });
 
         test('stops the preview and every output, then deletes the pipeline and cascades its outputs', async () => {
