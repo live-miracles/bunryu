@@ -272,6 +272,10 @@ only for a new module.
   rows under the All / Active / Issues filter and the search boxes, its counts and empty-state
   sentence, the chip totals and the System usage sums; `features/render.ts` only draws the
   HTML), on top of the one-line rules in `core/overview-filter.ts`;
+  `core/leg-history.ts` is the SRT details modal's leg history (`createLegHistory`: which
+  30-minute window to load, the live window's increments, the page cache and read-ahead, and
+  dropping a response a newer request replaced; fetch, clock and tab visibility are injected,
+  and `features/srt-bonding-details.ts` only draws);
   `core/events.ts` is the Events table's display rules (first line of a long message, order,
   filter).
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
