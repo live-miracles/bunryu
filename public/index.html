@@ -54,6 +54,24 @@
           </svg>
         </button>
         <button
+          id="status-nav-btn"
+          class="btn btn-square btn-sm btn-ghost opacity-70"
+          onclick="openStatusBtn()"
+          title="Status: every pipeline and output at a glance"
+          aria-label="Status">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+          </svg>
+        </button>
+        <button
           id="settings-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"
           onclick="openSettingsBtn()"
@@ -399,8 +417,8 @@
     <!-- Main grid -->
     <div
       class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 pt-0 md:h-screen md:grid-cols-[clamp(14rem,30vw,23rem)_minmax(0,1fr)] xl:grid-cols-[clamp(14rem,24vw,23rem)_minmax(22rem,3fr)_minmax(0,4fr)]">
-      <!-- Left: Pipeline list -->
-      <div class="panel mt-4 overflow-y-auto max-md:max-h-[40vh]">
+      <!-- Left: Pipeline list (hidden in the Status view, which lists every pipeline itself) -->
+      <div class="panel mt-4 overflow-y-auto max-md:max-h-[40vh]" id="pipelines-col">
         <div class="bg-base-300 sticky top-0 z-10 flex items-start justify-between gap-2 p-4">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="grid grid-cols-[5rem_auto] items-center gap-x-3 text-sm">
@@ -463,7 +481,7 @@
 
       <!-- Middle and right panels: separate columns from xl up; between md and xl one
            scrolling column under the pipeline list, below md part of the single column. -->
-      <div class="contents md:-mx-2 md:flex md:min-h-0 md:flex-col md:overflow-y-auto md:px-2 xl:contents">
+      <div class="contents md:-mx-2 md:flex md:min-h-0 md:flex-col md:overflow-y-auto md:px-2 xl:contents" id="main-panels">
         <!-- Middle: Pipeline info -->
         <div
           class="panel mt-4 flex hidden scroll-mt-24 flex-col gap-2 overflow-y-auto px-4 pb-4 md:max-xl:shrink-0 md:max-xl:overflow-visible"
@@ -907,6 +925,9 @@
         <div
           class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2"
           id="overview-col"></div>
+
+        <!-- Status: every pipeline's outputs as dots, host graphs, recent problems (the full width, without the pipeline list) -->
+        <div class="panel mt-4 hidden scroll-mt-24 flex-col gap-3 p-4 md:max-xl:shrink-0 xl:col-span-full xl:overflow-hidden" id="status-col"></div>
 
         <!-- Server Logs (spans middle + right columns from xl up) -->
         <div class="panel mt-4 hidden scroll-mt-24 overflow-y-auto p-4 md:max-xl:shrink-0 md:max-xl:overflow-visible xl:col-span-2" id="srs-logs-col">

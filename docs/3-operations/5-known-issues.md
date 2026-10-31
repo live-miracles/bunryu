@@ -5,8 +5,9 @@
 The Overview lists every input and then every output in one scrolling page (about 32
 screens at 500 outputs). Search matches names only, not destinations or statuses.
 
-**Workaround:** search by name, use the **Issues** tab, or open the pipeline from the
-sidebar: its view shows only its own outputs. Sidebar groups keep the pipeline list short.
+**Workaround:** open **Status**, which shows every pipeline and output as dots on about one
+screen; or search by name, use the **Issues** tab, or open the pipeline from the sidebar: its
+view shows only its own outputs. Sidebar groups keep the pipeline list short.
 
 ## Short CPU spikes from host package inventory checks every 10 min
 

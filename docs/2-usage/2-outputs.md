@@ -203,6 +203,23 @@ shown as is.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.
 
+### Status
+
+The pulse icon in the navbar opens **Status**: every pipeline on one page, without the
+pipeline list. Each pipeline is a card in the sidebar's groups and order, with a large dot
+for its input and a small dot for each of its outputs: green is running, yellow a warning,
+red with a ring failed, and hollow stopped. Hover a dot for the output's name and what is
+wrong with it. A card with a warning or an error has a coloured border, and a pipeline with
+many outputs shows them as a block with its warning and failure counts.
+
+The top line counts inputs and outputs, and the **Issues** tab keeps only the pipelines with
+a warning or an error (the same rule as the Overview's Issues tab). On the right are the
+host's CPU, RAM, downlink and uplink for the last 15 minutes, and the latest warnings and
+errors, oldest at the top. Click a card to open the pipeline; Ctrl-click opens it in a new
+tab, so Status can stay on a second screen. About 500 outputs in the shape of 100, 80 and
+50 outputs on the first pipelines and 4 to 5 on the rest fit a 1920×1080 screen; a larger
+set scrolls.
+
 ### Events
 
 The clock icon in the navbar opens **Server Logs**. Its **Events** table lists what just

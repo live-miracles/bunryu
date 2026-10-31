@@ -1145,6 +1145,48 @@ is on top during events); push notifications.
 beep reaches the dashboard only as a warning, or the CPU alert has fired only on real
 trouble in production (then add `cpu` to the beeping host alerts).
 
+### The Status view is one page without the sidebar, drawn in parts
+
+**Decision (October 2026):** a **Status** view (`?view=status`) shows every pipeline as a
+card with a dot per output, the host graphs and the recent warnings and errors, in the full
+width with the pipeline list hidden. A plain click on a card opens the pipeline, and
+Ctrl-click opens it in a new tab. The page is built once and each part (counts, cards,
+problems list) is replaced only when its HTML changed; the graphs are drawn again on every
+poll.
+
+**Why:**
+
+- **The Overview is about 32 screens at 500 outputs**
+  ([Sizing](../1-getting-started/4-sizing.md#the-dashboard-at-the-supported-ceiling)), and the
+  sidebar shows counts per pipeline but not where in a pipeline the failing output is. Our
+  pipelines are a fan (100, 80 and 50 outputs, then 4 to 5), where a block of dots shows a
+  run of failures that a count hides.
+- **The sidebar is hidden there** because the view lists every pipeline itself. With it,
+  the cards had three columns and scrolled; without it, four columns hold all 50 pipelines
+  and 501 outputs on 1920×1080.
+- **Parts are replaced only when changed** because rebuilding all 500 dots every 5 s reset
+  a hovered dot's tooltip and dropped a text selection. It also cut a poll from a median of
+  57 ms to 16 ms (worst of 20: 205 ms before, 27 ms after).
+- **The problems list is fetched on its own every 15 s while the view is open**, not on
+  every poll: it is one small query ([the Events table](#the-events-table-is-built-on-request-from-what-is-already-stored)),
+  and the warnings it shows change slowly.
+- **Cards are real links** so the browser's own Ctrl-click and middle-click work and a
+  second screen can stay on Status while changes are made on the first.
+
+**Not adopted:**
+
+- **A separate wall mode** (larger type, no navbar, automatic login, a sound button, a
+  periodic self-reload). The screen is a TV on a PC's HDMI output that a person sits at, so
+  none of it is needed. The navbar stays so Settings, Logs and the pipelines are one click away.
+- **Cards that re-order by severity**: a layout that moves between glances is harder to read.
+  The Issues tab is the filter.
+- **A tooltip per dot as page elements**: 500 hidden nodes for something the browser's own
+  `title` does. A failed poll shows the existing connection banner.
+
+**Revisit when:** a screen has to run unattended (needs a login that outlives the 7-day
+session, a way to enable sound, and a periodic reload so a page left open for days cannot
+grow), or the supported size grows past what fits a screen.
+
 ### The Events table is built on request from what is already stored
 
 **Decision (October 2026):** the Logs page's Events table (`GET /api/events`) merges the

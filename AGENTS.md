@@ -266,6 +266,10 @@ only for a new module.
   panel, the output cards and the Problems filter all call it.
   `core/relay-status.ts` is the same for a pipeline's relay path (`relayHealth`: the input and
   output halves with the issues behind each, given the clock; the leg health colour and label).
+  `core/status-grid.ts` builds the Status view's cards, dots, groups, counts and problem list
+  (`features/status-view.ts` draws it, in parts replaced only when their HTML changed);
+  `core/events.ts` is the Events table's display rules (first line of a long message, order,
+  filter).
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
   `renditions` and decides which pipeline alerts belong to the input (`INPUT_ALERT_CODES`);
   `features/shared-encodes.ts` renders the Shared encodes card.

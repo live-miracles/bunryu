@@ -94,6 +94,7 @@ import {
 } from '../core/overview-filter.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderInputStats } from './input-stats-view.js';
+import { renderStatusView } from './status-view.js';
 import { renderMetrics as renderMetricsView, renderPreview } from './metrics-view.js';
 
 declare global {
@@ -1438,9 +1439,18 @@ function renderPipelineInfo(selectedId: string | null): void {
     const overviewCol = document.getElementById('overview-col');
     const logsCol = document.getElementById('srs-logs-col');
     const settingsCol = document.getElementById('settings-col');
+    const statusCol = document.getElementById('status-col');
     const view = getUrlParam('view');
     const inLogsView = view === 'logs';
     const inSettingsView = view === 'settings';
+    const inStatusView = view === 'status';
+    // `hidden` and `flex` together: the Status panel is a flex column when shown.
+    statusCol?.classList.toggle('hidden', !inStatusView);
+    statusCol?.classList.toggle('flex', inStatusView);
+    // The Status view has the whole width: the pipeline list goes, and the panels' column
+    // (a wrapper between md and xl) takes the full row.
+    document.getElementById('pipelines-col')?.classList.toggle('hidden', inStatusView);
+    document.getElementById('main-panels')?.classList.toggle('md:col-span-full', inStatusView);
 
     // Logs/Settings content is populated once on navigation (see
     // dashboard-entry.ts), not on every poll — re-rendering here would wipe out
@@ -1461,6 +1471,16 @@ function renderPipelineInfo(selectedId: string | null): void {
         logsCol?.classList.add('hidden');
         settingsCol?.classList.remove('hidden');
         renderSrtPassphraseReset();
+        return;
+    }
+
+    if (inStatusView) {
+        col?.classList.add('hidden');
+        outsCol?.classList.add('hidden');
+        overviewCol?.classList.add('hidden');
+        logsCol?.classList.add('hidden');
+        settingsCol?.classList.add('hidden');
+        renderStatusView();
         return;
     }
 
@@ -1905,6 +1925,8 @@ export function renderPipelines(): void {
         'btn-active',
         !view && !state.pipelines.some((p) => p.id === selectedId),
     );
+    const statusBtn = document.getElementById('status-nav-btn');
+    statusBtn?.classList.toggle('btn-active', view === 'status');
     const logsBtn = document.getElementById('srs-logs-nav-btn');
     logsBtn?.classList.toggle('btn-active', view === 'logs');
     const settingsBtn = document.getElementById('settings-nav-btn');

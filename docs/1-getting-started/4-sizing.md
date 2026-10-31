@@ -107,6 +107,7 @@ the control plane and the dashboard.
 | `/api/config` | 149 KB, 11 KB gzipped |
 | Dashboard first render (headless Chrome, same machine) | 0.7-0.8 s (one run of four took 1.3 s), about 9,100 DOM nodes |
 | Overview page length | about 28,000 px (about 32 screens): 50 input rows, then 500 output rows |
+| Status view (50 pipelines, 501 outputs) | one screen at 1920×1080, 935 DOM nodes; a poll that finds nothing new takes about 16 ms (worst of 20: 27 ms), a full rebuild about 36 ms (worst 56 ms) |
 
 What the dashboard shows at that size:
 

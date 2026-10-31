@@ -41,6 +41,7 @@ declare global {
         openSrsLogsBtn: () => Promise<void>;
         refreshSrsLogsBtn: () => Promise<void>;
         openSettingsBtn: () => Promise<void>;
+        openStatusBtn: () => Promise<void>;
         addPipelineGroupBtn: () => void;
         editPipelineGroupBtn: (id: number) => void;
         removePipelineGroupBtn: (id: number) => Promise<void>;
@@ -91,7 +92,7 @@ window.showProblemsOverviewBtn = () => {
 const stackedLayout = window.matchMedia('(max-width: 1279px)');
 function showContentPanel(): void {
     if (!stackedLayout.matches) return;
-    const panel = ['pipe-info-col', 'overview-col', 'srs-logs-col', 'settings-col']
+    const panel = ['pipe-info-col', 'overview-col', 'status-col', 'srs-logs-col', 'settings-col']
         .map((id) => document.getElementById(id))
         .find((el) => el && !el.classList.contains('hidden'));
     panel?.scrollIntoView({ block: 'start' });
@@ -107,6 +108,13 @@ window.openSrsLogsBtn = async () => {
 };
 window.refreshSrsLogsBtn = async () => {
     await showSrsLogs();
+};
+window.openStatusBtn = async () => {
+    void import('./preview.js').then(({ stopCurrentPreview }) => stopCurrentPreview());
+    setUrlParam('p', null);
+    setUrlParam('view', 'status');
+    await refreshDashboard();
+    showContentPanel();
 };
 window.openSettingsBtn = async () => {
     void import('./preview.js').then(({ stopCurrentPreview }) => stopCurrentPreview());
