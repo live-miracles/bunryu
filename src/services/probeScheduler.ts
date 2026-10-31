@@ -49,9 +49,16 @@ export interface ProbeScheduler {
     // Called every poll for a connected input. Probes the publisher once; if that
     // probe fails, retries every FFPROBE_FAILED_REFRESH_MS until it succeeds, then
     // stops (avoids repeated SRT play/teardown cycles once the input is known
-    // healthy). `stagger` spaces the launches of one poll apart. A keyframe check
-    // is queued once, KEYFRAME_DELAY_MS after the first successful probe.
-    ensure(pipelineId: number, streamKey: string, protocol: InputProtocol, stagger: number): void;
+    // healthy). `stagger` spaces the launches of one poll apart; the result says
+    // whether this call scheduled an ffprobe, so the caller advances the stagger only
+    // then. A keyframe check is queued once, KEYFRAME_DELAY_MS after the first
+    // successful probe.
+    ensure(
+        pipelineId: number,
+        streamKey: string,
+        protocol: InputProtocol,
+        stagger: number,
+    ): boolean;
     // The publisher changed, the input went away or the pipeline was removed:
     // cancels its timers and kills its ffprobe children, drops its results, and
     // makes anything still in flight discard its result when it lands.
@@ -341,9 +348,12 @@ export function createProbeScheduler({
                 `[probe] pipeline ${pipelineId} (${protocol}) probe handling failed: ${err instanceof Error ? err.message : String(err)}`,
             );
         } finally {
-            inFlight.delete(pipelineId);
-            startedAt.delete(pipelineId);
-            children.delete(pipelineId);
+            // A probe that clear() replaced must leave the new one's entries alone.
+            if (generationOf(pipelineId) === generation) {
+                inFlight.delete(pipelineId);
+                startedAt.delete(pipelineId);
+                children.delete(pipelineId);
+            }
         }
     }
 
@@ -365,7 +375,9 @@ export function createProbeScheduler({
 
     return {
         ensure(pipelineId, streamKey, protocol, stagger) {
+            if (stopped) return false;
             const status = results.get(pipelineId);
+            let scheduled = false;
             if (
                 !timers.has(pipelineId) &&
                 !inFlight.has(pipelineId) &&
@@ -373,16 +385,22 @@ export function createProbeScheduler({
                 !(status && Date.now() - status.checkedAt < FFPROBE_FAILED_REFRESH_MS)
             ) {
                 scheduleFfprobe(pipelineId, streamKey, protocol, stagger * FFPROBE_STAGGER_MS);
+                scheduled = true;
             }
             // Queues the keyframe check once the first successful probe is old enough.
-            if (stopped || keyframeScheduled.has(pipelineId)) return;
-            if (!status?.ok || Date.now() - status.checkedAt < KEYFRAME_DELAY_MS) return;
-            queueKeyframeProbe({
-                pipelineId,
-                url: inputPullUrl(streamKey, protocol),
-                protocol,
-                generation: generationOf(pipelineId),
-            });
+            if (
+                !keyframeScheduled.has(pipelineId) &&
+                status?.ok &&
+                Date.now() - status.checkedAt >= KEYFRAME_DELAY_MS
+            ) {
+                queueKeyframeProbe({
+                    pipelineId,
+                    url: inputPullUrl(streamKey, protocol),
+                    protocol,
+                    generation: generationOf(pipelineId),
+                });
+            }
+            return scheduled;
         },
 
         clear,

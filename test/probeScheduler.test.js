@@ -191,6 +191,31 @@ describe('probe scheduler', () => {
         assert.equal(ffprobe.calls.length, 2, 'the next publisher is probed afresh');
     });
 
+    test("a cleared probe finishing late does not wipe the next publisher's probe", async (t) => {
+        const { scheduler, ffprobe, settle } = setup(t);
+
+        scheduler.ensure(1, 'key01', 'rtmp', 0);
+        t.mock.timers.tick(0);
+        await settle();
+        scheduler.clear(1);
+        scheduler.ensure(1, 'key01', 'rtmp', 0);
+        t.mock.timers.tick(0);
+        await settle();
+        assert.equal(ffprobe.calls.length, 2);
+
+        // The killed probe exits after the new one has started.
+        ffprobe.calls[0].finish(null);
+        await settle();
+
+        assert.notEqual(scheduler.inFlightSince(1), null, 'the new probe is still in flight');
+        scheduler.ensure(1, 'key01', 'rtmp', 0);
+        t.mock.timers.tick(10_000);
+        await settle();
+        assert.equal(ffprobe.calls.length, 2, 'no second ffprobe on the same input');
+        scheduler.clear(1);
+        assert.deepEqual(ffprobe.calls[1].child.killed, ['SIGKILL'], 'clear() still reaches it');
+    });
+
     test('keepOnly() clears the pipelines that are gone and leaves the others', async (t) => {
         const { scheduler, ffprobe, settle } = setup(t);
         scheduler.ensure(1, 'key01', 'rtmp', 0);
@@ -297,6 +322,27 @@ describe('probe scheduler', () => {
         t.mock.timers.tick(60_000);
         scheduler.ensure(1, 'key01', 'rtmp', 0);
         assert.equal(keyframe.calls.length, 0);
+    });
+
+    test('ensure() after shutdown() launches nothing', async (t) => {
+        const { scheduler, ffprobe, settle } = setup(t);
+        scheduler.shutdown();
+        scheduler.ensure(7, 'key07', 'rtmp', 0);
+        t.mock.timers.tick(10_000);
+        await settle();
+        assert.equal(ffprobe.calls.length, 0);
+    });
+
+    test('ensure() says whether it scheduled an ffprobe', async (t) => {
+        const { scheduler, ffprobe, settle } = setup(t);
+        assert.equal(scheduler.ensure(1, 'key01', 'rtmp', 0), true);
+        assert.equal(scheduler.ensure(1, 'key01', 'rtmp', 1), false, 'already scheduled');
+        t.mock.timers.tick(0);
+        await settle();
+        assert.equal(scheduler.ensure(1, 'key01', 'rtmp', 1), false, 'already running');
+        ffprobe.calls[0].finish(USABLE);
+        await settle();
+        assert.equal(scheduler.ensure(1, 'key01', 'rtmp', 1), false, 'already validated');
     });
 
     test('a failing onUsableProbe callback is contained and the result is still kept', async (t) => {

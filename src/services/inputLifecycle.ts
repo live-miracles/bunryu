@@ -186,7 +186,9 @@ export function createInputLifecycle({
                 if (nowPublisherCid) publisherCid.set(id, nowPublisherCid);
                 inputState.setPipelineState(id, nowLive, nowProtocol);
                 if (nowProtocol) {
-                    probes.ensure(id, pipeline.streamKey, nowProtocol, staggers.ffprobe++);
+                    if (probes.ensure(id, pipeline.streamKey, nowProtocol, staggers.ffprobe)) {
+                        staggers.ffprobe++;
+                    }
                 }
             } else if (!nowConnected) {
                 inputState.clearPipeline(id);

@@ -37,6 +37,8 @@ function setup(t) {
     const probeCalls = [];
     const restarts = [];
     const formatRestarts = [];
+    // What the fake probe scheduler answers: whether the call scheduled an ffprobe.
+    const launches = { next: true };
     const inputState = createInputState();
     const lifecycle = createInputLifecycle({
         db: {
@@ -55,7 +57,10 @@ function setup(t) {
         },
         inputState,
         probes: {
-            ensure: (...args) => probeCalls.push(['ensure', ...args]),
+            ensure: (...args) => {
+                probeCalls.push(['ensure', ...args]);
+                return launches.next;
+            },
             clear: (id) => probeCalls.push(['clear', id]),
         },
         diagnostics: { event: (event, fields) => events.push({ event, ...fields }) },
@@ -78,6 +83,7 @@ function setup(t) {
         restarts,
         formatRestarts,
         staggers,
+        launches,
         observe,
         alerts,
         tick,
@@ -102,6 +108,17 @@ describe('input lifecycle: transitions', () => {
         observe(stream());
         assert.equal(logs.length, 1);
         assert.equal(restarts.length, 1);
+    });
+
+    test('the ffprobe stagger moves only when a probe was scheduled', (t) => {
+        const { observe, staggers, launches } = setup(t);
+        launches.next = false;
+        observe(stream());
+        observe(stream());
+        assert.equal(staggers.ffprobe, 0);
+        launches.next = true;
+        observe(stream());
+        assert.equal(staggers.ffprobe, 1);
     });
 
     test('an SRT stream is recognised from its tcUrl', (t) => {
