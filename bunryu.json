@@ -6,7 +6,7 @@
     "srs_config_path": "./srs.conf",
     "ffmpeg_path": "./objs/ffmpeg",
     "ffprobe_path": "./objs/ffprobe",
-    "dashboard_password": "change-me",
+    "dashboard_password": "admin",
     "stream_key_count": 100,
     "output_watchdog": {
         "warmup_ms": 90000,

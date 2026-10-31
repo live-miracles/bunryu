@@ -1707,7 +1707,7 @@ and the password in that file and keep every other key. `server-reset-password.s
   `admin` when it had no password to seed an empty database with, so a wiped
   database or a hand-made config could silently create that login. It now exits
   with status 78 instead, and the installer, the entrypoint and the reset script
-  check first and say how to fix it. The repo's own `bunryu.json` ships `change-me` for
+  check first and say how to fix it. The repo's own `bunryu.json` ships `admin` for
   development, which the installer, the unit and the image never read.
 - **Hand edits must survive an update.** The installer used to write the whole
   file from a template, so a value an operator added, such as `trust_proxy` behind
@@ -1728,7 +1728,7 @@ and the password in that file and keep every other key. `server-reset-password.s
   root-only file to log in, and the installer could not tell a deliberate empty
   value from a missing one.
 - **A real password in the tracked `bunryu.json`**: it invites editing a tracked
-  file in a public repository, so the repo ships only the `change-me` dev
+  file in a public repository, so the repo ships only the `admin` dev
   placeholder.
 
 **Tradeoffs:** `compose.yaml` passes the variable through, so `docker compose up`
