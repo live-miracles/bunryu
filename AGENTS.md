@@ -269,6 +269,8 @@ only for a new module.
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into
   `renditions` and decides which pipeline alerts belong to the input (`INPUT_ALERT_CODES`);
   `features/shared-encodes.ts` renders the Shared encodes card.
+  `features/pipeline-groups.ts` has the sidebar's add, rename and delete for pipeline groups
+  (each saved at once through the bulk groups endpoint; reordering is drag-and-drop in `render.ts`).
   `core/publish-modes.ts` has the Publish card's modes (which one the live input is on) and
   its rows, with the secrets masked.
   `core/destination.ts` and `core/srt.ts` are the output form's rules between its fields and the

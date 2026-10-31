@@ -16,13 +16,7 @@ import { refreshAfterMutation } from './dashboard.js';
 import { renderSrtPassphraseReset } from './render.js';
 import { noteSharedEncodeRestart } from './shared-encodes.js';
 import { ICON_COPY } from './output-badges.js';
-import type {
-    ActivityEvent,
-    StreamKey,
-    AudioTrackInfo,
-    PipelineGroup,
-    ServerLogTail,
-} from '../types.js';
+import type { ActivityEvent, StreamKey, AudioTrackInfo, ServerLogTail } from '../types.js';
 import { parseSrtUrl, srtUrlFromForm } from '../core/srt.js';
 import {
     SERVERS,
@@ -40,136 +34,6 @@ export { showSrtBondingDetails } from './srt-bonding-details.js';
 // the pipeline's input has ever connected (so nothing has been probed yet), so
 // the track list is a static range rather than derived from live probe data.
 const MAX_AUDIO_TRACKS = 50;
-const MAX_PIPELINE_GROUP_NAME_LENGTH = 80;
-let nextNewPipelineGroupRowId = 0;
-let draggingPipelineGroupRow: HTMLElement | null = null;
-
-const ICON_DRAG_HANDLE = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>`;
-
-function pipelineGroupRowHtml(rowKey: string, name = ''): string {
-    return `<tr data-pipeline-group-row="${rowKey}">
-        <td>
-            <span class="js-pipeline-group-drag-handle text-base-content/50 inline-flex cursor-grab" draggable="true" title="Drag to reorder">${ICON_DRAG_HANDLE}</span>
-        </td>
-        <td><input type="text" id="pipeline-group-${rowKey}-name" class="input input-sm w-full" data-pipeline-group-row-name oninput="this.classList.remove('input-error')" value="${escapeHtml(name)}" /></td>
-        <td class="text-right whitespace-nowrap">
-            <button type="button" class="btn btn-xs btn-error btn-outline" onclick="removePipelineGroupRowBtn('${rowKey}')" aria-label="Remove group" title="Remove group">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                    <line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />
-                </svg>
-            </button>
-        </td>
-    </tr>`;
-}
-
-// Drag-and-drop reordering, mirroring the pipeline list's own handle-based
-// drag (see render.ts) — wired once on the tbody via event delegation so it
-// keeps working after addPipelineGroupRow/removePipelineGroupRow mutate rows
-// directly without re-running this wiring.
-function wirePipelineGroupDragEvents(tbody: HTMLElement): void {
-    tbody.ondragstart = (e) => {
-        const target = e.target as Element;
-        const row = target.closest('tr[data-pipeline-group-row]') as HTMLElement | null;
-        if (!target.closest('.js-pipeline-group-drag-handle') || !row) {
-            e.preventDefault();
-            return;
-        }
-        draggingPipelineGroupRow = row;
-        row.classList.add('opacity-40');
-        e.dataTransfer!.effectAllowed = 'move';
-        e.dataTransfer!.setData('text/plain', row.dataset.pipelineGroupRow!);
-    };
-
-    tbody.ondragover = (e) => {
-        if (!draggingPipelineGroupRow) return;
-        e.preventDefault();
-        e.dataTransfer!.dropEffect = 'move';
-        const overRow = (e.target as Element).closest(
-            'tr[data-pipeline-group-row]',
-        ) as HTMLElement | null;
-        if (!overRow || overRow === draggingPipelineGroupRow) return;
-        const rect = overRow.getBoundingClientRect();
-        const before = e.clientY < rect.top + rect.height / 2;
-        overRow.parentElement?.insertBefore(
-            draggingPipelineGroupRow,
-            before ? overRow : overRow.nextElementSibling,
-        );
-    };
-
-    tbody.ondrop = (e) => e.preventDefault();
-
-    tbody.ondragend = () => {
-        draggingPipelineGroupRow?.classList.remove('opacity-40');
-        draggingPipelineGroupRow = null;
-    };
-}
-
-function renderPipelineGroupRows(groups: PipelineGroup[]): void {
-    const tbody = document.getElementById('settings-pipeline-group-rows');
-    if (!tbody) return;
-    const sorted = [...groups].sort((a, b) => a.position - b.position);
-    tbody.innerHTML = sorted.map((g) => pipelineGroupRowHtml(String(g.id), g.name)).join('');
-    wirePipelineGroupDragEvents(tbody);
-}
-
-export function addPipelineGroupRow(): void {
-    const tbody = document.getElementById('settings-pipeline-group-rows');
-    if (!tbody) return;
-    const rowKey = `new-${nextNewPipelineGroupRowId++}`;
-    tbody.insertAdjacentHTML('beforeend', pipelineGroupRowHtml(rowKey));
-}
-
-export function removePipelineGroupRow(rowKey: string): void {
-    document.querySelector(`[data-pipeline-group-row="${rowKey}"]`)?.remove();
-}
-
-function readPipelineGroupRows(): { id?: number; name: string }[] | null {
-    const rows = Array.from(document.querySelectorAll('[data-pipeline-group-row]'));
-    const groups: { id?: number; name: string }[] = [];
-    for (const row of rows) {
-        const rowKey = (row as HTMLElement).dataset.pipelineGroupRow!;
-        const nameEl = row.querySelector(
-            '[data-pipeline-group-row-name]',
-        ) as HTMLInputElement | null;
-        if (!nameEl) continue;
-        const name = nameEl.value.trim();
-        nameEl.classList.remove('input-error');
-        const isNew = rowKey.startsWith('new-');
-        if (!name && isNew) continue; // a blank new row is skipped, not saved
-        if (!name) {
-            // Saving would drop the group (an id missing from the list means
-            // delete), so make the operator remove the row on purpose.
-            nameEl.classList.add('input-error');
-            api.showError('Group name is required. Remove the row to delete the group.');
-            return null;
-        }
-        if (name.length > MAX_PIPELINE_GROUP_NAME_LENGTH) {
-            nameEl.classList.add('input-error');
-            api.showError(
-                `Group name must be at most ${MAX_PIPELINE_GROUP_NAME_LENGTH} characters.`,
-            );
-            return null;
-        }
-        const id = isNew ? undefined : Number(rowKey);
-        groups.push(id !== undefined ? { id, name } : { name });
-    }
-    return groups;
-}
-
-export async function submitPipelineGroupsForm(btn?: HTMLButtonElement): Promise<void> {
-    const groups = readPipelineGroupRows();
-    if (groups === null) return;
-
-    await withBusy(btn, async () => {
-        const result = await api.updatePipelineGroups(groups);
-        if (!result) return;
-        await refreshAfterMutation();
-        flashSaveSuccess('settings-pipeline-groups-save-success');
-    });
-}
-
 // ── Settings ──────────────────────────────────────────
 
 export function openSettings(): void {
@@ -183,7 +47,6 @@ export function openSettings(): void {
     (document.getElementById('confirm-password-input') as HTMLInputElement).classList.remove(
         'input-error',
     );
-    renderPipelineGroupRows(state.config.groups ?? []);
     const hasPipelines = (state.config.pipelines?.length ?? 0) > 0;
     const regenBtn = document.getElementById('regen-stream-keys-btn') as HTMLButtonElement;
     const regenHint = document.getElementById('regen-stream-keys-hint') as HTMLElement;

@@ -6,10 +6,7 @@ import { initTheme } from './theme.js';
 import { setOutputsListFilter } from './render.js';
 import {
     openSettings,
-    addPipelineGroupRow,
-    removePipelineGroupRow,
     submitGeneralSettingsForm,
-    submitPipelineGroupsForm,
     submitPasswordForm,
     logoutUser,
     regenerateStreamKeysBtn,
@@ -32,16 +29,23 @@ import {
     stopAllOutputs,
     syncSrtHostVisibility,
 } from './editor.js';
+import {
+    addPipelineGroup,
+    editPipelineGroup,
+    removePipelineGroup,
+    submitPipelineGroupForm,
+} from './pipeline-groups.js';
 
 declare global {
     interface Window {
         openSrsLogsBtn: () => Promise<void>;
         refreshSrsLogsBtn: () => Promise<void>;
         openSettingsBtn: () => Promise<void>;
-        addPipelineGroupRowBtn: () => void;
-        removePipelineGroupRowBtn: (rowKey: string) => void;
+        addPipelineGroupBtn: () => void;
+        editPipelineGroupBtn: (id: number) => void;
+        removePipelineGroupBtn: (id: number) => Promise<void>;
         settingsGeneralFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
-        settingsPipelineGroupsFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
+        pipelineGroupFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         settingsPasswordFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         logoutBtn: () => Promise<void>;
         regenerateStreamKeysBtn: (btn?: HTMLButtonElement) => Promise<void>;
@@ -112,10 +116,11 @@ window.openSettingsBtn = async () => {
     openSettings();
     showContentPanel();
 };
-window.addPipelineGroupRowBtn = () => addPipelineGroupRow();
-window.removePipelineGroupRowBtn = (rowKey) => removePipelineGroupRow(rowKey);
+window.addPipelineGroupBtn = () => addPipelineGroup();
+window.editPipelineGroupBtn = (id) => editPipelineGroup(id);
+window.removePipelineGroupBtn = (id) => removePipelineGroup(id);
 window.settingsGeneralFormBtn = (btn) => submitGeneralSettingsForm(btn);
-window.settingsPipelineGroupsFormBtn = (btn) => submitPipelineGroupsForm(btn);
+window.pipelineGroupFormBtn = (btn) => submitPipelineGroupForm(btn);
 window.settingsPasswordFormBtn = (btn) => submitPasswordForm(btn);
 window.logoutBtn = () => logoutUser();
 window.regenerateStreamKeysBtn = (btn) => regenerateStreamKeysBtn(btn);

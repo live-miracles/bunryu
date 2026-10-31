@@ -80,33 +80,6 @@ describe('settings forms do not fail silently', () => {
         assert.ok(!savedAnything());
     });
 
-    test('clearing the name of an existing pipeline group is refused instead of deleting it', async () => {
-        const { submitPipelineGroupsForm } = require('../public/ts/features/editor');
-        const nameEl = fakeElement('   ');
-        const row = { dataset: { pipelineGroupRow: '7' }, querySelector: () => nameEl };
-        rows['[data-pipeline-group-row]'] = [row];
-
-        await submitPipelineGroupsForm();
-
-        assert.ok(hasError(nameEl));
-        assert.equal(toast(), 'Group name is required. Remove the row to delete the group.');
-        assert.ok(!savedAnything());
-    });
-
-    test('a pipeline group name that is too long is marked and explained', async () => {
-        const { submitPipelineGroupsForm } = require('../public/ts/features/editor');
-        const nameEl = fakeElement('x'.repeat(81));
-        rows['[data-pipeline-group-row]'] = [
-            { dataset: { pipelineGroupRow: 'new-1' }, querySelector: () => nameEl },
-        ];
-
-        await submitPipelineGroupsForm();
-
-        assert.ok(hasError(nameEl));
-        assert.equal(toast(), 'Group name must be at most 80 characters.');
-        assert.ok(!savedAnything());
-    });
-
     test('password: each missing or mismatched field is marked and explained', async () => {
         const { submitPasswordForm } = require('../public/ts/features/editor');
         const current = elements['current-password-input'];

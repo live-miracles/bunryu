@@ -47,7 +47,7 @@ import {
     renderOutputCard,
     type DupRef,
 } from './output-card.js';
-import { outputStatusCounts } from './output-badges.js';
+import { ICON_PENCIL, ICON_TRASH, outputStatusCounts } from './output-badges.js';
 import { renderSharedEncodes } from './shared-encodes.js';
 import {
     hasCurrentRelayError,
@@ -202,7 +202,7 @@ async function persistPipelineDrop(
 }
 
 // Persists a reordering of the groups themselves — a whole-collection
-// replace (same endpoint Settings uses), keeping each group's id/name and
+// replace (the same endpoint the group controls use), keeping each group's id/name and
 // just resubmitting them in the new order so `position` follows array index.
 async function persistGroupOrder(groupIds: number[]): Promise<void> {
     const byId = new Map((state.config.groups ?? []).map((g) => [g.id, g]));
@@ -589,8 +589,8 @@ function renderPipelineList(): void {
     };
 
     // Bucket pipelines by group — groups always render first, in the order
-    // configured in Settings, followed by ungrouped pipelines. A pipeline
-    // whose group no longer exists (deleted in Settings) falls back to
+    // configured in the sidebar, followed by ungrouped pipelines. A pipeline
+    // whose group no longer exists (deleted in another session) falls back to
     // ungrouped, self-healing the same way a stale layoutOrder id does.
     const groups = [...(state.config.groups ?? [])].sort((a, b) => a.position - b.position);
     const groupIds = new Set(groups.map((g) => g.id));
@@ -629,6 +629,16 @@ function renderPipelineList(): void {
         ungrouped.map((p) => renderPipelineRow(p, 'ungrouped')).join('');
 
     listEl.onclick = (e) => {
+        const groupAction = (e.target as Element).closest(
+            '.js-edit-group, .js-delete-group',
+        ) as HTMLElement | null;
+        if (groupAction?.dataset.groupId) {
+            const groupId = Number(groupAction.dataset.groupId);
+            if (groupAction.classList.contains('js-edit-group'))
+                window.editPipelineGroupBtn(groupId);
+            else void window.removePipelineGroupBtn(groupId);
+            return;
+        }
         const toggle = (e.target as Element).closest('.js-toggle-group') as HTMLElement | null;
         if (toggle?.dataset.groupId) {
             const groupId = Number(toggle.dataset.groupId);
@@ -782,11 +792,21 @@ function renderGroupHeader(
            ${statusBadge(outs.off, 'badge-ghost')}`
         : '';
 
+    // Rename and delete show on hover or keyboard focus, and always on a touch screen,
+    // which has no hover.
+    const actionClass =
+        'btn btn-xs btn-square btn-ghost opacity-0 focus-visible:opacity-100 group-hover/group:opacity-100 [@media(hover:none)]:opacity-100';
+    const name = escapeHtml(group.name);
+
     return `<li data-group-id="${group.id}">
-        <div class="flex items-center gap-2 cursor-pointer js-toggle-group font-semibold opacity-90" data-group-id="${group.id}">
+        <div class="group/group flex items-center gap-2 cursor-pointer js-toggle-group font-semibold opacity-90" data-group-id="${group.id}">
             ${collapsed ? ICON_CHEVRON_RIGHT : ICON_CHEVRON_DOWN}
             ${summary}
-            <span class="js-group-drag-handle cursor-grab truncate min-w-0" draggable="true" title="Drag to reorder">${escapeHtml(group.name)}</span>
+            <span class="js-group-drag-handle cursor-grab truncate min-w-0" draggable="true" title="Drag to reorder">${name}</span>
+            <div class="flex items-center gap-1 ml-auto shrink-0">
+                <button class="${actionClass} js-edit-group" data-group-id="${group.id}" title="Rename group" aria-label="Rename group ${name}">${ICON_PENCIL}</button>
+                <button class="${actionClass} hover:text-error js-delete-group" data-group-id="${group.id}" title="Delete group" aria-label="Delete group ${name}">${ICON_TRASH}</button>
+            </div>
         </div>
     </li>`;
 }
