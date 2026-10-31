@@ -9,6 +9,7 @@ import {
     renditionName,
     renditionUrl,
     sharedRecipe,
+    splitOutputs,
     type Recipe,
 } from '../utils/renditions.js';
 
@@ -85,10 +86,8 @@ export function createRenditionReconciler(
     }
 
     function stillNeeded(pipelineId: number, url: string): boolean {
-        const userOutputs = db
-            .listOutputsForPipeline(pipelineId)
-            .filter((o) => !isRenditionOutput(o));
-        return neededRecipes(pipelineId, userOutputs).has(url);
+        const { outputs } = splitOutputs(db.listOutputsForPipeline(pipelineId));
+        return neededRecipes(pipelineId, outputs).has(url);
     }
 
     async function removeRendition(pipelineId: number, row: Output): Promise<void> {
@@ -203,8 +202,7 @@ export function createRenditionReconciler(
         outputs: Output[],
         liveRows: Set<string>,
     ): Promise<void> {
-        const userOutputs = outputs.filter((o) => !isRenditionOutput(o));
-        const rows = outputs.filter(isRenditionOutput);
+        const { outputs: userOutputs, sharedEncodes: rows } = splitOutputs(outputs);
         const rowByUrl = new Map(rows.map((r) => [r.url, r]));
 
         const needed = neededRecipes(pipelineId, userOutputs);

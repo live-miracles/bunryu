@@ -30,6 +30,18 @@ export function isRenditionOutput(output: Pick<Output, 'url'>): boolean {
     return isRenditionUrl(output.url);
 }
 
+// A pipeline's rows apart: the operator's own outputs, and the shared encodes (rows the
+// server keeps for them). Callers that treat the two differently take each half by name
+// instead of filtering the same list both ways.
+export function splitOutputs<T extends Pick<Output, 'url'>>(
+    rows: readonly T[],
+): { outputs: T[]; sharedEncodes: T[] } {
+    const outputs: T[] = [];
+    const sharedEncodes: T[] = [];
+    for (const row of rows) (isRenditionOutput(row) ? sharedEncodes : outputs).push(row);
+    return { outputs, sharedEncodes };
+}
+
 function makeRecipe(videoEncoding: string, audioEncoding: string): Recipe {
     return { videoEncoding, audioEncoding, key: `${videoEncoding}_a${audioEncoding}` };
 }

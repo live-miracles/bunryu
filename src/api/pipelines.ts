@@ -4,7 +4,7 @@ import type { Db } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import type { PreviewService } from '../services/preview.js';
 import type { SrtRelayService } from '../services/srtRelay.js';
-import { isRenditionOutput } from '../utils/renditions.js';
+import { splitOutputs } from '../utils/renditions.js';
 
 export function registerPipelineApi(
     app: Express,
@@ -57,14 +57,11 @@ export function registerPipelineApi(
         const keyChanged = streamKeyId !== undefined && streamKeyId !== existing.streamKeyId;
 
         if (keyChanged) {
-            const outputs = db.listOutputsForPipeline(id);
+            const { outputs, sharedEncodes } = splitOutputs(db.listOutputsForPipeline(id));
             // Shared encodes idle-stop 15 s after the last output stops, so one may
             // still be desired-running right after the user stopped everything; only
             // the user's own outputs block the change.
-            const active = outputs.some(
-                (o) => !isRenditionOutput(o) && o.desiredState !== 'stopped',
-            );
-            if (active) {
+            if (outputs.some((o) => o.desiredState !== 'stopped')) {
                 return res
                     .status(409)
                     .json({ error: 'Stop all outputs before changing the stream key' });
@@ -72,7 +69,7 @@ export function registerPipelineApi(
             // A shared encode pulls the input by its key. Stop the ones still running
             // (desired-stopped first, see the pipeline delete below) so the next one
             // starts on the new key instead of holding the old pull.
-            for (const r of outputs.filter(isRenditionOutput)) {
+            for (const r of sharedEncodes) {
                 if (r.desiredState === 'running') db.setOutputDesiredState(r.id, 'stopped');
                 await outputService.stopAndWait(r.id);
             }
@@ -110,10 +107,8 @@ export function registerPipelineApi(
         // Shared encodes follow their outputs and idle-stop 15 s after the last one
         // stops, so one may still be desired-running right after the user stopped
         // everything; only the user's own outputs block the delete.
-        const active = db
-            .listOutputsForPipeline(id)
-            .some((o) => !isRenditionOutput(o) && o.desiredState !== 'stopped');
-        if (active) {
+        const { outputs: ownOutputs } = splitOutputs(db.listOutputsForPipeline(id));
+        if (ownOutputs.some((o) => o.desiredState !== 'stopped')) {
             return res
                 .status(409)
                 .json({ error: 'Stop all outputs before deleting this pipeline' });

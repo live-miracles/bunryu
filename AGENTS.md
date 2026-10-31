@@ -214,7 +214,8 @@ only for a new module.
   and removes the rendition output rows, starts them with their first running
   output and idle-stops them after 15 s. `src/utils/renditions.ts` has the recipe
   rules (`encodeRecipe`, and `sharedRecipe`, which also needs two outputs with the
-  recipe), naming and URL recognition; the dashboard twins are in
+  recipe), naming and URL recognition, and `splitOutputs`, which sets a pipeline's rows into
+  operator outputs and shared encodes; the dashboard twins are in
   `public/ts/core/renditions.ts`.
 - `src/services/health.ts` - the 5 s poll behind `/api/health`: SRS and relay state,
   alerts, the per-minute diagnostics snapshot. It reads state from these modules:

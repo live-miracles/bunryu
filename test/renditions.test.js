@@ -34,6 +34,7 @@ const {
     renditionUrl,
     isRenditionUrl,
     isRenditionOutput,
+    splitOutputs,
     renditionName,
     recipeOfRendition,
 } = require('../src/utils/renditions');
@@ -53,6 +54,42 @@ const out = (videoEncoding, audioEncoding, url = 'rtmp://example.com/live/x') =>
     videoEncoding,
     audioEncoding,
     url,
+});
+
+describe('splitOutputs', () => {
+    const user = (id) => ({ id, url: `rtmp://example.com/live/${id}` });
+    const encode = (id) => ({
+        id,
+        url: renditionUrl(1, { videoEncoding: '720p', audioEncoding: '0', key: '720p_a0' }),
+    });
+
+    test('puts the operator outputs and the shared encodes in their own lists, in order', () => {
+        const rows = [user('a'), encode('r1'), user('b'), encode('r2')];
+        const { outputs, sharedEncodes } = splitOutputs(rows);
+        assert.deepEqual(
+            outputs.map((o) => o.id),
+            ['a', 'b'],
+        );
+        assert.deepEqual(
+            sharedEncodes.map((o) => o.id),
+            ['r1', 'r2'],
+        );
+    });
+
+    test('agrees with isRenditionOutput on every row', () => {
+        const rows = [user('a'), encode('r1')];
+        const { outputs, sharedEncodes } = splitOutputs(rows);
+        assert.ok(outputs.every((o) => !isRenditionOutput(o)));
+        assert.ok(sharedEncodes.every((o) => isRenditionOutput(o)));
+        assert.equal(outputs.length + sharedEncodes.length, rows.length);
+    });
+
+    test('empty lists for no rows, and the rows are not changed', () => {
+        assert.deepEqual(splitOutputs([]), { outputs: [], sharedEncodes: [] });
+        const rows = [user('a'), encode('r1')];
+        splitOutputs(rows);
+        assert.equal(rows.length, 2);
+    });
 });
 
 describe('encodeRecipe', () => {

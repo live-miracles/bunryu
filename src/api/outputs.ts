@@ -4,7 +4,7 @@ import type { Db, Output } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
-import { isRenditionOutput } from '../utils/renditions.js';
+import { isRenditionOutput, splitOutputs } from '../utils/renditions.js';
 import { parseName } from '../utils/inputLimits.js';
 
 // Validate an output's destination from the request body. It needs a valid URL
@@ -229,13 +229,11 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (!db.getPipeline(pipelineId))
             return res.status(404).json({ error: 'Pipeline not found' });
 
-        const outputs = db.listOutputsForPipeline(pipelineId);
+        const { outputs, sharedEncodes } = splitOutputs(db.listOutputsForPipeline(pipelineId));
         // Shared encodes do not block this: they follow their outputs and idle-stop
         // only after a grace period, so one may still be winding down right after
         // the user stopped everything. They are stopped and removed with the rest.
-        const renditions = outputs.filter(isRenditionOutput);
         for (const o of outputs) {
-            if (isRenditionOutput(o)) continue;
             if (isInUse(o)) {
                 return res.status(409).json({
                     error: `Output "${o.name}" is still running. Stop all outputs before clearing.`,
@@ -243,7 +241,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             }
         }
 
-        for (const r of renditions) await outputService.retire(r.id);
+        for (const r of sharedEncodes) await outputService.retire(r.id);
         db.deleteOutputsForPipeline(pipelineId);
         return res.json({ ok: true });
     });
