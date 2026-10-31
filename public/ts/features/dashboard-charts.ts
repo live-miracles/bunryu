@@ -66,7 +66,7 @@ export function drawChart(
 
     ctx.clearRect(0, 0, W, H);
 
-    const gridColor = resolveColor('var(--line)');
+    const gridColor = resolveColor('var(--chart-grid)');
     const labelColor = resolveColor('var(--muted)');
     const lineColor = resolveColor(color);
 

@@ -26,6 +26,8 @@
     --dot-warn: light-dark(#e5a50a, #f2c94c);
     --dot-bad: light-dark(#e5484d, #eb5757);
     --dot-off: light-dark(#b4b8bf, #62666d);
+    /* The charts' dashed grid: --line vanishes into the dark panel, so dark gets its own. */
+    --chart-grid: light-dark(rgb(0 0 0 / 0.09), rgb(255 255 255 / 0.18));
     --chart-cpu: light-dark(#5e6ad2, #7a85ea);
     --chart-ram: light-dark(#af52de, #bf5af2);
     --chart-rx: light-dark(#27a644, #4cb782);
