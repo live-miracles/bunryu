@@ -203,6 +203,19 @@ shown as is.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.
 
+### Events
+
+The clock icon in the navbar opens **Server Logs**. Its **Events** table lists what just
+happened across every pipeline: inputs going online or offline, probe and relay errors,
+each output's crashes, watchdog restarts, warnings, starts and stops, and the Server
+events (SRS, Goryu and host alerts). Like the log tails below it, it reads from the oldest
+event at the top to the newest at the bottom, opens scrolled to the newest, and scrolls
+when there are many. A long message (an FFmpeg error with its output) shows its first
+line; **Show full log** opens the rest. The filter narrows the table to one pipeline or to
+the server, and a pipeline's name opens that pipeline. It shows the latest 50 events the
+server still has (an output keeps its last 10 History records and a pipeline its last 100
+lines), loads when you open the page or press Refresh, and does not update itself.
+
 ### Alert sound
 
 The dashboard beeps for 5 s when something goes wrong that needs attention: an output
@@ -210,7 +223,7 @@ crashes or is restarted by a watchdog, an input goes offline while its outputs a
 running, a pipeline raises an error alert, the server, SRS or the SRT relay becomes
 unreachable, or the host runs low on memory or disk space. It beeps when the problem appears, not while it lasts, and an output that
 keeps failing beeps only when it starts failing. Warnings and the host CPU alert do not
-beep; the host alerts are listed in Server Logs under Server events.
+beep; the host alerts are listed in Server Logs under Events.
 
 The bell in the navbar mutes and unmutes the beeps; hover it for the volume slider.
 Both settings are kept in the browser and shared by tabs on the same site. The dashboard

@@ -1145,6 +1145,39 @@ is on top during events); push notifications.
 beep reaches the dashboard only as a warning, or the CPU alert has fired only on real
 trouble in production (then add `cpu` to the beeping host alerts).
 
+### The Events table is built on request from what is already stored
+
+**Decision (October 2026):** the Logs page's Events table (`GET /api/events`) merges the
+pipeline log lines, each output's History and the Server events when it is asked for.
+Nothing new is stored. The page loads it when it opens and on Refresh, and does not
+refresh itself.
+
+**Why:**
+
+- **"What just happened" meant opening each pipeline's History and each output's.** At 50
+  pipelines and 500 outputs that is hundreds of places during an incident.
+- **No new table or write path.** Writing events as they happen would add a write to the
+  start, stop, restart and retire paths, which are kept plain on purpose
+  ([ADR 0001](../adr/0001-robustness-before-performance-in-output-management.md)). Reading
+  what is already stored cannot leave a state wrong.
+- **It is cheap, so it needs no cache or timer.** At the ceiling (50 pipelines with 100
+  log lines each, 500 outputs each with a full History, 100 Server events) the merge took
+  about 5 ms (median 5.3, worst 6.3 of 20 runs, measured in process): one indexed query
+  and parsing the History the health poll already parses.
+- **`/api/srs-logs` is not reused** because it runs `journalctl` three times per request.
+
+**Limits:** it shows what the server still holds: an output keeps its last 10 History
+records (at most 5 of them warnings), a pipeline its last 100 lines, and the Server
+events are the last 200 in memory. The complete record is in the diagnostics files under
+`/var/lib/bunryu/diagnostics/`, which the API does not serve.
+
+**Not adopted:** a refresh timer (the page rewrites the log tails below the table on
+each load, which would reset their scroll position), and a table of events kept just for
+this feed.
+
+**Revisit when:** operators need events older than those caps, or a wall display needs a
+live feed; either points to storing events or serving the diagnostics.
+
 ### Don't probe platform hosts from the server
 
 **Decision (October 2026):** the host connectivity probes were removed: a dashboard

@@ -157,6 +157,15 @@ export interface Db {
     // False when the row is gone (the log keeps only the newest 100 lines).
     updatePipelineLog(pipelineId: number, id: number, message: string): boolean;
     getPipelineLogs(pipelineId: number, limit?: number): PipelineLog[];
+    // The newest lines of every pipeline together, newest first.
+    listRecentPipelineLogs(limit: number): PipelineLog[];
+    // The History of every output that has one.
+    listOutputHistories(): {
+        id: string;
+        pipelineId: number;
+        name: string;
+        history: OutputErrorRecord[];
+    }[];
 
     createSession(token: string): void;
     deleteSession(token: string): void;

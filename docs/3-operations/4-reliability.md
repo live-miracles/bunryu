@@ -152,9 +152,9 @@ The health poll (every 5 s) watches the host itself, because an overloaded or fu
 degrades every pipeline at once and no single output's error explains it. Each alert
 has a start and an end threshold that differ, so a reading hovering near the line is
 one episode, and each start and end is written three ways: a journal line
-(`[host] ...`), a diagnostics event with the numbers, and a row in the **Server events**
-table of the dashboard's Server Logs view (the last 200 rows, kept in memory, so the
-diagnostics are the record that survives a restart).
+(`[host] ...`), a diagnostics event with the numbers, and a row in the **Events**
+table of the dashboard's Server Logs view (the last 200 host and service rows, kept in
+memory, so the diagnostics are the record that survives a restart).
 
 | Alert | Starts when | Ends when | Events |
 |---|---|---|---|

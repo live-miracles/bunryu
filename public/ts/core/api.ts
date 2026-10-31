@@ -1,4 +1,5 @@
 import type {
+    ActivityEvent,
     ConfigData,
     HealthData,
     RejectedPublishesData,
@@ -256,3 +257,5 @@ export const getPipelineLogs = (pipelineId: string) =>
     apiRequest<PipelineLog[]>(`/api/pipelines/${pipelineId}/logs`);
 
 export const getSrsLogs = () => apiRequest<SrsLogsData>('/api/srs-logs');
+
+export const getEvents = () => apiRequest<ActivityEvent[]>('/api/events');

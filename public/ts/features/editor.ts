@@ -1,5 +1,6 @@
 import * as api from '../core/api.js';
 import { state } from '../core/state.js';
+import { eventsForDisplay, summarizeEventMessage } from '../core/events.js';
 import {
     setUrlParam,
     maskStreamKey,
@@ -16,11 +17,11 @@ import { renderSrtPassphraseReset } from './render.js';
 import { noteSharedEncodeRestart } from './shared-encodes.js';
 import { ICON_COPY } from './output-badges.js';
 import type {
+    ActivityEvent,
     StreamKey,
     AudioTrackInfo,
     PipelineGroup,
     ServerLogTail,
-    SrsLogEvent,
 } from '../types.js';
 import { parseSrtUrl, srtUrlFromForm } from '../core/srt.js';
 import {
@@ -1142,14 +1143,110 @@ function ansiLineToHtml(line: string): string {
     return html;
 }
 
+// The Events table: what happened across every pipeline (GET /api/events), oldest at the
+// top and scrolled to the newest, like the log tails below it.
+// Kept between refreshes so the pipeline filter survives a Refresh.
+let recentEvents: ActivityEvent[] | null = null;
+let eventsFilter = 'all';
+
+const EVENT_BADGE: Record<ActivityEvent['severity'], string> = {
+    error: 'badge-error',
+    warning: 'badge-warning',
+    ok: 'badge-success',
+    info: 'badge-neutral',
+};
+
+function eventRowsHtml(events: ActivityEvent[]): string {
+    const shown = eventsForDisplay(events, eventsFilter);
+    if (shown.length === 0) {
+        return events.length === 0
+            ? '<p class="text-sm text-muted">No events recorded yet.</p>'
+            : '<p class="text-sm text-muted">None of the latest events match this filter.</p>';
+    }
+    return shown
+        .map((e) => {
+            const where =
+                e.pipelineId === null
+                    ? ''
+                    : `<a class="link font-semibold shrink-0" data-pipeline-id="${e.pipelineId}" title="Open the pipeline">${escapeHtml(e.pipelineName ?? '')}${e.outputName ? ` · ${escapeHtml(e.outputName)}` : ''}</a>`;
+            // A long message (an FFmpeg stderr tail) shows its first line; the rest opens.
+            const { summary, expandable } = summarizeEventMessage(e.message);
+            const message = expandable
+                ? `<details class="group min-w-0 basis-full sm:basis-0 sm:flex-1">
+                    <summary class="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span class="min-w-0 break-words opacity-80 group-open:hidden">${escapeHtml(summary)}</span>
+                        <span class="shrink-0 underline opacity-70">
+                            <span class="group-open:hidden">Show full log</span><span class="hidden group-open:inline">Hide full log</span>
+                        </span>
+                    </summary>
+                    <pre class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap opacity-80 [overflow-wrap:anywhere]">${escapeHtml(e.message)}</pre>
+                </details>`
+                : `<span class="min-w-0 basis-full break-words opacity-80 sm:basis-0 sm:flex-1">${escapeHtml(summary)}</span>`;
+            return `<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-base-200 py-1.5 last:border-0 sm:gap-x-3">
+                <span class="badge badge-xs leading-none shrink-0 uppercase ${EVENT_BADGE[e.severity]}">${escapeHtml(e.label)}</span>
+                <span class="opacity-70 shrink-0">${formatLocalDateTime(e.ts)}</span>
+                ${where}
+                ${message}
+            </div>`;
+        })
+        .join('');
+}
+
+function eventsSectionHtml(): string {
+    const head = '<p class="text-xs font-semibold uppercase text-muted mb-2">Events</p>';
+    if (recentEvents === null) {
+        return `${head}<p class="text-sm text-muted mb-4">Could not load the events.</p>`;
+    }
+    const pipelineOptions = state.pipelines
+        .map(
+            (p) =>
+                `<option value="p:${escapeHtml(p.id)}"${eventsFilter === `p:${p.id}` ? ' selected' : ''}>${escapeHtml(p.name)}</option>`,
+        )
+        .join('');
+    if (
+        eventsFilter.startsWith('p:') &&
+        !state.pipelines.some((p) => `p:${p.id}` === eventsFilter)
+    ) {
+        eventsFilter = 'all';
+    }
+    return `${head}
+        <div class="mb-2 flex items-center gap-2">
+            <select id="events-filter" class="select select-xs w-48" aria-label="Filter events">
+                <option value="all"${eventsFilter === 'all' ? ' selected' : ''}>All pipelines</option>
+                <option value="server"${eventsFilter === 'server' ? ' selected' : ''}>Server only</option>
+                ${pipelineOptions}
+            </select>
+            <span class="text-muted">the latest ${recentEvents.length} across every pipeline</span>
+        </div>
+        <div id="events-list" class="mb-4 max-h-96 overflow-y-auto rounded-xl border border-base-content/10 px-3">${eventRowsHtml(recentEvents)}</div>`;
+}
+
+function wireEventsSection(contentEl: HTMLElement): void {
+    const filter = document.getElementById('events-filter') as HTMLSelectElement | null;
+    const list = document.getElementById('events-list');
+    if (!filter || !list || recentEvents === null) return;
+    list.scrollTop = list.scrollHeight;
+    filter.onchange = () => {
+        eventsFilter = filter.value;
+        list.innerHTML = eventRowsHtml(recentEvents ?? []);
+        list.scrollTop = list.scrollHeight;
+    };
+    // Assignment, not addEventListener: contentEl persists across refreshes.
+    contentEl.onclick = (e) => {
+        const link = (e.target as Element).closest('[data-pipeline-id]') as HTMLElement | null;
+        if (link?.dataset.pipelineId) window.selectPipeline(link.dataset.pipelineId);
+    };
+}
+
 export async function showSrsLogs(): Promise<void> {
     const contentEl = document.getElementById('srs-logs-content');
     if (!contentEl) return;
 
     contentEl.textContent = 'Loading…';
 
-    const data = await api.getSrsLogs();
+    const [data, events] = await Promise.all([api.getSrsLogs(), api.getEvents()]);
     if (!data) return;
+    recentEvents = events;
 
     const renderTerminal = (label: string, elId: string, tail: ServerLogTail): string => {
         let section = `<p class="text-xs font-semibold uppercase text-muted mb-2">${label} (last 200 lines)</p>`;
@@ -1167,39 +1264,13 @@ export async function showSrsLogs(): Promise<void> {
         return section;
     };
 
-    let html = '';
+    let html = eventsSectionHtml();
     for (const { label, elId, key } of LOG_TERMINALS) {
         html += renderTerminal(label, elId, data[key]);
     }
 
-    const EVENT_SOURCE_LABEL: Record<SrsLogEvent['source'], string> = {
-        srs: 'SRS',
-        relay: 'Goryu',
-        host: 'Host',
-    };
-
-    html += '<p class="text-xs font-semibold uppercase text-muted mt-4 mb-2">Server events</p>';
-    if (data.events.length === 0) {
-        html += '<p class="text-sm text-muted mb-4">No events recorded yet.</p>';
-    } else {
-        html +=
-            '<div class="mb-4">' +
-            [...data.events]
-                .reverse()
-                .map(
-                    (e) =>
-                        `<div class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-base-200 py-1.5 last:border-0 sm:gap-x-3">
-                            <span class="badge badge-xs leading-none shrink-0 uppercase ${e.type === 'recovered' ? 'badge-success' : 'badge-error'}">${e.type}</span>
-                            <span class="badge badge-xs badge-outline shrink-0">${EVENT_SOURCE_LABEL[e.source]}</span>
-                            <span class="opacity-70 shrink-0">${formatLocalDateTime(e.ts)}</span>
-                            <span class="min-w-0 basis-full break-words opacity-80 sm:basis-0 sm:flex-1">${escapeHtml(e.message)}</span>
-                        </div>`,
-                )
-                .join('') +
-            '</div>';
-    }
-
     contentEl.innerHTML = html;
+    wireEventsSection(contentEl);
     for (const { elId } of LOG_TERMINALS) {
         const tailEl = document.getElementById(elId);
         if (tailEl) tailEl.scrollTop = tailEl.scrollHeight;

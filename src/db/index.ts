@@ -251,12 +251,28 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
     const stmtGetPipelineLogs = sqlite.prepare(
         'SELECT id, pipeline_id, ts, event, message FROM pipeline_logs WHERE pipeline_id = ? ORDER BY id DESC LIMIT ?',
     );
+    const stmtListRecentPipelineLogs = sqlite.prepare(
+        'SELECT id, pipeline_id, ts, event, message FROM pipeline_logs ORDER BY id DESC LIMIT ?',
+    );
+    const stmtLoadOutputHistories = sqlite.prepare(
+        'SELECT id, pipeline_id, name, last_error FROM outputs WHERE last_error IS NOT NULL',
+    );
     const stmtCreateSession = sqlite.prepare(
         'INSERT OR REPLACE INTO sessions (token, created_at) VALUES (?, ?)',
     );
     const stmtDeleteSession = sqlite.prepare('DELETE FROM sessions WHERE token = ?');
     const stmtListSessions = sqlite.prepare('SELECT token FROM sessions');
     const stmtPruneExpiredSessions = sqlite.prepare('DELETE FROM sessions WHERE created_at < ?');
+
+    function rowToPipelineLog(r: Record<string, unknown>): PipelineLog {
+        return {
+            id: r.id as number,
+            pipelineId: r.pipeline_id as number,
+            ts: r.ts as number,
+            event: r.event as string,
+            message: r.message as string,
+        };
+    }
 
     function loadAllPipelines(): Pipeline[] {
         return (stmtLoadPipelines.all() as Record<string, unknown>[]).map(rowToPipeline);
@@ -627,14 +643,23 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
 
         getPipelineLogs(pipelineId: number, limit = LOG_RETENTION_LIMIT): PipelineLog[] {
             return (stmtGetPipelineLogs.all(pipelineId, limit) as Record<string, unknown>[]).map(
-                (r) => ({
-                    id: r.id as number,
-                    pipelineId: r.pipeline_id as number,
-                    ts: r.ts as number,
-                    event: r.event as string,
-                    message: r.message as string,
-                }),
+                rowToPipelineLog,
             );
+        },
+
+        listRecentPipelineLogs(limit: number): PipelineLog[] {
+            return (stmtListRecentPipelineLogs.all(limit) as Record<string, unknown>[]).map(
+                rowToPipelineLog,
+            );
+        },
+
+        listOutputHistories() {
+            return (stmtLoadOutputHistories.all() as Record<string, unknown>[]).map((r) => ({
+                id: r.id as string,
+                pipelineId: r.pipeline_id as number,
+                name: r.name as string,
+                history: parseOutputErrorHistory(r.last_error as string | null),
+            }));
         },
 
         createSession(token: string): void {

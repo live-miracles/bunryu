@@ -224,6 +224,18 @@ export interface SrsLogEvent {
     message: string;
 }
 
+// One line of the Logs page's Events table (GET /api/events).
+export interface ActivityEvent {
+    ts: number;
+    source: 'input' | 'output' | 'server';
+    severity: 'error' | 'warning' | 'ok' | 'info';
+    pipelineId: number | null;
+    pipelineName: string | null;
+    outputName: string | null;
+    label: string;
+    message: string;
+}
+
 export interface ServerLogTail {
     lines: string[];
     source: 'journal' | 'none';

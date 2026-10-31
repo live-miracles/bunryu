@@ -19,6 +19,7 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | GET | `/api/metrics/history` | System metric samples every 5 s for the last 2 hours; `?after=<ms>` returns only newer samples |
 | GET | `/api/metrics/system` | Host CPU, RAM, disk and network stats (RAM used is total minus `MemAvailable`, so reclaimable page cache does not count) |
 | GET | `/api/srs-logs` | Recent Server events (SRS and Goryu becoming unreachable or recovering, host CPU, memory and disk alerts: `{ ts, source: srs\|relay\|host, type: problem\|recovered, message }`) and log tails for SRS, the dashboard, and the relay |
+| GET | `/api/events` | What happened across every pipeline, newest first, merged from the pipeline log lines, each output's History and the Server events: `{ ts, source: input\|output\|server, severity: error\|warning\|ok\|info, pipelineId, pipelineName, outputName, label, message }` (`pipelineId`, `pipelineName` and `outputName` are `null` where they don't apply). `?limit=` is 1 to 200, 50 by default; a value that is not a whole number gives the default |
 | GET | `/api/ready` | Unauthenticated readiness check used by systemd before starting SRS |
 | POST | `/api/pipelines` | Create pipeline (auto-names and assigns stream key) — 409 when every stream key is already assigned |
 | GET | `/api/pipelines/:id` | Pipeline details including relay health and bonded-input activity |

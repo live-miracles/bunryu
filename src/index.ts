@@ -18,6 +18,7 @@ import { registerMetricsApi, getProcessUsage } from './api/metrics.js';
 import { registerSettingsApi } from './api/settings.js';
 import { createPreviewService } from './services/preview.js';
 import { registerPreviewApi, registerHlsRoute } from './api/preview.js';
+import { registerEventsApi } from './api/events.js';
 import { registerRejectedPublishesApi, registerSrsHooks, registerSrsLogsApi } from './api/srs.js';
 import { createInputState } from './services/inputState.js';
 import { createRejectedPublishes } from './services/rejectedPublishes.js';
@@ -162,6 +163,7 @@ registerVersionApi(app);
 registerMetricsApi(app, srtRelayService);
 healthService.registerRoutes(app);
 registerSrsLogsApi(app, healthService.getSrsEvents);
+registerEventsApi(app, db, healthService.getSrsEvents);
 registerRejectedPublishesApi(app, rejectedPublishes);
 
 registerHlsRoute(app, previewService);
