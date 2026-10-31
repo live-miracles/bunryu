@@ -22,11 +22,11 @@ instead). The diagram is in the
 
 **Decision:** SRS handles RTMP ingest, plain SRT ingest, the publish/play hooks,
 the stream API and the local fan-out to outputs. The installer pins the official
-release binary (currently v6.0-r2) by SHA-256.
+release binary (currently v6.0-r3) by SHA-256.
 
 **Why:**
 - These are SRS's core features: widely deployed, and stable in production here.
-- v6.0-r2 bundles libsrt 1.5.6, which fixes CVE-2026-55868/55869.
+- v6.0-r3 bundles libsrt 1.5.6 (as r2 did), which fixes CVE-2026-55868/55869.
 - A custom build was tried (a 6.0 branch with one patch, built by CI). It was
   dropped once its only patch turned out to be in a feature Bunryu doesn't use
   (`srt_to_rtmp`, below).

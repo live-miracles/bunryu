@@ -17,10 +17,10 @@ SRS_OUT="$REPO_DIR/objs/srs"
 FFMPEG_OUT="$REPO_DIR/objs/ffmpeg"
 FFPROBE_OUT="$REPO_DIR/objs/ffprobe"
 
-SRS_VERSION=6.0-r2
+SRS_VERSION=6.0-r3
 SRS_RELEASE_TAG="v${SRS_VERSION}"
 SRS_FILENAME="SRS-CentOS7-x86_64-${SRS_VERSION}.zip"
-SRS_SHA256="8b654eccaf2d984dd87cb4f6c8663748922c1cb529de65f6d895ac3daade89a2"
+SRS_SHA256="ecf2bbbbb759b2a77ce6f262854849fdd68f0e5c1b82de92d4283709dddbcc33"
 SRS_URL="https://github.com/ossrs/srs/releases/download/${SRS_RELEASE_TAG}/${SRS_FILENAME}"
 
 # Same pinned FFmpeg build scripts/server-install.sh installs to
