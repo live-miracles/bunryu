@@ -103,3 +103,76 @@ export function takeSuppressedLegLines(state: LegLogState, now: number): number 
 export function suppressedLegLinesMessage(count: number): string {
     return `${count} more bonded leg change${count === 1 ? '' : 's'} in the last minute not shown here (all are in the diagnostics log)`;
 }
+
+// ── Health of a link ─────────────────────────────────────────────────────────────
+// The quality warnings (loss, drops, retransmissions, latency, no flow) are an alert
+// that lasts only while the condition does. These lines keep what happened: a link
+// turning degraded or failing, and the later recovery. They use the same line limiter as
+// the join and leave lines, with a budget of their own.
+
+export type LegHealthLevel = 'ok' | 'warn' | 'error';
+
+/** An improvement is logged only after the link has held it this long, so a link that
+ * hovers around a threshold is one episode, not a line per swing. A worsening is at once. */
+export const LEG_RECOVERY_HOLD_MS = 30_000;
+
+const LEVEL: Record<LegHealthLevel, number> = { ok: 0, warn: 1, error: 2 };
+
+export interface LegHealthLogged {
+    health: LegHealthLevel;
+    /** Since when the link has been better than `health`, while it still is. */
+    betterSinceMs: number | null;
+}
+
+export interface LegHealthChange {
+    from: LegHealthLevel;
+    to: LegHealthLevel;
+    event: 'leg_degraded' | 'leg_failed' | 'leg_recovered';
+}
+
+/**
+ * Decides whether a link's health is a new line, and updates what is remembered of it.
+ * `current` is the link's health this poll. A link seen for the first time starts as ok,
+ * so one that is already bad is logged.
+ */
+export function noteLegHealth(
+    logged: LegHealthLogged,
+    current: LegHealthLevel,
+    now: number,
+): LegHealthChange | null {
+    const from = logged.health;
+    if (LEVEL[current] >= LEVEL[from]) {
+        logged.betterSinceMs = null;
+        if (current === from) return null;
+    } else {
+        logged.betterSinceMs ??= now;
+        if (now - logged.betterSinceMs < LEG_RECOVERY_HOLD_MS) return null;
+    }
+    logged.health = current;
+    logged.betterSinceMs = null;
+    return {
+        from,
+        to: current,
+        event:
+            current === 'ok'
+                ? 'leg_recovered'
+                : current === 'error'
+                  ? 'leg_failed'
+                  : 'leg_degraded',
+    };
+}
+
+export function legHealthMessage(
+    prefix: string,
+    change: LegHealthChange,
+    reason: string | null,
+): string {
+    if (change.to === 'ok') {
+        return `${prefix}: back to normal (was ${change.from === 'error' ? 'failing' : 'degraded'})`;
+    }
+    return `${prefix}: ${reason ?? (change.to === 'error' ? 'failing' : 'degraded')}`;
+}
+
+export function suppressedLegHealthLinesMessage(count: number): string {
+    return `${count} more leg health change${count === 1 ? '' : 's'} in the last minute not shown here (all are in the diagnostics log)`;
+}

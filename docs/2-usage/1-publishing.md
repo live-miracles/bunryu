@@ -79,6 +79,15 @@ Whatever the protocol, the pipeline's log records the encoder's address each tim
 publisher connects (`Publisher: rtmp from <ip>`), which is how you tell afterwards
 which encoder was on a key. A bonded input logs its legs instead.
 
+The log also records when a leg's quality turns bad and when it recovers, because the
+warning on the dashboard disappears once the leg is healthy again. A line such as
+`Bonded leg 203.0.113.10:10081: Leg packet quality is degraded over the last minute (0.2% loss, 0.2% drop).`
+shows as a warning (an error when the leg is failing), and `back to normal` follows once
+the leg has stayed healthy for 30 s. A plain SRT input is logged the same way as
+`SRT input from <ip>:<port>`. Standby and connecting legs are not logged for this, and
+at most 4 such lines a minute are kept per pipeline; the number hidden is added to the
+next line, and every change is in the diagnostics.
+
 ## Pipeline groups
 
 Groups fold related pipelines together in the sidebar. Everything is done in the sidebar,

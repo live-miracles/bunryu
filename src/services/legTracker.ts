@@ -4,8 +4,12 @@ import {
     allowLegLogLine,
     createLegLogState,
     describeLegChange,
+    legHealthMessage,
+    noteLegHealth,
+    suppressedLegHealthLinesMessage,
     suppressedLegLinesMessage,
     takeSuppressedLegLines,
+    type LegHealthLogged,
     type LegLogState,
 } from '../utils/legLog.js';
 import {
@@ -88,6 +92,12 @@ export function createLegTracker(options: LegTrackerOptions) {
     // Which legs (ip:port) a bonded input had at the last poll, for the pipeline log and
     // the diagnostics. Keyed by pipeline; reset when the input goes away. See utils/legLog.ts.
     const logs = new Map<number, LegLogState>();
+    // The health of each link as last logged (a link turning degraded or failing, and
+    // recovering), with its own line budget. Keyed by pipeline, then `ip:port`.
+    const healthLogs = new Map<
+        number,
+        { limiter: LegLogState; legs: Map<string, LegHealthLogged> }
+    >();
 
     const appendLine = (pipelineId: number, event: string, message: string): void => {
         try {
@@ -120,6 +130,43 @@ export function createLegTracker(options: LegTrackerOptions) {
             legs: keys,
         });
         if (allowLegLogLine(current, now)) appendLine(pipelineId, 'legs', change.message);
+    };
+
+    const noteLegHealthChanges = (
+        pipelineId: number,
+        bonded: boolean,
+        current: Map<string, { state: SrtRelayLegState; health: LegHealth; prefix: string }>,
+        now: number,
+    ): void => {
+        const log = healthLogs.get(pipelineId) ?? {
+            limiter: createLegLogState([], now),
+            legs: new Map<string, LegHealthLogged>(),
+        };
+        healthLogs.set(pipelineId, log);
+        const hidden = takeSuppressedLegLines(log.limiter, now);
+        if (hidden > 0)
+            appendLine(pipelineId, 'leg_health', suppressedLegHealthLinesMessage(hidden));
+        // A link that is gone owes no recovery line: its leaving is logged as such.
+        for (const key of log.legs.keys()) if (!current.has(key)) log.legs.delete(key);
+        for (const [key, { state, health, prefix }] of current) {
+            // Connecting and standby links are warnings of the connection, not of its quality;
+            // the join and leave lines and the leg transitions already say so.
+            if (state === 'pending' || state === 'idle') continue;
+            const logged = log.legs.get(key) ?? { health: 'ok' as const, betterSinceMs: null };
+            log.legs.set(key, logged);
+            const change = noteLegHealth(logged, health.health, now);
+            if (!change) continue;
+            const message = legHealthMessage(prefix, change, health.reason);
+            diagnostics?.event('bonded-leg-health', {
+                pipelineId,
+                leg: key,
+                bonded,
+                from: change.from,
+                to: change.to,
+                reason: health.reason,
+            });
+            if (allowLegLogLine(log.limiter, now)) appendLine(pipelineId, change.event, message);
+        }
     };
 
     return {
@@ -219,6 +266,10 @@ export function createLegTracker(options: LegTrackerOptions) {
                 }
             }
             samples.set(pipelineId, currentLegs);
+            const finalHealth = new Map<
+                string,
+                { state: SrtRelayLegState; health: LegHealth; prefix: string }
+            >();
             const pipelineLegHistory =
                 history.get(pipelineId) ?? new Map<string, LegHistorySeries>();
             for (const leg of input.legs) {
@@ -292,6 +343,11 @@ export function createLegTracker(options: LegTrackerOptions) {
                 );
                 sample.health = health;
                 legHealth.set(transportKey, { health, reason });
+                finalHealth.set(transportKey, {
+                    state: leg.state,
+                    health: { health, reason },
+                    prefix: linkAlertPrefix(transportKey),
+                });
                 if (health !== 'ok' && reason) {
                     alerts.push({
                         severity: health === 'error' ? 'error' : 'warning',
@@ -312,6 +368,7 @@ export function createLegTracker(options: LegTrackerOptions) {
                 }
             }
             history.set(pipelineId, pipelineLegHistory);
+            noteLegHealthChanges(pipelineId, input.bonded, finalHealth, now);
             return { expectedLegs, legHealth, alerts };
         },
 
@@ -322,7 +379,10 @@ export function createLegTracker(options: LegTrackerOptions) {
 
         // Forget the pipelines that no longer exist.
         keepOnly(activePipelineIds: Set<number>): void {
-            for (const map of [samples, history, groups, logs] as Map<number, unknown>[]) {
+            for (const map of [samples, history, groups, logs, healthLogs] as Map<
+                number,
+                unknown
+            >[]) {
                 for (const pipelineId of map.keys()) {
                     if (!activePipelineIds.has(pipelineId)) map.delete(pipelineId);
                 }

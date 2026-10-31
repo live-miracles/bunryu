@@ -116,6 +116,13 @@ describe('buildActivityFeed', () => {
             assert.equal(pipelineSeverity('relay_error'), 'error');
         });
 
+        test('bonded leg health events', () => {
+            assert.equal(pipelineSeverity('leg_degraded'), 'warning');
+            assert.equal(pipelineSeverity('leg_failed'), 'error');
+            assert.equal(pipelineSeverity('leg_recovered'), 'ok');
+            assert.equal(pipelineSeverity('leg_health'), 'info');
+        });
+
         test('a pipeline log event nobody classified is plain information', () => {
             assert.equal(pipelineSeverity('legs'), 'info');
             assert.equal(pipelineSeverity('something_new'), 'info');

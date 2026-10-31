@@ -239,6 +239,191 @@ describe('leg health', () => {
     });
 });
 
+describe('leg health in the pipeline log and diagnostics', () => {
+    // Leg 10.0.0.1 receives `received` packets in total, of which `lost` were lost and
+    // `dropped` dropped; the other leg is clean.
+    const at = (tracker, received, lost, now, { dropped = 0, bonded = true, state } = {}) =>
+        tracker.observe(
+            1,
+            input(
+                [
+                    leg('10.0.0.1', {
+                        recvUniquePacketsTotal: received,
+                        recvLossTotal: lost,
+                        recvDropTotal: dropped,
+                        ...(state ? { state } : {}),
+                    }),
+                    ...(bonded ? [leg('10.0.0.2', { recvUniquePacketsTotal: received })] : []),
+                ],
+                bonded,
+            ),
+            true,
+            now,
+        );
+    const healthLines = (logs) => logs.filter((l) => /^leg_/.test(l.event));
+    const healthEvents = (events) => events.filter((e) => e.name === 'bonded-leg-health');
+
+    test('a leg turning degraded is one line naming the leg and the reason, once', () => {
+        const { tracker, logs, events } = setup();
+        at(tracker, 0, 0, 1000);
+        at(tracker, 1000, 50, 6000);
+        at(tracker, 2000, 100, 11_000);
+        const lines = healthLines(logs);
+        assert.equal(lines.length, 1);
+        assert.equal(lines[0].pipelineId, 1);
+        assert.equal(lines[0].event, 'leg_degraded');
+        assert.match(
+            lines[0].message,
+            /^Bonded leg 10\.0\.0\.1:4000: Leg packet quality is degraded over the last minute/,
+        );
+        assert.equal(healthEvents(events).length, 1);
+        assert.deepEqual(
+            { ...healthEvents(events)[0] },
+            {
+                name: 'bonded-leg-health',
+                pipelineId: 1,
+                leg: '10.0.0.1:4000',
+                bonded: true,
+                from: 'ok',
+                to: 'warn',
+                reason: healthEvents(events)[0].reason,
+            },
+        );
+        assert.match(healthEvents(events)[0].reason, /packet quality is degraded/);
+    });
+
+    test('a warning that turns into an error is logged at once, as a failure', () => {
+        const { tracker, logs } = setup();
+        at(tracker, 0, 0, 1000);
+        at(tracker, 1000, 50, 6000);
+        at(tracker, 2000, 50, 11_000, { dropped: 200 });
+        assert.deepEqual(
+            healthLines(logs).map((l) => l.event),
+            ['leg_degraded', 'leg_failed'],
+        );
+        assert.match(healthLines(logs)[1].message, /packet drops are/);
+    });
+
+    test('recovery is logged only after the leg has stayed healthy for 30 s', () => {
+        const { tracker, logs } = setup();
+        at(tracker, 0, 0, 1000);
+        at(tracker, 1000, 50, 6000);
+        // Packets keep arriving without more loss; the loss leaves the sample window
+        // after four more samples.
+        let now = 6000;
+        let received = 1000;
+        const poll = () => {
+            now += 5000;
+            received += 1000;
+            at(tracker, received, 50, now);
+        };
+        while (now < 51_000) poll();
+        assert.deepEqual(
+            healthLines(logs).map((l) => l.event),
+            ['leg_degraded'],
+            'healthy for under 30 s so far',
+        );
+        while (now < 66_000) poll();
+        assert.deepEqual(
+            healthLines(logs).map((l) => l.event),
+            ['leg_degraded', 'leg_recovered'],
+        );
+        assert.match(healthLines(logs)[1].message, /^Bonded leg 10\.0\.0\.1:4000: back to normal/);
+    });
+
+    test('a leg that dips back to healthy for a moment and degrades again adds no lines', () => {
+        const { tracker, logs } = setup();
+        let received = 0;
+        let lost = 0;
+        let now = 1000;
+        const poll = (extraLoss) => {
+            received += 1000;
+            lost += extraLoss;
+            at(tracker, received, lost, now);
+            now += 5000;
+        };
+        poll(0);
+        poll(50);
+        // Healthy for a few polls (the loss ages out of the four-sample history) ...
+        for (let i = 0; i < 5; i++) poll(0);
+        // ... then degraded again before 30 s have passed.
+        poll(50);
+        for (let i = 0; i < 2; i++) poll(0);
+        assert.deepEqual(
+            healthLines(logs).map((l) => l.event),
+            ['leg_degraded'],
+        );
+    });
+
+    test('a leg that joins connecting or idle is not a health change', () => {
+        const { tracker, logs, events } = setup();
+        at(tracker, 0, 0, 1000, { state: 'pending' });
+        at(tracker, 0, 0, 6000, { state: 'idle' });
+        at(tracker, 0, 0, 11_000);
+        assert.deepEqual(healthLines(logs), []);
+        assert.deepEqual(healthEvents(events), []);
+    });
+
+    test('a plain input names itself, and a leg that leaves takes its state with it', () => {
+        const { tracker, logs } = setup();
+        at(tracker, 0, 0, 1000, { bonded: false });
+        at(tracker, 1000, 50, 6000, { bonded: false });
+        assert.match(
+            healthLines(logs)[0].message,
+            /^SRT input from 10\.0\.0\.1:4000: Connection packet quality is degraded/,
+        );
+        // The link goes away while degraded, and comes back clean after its history has
+        // aged out: no recovery line is owed, and nothing else is logged.
+        tracker.observe(1, input([], false), true, 11_000);
+        let received = 5000;
+        for (let now = 100_000; now <= 150_000; now += 5000) {
+            received += 1000;
+            at(tracker, received, 50, now, { bonded: false });
+        }
+        assert.deepEqual(
+            healthLines(logs).map((l) => l.event),
+            ['leg_degraded'],
+        );
+    });
+
+    test('a burst of transitions keeps 4 lines a minute, counts the rest and says so afterwards', () => {
+        const { tracker, logs, events } = setup();
+        const legs = (lost) =>
+            input(
+                ['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.4', '10.0.0.5', '10.0.0.6'].map((ip) =>
+                    leg(ip, { recvUniquePacketsTotal: lost === 0 ? 0 : 1000, recvLossTotal: lost }),
+                ),
+            );
+        tracker.observe(1, legs(0), true, 1000);
+        const before = logs.length;
+        tracker.observe(1, legs(50), true, 6000);
+        assert.equal(healthLines(logs).length, 4);
+        assert.equal(healthEvents(events).length, 6, 'every change still reaches the diagnostics');
+        // Once the minute is over the hidden lines are summed up, once.
+        tracker.observe(1, legs(50), true, 70_000);
+        tracker.observe(1, legs(50), true, 75_000);
+        const summaries = logs.slice(before).filter((l) => /not shown here/.test(l.message));
+        assert.equal(summaries.length, 1);
+        assert.match(summaries[0].message, /^2 more leg health changes/);
+        assert.equal(summaries[0].event, 'leg_health');
+    });
+
+    test('a failing pipeline log never breaks the poll', () => {
+        const tracker = createLegTracker({
+            historyMaxSamples: 4,
+            pollIntervalMs: POLL,
+            healthWindowMs: 60_000,
+            appendPipelineLog: () => {
+                throw new Error('database is locked');
+            },
+        });
+        const legAt = (received, lost) =>
+            input([leg('10.0.0.1', { recvUniquePacketsTotal: received, recvLossTotal: lost })]);
+        tracker.observe(1, legAt(0, 0), true, 1000);
+        assert.doesNotThrow(() => tracker.observe(1, legAt(1000, 50), true, 6000));
+    });
+});
+
 describe('leg history', () => {
     test('keeps the newest samples up to the limit, with each interval as a percentage', () => {
         const { tracker } = setup();

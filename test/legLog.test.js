@@ -6,8 +6,11 @@ const assert = require('node:assert/strict');
 const {
     LEG_LOG_MAX_PER_WINDOW,
     LEG_LOG_WINDOW_MS,
+    LEG_RECOVERY_HOLD_MS,
     allowLegLogLine,
     createLegLogState,
+    legHealthMessage,
+    noteLegHealth,
     describeLegChange,
     suppressedLegLinesMessage,
     takeSuppressedLegLines,
@@ -106,5 +109,56 @@ describe('the pipeline log limit', () => {
     test('words the summary for one and for several', () => {
         assert.match(suppressedLegLinesMessage(1), /^1 more bonded leg change in the last minute/);
         assert.match(suppressedLegLinesMessage(5), /^5 more bonded leg changes in the last minute/);
+    });
+});
+
+describe('noteLegHealth', () => {
+    const fresh = () => ({ health: 'ok', betterSinceMs: null });
+
+    test('a worsening is a change at once, the same level is not', () => {
+        const logged = fresh();
+        assert.equal(noteLegHealth(logged, 'ok', 0), null);
+        assert.deepEqual(noteLegHealth(logged, 'warn', 1000), {
+            from: 'ok',
+            to: 'warn',
+            event: 'leg_degraded',
+        });
+        assert.equal(noteLegHealth(logged, 'warn', 2000), null);
+        assert.deepEqual(noteLegHealth(logged, 'error', 3000), {
+            from: 'warn',
+            to: 'error',
+            event: 'leg_failed',
+        });
+    });
+
+    test('an improvement counts only once held, and any setback starts the wait again', () => {
+        const logged = { health: 'error', betterSinceMs: null };
+        assert.equal(noteLegHealth(logged, 'warn', 0), null);
+        assert.equal(noteLegHealth(logged, 'warn', LEG_RECOVERY_HOLD_MS - 1), null);
+        // Back to the logged level: the wait is over, nothing was said.
+        assert.equal(noteLegHealth(logged, 'error', LEG_RECOVERY_HOLD_MS), null);
+        assert.equal(noteLegHealth(logged, 'warn', LEG_RECOVERY_HOLD_MS + 1000), null);
+        assert.deepEqual(noteLegHealth(logged, 'ok', LEG_RECOVERY_HOLD_MS * 2 + 1000), {
+            from: 'error',
+            to: 'ok',
+            event: 'leg_recovered',
+        });
+        assert.equal(logged.health, 'ok');
+    });
+
+    test('says what happened to which link', () => {
+        const prefix = 'Bonded leg 10.0.0.1:4000';
+        assert.equal(
+            legHealthMessage(
+                prefix,
+                { from: 'ok', to: 'warn', event: 'leg_degraded' },
+                'Leg is slow.',
+            ),
+            'Bonded leg 10.0.0.1:4000: Leg is slow.',
+        );
+        assert.equal(
+            legHealthMessage(prefix, { from: 'error', to: 'ok', event: 'leg_recovered' }, null),
+            'Bonded leg 10.0.0.1:4000: back to normal (was failing)',
+        );
     });
 });

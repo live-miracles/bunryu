@@ -99,6 +99,9 @@ Other things the diagnostics record so an incident can be pieced together:
   encoder's address (`rtmp from <ip>`, `srt from <ip>`, `srt via relay from <ip>:<port>`);
   the pipeline log gets the same line. A bonded input has none: its legs are logged
   as they join and leave.
+- **Leg health:** `bonded-leg-health` when a leg's (or a plain SRT input's) health goes
+  between `ok`, `warn` and `error`, with the reason; the pipeline log gets a
+  `leg_degraded`, `leg_failed` or `leg_recovered` line, at most 4 a minute per pipeline.
 - **Publish hooks:** `publish-allowed`, and `publish-rejected` for each rejection
   that is logged. Repeats are throttled to one journal line per minute per key.
   The number not logged goes on the next line, or, if the attempts stopped, on a

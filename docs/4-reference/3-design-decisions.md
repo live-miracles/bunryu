@@ -282,6 +282,25 @@ disconnects resets the remembered legs, so reconnecting is "connected with N leg
 a run of lost legs. The relay logs the same changes itself with one-second timing
 (`Bonded leg joined|left` in its journal); this view is the 5 s sample of it.
 
+**A leg's health changes are logged too, because the alert is gone once it clears.**
+The quality alerts (`bonded-leg-quality`, `bonded-leg-no-flow`) last as long as the
+condition; afterwards only the diagnostics file had them (as an episode per alert code,
+so a second leg degrading during the first's episode started nothing) and the 30-minute
+SRT chart (in memory, coloured by health). A warning at 3 am therefore left nothing in
+the dashboard's Logs or Events. Each leg's health transition is now one line in the
+pipeline log (`leg_degraded`, `leg_failed`, `leg_recovered`, shown as warning, error
+and ok) and one `bonded-leg-health` diagnostics event naming the leg and the reason.
+A worsening is logged at once; an improvement only after the leg has held it for 30 s,
+so a leg that swings around the 1% loss threshold is one episode (a recovery line per
+swing would be noise). The lines have their own budget of 4 a minute per pipeline with
+a "N more not shown" line after it, separate from the join/leave lines but of the same
+size; every change still reaches the diagnostics. Connecting (`pending`) and standby
+(`idle`) legs are not logged: they are a state of the connection, which the join/leave
+lines and `bonded-leg-transition` already record, and logging them added two lines to
+every join. A leg that leaves while degraded gets no recovery line, since its leaving is
+logged. Plain SRT inputs are covered the same way (they are one link). The thresholds
+are unchanged; this only records them.
+
 **Plain inputs log their address too.** Each new publisher writes one pipeline-log line
 (`Publisher: rtmp from 198.51.100.4`) and a `publisher-source` diagnostics event, so the
 history says who connected, not only that someone did. SRS reports the address for RTMP

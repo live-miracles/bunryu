@@ -230,7 +230,9 @@ only for a new module.
     - `inputState.ts` holds per-input readiness and protocol and builds the pull URL
       outputs read.
     - `legTracker.ts` keeps each pipeline's SRT legs between polls (the group's size, which
-      legs stopped delivering, health, history); `utils/srtLinkAlerts.ts` holds the pure SRT
+      legs stopped delivering, health, history, and the pipeline-log lines for a leg joining, leaving or
+      changing health: `utils/legLog.ts` has their wording, rate limit and the 30 s recovery hold);
+      `utils/srtLinkAlerts.ts` holds the pure SRT
       link rules (the per-interval alerts and a leg's one-minute health thresholds);
       `utils/srtRecent.ts` keeps the 10-minute loss/retransmit/drop counts behind `recent`
       in the health payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError`

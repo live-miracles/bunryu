@@ -36,10 +36,13 @@ export function parseEventsLimit(raw: unknown): number {
 const PIPELINE_EVENT_SEVERITY: Record<string, ActivityEvent['severity']> = {
     online: 'ok',
     probe_recovered: 'ok',
+    leg_recovered: 'ok',
     offline: 'warning',
     keyframe_interval: 'warning',
+    leg_degraded: 'warning',
     probe_failed: 'error',
     relay_error: 'error',
+    leg_failed: 'error',
 };
 
 const SERVER_SOURCE_LABEL: Record<SrsEvent['source'], string> = {
