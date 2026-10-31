@@ -268,6 +268,10 @@ only for a new module.
   output halves with the issues behind each, given the clock; the leg health colour and label).
   `core/status-grid.ts` builds the Status view's cards, dots, groups, counts and problem list
   (`features/status-view.ts` draws it, in parts replaced only when their HTML changed);
+  `core/overview-model.ts` is the same for the Overview (`buildOverviewModel`: each table's
+  rows under the All / Active / Issues filter and the search boxes, its counts and empty-state
+  sentence, the chip totals and the System usage sums; `features/render.ts` only draws the
+  HTML), on top of the one-line rules in `core/overview-filter.ts`;
   `core/events.ts` is the Events table's display rules (first line of a long message, order,
   filter).
   `core/pipeline.ts` splits shared-encode rows out of `PipelineView.outs` into

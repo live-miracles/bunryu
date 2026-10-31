@@ -44,8 +44,3 @@ export function countLabel(shown: number, total: number): string {
 export function searchBoxHtml(id: string, label: string, value: string): string {
     return `<input id="${id}" type="search" class="input input-sm w-56 max-w-full" placeholder="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" value="${escapeHtml(value)}" autocomplete="off" />`;
 }
-
-// The single row shown when a search leaves a table empty.
-export function noMatchRowHtml(colspan: number, noun: string, query: string): string {
-    return `<tr><td colspan="${colspan}" class="py-4 text-center text-muted">No ${noun} match “${escapeHtml(query.trim())}”.</td></tr>`;
-}

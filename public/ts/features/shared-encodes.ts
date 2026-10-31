@@ -54,15 +54,6 @@ export function sharedEncodeIndicator(
     return { ffmpeg, input, idle: false };
 }
 
-// The encode as the Overview names it: "720p · T2", the video unless it is copy and the
-// audio track as T<n> (T1 is track 0).
-export function sharedEncodeLabel(rendition: OutputView): string {
-    const parts: string[] = [];
-    if (rendition.videoEncoding !== 'copy') parts.push(rendition.videoEncoding);
-    if (rendition.audioEncoding !== 'copy') parts.push(`T${parseInt(rendition.audioEncoding) + 1}`);
-    return parts.join(' · ');
-}
-
 export function sharedEncodeUsage(rendition: OutputView): string {
     return `${plural(rendition.dependents.length, 'out', 'outs')} · ${plural(rendition.readers ?? 0, 'read', 'reads')}`;
 }

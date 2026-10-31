@@ -7,7 +7,6 @@ const {
     affectedOutputCount,
     countLabel,
     searchBoxHtml,
-    noMatchRowHtml,
 } = require('../public/ts/core/overview-filter');
 
 describe('matchesName (overview search)', () => {
@@ -76,19 +75,12 @@ describe('countLabel (table heading badges)', () => {
     });
 });
 
-describe('searchBoxHtml and noMatchRowHtml escape what the user typed', () => {
+describe('searchBoxHtml escapes what the user typed', () => {
     test('the query cannot break out of the value attribute', () => {
         const html = searchBoxHtml('ov-search-inputs', 'Search inputs by name', '"><img src=x>');
         assert.ok(!html.includes('<img'));
         assert.ok(html.includes('value="&quot;&gt;&lt;img src=x&gt;"'));
         assert.ok(html.includes('id="ov-search-inputs"'));
-    });
-
-    test('the empty-table message quotes the query safely', () => {
-        const html = noMatchRowHtml(9, 'outputs', '<script>alert(1)</script>');
-        assert.ok(!html.includes('<script>'));
-        assert.ok(html.includes('colspan="9"'));
-        assert.ok(html.includes('No outputs match'));
     });
 });
 

@@ -48,7 +48,9 @@ import {
     type DupRef,
 } from './output-card.js';
 import { ICON_PENCIL, ICON_TRASH, outputStatusCounts } from './output-badges.js';
-import { renderSharedEncodes, sharedEncodeLabel, sharedEncodeUsage } from './shared-encodes.js';
+import { renderSharedEncodes, sharedEncodeUsage } from './shared-encodes.js';
+import { sharedEncodeLabel } from '../core/renditions.js';
+import { buildOverviewModel, type OverviewTable, type UsageRow } from '../core/overview-model.js';
 import {
     hasCurrentRelayError,
     inputAggregateStatsAreDropOnly,
@@ -81,17 +83,7 @@ import {
     outputSummaryHtml,
 } from '../core/outputs-filter.js';
 import { srtPassphraseResetBlock } from '../core/pipeline.js';
-import {
-    affectedOutputCount,
-    countLabel,
-    isOffline,
-    isProblem,
-    matchesName,
-    noMatchRowHtml,
-    searchBoxHtml,
-    tallyStatuses,
-    worstOfTally,
-} from '../core/overview-filter.js';
+import { countLabel, searchBoxHtml, tallyStatuses, worstOfTally } from '../core/overview-filter.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderInputStats } from './input-stats-view.js';
 import { renderStatusView } from './status-view.js';
@@ -846,33 +838,32 @@ function renderOverview(): void {
               ? 'style="background:color-mix(in oklab, var(--dot-warn) 12%, transparent)"'
               : '';
 
-    const totalOuts = state.pipelines.reduce((s, p) => s + p.outs.length, 0);
-    const relayProcessRunning = state.health.srtRelay?.status === 'running';
+    const model = buildOverviewModel({
+        pipelines: state.pipelines,
+        metrics: state.metrics,
+        relayProcessRunning: state.health.srtRelay?.status === 'running',
+        nowMs: healthNowMs(),
+        filter: state.overviewFilter,
+        inputSearch: state.inputSearch,
+        outputSearch: state.outputSearch,
+    });
     const activeOnly = state.overviewFilter === 'active';
     const problemsOnly = state.overviewFilter === 'problems';
 
-    // ── Goryu ───────────────────────────────
-    const activeRelayPipelines = state.pipelines.filter(
-        (p) =>
-            p.srtBonding.inputActive ||
-            p.srtBonding.outputConnected ||
-            p.srtBonding.forwardedPackets > 0 ||
-            (p.srtBonding.input.recvPacketsTotal ?? 0) > 0 ||
-            p.srtBonding.input.recvUniquePacketsTotal > 0 ||
-            (p.srtBonding.input.retransTotal ?? 0) > 0 ||
-            (p.srtBonding.input.recvLossTotal ?? 0) > 0 ||
-            (p.srtBonding.input.recvDropTotal ?? 0) > 0,
-    );
-    const relayNowMs = healthNowMs();
-    const relayByPipeline = new Map(
-        activeRelayPipelines.map((p) => [p.id, relayHealth(p, relayProcessRunning, relayNowMs)]),
-    );
-    const relayProblemCount = [...relayByPipeline.values()].filter(
-        (h) => isProblem(h.input) || isProblem(h.output),
-    ).length;
-    const relayActiveCount = [...relayByPipeline.values()].filter(
-        (h) => !isOffline(h.input) || !isOffline(h.output),
-    ).length;
+    // A table with no row to draw shows the sentence its model gives instead.
+    const emptyRow = (colspan: number, message: string): string =>
+        `<tr><td colspan="${colspan}" class="py-4 text-center text-muted">${escapeHtml(message)}</td></tr>`;
+    const tableRows = <Row>(
+        table: OverviewTable<Row>,
+        colspan: number,
+        draw: (row: Row) => string,
+    ): string =>
+        table.rows.length > 0
+            ? table.rows.map(draw).join('')
+            : table.empty
+              ? emptyRow(colspan, table.empty)
+              : '';
+
     const legCells = (leg: SrtBondingLeg | null): string => {
         if (!leg)
             return `${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}${td(null)}`;
@@ -890,90 +881,50 @@ function renderOverview(): void {
             <td class="tabular-nums text-xs">${fmtMs(leg.latencyMs)}</td>`;
     };
 
-    let relayRows = '';
-    if (activeRelayPipelines.length > 0) {
-        for (const p of activeRelayPipelines) {
-            const relay = relayByPipeline.get(p.id)!;
-            const inputSt = relay.input;
-            const outputSt = relay.output;
-            const rowWarn = inputSt === 'warn' || outputSt === 'warn';
-            const rowError = inputSt === 'error' || outputSt === 'error';
-            if (problemsOnly && !rowWarn && !rowError) continue;
-            if (activeOnly && isOffline(inputSt) && isOffline(outputSt)) continue;
+    // ── Goryu ───────────────────────────────
+    const relayRows = tableRows(model.relay, 13, ({ pipeline: p, relay }) => {
+        const inputSt = relay.input;
+        const outputSt = relay.output;
+        const rowWarn = inputSt === 'warn' || outputSt === 'warn';
+        const rowError = inputSt === 'error' || outputSt === 'error';
+        const legs = p.srtBonding.input.legs;
+        const rowspan = legs.length > 1 ? ` rowspan="${legs.length}"` : '';
+        const rowAttr = `class="hover" ${statusBg(rowError, rowWarn)}`;
+        const aggregateStatsAreDropOnly = inputAggregateStatsAreDropOnly(p.srtBonding.input);
+        const sharedCells = `
+            <td class="font-semibold cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}"${rowspan}>${escapeHtml(p.name)}</td>
+            <td${rowspan}>${overviewStatusBadge(inputSt)}</td>
+            <td${rowspan}>${overviewStatusBadge(outputSt)}</td>
+            <td${rowspan}>${renderOverviewIssues(relayIssueList(relay))}</td>
+            <td class="tabular-nums text-xs"${rowspan}>${p.input.live ? formatUptime(p.input.uptimeMs) : '—'}</td>`;
+        const inputFigure = recentFigure(p.srtBonding.input.recent, aggregateStatsAreDropOnly);
+        const inputFigureClass = inputFigure.dropped
+            ? ' text-warning font-semibold'
+            : inputFigure.quiet
+              ? ' opacity-50'
+              : '';
+        const totalsCells = `
+            <td class="tabular-nums text-xs${inputFigureClass}" title="${escapeHtml(inputFigure.title)}"${rowspan}>${inputFigure.text}</td>`;
 
-            const legs = p.srtBonding.input.legs;
-            const rowspan = legs.length > 1 ? ` rowspan="${legs.length}"` : '';
-            const rowAttr = `class="hover" ${statusBg(rowError, rowWarn)}`;
-            const aggregateStatsAreDropOnly = inputAggregateStatsAreDropOnly(p.srtBonding.input);
-            const sharedCells = `
-                <td class="font-semibold cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}"${rowspan}>${escapeHtml(p.name)}</td>
-                <td${rowspan}>${overviewStatusBadge(inputSt)}</td>
-                <td${rowspan}>${overviewStatusBadge(outputSt)}</td>
-                <td${rowspan}>${renderOverviewIssues(relayIssueList(relay))}</td>
-                <td class="tabular-nums text-xs"${rowspan}>${p.input.live ? formatUptime(p.input.uptimeMs) : '—'}</td>`;
-            const inputFigure = recentFigure(p.srtBonding.input.recent, aggregateStatsAreDropOnly);
-            const inputFigureClass = inputFigure.dropped
-                ? ' text-warning font-semibold'
-                : inputFigure.quiet
-                  ? ' opacity-50'
-                  : '';
-            const totalsCells = `
-                <td class="tabular-nums text-xs${inputFigureClass}" title="${escapeHtml(inputFigure.title)}"${rowspan}>${inputFigure.text}</td>`;
-
-            if (legs.length > 1) {
-                relayRows += legs
-                    .map(
-                        (leg, i) =>
-                            `<tr ${rowAttr}>${i === 0 ? sharedCells : ''}${i === 0 ? totalsCells : ''}${legCells(leg)}</tr>`,
-                    )
-                    .join('');
-            } else {
-                relayRows += `<tr ${rowAttr}>${sharedCells}${totalsCells}${legCells(legs[0] ?? null)}</tr>`;
-            }
+        if (legs.length > 1) {
+            return legs
+                .map(
+                    (leg, i) =>
+                        `<tr ${rowAttr}>${i === 0 ? sharedCells : ''}${i === 0 ? totalsCells : ''}${legCells(leg)}</tr>`,
+                )
+                .join('');
         }
-        if (problemsOnly && relayRows === '') {
-            relayRows = `<tr><td colspan="13" class="py-4 text-center text-muted">No relay issues.</td></tr>`;
-        } else if (activeOnly && relayRows === '') {
-            relayRows = `<tr><td colspan="13" class="py-4 text-center text-muted">No active relay sessions.</td></tr>`;
-        }
-    }
+        return `<tr ${rowAttr}>${sharedCells}${totalsCells}${legCells(legs[0] ?? null)}</tr>`;
+    });
 
     // ── Inputs ────────────────────────────────────────────
-    // An input nobody publishes to is "off". With outputs in trouble because of it, it
-    // is also an issue, so the Issues view lists the cause beside its affected outputs.
-    const affectedOutputs = (p: PipelineView): number =>
-        affectedOutputCount(
-            inputStatus(p.input),
-            p.outs.map((o) => outStatus(o, p.input)),
-        );
-    const inputProblemCount = state.pipelines.filter(
-        (p) => isProblem(inputStatus(p.input)) || affectedOutputs(p) > 0,
-    ).length;
-    const inputActiveCount = state.pipelines.filter((p) => !isOffline(inputStatus(p.input))).length;
-    let inputRows = '';
-    let inputsShown = 0;
-    if (state.pipelines.length === 0) {
-        inputRows = `<tr><td colspan="7" class="py-4 text-center text-muted">No pipelines yet.</td></tr>`;
-    } else {
-        for (const p of state.pipelines) {
+    const inputRows = tableRows(
+        model.inputs,
+        7,
+        ({ pipeline: p, status: st, affectedOutputs: affected }) => {
             const inp = p.input;
-            const st = inputStatus(inp);
-            const affected = affectedOutputs(p);
             const isWarn = st === 'warn' || affected > 0;
             const isError = st === 'error';
-            if (problemsOnly && !isWarn && !isError) continue;
-            if (activeOnly && isOffline(st)) continue;
-            if (
-                !matchesName(
-                    state.inputSearch,
-                    p.name,
-                    p.streamKey,
-                    p.rtmpPublishUrl,
-                    p.srtPublishUrl,
-                )
-            )
-                continue;
-            inputsShown += 1;
             const protocolLabel = inp.connected
                 ? p.srtBonding.acceptedBySrs
                     ? relayTypeLabel(p)
@@ -983,7 +934,7 @@ function renderOverview(): void {
                 : null;
             const audioTracks = inp.audioTracks.length > 0 ? inp.audioTracks : null;
             const spec = streamSpec(inp.video, audioTracks, inp.audio);
-            inputRows += `<tr class="hover" ${statusBg(isError, isWarn)}>
+            return `<tr class="hover" ${statusBg(isError, isWarn)}>
                 <td class="overview-name-col font-semibold cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}">${escapeHtml(p.name)}</td>
                 <td>${overviewStatusBadge(st)}</td>
                 <td>${renderOverviewIssues(affected > 0 ? [{ severity: 'warning', message: `No publisher is connected; ${affected} output${affected === 1 ? '' : 's'} affected.` }] : inputIssues(inp))}</td>
@@ -992,95 +943,45 @@ function renderOverview(): void {
                 <td>${typeBadge(protocolLabel)}</td>
                 <td class="font-mono text-xs">${spec}</td>
             </tr>`;
-        }
-        if (inputRows === '' && state.inputSearch.trim() !== '') {
-            inputRows = noMatchRowHtml(7, 'inputs', state.inputSearch);
-        } else if (problemsOnly && inputRows === '') {
-            inputRows = `<tr><td colspan="7" class="py-4 text-center text-muted">No input issues.</td></tr>`;
-        } else if (activeOnly && inputRows === '') {
-            inputRows = `<tr><td colspan="7" class="py-4 text-center text-muted">No active inputs.</td></tr>`;
-        }
-    }
+        },
+    );
 
     // ── Outputs ───────────────────────────────────────────
-    const outputProblemCount = state.pipelines.reduce(
-        (s, p) => s + p.outs.filter((o) => isProblem(outStatus(o, p.input))).length,
-        0,
-    );
-    const outputActiveCount = state.pipelines.reduce(
-        (s, p) => s + p.outs.filter((o) => !isOffline(outStatus(o, p.input))).length,
-        0,
-    );
-    let outputRows = '';
-    let outputsShown = 0;
-    if (totalOuts === 0) {
-        outputRows = `<tr><td colspan="9" class="py-4 text-center text-muted">No outputs yet.</td></tr>`;
-    } else {
-        for (const p of state.pipelines) {
-            for (const o of p.outs) {
-                const st = outStatus(o, p.input);
-                if (problemsOnly && !isProblem(st)) continue;
-                if (activeOnly && isOffline(st)) continue;
-                if (!matchesName(state.outputSearch, p.name, o.name, o.url ?? '')) continue;
-                outputsShown += 1;
-                const badge = overviewStatusBadge(st);
-
-                const isOn = o.status === 'running';
-                const media = isOn ? deriveOutputMedia(p.input, o) : null;
-                const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
-                const errorBadge =
-                    o.failures > 0
-                        ? `<span class="text-error inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
-                        : '';
-                const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
-                const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
-                outputRows += `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
-                    <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
-                    <td>${badge}</td>
-                    <td>${renderOverviewIssues(outputIssues(o, p.input))}</td>
-                    <td class="tabular-nums text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
-                    ${td(formatBitrate(o.bitrateKbps))}
-                    <td class="tabular-nums text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
-                    <td class="tabular-nums text-xs ${memorySeverityClass(outputMemoryPercent(o))}">${formatOutputMemory(o) ?? '—'}</td>
-                    <td>${typeBadge(protocolLabel)}</td>
-                    <td class="font-mono text-xs">${spec}</td>
-                </tr>`;
-            }
-        }
-        if (outputRows === '' && state.outputSearch.trim() !== '') {
-            outputRows = noMatchRowHtml(9, 'outputs', state.outputSearch);
-        } else if (problemsOnly && outputRows === '') {
-            outputRows = `<tr><td colspan="9" class="py-4 text-center text-muted">No output issues.</td></tr>`;
-        } else if (activeOnly && outputRows === '') {
-            outputRows = `<tr><td colspan="9" class="py-4 text-center text-muted">No active outputs.</td></tr>`;
-        }
-    }
+    const outputRows = tableRows(model.outputs, 9, ({ pipeline: p, output: o, status: st }) => {
+        const isOn = o.status === 'running';
+        const media = isOn ? deriveOutputMedia(p.input, o) : null;
+        const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
+        const errorBadge =
+            o.failures > 0
+                ? `<span class="text-error inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
+                : '';
+        const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
+        const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
+        return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
+            <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
+            <td>${overviewStatusBadge(st)}</td>
+            <td>${renderOverviewIssues(outputIssues(o, p.input))}</td>
+            <td class="tabular-nums text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
+            ${td(formatBitrate(o.bitrateKbps))}
+            <td class="tabular-nums text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
+            <td class="tabular-nums text-xs ${memorySeverityClass(outputMemoryPercent(o))}">${formatOutputMemory(o) ?? '—'}</td>
+            <td>${typeBadge(protocolLabel)}</td>
+            <td class="font-mono text-xs">${spec}</td>
+        </tr>`;
+    });
 
     // ── Shared encodes ────────────────────────────────────
-    // Server-managed FFmpeg processes that several outputs of a pipeline read; they
-    // are not outputs (not counted among them) but cost CPU and RAM like one.
-    const renditionList = state.pipelines.flatMap((p) => p.renditions.map((r) => ({ p, r })));
-    const encodeProblemCount = renditionList.filter(({ p, r }) =>
-        isProblem(outStatus(r, p.input)),
-    ).length;
-    const encodeActiveCount = renditionList.filter(
-        ({ p, r }) => !isOffline(outStatus(r, p.input)),
-    ).length;
-    let encodeRows = '';
-    let encodesShown = 0;
-    for (const { p, r } of renditionList) {
-        const st = outStatus(r, p.input);
-        if (problemsOnly && !isProblem(st)) continue;
-        if (activeOnly && isOffline(st)) continue;
-        if (!matchesName(state.outputSearch, p.name, sharedEncodeLabel(r))) continue;
-        encodesShown += 1;
-        const media = r.status === 'running' ? deriveOutputMedia(p.input, r) : null;
-        const uptimeMs = r.startedAtMs !== null ? Date.now() - r.startedAtMs : null;
-        const errorBadge =
-            r.failures > 0
-                ? `<span class="text-error inline-flex items-center align-middle" title="${r.failures} error${r.failures === 1 ? '' : 's'} since this encode was last started">${ICON_ERROR}</span>`
-                : '';
-        encodeRows += `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
+    const encodeRows = tableRows(
+        model.sharedEncodes,
+        9,
+        ({ pipeline: p, output: r, status: st }) => {
+            const media = r.status === 'running' ? deriveOutputMedia(p.input, r) : null;
+            const uptimeMs = r.startedAtMs !== null ? Date.now() - r.startedAtMs : null;
+            const errorBadge =
+                r.failures > 0
+                    ? `<span class="text-error inline-flex items-center align-middle" title="${r.failures} error${r.failures === 1 ? '' : 's'} since this encode was last started">${ICON_ERROR}</span>`
+                    : '';
+            return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
             <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(sharedEncodeLabel(r))} ${errorBadge}</td>
             <td>${overviewStatusBadge(st)}</td>
             <td>${renderOverviewIssues(outputIssues(r, p.input))}</td>
@@ -1091,13 +992,8 @@ function renderOverview(): void {
             <td class="tabular-nums text-xs">${sharedEncodeUsage(r)}</td>
             <td class="font-mono text-xs">${streamSpec(media?.video ?? null, null, media?.audio ?? null)}</td>
         </tr>`;
-    }
-    if (renditionList.length > 0 && encodeRows === '') {
-        encodeRows =
-            state.outputSearch.trim() !== ''
-                ? noMatchRowHtml(9, 'shared encodes', state.outputSearch)
-                : `<tr><td colspan="9" class="py-4 text-center text-muted">${problemsOnly ? 'No shared encode issues.' : 'No active shared encodes.'}</td></tr>`;
-    }
+        },
+    );
 
     const thead = (cols: string[]) =>
         `<thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead>`;
@@ -1135,105 +1031,10 @@ function renderOverview(): void {
         ${chartCard('chart-tx', 'Uplink', last ? fmtBps(last.txBps) : '—')}
     </div>`;
 
-    const m = state.metrics;
-    const fmtProcCpu = (percent: number | null | undefined): string =>
+    const usage = model.usage;
+    const fmtProcCpu = (percent: number | null): string =>
         percent == null ? '—' : formatCpuPercent(percent);
-    const fmtProcRam = (bytes: number | null | undefined): string =>
-        bytes != null ? formatBytes(bytes) : '—';
-    const isLoopbackHost = (host: string | null | undefined): boolean =>
-        host === 'localhost' || host === '127.0.0.1';
-    const outputHost = (url: string): string | null => {
-        try {
-            return new URL(url).hostname;
-        } catch {
-            return null;
-        }
-    };
-
-    // Sum of every tracked process's own %CPU (single-core-relative — see
-    // ProcCpuTracker) and RSS: node + SRS + relay + every running ffmpeg
-    // output. Independent of the Issues/Active row filter below — this is
-    // whole-system resource usage, not a count of displayed rows.
-    let totalCpuPercent = 0;
-    let totalCpuKnown = false;
-    let totalRamBytes = 0;
-    let totalRamKnown = false;
-    let outsCpuPercent = 0;
-    let outsCpuKnown = false;
-    let outsRamBytes = 0;
-    let outsRamKnown = false;
-    const addCpu = (v: number | null | undefined): void => {
-        if (v != null) {
-            totalCpuPercent += v;
-            totalCpuKnown = true;
-        }
-    };
-    const addRam = (v: number | null | undefined): void => {
-        if (v != null) {
-            totalRamBytes += v;
-            totalRamKnown = true;
-        }
-    };
-    addCpu(m.node?.cpuPercent);
-    addRam(m.node?.ramBytes);
-    addCpu(m.srs?.cpuPercent);
-    addRam(m.srs?.ramBytes);
-    addCpu(m.relay?.cpuPercent);
-    addRam(m.relay?.ramBytes);
-    // Downlink is what SRS receives directly from publishers (excluding
-    // loopback — those are locally fed by the relay or a chained pipeline
-    // output) plus what Goryu pulls in across its bonded
-    // legs. Uplink is what the ffmpeg outputs push out (excluding loopback
-    // chaining into another pipeline).
-    let srsDownlinkKbps = 0;
-    let srsDownlinkKnown = false;
-    let relayDownlinkKbps = 0;
-    let relayDownlinkKnown = false;
-    let outsUplinkKbps = 0;
-    let outsUplinkKnown = false;
-    for (const p of state.pipelines) {
-        if (p.input.recvBitrateKbps != null && !isLoopbackHost(p.input.publisherIp)) {
-            srsDownlinkKbps += p.input.recvBitrateKbps;
-            srsDownlinkKnown = true;
-        }
-        for (const o of [...p.outs, ...p.renditions]) {
-            addCpu(o.cpuPercent);
-            addRam(o.memoryUsageBytes);
-            if (o.cpuPercent != null) {
-                outsCpuPercent += o.cpuPercent;
-                outsCpuKnown = true;
-            }
-            if (o.memoryUsageBytes != null) {
-                outsRamBytes += o.memoryUsageBytes;
-                outsRamKnown = true;
-            }
-            if (o.bitrateKbps != null && o.url && !isLoopbackHost(outputHost(o.url))) {
-                outsUplinkKbps += o.bitrateKbps;
-                outsUplinkKnown = true;
-            }
-        }
-    }
-    for (const p of activeRelayPipelines) {
-        for (const leg of p.srtBonding.input.legs) {
-            if (leg.recvRateMbps != null) {
-                relayDownlinkKbps += leg.recvRateMbps * 1000;
-                relayDownlinkKnown = true;
-            }
-        }
-    }
-    const totalDownlinkKbps = srsDownlinkKbps + relayDownlinkKbps;
-    const totalDownlinkKnown = srsDownlinkKnown || relayDownlinkKnown;
-    const totalUplinkKbps = outsUplinkKbps;
-    const totalUplinkKnown = outsUplinkKnown;
-
-    // m.cpu.percent is already normalized across all cores (0–100 = whole
-    // machine). Scale it up to the same single-core-relative basis as the
-    // per-process percentages above (100% = one core) so App and Total are
-    // comparable.
-    const sysCpuPercent = m.cpu ? m.cpu.percent * m.cpu.cores : null;
-    const sysRamUsedBytes = m.ram?.usedBytes ?? null;
-    const sysDownlinkKbps = m.net ? (m.net.rxBytesPerSec * 8) / 1000 : null;
-    const sysUplinkKbps = m.net ? (m.net.txBytesPerSec * 8) / 1000 : null;
+    const fmtProcRam = (bytes: number | null): string => (bytes != null ? formatBytes(bytes) : '—');
     const appColTitle =
         'App = node + SRS + relay + every running ffmpeg output and shared encode (downlink: SRS direct inputs + SRT relay links; uplink: every running ffmpeg output).';
     const systemColTitle = 'System = whole-machine usage, including processes outside Bunryu.';
@@ -1244,13 +1045,20 @@ function renderOverview(): void {
         'Per process: Outs = every running ffmpeg output pushing to a destination (CPU and RAM also count shared encodes).';
     const cell = (value: string, title = ''): string =>
         `<td class="tabular-nums text-xs"${title ? ` title="${title}"` : ''}>${value}</td>`;
+    const usageCells = (row: UsageRow, fmt: (value: number | null) => string): string =>
+        cell(fmt(row.node)) +
+        cell(fmt(row.srs)) +
+        cell(fmt(row.relay)) +
+        cell(fmt(row.outs)) +
+        cell(fmt(row.app), appColTitle) +
+        cell(fmt(row.system), systemColTitle);
 
     const systemUsageHtml = `
     <div class="overflow-x-auto mb-6">
         <table class="table table-sm">
             <thead>
                 <tr>
-                    <th class="tabular-nums text-xs font-normal text-muted" title="How long the dashboard process has been running">${m.uptimeSeconds != null ? `Up ${formatUptime(m.uptimeSeconds * 1000)}` : ''}</th>
+                    <th class="tabular-nums text-xs font-normal text-muted" title="How long the dashboard process has been running">${usage.uptimeSeconds != null ? `Up ${formatUptime(usage.uptimeSeconds * 1000)}` : ''}</th>
                     <th>Node</th>
                     <th>SRS</th>
                     <th>Relay</th>
@@ -1262,82 +1070,50 @@ function renderOverview(): void {
             <tbody>
                 <tr>
                     <td class="text-xs text-muted" title="${cpuRowTitle}">CPU</td>
-                    ${cell(fmtProcCpu(m.node?.cpuPercent))}
-                    ${cell(fmtProcCpu(m.srs?.cpuPercent))}
-                    ${cell(fmtProcCpu(m.relay?.cpuPercent))}
-                    ${cell(outsCpuKnown ? fmtProcCpu(outsCpuPercent) : '—')}
-                    ${cell(totalCpuKnown ? fmtProcCpu(totalCpuPercent) : '—', appColTitle)}
-                    ${cell(fmtProcCpu(sysCpuPercent), systemColTitle)}
+                    ${usageCells(usage.cpuPercent, fmtProcCpu)}
                 </tr>
                 <tr>
                     <td class="text-xs text-muted">RAM</td>
-                    ${cell(fmtProcRam(m.node?.ramBytes))}
-                    ${cell(fmtProcRam(m.srs?.ramBytes))}
-                    ${cell(fmtProcRam(m.relay?.ramBytes))}
-                    ${cell(outsRamKnown ? fmtProcRam(outsRamBytes) : '—')}
-                    ${cell(totalRamKnown ? formatBytes(totalRamBytes) : '—', appColTitle)}
-                    ${cell(fmtProcRam(sysRamUsedBytes), systemColTitle)}
+                    ${usageCells(usage.ramBytes, fmtProcRam)}
                 </tr>
                 <tr>
                     <td class="text-xs text-muted" title="${downlinkRowTitle}">Downlink ↓</td>
-                    ${cell('—')}
-                    ${cell(srsDownlinkKnown ? formatBitrate(srsDownlinkKbps) : '—')}
-                    ${cell(relayDownlinkKnown ? formatBitrate(relayDownlinkKbps) : '—')}
-                    ${cell('—')}
-                    ${cell(totalDownlinkKnown ? formatBitrate(totalDownlinkKbps) : '—', appColTitle)}
-                    ${cell(formatBitrate(sysDownlinkKbps), systemColTitle)}
+                    ${usageCells(usage.downlinkKbps, formatBitrate)}
                 </tr>
                 <tr>
                     <td class="text-xs text-muted" title="${uplinkRowTitle}">Uplink ↑</td>
-                    ${cell('—')}
-                    ${cell('—')}
-                    ${cell('—')}
-                    ${cell(outsUplinkKnown ? formatBitrate(outsUplinkKbps) : '—')}
-                    ${cell(totalUplinkKnown ? formatBitrate(totalUplinkKbps) : '—', appColTitle)}
-                    ${cell(formatBitrate(sysUplinkKbps), systemColTitle)}
+                    ${usageCells(usage.uplinkKbps, formatBitrate)}
                 </tr>
             </tbody>
         </table>
     </div>`;
 
-    const totalAll =
-        activeRelayPipelines.length + state.pipelines.length + totalOuts + renditionList.length;
-    const totalActive = relayActiveCount + inputActiveCount + outputActiveCount + encodeActiveCount;
-    const totalProblems =
-        relayProblemCount + inputProblemCount + outputProblemCount + encodeProblemCount;
     const filterChips = `
     <div role="tablist" class="tabs tabs-lift mb-4">
         <a role="tab" id="ov-filter-all" aria-selected="${state.overviewFilter === 'all'}" class="tab gap-1 ${state.overviewFilter === 'all' ? 'tab-active' : ''}">
             All
-            <span class="badge badge-xs badge-ghost">${totalAll}</span>
+            <span class="badge badge-xs badge-ghost">${model.totals.all}</span>
         </a>
         <a role="tab" id="ov-filter-active" aria-selected="${activeOnly}" class="tab gap-1 ${activeOnly ? 'tab-active' : ''}">
             Active
-            <span class="badge badge-xs badge-ghost">${totalActive}</span>
+            <span class="badge badge-xs badge-ghost">${model.totals.active}</span>
         </a>
         <a role="tab" id="ov-filter-problems" aria-selected="${problemsOnly}" class="tab gap-1 ${problemsOnly ? 'tab-active' : ''}">
             Issues
-            <span class="badge badge-xs badge-ghost">${totalProblems}</span>
+            <span class="badge badge-xs badge-ghost">${model.totals.problems}</span>
         </a>
     </div>`;
 
     // No relay pipelines at all: omit the section instead of an empty table. A
     // filter that merely hides every row keeps it, so its message still shows.
-    // The Detailed stats table's wording: a bonded input's links are legs.
-    const relayLegIps = activeRelayPipelines.map((p) => p.srtBonding.input.bonded);
-    const legIpHeader = !relayLegIps.includes(true)
-        ? 'Source IP'
-        : relayLegIps.includes(false)
-          ? 'Leg / Source IP'
-          : 'Leg IP';
     const relaySectionHtml =
-        activeRelayPipelines.length === 0
+        model.relay.total === 0
             ? ''
             : `
-        <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${activeRelayPipelines.length}</span></h2>
+        <h2 class="mb-2 text-lg font-bold">SRT Relay <span class="badge badge-neutral badge-sm ml-1">${model.relay.total}</span></h2>
         <div class="overflow-x-auto mb-6">
             <table class="table table-sm table-relay">
-                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">In L / R / D <span class="font-normal text-muted">10 min</span></span>', 'State', legIpHeader, '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal text-muted">10 min</span></span>', 'RTT', 'Rate', 'Buffer', 'Latency'])}
+                ${thead(['Pipeline', 'Input', 'Output', 'Issues', 'Uptime', '<span title="Over the last 10 minutes. Bonded group inputs show the packets still missing after the legs backed each other up (Drop); non-bonded inputs show Loss / Rexmit / Drop">In L / R / D <span class="font-normal text-muted">10 min</span></span>', 'State', model.relay.legIpHeader, '<span title="Loss / Rexmit / Drop on this link over the last 10 minutes">L / R / D <span class="font-normal text-muted">10 min</span></span>', 'RTT', 'Rate', 'Buffer', 'Latency'])}
                 <tbody>${relayRows}</tbody>
             </table>
         </div>`;
@@ -1345,10 +1121,10 @@ function renderOverview(): void {
     // No shared encodes at all: omit the section, like the SRT Relay's. The Outputs search
     // box filters it too, so it has none of its own.
     const encodesSectionHtml =
-        renditionList.length === 0
+        model.sharedEncodes.total === 0
             ? ''
             : `
-        <h2 class="mt-6 mb-2 text-lg font-bold">Shared encodes <span class="badge badge-neutral badge-sm ml-1">${countLabel(encodesShown, renditionList.length)}</span></h2>
+        <h2 class="mt-6 mb-2 text-lg font-bold">Shared encodes <span class="badge badge-neutral badge-sm ml-1">${countLabel(model.sharedEncodes.rows.length, model.sharedEncodes.total)}</span></h2>
         <div class="overflow-x-auto">
             <table class="table table-sm">
                 ${thead(['Pipeline · Encode', 'Status', 'Issues', 'Uptime', 'Bitrate', 'CPU', 'RAM', 'Used by', 'Stream Specification'])}
@@ -1372,7 +1148,7 @@ function renderOverview(): void {
         ${filterChips}
         ${relaySectionHtml}
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 class="text-lg font-bold">Inputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(inputsShown, state.pipelines.length)}</span></h2>
+            <h2 class="text-lg font-bold">Inputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(model.inputs.rows.length, model.inputs.total)}</span></h2>
             ${searchBoxHtml('ov-search-inputs', 'Search by name, key or URL', state.inputSearch)}
         </div>
         <div class="overflow-x-auto mb-6">
@@ -1382,7 +1158,7 @@ function renderOverview(): void {
             </table>
         </div>
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 class="text-lg font-bold">Outputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(outputsShown, totalOuts)}</span></h2>
+            <h2 class="text-lg font-bold">Outputs <span class="badge badge-neutral badge-sm ml-1">${countLabel(model.outputs.rows.length, model.outputs.total)}</span></h2>
             ${searchBoxHtml('ov-search-outputs', 'Search by name or URL', state.outputSearch)}
         </div>
         <div class="overflow-x-auto">
