@@ -301,10 +301,10 @@
 
     <!-- Output modal -->
     <dialog id="edit-out-modal" class="modal">
-      <div class="modal-box w-[92vw] max-w-3xl">
+      <div class="modal-box w-[92vw] max-w-3xl max-sm:p-3">
         <input type="hidden" id="out-pipe-id-input" />
         <input type="hidden" id="out-id-input" />
-        <div class="mx-auto mt-2 space-y-3 px-4">
+        <div class="mx-auto mt-2 space-y-3 px-4 max-sm:px-1">
           <div class="flex items-center gap-1">
             <h2 class="text-xl font-bold" id="out-modal-title">Add Output</h2>
             <button
@@ -356,21 +356,21 @@
           </div>
 
           <div class="flex flex-wrap items-end gap-3">
-            <fieldset class="fieldset flex-1">
+            <fieldset class="fieldset flex-1 max-sm:w-full">
               <legend class="fieldset-legend">Output Name</legend>
               <input type="text" id="out-name-input" class="input w-full" placeholder="YouTube" oninput="this.classList.remove('input-error')" />
             </fieldset>
-            <fieldset class="fieldset">
+            <fieldset class="fieldset max-sm:w-full">
               <legend class="fieldset-legend">Video Encoding</legend>
-              <select class="select w-40" id="out-video-encoding-input">
+              <select class="select w-40 max-sm:w-full" id="out-video-encoding-input">
                 <option value="copy">copy</option>
                 <option value="720p">720p</option>
                 <option value="1080p">1080p</option>
               </select>
             </fieldset>
-            <fieldset class="fieldset">
+            <fieldset class="fieldset max-sm:w-full">
               <legend class="fieldset-legend">Audio Encoding</legend>
-              <select class="select w-40" id="out-audio-encoding-input"></select>
+              <select class="select w-40 max-sm:w-full" id="out-audio-encoding-input"></select>
             </fieldset>
           </div>
 
