@@ -228,6 +228,46 @@ describe('Outputs API integration', () => {
             assert.equal(res.status, 400);
         });
 
+        test('rejects a videoEncoding that is only an Object.prototype name', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            for (const videoEncoding of ['constructor', '__proto__', 'toString']) {
+                const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                    name: 'X',
+                    url: 'rtmp://x',
+                    videoEncoding,
+                });
+                assert.equal(res.status, 400, videoEncoding);
+            }
+            assert.equal(harness.db.listOutputsForPipeline(p.id).length, 0);
+        });
+
+        test('answers 400, not 500, to a url or videoEncoding that is not a string', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'Old', url: 'rtmp://old' });
+            const bodies = [
+                { name: 'X', url: 123 },
+                { name: 'X', url: 'rtmp://x', videoEncoding: 7 },
+                { name: 'X', url: 'rtmp://x', videoEncoding: {} },
+            ];
+            for (const body of bodies) {
+                const created = await harness.request(
+                    'POST',
+                    `/api/pipelines/${p.id}/outputs`,
+                    body,
+                );
+                assert.equal(created.status, 400, JSON.stringify(body));
+                const edited = await harness.request(
+                    'POST',
+                    `/api/pipelines/${p.id}/outputs/${o.id}`,
+                    body,
+                );
+                assert.equal(edited.status, 400, JSON.stringify(body));
+            }
+            assert.equal(harness.db.listOutputsForPipeline(p.id).length, 1);
+        });
+
         test('rejects a non-rtmp/srt destination url', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();

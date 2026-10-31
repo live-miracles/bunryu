@@ -159,6 +159,22 @@ describe('Version API integration', () => {
         assert.equal(res.body.app, pkgVersion);
     });
 
+    test('an SRS that did not answer is asked again, not remembered as unknown', async (t) => {
+        let srsUp = false;
+        const { get } = loadHarness(t, {
+            fetchImpl: async () => {
+                if (!srsUp) throw new Error('ECONNREFUSED');
+                return jsonResponse({ data: { version: '6.0.155' } });
+            },
+        });
+
+        assert.equal((await get()).body.srs, 'unknown');
+        srsUp = true;
+        assert.equal((await get()).body.srs, '6.0.155');
+        srsUp = false;
+        assert.equal((await get()).body.srs, '6.0.155', 'a known version is kept');
+    });
+
     test('a failing command reports "unknown", not its error text', async (t) => {
         const { get } = loadHarness(t, {
             execImpl: (cmd, _args, _opts, cb) => {

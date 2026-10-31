@@ -1,5 +1,5 @@
 import type { Express } from 'express';
-import { validateOutputUrl, validateAudioEncoding, ENCODINGS } from '../utils/ffmpeg.js';
+import { validateOutputUrl, validateAudioEncoding, isKnownEncoding } from '../utils/ffmpeg.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import { cyan } from '../utils/ansiColor.js';
@@ -14,7 +14,7 @@ function parseDestination(
     body: unknown,
 ): { url: string; audioEncoding: string } | { error: string } {
     const b = body as Record<string, unknown> | null | undefined;
-    const url = (b?.url as string | undefined)?.trim();
+    const url = typeof b?.url === 'string' ? b.url.trim() : undefined;
     if (!url || !validateOutputUrl(url)) {
         return {
             error: 'a valid url is required (rtmp://, rtmps://, srt://; no spaces or < > " characters)',
@@ -54,9 +54,11 @@ async function parseOutputConfig(body: unknown): Promise<ParsedOutputConfig> {
     const parsedName = parseName(b?.name);
     if ('error' in parsedName) return { error: parsedName.error, kind: 'name', name: '' };
     const { name } = parsedName;
-    const videoEncoding = (b?.videoEncoding as string | undefined)?.trim() || 'copy';
-    if (!ENCODINGS[videoEncoding]) {
-        return { error: `unknown videoEncoding: ${videoEncoding}`, kind: 'field', name };
+    const rawEncoding = b?.videoEncoding ?? 'copy';
+    const videoEncoding =
+        typeof rawEncoding === 'string' ? rawEncoding.trim() || 'copy' : rawEncoding;
+    if (typeof videoEncoding !== 'string' || !isKnownEncoding(videoEncoding)) {
+        return { error: `unknown videoEncoding: ${String(videoEncoding)}`, kind: 'field', name };
     }
     const destination = parseDestination(b);
     if ('error' in destination) return { error: destination.error, kind: 'field', name };
@@ -201,8 +203,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         const body = (req.body ?? {}) as Record<string, unknown>;
         const parsed = await parseOutputConfig({
             name: body.name === undefined ? output.name : body.name,
-            videoEncoding:
-                (body.videoEncoding as string | undefined)?.trim() ?? output.videoEncoding,
+            videoEncoding: body.videoEncoding ?? output.videoEncoding,
             url: body.url === undefined ? output.url : body.url,
             audioEncoding:
                 body.audioEncoding === undefined ? output.audioEncoding : body.audioEncoding,

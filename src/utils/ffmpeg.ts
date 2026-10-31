@@ -137,6 +137,11 @@ export function isOutputFfmpegArgs(args: readonly string[]): boolean {
 // Build a single ffmpeg command that pulls the input once and pushes it to one
 // destination. The destination's audio track(s) are selected via -map; SRT
 // destinations use mpegts, everything else uses flv.
+// Own keys only: `constructor` and `toString` are on every plain object but are no preset.
+export function isKnownEncoding(name: string): boolean {
+    return Object.hasOwn(ENCODINGS, name);
+}
+
 export function buildFfmpegArgs(
     inputUrl: string,
     url: string,
@@ -146,7 +151,7 @@ export function buildFfmpegArgs(
     const isSrtDestination = url.startsWith('srt://');
     const isRtmpDestination = url.startsWith('rtmp://') || url.startsWith('rtmps://');
     const isSrtOrigin = inputUrl.startsWith('srt://');
-    const encArgs = (ENCODINGS[videoEncoding] ?? ENCODINGS.copy).args;
+    const encArgs = ENCODINGS[isKnownEncoding(videoEncoding) ? videoEncoding : 'copy'].args;
     const args: string[] = [
         // Keep stderr quiet: '-nostats' drops the ~2/s "frame=…bitrate=…" line and
         // '-loglevel warning' the one-time info banner. With hundreds of outputs

@@ -45,14 +45,31 @@ export function registerPipelineApi(
         const parsedName = parseName(req.body?.name);
         if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
         const name = parsedName.name;
-        // Checked before the key-change side effects below: a null or unknown id would
-        // otherwise stop the shared encodes and the preview and then fail to save.
+        // The streamKeyId and groupId checks come before the key-change side effects below:
+        // a bad one would otherwise stop the shared encodes and the preview and then
+        // fail to save.
         if (
             req.body?.streamKeyId !== undefined &&
             !db.listStreamKeys().some((key) => key.id === req.body.streamKeyId)
         ) {
             return res.status(400).json({ error: 'invalid streamKeyId' });
         }
+        // groupId is tri-state: the key may be absent (leave the pipeline's
+        // group untouched), explicit null (clear it), or a number (reassign).
+        let groupId: number | null | undefined;
+        if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'groupId')) {
+            const raw = req.body.groupId;
+            if (raw === null) {
+                groupId = null;
+            } else {
+                const n = Number(raw);
+                if (!Number.isInteger(n) || !db.listPipelineGroups().some((g) => g.id === n)) {
+                    return res.status(400).json({ error: 'invalid groupId' });
+                }
+                groupId = n;
+            }
+        }
+
         const streamKeyId = req.body?.streamKeyId as number | undefined;
         const keyChanged = streamKeyId !== undefined && streamKeyId !== existing.streamKeyId;
 
@@ -77,22 +94,6 @@ export function registerPipelineApi(
             // key reassignment would leave it pinned to the old key. Stop it;
             // the user can replay against the new key.
             previewService.stop(id);
-        }
-
-        // groupId is tri-state: the key may be absent (leave the pipeline's
-        // group untouched), explicit null (clear it), or a number (reassign).
-        let groupId: number | null | undefined;
-        if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'groupId')) {
-            const raw = req.body.groupId;
-            if (raw === null) {
-                groupId = null;
-            } else {
-                const n = Number(raw);
-                if (!Number.isInteger(n) || !db.listPipelineGroups().some((g) => g.id === n)) {
-                    return res.status(400).json({ error: 'invalid groupId' });
-                }
-                groupId = n;
-            }
         }
 
         const updated = db.updatePipeline(id, name, streamKeyId, groupId);

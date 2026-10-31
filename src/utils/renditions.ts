@@ -1,5 +1,5 @@
 import type { Output } from '../types.js';
-import { ENCODINGS } from './ffmpeg.js';
+import { isKnownEncoding } from './ffmpeg.js';
 import { readSrsConfigValues } from './srsConfig.js';
 
 // Shared renditions: outputs of one pipeline that need the same encode (the same
@@ -54,7 +54,7 @@ export function encodeRecipe(output: RecipeFields & Pick<Output, 'url'>): Recipe
     if (isRenditionOutput(output)) return null;
     const { videoEncoding, audioEncoding } = output;
     // An unknown preset is built as copy by buildFfmpegArgs, so it is not an encode.
-    if (!Object.hasOwn(ENCODINGS, videoEncoding)) return null;
+    if (!isKnownEncoding(videoEncoding)) return null;
     if (audioEncoding !== 'copy' && !/^\d+$/.test(audioEncoding)) return null;
     if (videoEncoding === 'copy' && audioEncoding === 'copy') return null;
     return makeRecipe(videoEncoding, audioEncoding);

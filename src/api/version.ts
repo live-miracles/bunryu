@@ -55,10 +55,6 @@ function readCpuModel(): string {
     }
 }
 
-async function getSrsVersion(): Promise<string> {
-    return (await fetchSrsVersion()) ?? 'unknown';
-}
-
 async function getSrtRelayVersion(): Promise<string> {
     const bin = SRT_RELAY_BIN_CANDIDATES.find((candidate) => fs.existsSync(candidate));
     if (!bin) return 'unknown';
@@ -101,7 +97,7 @@ export function registerVersionApi(app: Express): void {
             exec('git', ['log', '-1', '--format=%h %s']),
             // Format in the server's local timezone, matching journald/log output.
             exec('git', ['log', '-1', '--date=format-local:%Y-%m-%d %H:%M', '--format=%cd']),
-            getSrsVersion(),
+            fetchSrsVersion(),
             getSrtRelayVersion(),
             exec(readAppConfig().ffmpegPath, ['-version'], undefined, ffmpegEnv()),
         ]);
@@ -109,10 +105,10 @@ export function registerVersionApi(app: Express): void {
         const ffmpegLine = ffmpegOut.split('\n')[0] ?? '';
         const ffmpeg = ffmpegLine.replace(/^ffmpeg version /, '').split(' ')[0] || 'unknown';
 
-        cached = {
+        const result: VersionResult = {
             app: readAppVersion(),
             commit: commitDate ? `${commitDate} ${commitLine}` : commitLine || 'unknown',
-            srs: srs || 'unknown',
+            srs: srs ?? 'unknown',
             srtRelay,
             ffmpeg,
             node: process.version,
@@ -120,6 +116,9 @@ export function registerVersionApi(app: Express): void {
             kernel: os.release(),
             cpuModel: readCpuModel(),
         };
-        return res.json(withLiveFields(cached));
+        // SRS starts after this server is ready, so an early request can find it down:
+        // ask again next time instead of showing "unknown" until a restart.
+        if (srs !== null) cached = result;
+        return res.json(withLiveFields(result));
     });
 }

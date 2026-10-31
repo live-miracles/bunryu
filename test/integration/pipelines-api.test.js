@@ -414,6 +414,22 @@ describe('Pipelines API integration', () => {
             assert.equal(res.status, 400);
             assert.equal(harness.db.getPipeline(p.id).groupId, null);
         });
+
+        test('a bad groupId stops no preview and changes nothing when the key changes too', async () => {
+            const harness = createHarness();
+            const p1 = harness.db.createPipeline();
+            const p2 = harness.db.createPipeline();
+
+            const res = await harness.request('POST', `/api/pipelines/${p1.id}`, {
+                name: p1.name,
+                streamKeyId: p2.streamKeyId,
+                groupId: 999999,
+            });
+
+            assert.equal(res.status, 400);
+            assert.deepEqual(harness.previewService.stopped, []);
+            assert.equal(harness.db.getPipeline(p1.id).streamKeyId, p1.streamKeyId);
+        });
     });
 
     describe('DELETE /api/pipelines/:id', () => {
