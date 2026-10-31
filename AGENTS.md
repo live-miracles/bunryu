@@ -296,6 +296,9 @@ only for a new module.
   its rows, with the secrets masked.
   `core/destination.ts` and `core/srt.ts` are the output form's rules between its fields and the
   stored destination URL, both ways (server presets, the SRT fields), without the DOM.
+  `core/output-payload.ts` reads what the output Copy / Paste buttons put on the clipboard (a
+  list for a pipeline, one output or a bare URL for the form) and returns the outputs or the
+  message to show; `core/ansi.ts` turns an SRS log line's colour codes into spans for the Logs terminals.
   `core/media-spec.ts` formats the one-line video/audio descriptions the Overview
   and the pipeline panel's input stats share.
   `core/audio-meter.ts` has the preview meter's level maths (peak dBFS, release

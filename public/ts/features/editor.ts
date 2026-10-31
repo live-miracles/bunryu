@@ -18,6 +18,8 @@ import { noteSharedEncodeRestart } from './shared-encodes.js';
 import { ICON_COPY } from './output-badges.js';
 import type { ActivityEvent, StreamKey, AudioTrackInfo, ServerLogTail } from '../types.js';
 import { parseSrtUrl, srtUrlFromForm } from '../core/srt.js';
+import { ansiLineToHtml } from '../core/ansi.js';
+import { parseOutputsPayload, parseSingleOutputPayload } from '../core/output-payload.js';
 import {
     SERVERS,
     type ServerId,
@@ -960,52 +962,6 @@ const LOG_TERMINALS: { label: string; elId: string; key: 'srs' | 'dashboard' | '
     { label: 'Relay', elId: 'relay-log-tail', key: 'relay' },
 ];
 
-// Maps ANSI SGR foreground codes to the same severity colors SRS itself
-// uses (red for its ERROR lines, yellow for WARN), so the web terminal
-// mirrors a real terminal instead of hand-matching level text.
-const ANSI_FG_CLASS: Record<string, string> = {
-    '31': 'text-error',
-    '91': 'text-error',
-    '33': 'text-warning',
-    '93': 'text-warning',
-    '32': 'text-success',
-    '92': 'text-success',
-    '34': 'text-info',
-    '94': 'text-info',
-    '36': 'text-info',
-    '96': 'text-info',
-    '35': 'text-secondary',
-    '95': 'text-secondary',
-};
-// eslint-disable-next-line no-control-regex -- matches the ESC that starts an ANSI sequence
-const ANSI_SGR_REGEX = /\x1b\[([0-9;]*)m/g;
-
-function ansiLineToHtml(line: string): string {
-    let html = '';
-    let lastIndex = 0;
-    let openSpan = false;
-    ANSI_SGR_REGEX.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = ANSI_SGR_REGEX.exec(line))) {
-        html += escapeHtml(line.slice(lastIndex, match.index));
-        lastIndex = ANSI_SGR_REGEX.lastIndex;
-        if (openSpan) {
-            html += '</span>';
-            openSpan = false;
-        }
-        for (const code of match[1].split(';')) {
-            const cls = ANSI_FG_CLASS[code];
-            if (cls) {
-                html += `<span class="${cls}">`;
-                openSpan = true;
-            }
-        }
-    }
-    html += escapeHtml(line.slice(lastIndex));
-    if (openSpan) html += '</span>';
-    return html;
-}
-
 // The Events table: what happened across every pipeline (GET /api/events), oldest at the
 // top and scrolled to the newest, like the log tails below it.
 // Kept between refreshes so the pipeline filter survives a Refresh.
@@ -1142,113 +1098,6 @@ export async function showSrsLogs(): Promise<void> {
 
 // ── Output copy / paste ───────────────────────────────
 
-interface OutputPayloadFields {
-    name: string;
-    videoEncoding: string;
-    url: string;
-    audioEncoding: string;
-}
-
-function parseOutputItem(item: unknown): OutputPayloadFields | null {
-    if (!item || typeof item !== 'object') {
-        api.showError('Invalid output format in clipboard.');
-        return null;
-    }
-    const { name, videoEncoding, url, audioEncoding } = item as Record<string, unknown>;
-    if (typeof name !== 'string' || !name.trim()) {
-        api.showError('Each output must have a non-empty name.');
-        return null;
-    }
-    if (typeof videoEncoding !== 'string') {
-        api.showError('Each output must have a videoEncoding.');
-        return null;
-    }
-    if (typeof url !== 'string' || !url.trim()) {
-        api.showError('Each output must have a non-empty url.');
-        return null;
-    }
-    if (typeof audioEncoding !== 'string') {
-        api.showError('Each output must have an audioEncoding.');
-        return null;
-    }
-    return {
-        name: name.trim(),
-        videoEncoding,
-        url,
-        audioEncoding,
-    };
-}
-
-function parseOutputsPayload(text: string): OutputPayloadFields[] | null {
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(text);
-    } catch {
-        api.showError('Clipboard content is not valid JSON.');
-        return null;
-    }
-    if (!Array.isArray(parsed)) {
-        api.showError('Expected a JSON array of outputs.');
-        return null;
-    }
-    const outputs: OutputPayloadFields[] = [];
-    for (const item of parsed) {
-        const parsedItem = parseOutputItem(item);
-        if (!parsedItem) return null;
-        outputs.push(parsedItem);
-    }
-    if (outputs.length === 0) {
-        api.showError('No outputs found in clipboard.');
-        return null;
-    }
-    return outputs;
-}
-
-// Unlike parseOutputItem (used for the bulk paste-all-outputs flow, where
-// every output being created needs an explicit name/encoding), a single
-// output pasted into the open form can omit name/videoEncoding/audioEncoding
-// and leave those fields untouched — only the destination url is meaningless
-// to default. A bare RTMP/RTMPS/SRT URL on the clipboard is shorthand for
-// {"url": "..."}.
-interface OutputPastePayload {
-    name?: string;
-    videoEncoding?: string;
-    url: string;
-    audioEncoding?: string;
-}
-
-function parseSingleOutputPayload(text: string): OutputPastePayload | null {
-    const trimmed = text.trim();
-    let parsed: unknown;
-    if (isDestinationUrl(trimmed)) {
-        parsed = { url: trimmed };
-    } else {
-        try {
-            parsed = JSON.parse(text);
-        } catch {
-            api.showError('Clipboard content is not valid JSON.');
-            return null;
-        }
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        api.showError('Expected a single output object, not a list.');
-        return null;
-    }
-    const { name, videoEncoding, url, audioEncoding } = parsed as Record<string, unknown>;
-    if (typeof url !== 'string' || !url.trim()) {
-        api.showError('Clipboard JSON must include a non-empty url.');
-        return null;
-    }
-    return {
-        name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
-        videoEncoding:
-            typeof videoEncoding === 'string' && videoEncoding ? videoEncoding : undefined,
-        url,
-        audioEncoding:
-            typeof audioEncoding === 'string' && audioEncoding ? audioEncoding : undefined,
-    };
-}
-
 export async function copyOutput(): Promise<void> {
     const pipelineId = (
         document.getElementById('out-pipe-id-input') as HTMLInputElement
@@ -1278,8 +1127,12 @@ export async function pasteOutputIntoForm(): Promise<void> {
         return;
     }
 
-    const payload = parseSingleOutputPayload(text);
-    if (!payload) return;
+    const parsed = parseSingleOutputPayload(text);
+    if ('error' in parsed) {
+        api.showError(parsed.error);
+        return;
+    }
+    const payload = parsed.output;
 
     if (payload.name) {
         const nameEl = document.getElementById('out-name-input') as HTMLInputElement;
@@ -1360,8 +1213,12 @@ export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): 
         return;
     }
 
-    const outputs = parseOutputsPayload(text);
-    if (!outputs) return;
+    const parsed = parseOutputsPayload(text);
+    if ('error' in parsed) {
+        api.showError(parsed.error);
+        return;
+    }
+    const { outputs } = parsed;
 
     await withBusy(btn, async () => {
         const cleared = await api.clearOutputs(pipelineId);
