@@ -10,8 +10,9 @@ update.
 
 The app reads `bunryu.json`, `srs.conf` and `goryu.json` once, when it starts:
 restart the app after changing any of them. SRS and Goryu read their own file only
-at startup too. If one of the three is missing or is not valid JSON, the app prints
-which file and exits with status 78, which systemd does not restart (see
+at startup too. If one of the three is missing or is not valid JSON, or `bunryu.json` has
+a `key_vault` block that is not valid, the app prints
+which file or setting and exits with status 78, which systemd does not restart (see
 [Reliability](4-reliability.md)).
 
 `bunryu.json`:
@@ -27,6 +28,11 @@ which file and exits with status 78, which systemd does not restart (see
 | `ffprobe_path` | `ffprobe` | FFprobe binary for input media probing and validation |
 | `dashboard_password` | none (the repo's dev `bunryu.json` ships `admin`) | Initial dashboard password, used only when the database has no password yet (first boot or after a reset). There is no default: with an empty database and no password the server does not start (exit status 78). The installer and the Docker image require one on a fresh install and never generate or print it. Stored in plain text; the installer sets the file to mode `0600` |
 | `stream_key_count` | `100` | Stream keys generated for pipelines to publish with. One pipeline uses one key, so this is also the most inputs the server accepts. A whole number from 1 to 10000; anything else gives 100. Raising it adds keys at the next start; lowering it removes the unassigned keys above it (keys a pipeline uses stay). The inputs and outputs recommended in the [introduction](../1-getting-started/1-introduction.md#capacity-and-limits) are not enforced |
+| `key_vault` | absent (off) | Reports every output's status to Key Vault, the stream-key manager; see [Key Vault status reporting](#key-vault-status-reporting). A block that is there must be complete and valid, or the app exits with status 78. `null` also means off |
+| `key_vault.url` | none | Key Vault's ingest endpoint. `https`, or `http` only for `localhost`/`127.0.0.1` (a test receiver); no credentials in the URL |
+| `key_vault.token` | none | Sent as `Authorization: Bearer <token>`. Printable ASCII without spaces. Stored in plain text, like `dashboard_password` |
+| `key_vault.hash_secret` | none | Secret shared with Key Vault for the hash of each destination URL. At least 16 characters |
+| `key_vault.instance` | none | Names this server to Key Vault, for example `prod`. Letters, digits, `.`, `_` and `-`, up to 64 |
 | `output_watchdog.warmup_ms` | `90000` | Warmup before stall checks, used by the output progress watchdog |
 | `output_watchdog.stall_ms` | `45000` | Output progress stall window before restarting FFmpeg |
 | `output_watchdog.interval_ms` | `5000` | Output watchdog polling interval |
@@ -126,6 +132,64 @@ rotated daily or at 100 MB, whichever comes first, with a 5 GB total diagnostics
 cap that removes the oldest rotated files first. The installer configures
 persistent journald with a seven-day retention limit, 1 GB system journal cap,
 256 MB runtime cap, and one-day journal file rotation.
+
+### Key Vault status reporting
+
+Key Vault colours each stream key from what Bunryu says about the outputs that use it.
+With a `key_vault` block in `bunryu.json`, the app sends a report once a minute, and at
+once when an output changes status (at most one every 10 s):
+
+```json
+"key_vault": {
+    "url": "https://<project>.supabase.co/functions/v1/ingest",
+    "token": "<ingest token from Key Vault>",
+    "hash_secret": "<secret shared with Key Vault>",
+    "instance": "prod"
+}
+```
+
+Restart the app after adding it; the log says `[key-vault] reporting to ... as "prod"`.
+The report is a JSON `POST` with the token as a bearer token:
+
+```json
+{
+    "version": 1,
+    "instance": "prod",
+    "sentAt": "2026-11-01T10:00:00.000Z",
+    "outputs": [
+        {
+            "hash": "9cd8fc4d3e06aafeb1aa71d4e7310d38",
+            "pipeline": "Hindi",
+            "output": "YouTube main",
+            "status": "running",
+            "message": "",
+            "failures": 0,
+            "stoppedAfterFailures": false,
+            "sinceMs": 1730455200000
+        }
+    ]
+}
+```
+
+- **`status`** is `running`, `warning`, `error` or `stopped`: the dashboard's output status
+  (green, amber, red, grey) with its "Problems" rule for errors. A stop after repeated
+  failed attempts is `error` with `stoppedAfterFailures: true`; a stop an operator chose
+  is plain `stopped`. Advice about the configuration (an output that shares a destination
+  with another, encoding tips) is not a warning here.
+- **`hash`** identifies the destination without revealing it: the first 32 hex characters of
+  HMAC-SHA256 (key `hash_secret`) of the URL, trimmed, with a lowercase scheme and host and
+  no trailing `/`. Key Vault matches its own server and key to the same hash. The
+  test vectors both sides check are in
+  [`test/fixtures/key-vault-hash-vectors.json`](../../test/fixtures/key-vault-hash-vectors.json).
+- **`message`** is the output's current error or warning, one line, at most 300 characters.
+  URLs, `streamid=`, `passphrase=`, `key=` values and long token-like strings are removed
+  first, because FFmpeg's text names the destination. The URL itself is never sent.
+- **`sinceMs`** is when the output entered this status (milliseconds since the epoch);
+  `failures` counts the failed starts since it last started.
+- Shared-encode rows, which Bunryu manages itself, are not reported.
+
+What the reporter does when Key Vault is unreachable is under
+[Reliability](4-reliability.md#key-vault-status-reporting).
 
 ### UDP buffer ceiling
 

@@ -246,6 +246,11 @@ only for a new module.
   diagnostics snapshot and CPU suspects read the same samples. `utils/procStats.ts` has the
   readings, including `watchedFilesystems`, the one rule for which disks the dashboard figure
   and the host disk alert look at.
+- `src/services/keyVaultReporter.ts` - the Key Vault status report (60 s heartbeat, on a change
+  at most every 10 s; bounded retry, one log per failure episode); `utils/keyVaultPayload.ts`
+  builds the payload (destination hash, message redaction); `utils/outputStatus.ts` is the
+  server twin of the dashboard's `public/ts/core/status.ts` `outputHealth` (pinned by
+  `test/outputStatusParity.test.js`, so change them together).
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `preview.ts`
   (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.
@@ -262,7 +267,7 @@ only for a new module.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments and the minimal environment every
   FFmpeg/ffprobe child gets (`ffmpegEnv`); `ffmpegCheck.ts` is the startup check of the
   build's protocols, encoders and filters; `appConfig.ts` reads
-  `bunryu.json` (watchdog defaults; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `configCheck.ts` / `startupGate.ts` read
+  `bunryu.json` (watchdog defaults, the optional `key_vault` block; path overridden by `BUNRYU_CONFIG`, which the installed unit sets to `/etc/bunryu/bunryu.json`); `configCheck.ts` / `startupGate.ts` read
   the three config files first thing at startup and exit 78 if one is missing or invalid; `srtPassphrase.ts` generates a new SRT passphrase and writes it to `srs.conf` and `goryu.json` (Settings reset); `diagnostics.ts` is the rotated JSONL
   writer and the loop failure reporter; `srs*.ts`/`relayConfig.ts` generate and
   read SRS and relay config; `utils/srs.ts` is the SRS HTTP API client (streams, clients, kick,

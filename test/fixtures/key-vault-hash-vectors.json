@@ -1,0 +1,53 @@
+{
+    "algorithm": [
+        "Hash of an output destination URL, shared by bunryu (src/utils/keyVaultPayload.ts) and Key Vault.",
+        "1. normalised = the URL trimmed of whitespace, with the scheme and the host (including its port) lowercased and every trailing / removed. The userinfo, path, query and stream key keep their case.",
+        "2. hash = first 32 hex characters of HMAC-SHA256(secret, UTF-8 bytes of normalised).",
+        "Each vector below gives the URL, its normalised form and the hash for the secret in this file. The secret is fake; the real one is configured in both systems and never committed."
+    ],
+    "secret": "fake-hash-secret-for-test-vectors-only",
+    "vectors": [
+        {
+            "description": "YouTube main",
+            "url": "rtmp://a.rtmp.youtube.com/live2/fake-0000-0000-0000-0000",
+            "normalized": "rtmp://a.rtmp.youtube.com/live2/fake-0000-0000-0000-0000",
+            "hash": "9cd8fc4d3e06aafeb1aa71d4e7310d38"
+        },
+        {
+            "description": "YouTube backup",
+            "url": "rtmp://b.rtmp.youtube.com/live2?backup=1/fake-0000-0000-0000-0000",
+            "normalized": "rtmp://b.rtmp.youtube.com/live2?backup=1/fake-0000-0000-0000-0000",
+            "hash": "636bfa821cc0a24d617ca844995aaf11"
+        },
+        {
+            "description": "Facebook rtmps",
+            "url": "rtmps://live-api-s.facebook.com:443/rtmp/FB-0000000000-0-FakeKeyNotReal",
+            "normalized": "rtmps://live-api-s.facebook.com:443/rtmp/FB-0000000000-0-FakeKeyNotReal",
+            "hash": "264972bbc0dee0eabb2cf27b7a5f32d3"
+        },
+        {
+            "description": "SRT with streamid and passphrase",
+            "url": "srt://srt.example.invalid:9710?mode=caller&streamid=fake-stream-id&passphrase=fake-passphrase-not-real",
+            "normalized": "srt://srt.example.invalid:9710?mode=caller&streamid=fake-stream-id&passphrase=fake-passphrase-not-real",
+            "hash": "355609f27d764cd74fc86813e0f5d9b5"
+        },
+        {
+            "description": "Upper-case scheme and host are lowered, the key keeps its case",
+            "url": "RTMP://A.RTMP.YouTube.COM/live2/Fake-AbCd-0000-0000-0000",
+            "normalized": "rtmp://a.rtmp.youtube.com/live2/Fake-AbCd-0000-0000-0000",
+            "hash": "ec6289802efd55e86da29945379f1180"
+        },
+        {
+            "description": "Trailing slash and surrounding whitespace are removed",
+            "url": "  rtmp://a.rtmp.youtube.com/live2/fake-0000-0000-0000-0000/  ",
+            "normalized": "rtmp://a.rtmp.youtube.com/live2/fake-0000-0000-0000-0000",
+            "hash": "9cd8fc4d3e06aafeb1aa71d4e7310d38"
+        },
+        {
+            "description": "Port and path case are kept",
+            "url": "rtmp://Ingest.Example.Invalid:1935/App/Stream_Key_FAKE",
+            "normalized": "rtmp://ingest.example.invalid:1935/App/Stream_Key_FAKE",
+            "hash": "05b0cfa1cb04aa4ce5a5d4f2f834ca8b"
+        }
+    ]
+}

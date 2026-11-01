@@ -239,6 +239,11 @@ export function createHealthService(
         pipelines: {},
     };
 
+    // Called with each new snapshot (every poll). A listener must not throw; one that does is
+    // recorded once per failure episode and the poll carries on.
+    const snapshotListeners: Array<(snapshot: HealthSnapshot) => void> = [];
+    const listenerFailures = createLoopFailureReporter('health-snapshot-listener', diagnostics);
+
     const srsEvents: SrsEvent[] = [];
     let prevSrsReachable: boolean | null = null;
     // Only 'failed' (was reachable, now isn't) is worth a "down" event — 'stopped'
@@ -737,6 +742,12 @@ export function createHealthService(
             configRev: db.getConfigRev(),
             pipelines: pipelinesHealth,
         };
+        try {
+            for (const listener of snapshotListeners) listener(snapshot);
+            listenerFailures.succeeded();
+        } catch (err) {
+            listenerFailures.failed(err);
+        }
 
         const snapshotAt = Date.now();
         if (
@@ -880,6 +891,10 @@ export function createHealthService(
         registerRoutes,
         shutdown,
         getSrsEvents: (): SrsEvent[] => [...srsEvents],
+        getSnapshot: (): HealthSnapshot => snapshot,
+        onSnapshot: (listener: (snapshot: HealthSnapshot) => void): void => {
+            snapshotListeners.push(listener);
+        },
     };
 }
 

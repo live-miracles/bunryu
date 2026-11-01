@@ -1356,6 +1356,86 @@ have to touch the rendering code.
 **Revisit when:** a component the dashboard needs is not in `input.css` (a dropdown or a
 date picker); write it there rather than bringing the library back.
 
+## Key Vault link
+
+### Bunryu pushes a status report to Key Vault, with hashed destinations and redacted text
+
+**Decision (November 2026):** Key Vault (the stream-key manager, whose key colours used to
+be set by hand) gets the status of every configured output from Bunryu. Every minute, and
+on a status change at most once per 10 s, the app `POST`s one JSON report to a configured
+HTTPS endpoint with a bearer token. An output is named by `HMAC-SHA256(secret, normalised
+URL)` cut to 32 hex characters, never by its URL, and the `message` has URLs, `streamid=`,
+`passphrase=`, `key=` values and long token-like strings removed and is cut to 300
+characters. The status is worked out on the server by the same rules as the dashboard
+dot, minus the advisory warnings (see
+[Configuration](../3-operations/3-configuration.md#key-vault-status-reporting)).
+
+**Why:**
+- **Push, not pull.** Key Vault runs on a free serverless tier and Bunryu sits behind a
+  tunnel with a login, so Key Vault cannot call in without a second credential and a new
+  public route. One outbound request a minute is about 43,000 a month against the
+  500,000 the tier allows, and its steady arrival is also the proof that Bunryu is alive
+  (Key Vault mutes its colours after 3 minutes of silence).
+- **A hash, because the destination is the secret.** An output URL contains the platform's
+  stream key. Key Vault already holds the same server and key, so it only needs to
+  recognise a URL, not read it. HMAC rather than a bare hash because stream keys come
+  from small formats that could be guessed, and a keyed hash cannot be checked offline
+  by someone who sees a report. 32 hex characters (128 bits) keep a collision out of
+  reach with the 500 outputs at most. The URL is normalised (trimmed, lowercase scheme
+  and host, no trailing `/`) because Key Vault builds the same string from a server and a
+  key and must not differ by spelling; both sides check the vectors in
+  `test/fixtures/key-vault-hash-vectors.json`.
+- **Redaction, because the text is FFmpeg's.** An output's error line is stderr, which
+  names the destination (`Failed to open rtmp://…/<key>`), and the SRT streamid and
+  passphrase appear in relay errors. Logs here are private and unredacted; a report
+  leaves the machine, so it is cleaned at the point of sending, after the text is chosen
+  and before it is cut, so a secret cannot be left half-cut. It errs towards removing:
+  any 16-character run with a digit goes.
+- **Advisory warnings are not warnings to Key Vault.** The dashboard's Problems rule
+  also counts a destination shared with another output and encoding advice ("Track 1
+  re-encodes the audio"). Neither means the stream is not being delivered, and a
+  key shown amber for a working output would teach people to ignore the colour. A
+  running output with an unresolved crash is an error, as in the Problems filter.
+- **A second copy of the status rules, pinned by a test.** The reporter needs the
+  dashboard's `outputHealth` (about 100 lines, with the error-age rule and the
+  shared-encode wait), and the server cannot import `public/ts/core/status.ts`: a
+  probe file in `src/` that imported it failed `tsc -p tsconfig.backend.json` with
+  `TS6059` (the imported `hints.ts`, `utils.ts` and `types.ts` are outside `rootDir`
+  `src`) and with `Cannot find name 'document'` / `'window'` (`utils.ts` uses the DOM;
+  the backend has no DOM `lib`). Making one file reach both builds means a shared source
+  folder and a common `rootDir`, which moves the backend output from `dist/index.js` to
+  `dist/src/index.js` (the `start` script, the systemd unit and the Dockerfile), or
+  splitting the pure rules out of `status.ts` and `utils.ts` and adding that folder to
+  both configs. That is the build change the
+  [recipe twin](#the-dashboard-keeps-its-own-copy-of-the-shared-encode-recipe-rule) was
+  also kept to avoid, for a file this size. So `src/utils/outputStatus.ts` mirrors
+  `outputHealth`, and `test/outputStatusParity.test.js` runs both on every combination
+  of desired state, process status, bitrate, warning, error age, failures and input
+  state, and on shared-encode outputs, and fails if they differ.
+
+**Revisit when:** the status rules change often, or a build change gives the server and
+the dashboard a common source folder.
+
+**Evidence:** a report for 50 pipelines with 10 outputs each is 91 KB and builds in 3.4 ms
+once the hashes are cached (31 ms the first time), cheap enough for the check Bunryu
+makes after every 5 s health poll to see whether a status changed. The first hash vector
+was recomputed with `openssl dgst -sha256 -hmac` and matched. Tests run the reporter
+against a local HTTP receiver that is down, returns 500, 401 and 429, never answers,
+redirects and recovers, and check one log line per episode, bounded retries and a
+request that never blocks the health poll.
+
+**Not adopted:**
+- Pulling status through the dashboard API: needs a public route and a second credential.
+- Sending the URL over HTTPS and hashing at Key Vault: the stream key would sit in
+  Key Vault's logs and database.
+- A queue of unsent reports: only the latest state matters, and the next report carries it.
+- A dashboard indicator for the reporter: the log and Key Vault's own offline banner
+  cover it; add one if operators ask.
+
+**Revisit when:** Key Vault needs history rather than the latest state (send changes with a
+timestamp), a second consumer wants the status (move it behind a documented API route), or
+operators want advice shown as a colour.
+
 ## Tooling
 
 ### ESLint checks promise handling; Prettier stays the formatter
@@ -1592,8 +1672,10 @@ restart, so a wrong one has to be found at that moment, before any module uses i
 Before this, a broken `bunryu.json` crashed and restarted every 2 s forever, a
 missing `srs.conf` left the dashboard half working (`/api/config` answered 500), and
 a missing or malformed `goryu.json` silently fell back to the defaults: an empty
-passphrase and the default relay ports, with nothing in the log. Only a missing file
-or invalid JSON exits 78, because the next attempt would fail the same way. Any
+passphrase and the default relay ports, with nothing in the log. Only a missing file,
+invalid JSON or a `key_vault` block that is present but invalid exits 78, because the next
+attempt would fail the same way (that block is the one setting checked this strictly: a typo there would
+otherwise show only as silence in Key Vault). Any
 other read error, such as an I/O error, crashes the process and is restarted after 2 s,
 so a transient fault cannot leave the server down. Checked on the built app: each of
 the three files missing, and an invalid `bunryu.json`, exits 78 with a timestamped

@@ -109,6 +109,92 @@ describe('readAppConfig: file-level errors', () => {
     });
 });
 
+const KEY_VAULT = {
+    url: 'https://kv.example.invalid/functions/v1/ingest',
+    token: 'fake-ingest-token-0123456789',
+    hash_secret: 'fake-hash-secret-0123456789',
+    instance: 'prod',
+};
+
+describe('readAppConfig: key_vault', () => {
+    test('is disabled when the block is absent or null', () => {
+        assert.equal(loadAppConfig({})().keyVault, null);
+        assert.equal(loadAppConfig({ key_vault: null })().keyVault, null);
+    });
+
+    test('reads a complete block', () => {
+        assert.deepEqual(loadAppConfig({ key_vault: KEY_VAULT })().keyVault, {
+            url: KEY_VAULT.url,
+            token: KEY_VAULT.token,
+            hashSecret: KEY_VAULT.hash_secret,
+            instance: 'prod',
+        });
+    });
+
+    test('allows plain http only for loopback (a local receiver)', () => {
+        for (const url of ['http://127.0.0.1:9999/ingest', 'http://localhost:9999/ingest']) {
+            assert.equal(loadAppConfig({ key_vault: { ...KEY_VAULT, url } })().keyVault.url, url);
+        }
+        for (const url of [
+            'http://kv.example.invalid/ingest',
+            'ftp://kv.example.invalid/ingest',
+            'https://user:pw@kv.example.invalid/ingest',
+            'not a url',
+            '',
+            12,
+        ]) {
+            assert.throws(
+                () => loadAppConfig({ key_vault: { ...KEY_VAULT, url } })(),
+                { name: 'ConfigInvalidError', message: /key_vault.url/ },
+                String(url),
+            );
+        }
+    });
+
+    test('rejects a block that is incomplete, mistyped or has a bad value, naming the key', () => {
+        const bad = [
+            ['url', undefined, /key_vault.url/],
+            ['token', undefined, /key_vault.token/],
+            ['token', '', /key_vault.token/],
+            ['token', 'has space', /key_vault.token/],
+            ['token', 'new\nline', /key_vault.token/],
+            ['hash_secret', undefined, /key_vault.hash_secret/],
+            ['hash_secret', 'too-short', /key_vault.hash_secret/],
+            ['instance', undefined, /key_vault.instance/],
+            ['instance', 'has space', /key_vault.instance/],
+            ['instance', 'x'.repeat(65), /key_vault.instance/],
+        ];
+        for (const [key, value, message] of bad) {
+            const block = { ...KEY_VAULT };
+            if (value === undefined) delete block[key];
+            else block[key] = value;
+            assert.throws(
+                () => loadAppConfig({ key_vault: block })(),
+                { name: 'ConfigInvalidError', message },
+                `${key}=${JSON.stringify(value)}`,
+            );
+        }
+        for (const block of [{}, [], 'on', true, 5, { ...KEY_VAULT, hashSecret: 'x' }]) {
+            assert.throws(() => loadAppConfig({ key_vault: block })(), /key_vault/);
+        }
+    });
+
+    test('an error never repeats the token or the hash secret', () => {
+        for (const block of [
+            { ...KEY_VAULT, token: 'a token with spaces and a secret' },
+            { ...KEY_VAULT, hash_secret: 'short-secret', instance: 'bad instance' },
+            { ...KEY_VAULT, url: 'https://user:pw@kv.example.invalid/ingest' },
+        ]) {
+            try {
+                loadAppConfig({ key_vault: block })();
+                assert.fail('should throw');
+            } catch (err) {
+                assert.doesNotMatch(String(err.message), /with spaces|short-secret|user:pw|fake-/);
+            }
+        }
+    });
+});
+
 describe('readAppConfig: hook_port', () => {
     test('defaults to 8082', () => {
         assert.equal(loadAppConfig({})().hookPort, 8082);

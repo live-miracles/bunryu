@@ -40,6 +40,7 @@ import { jsonErrorHandler } from './api/errors.js';
 import { createRenditionReconciler } from './services/renditions.js';
 import { enforceDestinationPolicy } from './services/destinationPolicy.js';
 import { readSrsConfigValues } from './utils/srsConfig.js';
+import { createKeyVaultReporter } from './services/keyVaultReporter.js';
 
 const app = express();
 const PORT = readAppConfig().port;
@@ -136,6 +137,12 @@ const healthService = createHealthService(
     diagnostics,
     resourceUsage.processUsage,
 );
+const keyVaultReporter = createKeyVaultReporter({
+    config: readAppConfig().keyVault,
+    db,
+    health: healthService,
+    diagnostics,
+});
 
 // SRS hooks are unauthenticated and trusted, so they live on their own
 // loopback-only listener (see main()) — never on the public dashboard port.
@@ -265,6 +272,8 @@ async function main(): Promise<void> {
     srtRelayService.start();
     renditionReconciler.start();
     healthService.start();
+    // After the health service: a report needs its first poll. Disabled without a key_vault block.
+    keyVaultReporter.start();
 
     // Hooks first: /api/ready (what SRS waits for) must not answer before the
     // hook listener can. A hook-port failure is fatal on purpose — without it SRS
@@ -304,6 +313,7 @@ function shutdown(signal: string): void {
         runLogged(`shutdown-${name}`, fn, diagnostics);
     step('renditions', () => renditionReconciler.shutdown());
     const killedOutputIds = step('outputs', () => outputService.shutdown()) ?? [];
+    step('key-vault', () => keyVaultReporter.shutdown());
     step('health', () => healthService.shutdown());
     step('resourceUsage', () => resourceUsage.stop());
     step('relay', () => srtRelayService.shutdown());

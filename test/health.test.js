@@ -543,6 +543,39 @@ describe('createHealthService poll orchestration', () => {
         assert.match(failed.error, /database is locked/);
     });
 
+    test('hands each snapshot to its listeners, and a listener that throws does not stop the poll', async (t) => {
+        t.mock.method(globalThis, 'fetch', async () => {
+            throw new Error('ECONNREFUSED');
+        });
+        const createHealthService = loadHealthService(t);
+        const events = [];
+        const service = createHealthService(
+            makeFakeDb([]),
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            { event: (event, fields) => events.push({ event, ...fields }), close: async () => {} },
+        );
+        const seen = [];
+        service.onSnapshot((snapshot) => seen.push(snapshot));
+        service.onSnapshot(() => {
+            throw new Error('listener bug');
+        });
+        const app = express();
+        service.registerRoutes(app);
+
+        service.start();
+        await sleep(20);
+        service.shutdown();
+
+        assert.equal(seen.length, 1);
+        assert.equal(seen[0], service.getSnapshot());
+        assert.deepEqual(await getSnapshot(app), JSON.parse(JSON.stringify(seen[0])));
+        const failed = events.filter((e) => e.event === 'health-snapshot-listener-failed');
+        assert.equal(failed.length, 1);
+        assert.match(failed[0].error, /listener bug/);
+    });
+
     test('does not log a second down event on consecutive unreachable polls', async (t) => {
         const down = new Error('down');
         const createHealthService = loadHealthService(t);

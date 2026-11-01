@@ -146,6 +146,29 @@ output that does not need the missing piece keep working. Without the check, a m
 or incomplete build (an OS package replacing the pinned one, or a wrong `ffmpeg_path`)
 would show up only as each affected output failing with its own error.
 
+## Key Vault status reporting
+
+The report to Key Vault (see [Configuration](3-configuration.md#key-vault-status-reporting))
+is a side channel: nothing in the control plane waits for it, so Key Vault being down,
+slow or rejecting reports cannot affect an input, an output or the dashboard.
+
+- Each request times out after 10 s. A timeout, a network error, a `5xx`, `408` or `429`
+  is retried twice, after 2 s and 5 s, so one report takes 37 s at the very most, inside
+  the minute. Other `4xx` answers (a wrong token, a rejected payload) are not retried.
+- After a report fails the next one is the next heartbeat or status change, never sooner
+  than 10 s later; a status change during an outage does not add requests. At most one
+  request is open at a time, and a redirect is refused, so the token cannot be sent
+  elsewhere.
+- The first failed report writes `key-vault-report-failed` (error, HTTP status, attempts)
+  to the journal and the diagnostics; further failures are silent until a report goes
+  through, which writes `key-vault-report-recovered` with the number of failed reports and
+  how long it lasted. A failure to build the report (a database error) is logged the
+  same way as `key-vault-report-build-failed` / `-recovered`.
+- Nothing is sent before the first health poll after a start, so a restart does not
+  show every output as failed.
+- Key Vault treats a server it has not heard from for 3 minutes as offline and mutes the
+  colours, so a dead Bunryu does not leave keys looking green.
+
 ## Host resource alerts
 
 The health poll (every 5 s) watches the host itself, because an overloaded or full host
