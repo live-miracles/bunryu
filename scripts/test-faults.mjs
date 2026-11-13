@@ -347,6 +347,10 @@ async function setup({
         30_000,
     );
     await api('DELETE', `/api/pipelines/${PIPELINE}/outputs`);
+    // Output ids repeat from one scenario to the next (the 51st output is `1-51` in
+    // each), and the stop-all above made the previous scenario's outputs exit just now.
+    // Events from here on belong to this scenario's outputs.
+    const since = Date.now();
 
     const outputs = [];
     for (let i = 1; i <= healthy; i++) {
@@ -389,7 +393,7 @@ async function setup({
     );
     check(`${healthy} healthy outputs reach running with data flowing`, !!ready);
     if (!ready) throw new Error('healthy outputs did not start; see ' + WORK + '/app.log');
-    return { ids, healthyIds, destPids, srtFrozenPid, expectedFfmpeg: created.length };
+    return { ids, healthyIds, destPids, srtFrozenPid, expectedFfmpeg: created.length, since };
 }
 
 // What each healthy output looked like at the start, to detect any restart.
@@ -1198,7 +1202,6 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
     });
 }
 
-const scenarioStartedAt = Date.now();
 try {
     const ctx = await setup({
         frozen: ['freeze', 'soak'].includes(scenario),
@@ -1209,7 +1212,6 @@ try {
             ? SMALL_HEALTHY_OUTPUTS
             : HEALTHY_OUTPUTS,
     });
-    ctx.since = scenarioStartedAt;
     if (scenario === 'freeze') await freeze(ctx);
     else if (scenario === 'blackhole') await blackhole(ctx);
     else if (scenario === 'soak') await soak(ctx, minutes);
