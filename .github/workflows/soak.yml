@@ -1,0 +1,66 @@
+name: Weekly soak
+
+# An hour of 50 healthy outputs with a frozen and a never-reading destination,
+# sampled every 30 s. It fails if the control plane's or SRS's memory or the
+# control plane's file handles keep growing, which none of the shorter nightly
+# scenarios can see. Run it by hand with a different length from the Actions tab.
+on:
+  schedule:
+    # Sundays 03:43 UTC, away from the nightly run at 03:17.
+    - cron: '43 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Soak length in minutes (growth checks need 20 or more)'
+        default: '60'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: Soak
+    runs-on: ubuntu-latest
+    # The soak plus the downloads and the stack start-up; room for a longer manual run.
+    timeout-minutes: 150
+    env:
+      # scripts/test-stack.sh keeps its config, database and logs here (outside the repo).
+      WORK: /tmp/bunryu-ui
+      # Passed through the environment, never spliced into the script.
+      SOAK_MINUTES: ${{ inputs.minutes || '60' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # The pinned objs/srs, objs/ffmpeg and objs/ffprobe the isolated test stack runs.
+      - run: bash scripts/dev-server-install.sh
+      - run: FAST_WATCHDOG=1 bash scripts/test-stack.sh start
+      - name: Run the soak
+        shell: bash
+        run: |
+          case "$SOAK_MINUTES" in
+            ''|*[!0-9]*) echo "::error::minutes must be a whole number, got '$SOAK_MINUTES'"; exit 1 ;;
+          esac
+          node scripts/test-faults.mjs soak --minutes "$SOAK_MINUTES" 2>&1 | tee "$WORK/faults-soak.log"
+      - name: Stop the stack
+        if: always()
+        run: bash scripts/test-stack.sh stop
+      # soak.csv (app, SRS and FFmpeg memory, process count, file handles every 30 s) is
+      # worth keeping even when the run passes, to see the trend. Logs only otherwise (no
+      # bunryu.json or cookie jar); everything in them is synthetic: a fresh database,
+      # generated stream keys and loopback destinations.
+      - name: Upload the samples and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soak-samples-and-logs
+          path: |
+            /tmp/bunryu-ui/soak.csv
+            /tmp/bunryu-ui/diagnostics
+            /tmp/bunryu-ui/*.log
+            /tmp/bunryu-ui/*.out
+          retention-days: 30

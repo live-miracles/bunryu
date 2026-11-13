@@ -1,9 +1,9 @@
 name: Nightly tests
 
-# The same unit and integration suites as CI, run once a day on the latest
-# Node 22 and runner image. CI only runs when someone pushes, so this is what
-# notices a flaky test, a runner or Node update that breaks the suite, or a
-# change that landed while nobody was looking at the repository.
+# CI only runs when someone pushes, so this is what notices a flaky test, a
+# runner or Node update that breaks the suite, or a change that landed while
+# nobody was looking at the repository. Both jobs run daily on the latest Node 22
+# and runner image.
 on:
   schedule:
     # 03:17 UTC, off the hour to stay clear of GitHub's scheduled-run congestion.
@@ -27,3 +27,66 @@ jobs:
       - run: npm ci
       - run: node --version
       - run: npm test
+
+  faults:
+    name: Fault scenarios
+    runs-on: ubuntu-latest
+    # About 30 minutes of scenarios plus the downloads and the stack start-ups.
+    timeout-minutes: 60
+    env:
+      # scripts/test-stack.sh keeps its config, database and logs here (outside the repo).
+      WORK: /tmp/bunryu-ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # The pinned objs/srs, objs/ffmpeg and objs/ffprobe the isolated test stack runs.
+      - run: bash scripts/dev-server-install.sh
+      # The 20 s / 15 s watchdog windows keep the scenarios to minutes.
+      - run: FAST_WATCHDOG=1 bash scripts/test-stack.sh start
+      # A failed scenario does not stop the others: each one is a separate finding.
+      # `soak` (an hour of memory-growth sampling) runs weekly in soak.yml.
+      - name: Run the fault scenarios
+        shell: bash
+        run: |
+          failed=()
+          run_scenario() {
+            echo "::group::$1"
+            if ! node scripts/test-faults.mjs "$1" 2>&1 | tee "$WORK/faults-$1.log"; then
+              failed+=("$1")
+            fi
+            echo "::endgroup::"
+          }
+          for scenario in freeze blackhole refused churn publisher-drop srs-crash srt; do
+            run_scenario "$scenario"
+          done
+          # `contention` only means something with the production watchdog windows (a 15 s
+          # stall window would fire on a briefly starved FFmpeg), so it gets a fresh stack
+          # without FAST_WATCHDOG: 4 vCPUs, one busy loop per CPU for 90 s.
+          if bash scripts/test-stack.sh stop && bash scripts/test-stack.sh start; then
+            run_scenario contention
+          else
+            failed+=(contention-stack-restart)
+          fi
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::Failed scenarios: ${failed[*]}"
+            exit 1
+          fi
+      - name: Stop the stack
+        if: always()
+        run: bash scripts/test-stack.sh stop
+      # Logs only (no bunryu.json or cookie jar). Everything in them is synthetic:
+      # a fresh database, generated stream keys and loopback destinations.
+      - name: Upload the stack logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fault-scenario-logs
+          path: |
+            /tmp/bunryu-ui/diagnostics
+            /tmp/bunryu-ui/*.log
+            /tmp/bunryu-ui/*.out
+          retention-days: 14

@@ -84,7 +84,10 @@ $H stop
 ```
 
 Each prints PASS/FAIL per check and exits 1 on any failure (about 5, 4, 3, 2, 3, 4, 2, N+3 and 3
-minutes). The 50-output scenarios replace the stack's four default outputs with 50
+minutes). The nightly workflow (`.github/workflows/nightly.yml`) runs every scenario but `soak`
+on a GitHub runner (`contention` last, on a stack restarted without `FAST_WATCHDOG`) and
+uploads the stack logs when one fails; `.github/workflows/soak.yml` runs `soak` weekly (and
+on demand with a chosen length) and always uploads `soak.csv`. The 50-output scenarios replace the stack's four default outputs with 50
 `h01…h50` plus the faulty ones (about 1 GB for the 52 FFmpeg processes); the others use 10.
 They start extra SRS instances as the destinations and remove them when they end.
 
