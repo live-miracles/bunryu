@@ -21,7 +21,7 @@ permissions:
 jobs:
   soak:
     name: Soak
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     # The soak plus the downloads and the stack start-up; room for a longer manual run.
     timeout-minutes: 150
     env:

@@ -3,7 +3,8 @@ name: Nightly tests
 # CI only runs when someone pushes, so this is what notices a flaky test, a
 # runner or Node update that breaks the suite, or a change that landed while
 # nobody was looking at the repository. Both jobs run daily on the latest Node 22
-# and runner image.
+# and on the runner image that matches production (Ubuntu 22.04). The label is
+# pinned: `ubuntu-latest` is moving to Ubuntu 26.04. Move it when production does.
 on:
   schedule:
     # 03:17 UTC, off the hour to stay clear of GitHub's scheduled-run congestion.
@@ -16,7 +17,7 @@ permissions:
 jobs:
   test:
     name: Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,7 +31,7 @@ jobs:
 
   faults:
     name: Fault scenarios
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     # About 30 minutes of scenarios plus the downloads and the stack start-ups.
     timeout-minutes: 60
     env:
