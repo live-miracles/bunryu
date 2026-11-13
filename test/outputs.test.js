@@ -1592,7 +1592,15 @@ describe('output service control surface', () => {
         const clock = { now: Date.now() };
         t.mock.method(Date, 'now', () => clock.now);
         const proc = new FakeFfmpeg();
-        const createOutputService = loadOutputService(t, proc, { progressStallMs: 1e9 });
+        // The mocked clock jumps 16 s, past the default 15 s socket warm-up, so the
+        // watchdog's next 10 ms tick would run the socket check and, on a host where `ss`
+        // answers before the last assertion, show "RTMP socket missing" instead of the
+        // timing warning under test. Keep the socket check out of this test.
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 1e9,
+            ssOutput: '',
+        });
         const service = createOutputService(makeDb(), makeReadyInputState({ srt: true }));
 
         await service.start('out1');
