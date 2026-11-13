@@ -1,0 +1,29 @@
+name: Nightly tests
+
+# The same unit and integration suites as CI, run once a day on the latest
+# Node 22 and runner image. CI only runs when someone pushes, so this is what
+# notices a flaky test, a runner or Node update that breaks the suite, or a
+# change that landed while nobody was looking at the repository.
+on:
+  schedule:
+    # 03:17 UTC, off the hour to stay clear of GitHub's scheduled-run congestion.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node --version
+      - run: npm test
