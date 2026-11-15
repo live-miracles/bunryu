@@ -5,6 +5,11 @@ import { readSrsConfigValues } from '../utils/srsConfig.js';
 import type { Db } from '../types.js';
 import { readRelayConfig } from '../utils/relayConfig.js';
 import { srtPassphrasePending } from '../utils/srtPassphrase.js';
+import {
+    KEY_VAULT_SETTING,
+    publicKeyVaultConfig,
+    readStoredKeyVault,
+} from '../utils/keyVaultConfig.js';
 
 // Defensive parse for a value the UI wrote via /api/settings/layout-order —
 // never throws, since a blank/corrupt value should just mean "no custom
@@ -64,6 +69,10 @@ export function registerConfigApi(app: Express, db: Db): void {
             // A reset is written to the files but SRS and Goryu run the old one until they restart.
             srtPassphrasePending: srtPassphrasePending(),
             publicHost,
+            // The Key Vault link without its secrets.
+            keyVault: publicKeyVaultConfig(
+                readStoredKeyVault(db.getSetting(KEY_VAULT_SETTING)).config,
+            ),
             layoutOrder: parseLayoutOrder(db.getSetting('layoutOrder')),
         });
     });

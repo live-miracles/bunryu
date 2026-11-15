@@ -1362,8 +1362,8 @@ date picker); write it there rather than bringing the library back.
 
 **Decision (November 2026):** Key Vault (the stream-key manager, whose key colours used to
 be set by hand) gets the status of every configured output from Bunryu. Every minute, and
-on a status change at most once per 10 s, the app `POST`s one JSON report to a configured
-HTTPS endpoint with a bearer token. An output is named by `HMAC-SHA256(secret, normalised
+on a status change at most once per 10 s, the app `POST`s one JSON report to an HTTPS
+endpoint with a bearer token, all set in Settings (see below). An output is named by `HMAC-SHA256(secret, normalised
 URL)` cut to 32 hex characters, never by its URL, and the `message` has URLs, `streamid=`,
 `passphrase=`, `key=` values and long token-like strings removed and is cut to 300
 characters. The status is worked out on the server by the same rules as the dashboard
@@ -1371,6 +1371,25 @@ dot, minus the advisory warnings (see
 [Configuration](../3-operations/3-configuration.md#key-vault-status-reporting)).
 
 **Why:**
+- **The link is a setting, not part of `bunryu.json`.** The first version read a
+  `key_vault` block from `bunryu.json` at start-up. That made the operator edit a file on
+  the server and restart the app to change a token, and, to catch typos, a bad block had
+  to stop the start (exit 78, which systemd does not restart): a typo in optional
+  telemetry would have kept every stream down after a reboot, against the rule that one
+  misbehaving side channel must not take down the rest. In Settings the value is
+  checked when it is typed (the route answers 400 and saves nothing), so the stored one
+  is always usable, nothing about the link can stop the start, and a stored value that is
+  unusable anyway (the database edited by hand) only leaves the reports off, with an event.
+  The reporter reads the setting at start and again when the route saves it
+  (`reconfigure()`): it cancels the report on its way, drops the hashes (keyed by the old
+  secret) and the failure episode, and sends to the new link at once. The token and the
+  hash secret sit in the database, like the dashboard password's hash, so they are written
+  only and the dashboard reads back `tokenSet` / `hashSecretSet`; an empty field keeps
+  the saved value. The host is checked with the output destination policy's address
+  classes (link-local and unspecified are refused) because an operator-typed URL is a
+  server-side request like an output destination. **Send test report** is one attempt
+  without retries that does not touch the failure episode, so the operator sees the
+  receiver's answer (`HTTP 401`) instead of waiting for the schedule.
 - **Push, not pull.** Key Vault runs on a free serverless tier and Bunryu sits behind a
   tunnel with a login, so Key Vault cannot call in without a second credential and a new
   public route. One outbound request a minute is about 43,000 a month against the
@@ -1423,6 +1442,11 @@ was recomputed with `openssl dgst -sha256 -hmac` and matched. Tests run the repo
 against a local HTTP receiver that is down, returns 500, 401 and 429, never answers,
 redirects and recovers, and check one log line per episode, bounded retries and a
 request that never blocks the health poll.
+The Settings link is covered by tests that a wrong value is refused with nothing saved
+or applied, that the token and secret are never in a response, that a change made while a
+report hangs cancels it without logging a failure, that new settings reach the next
+report (URL, token, hash secret), and that an unusable stored value leaves the reporter
+off with one event.
 
 **Not adopted:**
 - Pulling status through the dashboard API: needs a public route and a second credential.
@@ -1672,10 +1696,8 @@ restart, so a wrong one has to be found at that moment, before any module uses i
 Before this, a broken `bunryu.json` crashed and restarted every 2 s forever, a
 missing `srs.conf` left the dashboard half working (`/api/config` answered 500), and
 a missing or malformed `goryu.json` silently fell back to the defaults: an empty
-passphrase and the default relay ports, with nothing in the log. Only a missing file,
-invalid JSON or a `key_vault` block that is present but invalid exits 78, because the next
-attempt would fail the same way (that block is the one setting checked this strictly: a typo there would
-otherwise show only as silence in Key Vault). Any
+passphrase and the default relay ports, with nothing in the log. Only a missing file
+or invalid JSON exits 78, because the next attempt would fail the same way. Any
 other read error, such as an I/O error, crashes the process and is restarted after 2 s,
 so a transient fault cannot leave the server down. Checked on the built app: each of
 the three files missing, and an invalid `bunryu.json`, exits 78 with a timestamped

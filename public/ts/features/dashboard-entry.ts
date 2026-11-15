@@ -7,6 +7,8 @@ import { setOutputsListFilter } from './render.js';
 import {
     openSettings,
     submitGeneralSettingsForm,
+    submitKeyVaultForm,
+    testKeyVaultBtn,
     submitPasswordForm,
     logoutUser,
     regenerateStreamKeysBtn,
@@ -46,6 +48,8 @@ declare global {
         editPipelineGroupBtn: (id: number) => void;
         removePipelineGroupBtn: (id: number) => Promise<void>;
         settingsGeneralFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
+        settingsKeyVaultFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
+        settingsKeyVaultTestBtn: (btn?: HTMLButtonElement) => Promise<void>;
         pipelineGroupFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         settingsPasswordFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
         logoutBtn: () => Promise<void>;
@@ -128,6 +132,8 @@ window.addPipelineGroupBtn = () => addPipelineGroup();
 window.editPipelineGroupBtn = (id) => editPipelineGroup(id);
 window.removePipelineGroupBtn = (id) => removePipelineGroup(id);
 window.settingsGeneralFormBtn = (btn) => submitGeneralSettingsForm(btn);
+window.settingsKeyVaultFormBtn = (btn) => submitKeyVaultForm(btn);
+window.settingsKeyVaultTestBtn = (btn) => testKeyVaultBtn(btn);
 window.pipelineGroupFormBtn = (btn) => submitPipelineGroupForm(btn);
 window.settingsPasswordFormBtn = (btn) => submitPasswordForm(btn);
 window.logoutBtn = () => logoutUser();

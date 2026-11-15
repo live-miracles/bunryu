@@ -162,6 +162,37 @@ describe('Config API integration', () => {
         assert.ok(Array.isArray(res.body.encodings) && res.body.encodings.includes('copy'));
     });
 
+    test('shows the Key Vault link without its token and secret, and null while it is off', async () => {
+        const { db, get } = loadHarness();
+        assert.equal((await get()).body.keyVault, null);
+
+        db.setSetting(
+            'keyVault',
+            JSON.stringify({
+                url: 'https://kv.example.invalid/ingest',
+                token: 'fake-ingest-token-0123456789',
+                hashSecret: 'fake-hash-secret-0123456789',
+                instance: 'prod',
+            }),
+        );
+        const res = await get();
+        assert.deepEqual(res.body.keyVault, {
+            url: 'https://kv.example.invalid/ingest',
+            instance: 'prod',
+            tokenSet: true,
+            hashSecretSet: true,
+        });
+        const wire = JSON.stringify(res.body);
+        assert.ok(!wire.includes('fake-ingest-token'));
+        assert.ok(!wire.includes('fake-hash-secret'));
+
+        // A value that cannot be used (edited by hand) is shown as off, not as an error.
+        db.setSetting('keyVault', '{not json');
+        const broken = await get();
+        assert.equal(broken.status, 200);
+        assert.equal(broken.body.keyVault, null);
+    });
+
     test('pipeline publish URLs use the public host, local variants always use localhost', async () => {
         const { db, get } = loadHarness();
         db.setSetting('publicHost', 'stream.example.com');

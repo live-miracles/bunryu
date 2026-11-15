@@ -52,11 +52,6 @@ describe('isPermanentConfigError', () => {
         );
     });
 
-    test('a present but invalid setting is permanent', () => {
-        const { ConfigInvalidError } = require('../src/utils/appConfig');
-        assert.equal(isPermanentConfigError(new ConfigInvalidError('key_vault.url is bad')), true);
-    });
-
     test('other errors may pass on the next start', () => {
         assert.equal(isPermanentConfigError(withCode('EIO')), false);
         assert.equal(isPermanentConfigError(withCode('EMFILE')), false);
@@ -127,28 +122,6 @@ describe('exitIfConfigUnusable', () => {
         load().exitIfConfigUnusable();
         assert.deepEqual(exit.mock.calls[0].arguments, [78]);
         assert.match(String(error.mock.calls[0].arguments[0]), /goryu\.json/);
-    });
-
-    test('exits 78 for a key_vault block that is present but invalid, without printing its values', (t) => {
-        const exit = t.mock.method(process, 'exit', () => {});
-        const error = t.mock.method(console, 'error', () => {});
-        fs.writeFileSync(
-            file('bunryu.json'),
-            JSON.stringify({
-                srs_config_path: './srs.conf',
-                key_vault: {
-                    url: 'https://kv.example.invalid/x',
-                    token: 'tok en',
-                    hash_secret: 'secret-0123456789abc',
-                    instance: 'prod',
-                },
-            }),
-        );
-        load().exitIfConfigUnusable();
-        assert.deepEqual(exit.mock.calls[0].arguments, [78]);
-        const message = String(error.mock.calls[0].arguments[0]);
-        assert.match(message, /key_vault.token/);
-        assert.doesNotMatch(message, /secret-0123456789abc|tok en/);
     });
 
     test('rethrows a failure that may pass on a retry, so the process crashes and restarts', (t) => {

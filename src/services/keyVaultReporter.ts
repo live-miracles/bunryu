@@ -1,4 +1,4 @@
-import type { KeyVaultConfig } from '../utils/appConfig.js';
+import type { KeyVaultConfig } from '../utils/keyVaultConfig.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import type { HealthSnapshot } from './health.js';
 import type { Db } from '../types.js';
@@ -14,6 +14,8 @@ import type { ReportedStatus } from '../utils/outputStatus.js';
 // and one at once when a status changes (at most one per 10 s). The reporter is a
 // side channel: whatever the receiver does (down, slow, errors), the control plane,
 // the outputs and the dashboard are not affected, and it never retries in a tight loop.
+// Its settings are the operator's, from Settings: `reconfigure()` applies a change while
+// the server runs, so nothing here needs a restart and nothing can stop the server starting.
 
 export interface KeyVaultReporterOptions {
     // A report is sent at least this often, so Key Vault can tell bunryu is alive.
@@ -35,8 +37,9 @@ export const DEFAULT_REPORTER_OPTIONS: KeyVaultReporterOptions = {
 };
 
 export interface KeyVaultReporterDeps {
-    // Null disables the reporter: start() does nothing.
-    config: KeyVaultConfig | null;
+    // The saved settings; null means off. It may throw when the stored value cannot be
+    // used: that is logged and the reporter stays off. Read at start() and reconfigure().
+    getConfig: () => KeyVaultConfig | null;
     db: Pick<Db, 'listPipelines' | 'listOutputs' | 'getOutputErrorHistory'>;
     health: {
         onSnapshot(listener: (snapshot: HealthSnapshot) => void): void;
@@ -69,6 +72,8 @@ class ReportError extends Error {
     }
 }
 
+export type TestReportResult = { ok: true; outputs: number } | { ok: false; error: string };
+
 const MAX_HASH_CACHE = 5000;
 
 function errorText(err: unknown): string {
@@ -80,7 +85,7 @@ function errorText(err: unknown): string {
 }
 
 export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
-    const { config, db, health, diagnostics } = deps;
+    const { db, health, diagnostics } = deps;
     const options = { ...DEFAULT_REPORTER_OPTIONS, ...deps.options };
     const fetchFn = deps.fetchFn ?? fetch;
     const now = deps.now ?? Date.now;
@@ -88,6 +93,9 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     const sinceById = new Map<string, { status: ReportedStatus; sinceMs: number }>();
     const hashCache = new Map<string, string>();
     const shutdownController = new AbortController();
+    // Ends the report on its way when the settings change, so the old token and URL are
+    // not used again and the new settings are reported at once.
+    let settingsAbort = new AbortController();
 
     let started = false;
     let stopped = false;
@@ -105,9 +113,33 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     // A failure to build the report (a database error) has its own episode.
     let buildFailing = false;
 
-    const target = config ? new URL(config.url) : null;
+    let config: KeyVaultConfig | null = null;
     // The endpoint without its query: where the reports go, for the log.
-    const endpoint = target ? `${target.origin}${target.pathname}` : '';
+    let endpoint = '';
+
+    function endpointOf(c: KeyVaultConfig | null): string {
+        if (!c) return '';
+        const target = new URL(c.url);
+        return `${target.origin}${target.pathname}`;
+    }
+
+    function settingsKey(c: KeyVaultConfig | null): string {
+        return c ? JSON.stringify(c) : '';
+    }
+
+    // Reads the saved settings. A stored value that cannot be used turns the reporter off
+    // and says so, once per read.
+    function loadConfig(): void {
+        try {
+            config = deps.getConfig();
+        } catch (err) {
+            config = null;
+            const error = errorText(err);
+            console.error(`[key-vault] saved settings are not usable, reporting is off: ${error}`);
+            diagnostics?.event('key-vault-settings-invalid', { error });
+        }
+        endpoint = endpointOf(config);
+    }
 
     function hashOf(url: string): string {
         let hash = hashCache.get(url);
@@ -141,11 +173,11 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         });
     }
 
-    function sleep(ms: number): Promise<void> {
+    function sleep(ms: number, cancel: AbortSignal): Promise<void> {
         return new Promise((resolve) => {
             const timer = setTimeout(resolve, ms);
             timer.unref();
-            shutdownController.signal.addEventListener(
+            cancel.addEventListener(
                 'abort',
                 () => {
                     clearTimeout(timer);
@@ -156,22 +188,19 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         });
     }
 
-    async function postOnce(body: string): Promise<void> {
+    async function postOnce(cfg: KeyVaultConfig, body: string, cancel: AbortSignal): Promise<void> {
         let response: Response;
         try {
-            response = await fetchFn(config!.url, {
+            response = await fetchFn(cfg.url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${config!.token}`,
+                    Authorization: `Bearer ${cfg.token}`,
                 },
                 body,
                 // A redirect would send the token somewhere else, or turn the POST into a GET.
                 redirect: 'error',
-                signal: AbortSignal.any([
-                    AbortSignal.timeout(options.timeoutMs),
-                    shutdownController.signal,
-                ]),
+                signal: AbortSignal.any([AbortSignal.timeout(options.timeoutMs), cancel]),
             });
         } catch (err) {
             const timedOut = err instanceof Error && err.name === 'TimeoutError';
@@ -196,20 +225,20 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     }
 
     // One report: the first try and, while the failure may pass, the retries.
-    async function post(body: string): Promise<number> {
+    async function post(cfg: KeyVaultConfig, body: string, cancel: AbortSignal): Promise<number> {
         for (let attempt = 1; ; attempt++) {
             try {
-                await postOnce(body);
+                await postOnce(cfg, body, cancel);
                 return attempt;
             } catch (err) {
                 const retryDelay = options.retryDelaysMs[attempt - 1];
                 const retryable = err instanceof ReportError ? err.retryable : true;
-                if (!retryable || retryDelay === undefined || stopped) {
+                if (!retryable || retryDelay === undefined || cancel.aborted) {
                     if (err instanceof ReportError) throw Object.assign(err, { attempts: attempt });
                     throw err;
                 }
-                await sleep(retryDelay);
-                if (stopped) throw err;
+                await sleep(retryDelay, cancel);
+                if (cancel.aborted) throw err;
             }
         }
     }
@@ -256,14 +285,14 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     function scheduleHeartbeat(): void {
         if (heartbeatTimer) clearTimeout(heartbeatTimer);
         heartbeatTimer = null;
-        if (stopped) return;
+        if (stopped || !config) return;
         heartbeatTimer = setTimeout(() => void send('heartbeat'), options.heartbeatMs);
         heartbeatTimer.unref();
     }
 
     // Sends a report; never throws, and never starts a second one while one is on its way.
     async function send(reason: SendReason): Promise<void> {
-        if (stopped) return;
+        if (stopped || !config) return;
         // Nothing true to say before the first health poll; the poll itself triggers the first report.
         if (!snapshotSeen) {
             scheduleHeartbeat();
@@ -273,6 +302,8 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             resendRequested = true;
             return;
         }
+        const cfg = config;
+        const cancel = AbortSignal.any([shutdownController.signal, settingsAbort.signal]);
         inFlight = true;
         lastAttemptAtMs = now();
         if (changeTimer) clearTimeout(changeTimer);
@@ -292,10 +323,12 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             // Whatever happens next, an unchanged status waits for the next heartbeat.
             lastSignature = payloadSignature(payload);
             try {
-                const attempts = await post(JSON.stringify(payload));
+                const attempts = await post(cfg, JSON.stringify(payload), cancel);
+                if (cancel.aborted) return;
                 recordSuccess(payload.outputs.length, attempts);
             } catch (err) {
-                if (stopped) return;
+                // Shut down, or the settings changed: this report is of no interest any more.
+                if (cancel.aborted) return;
                 recordFailure(err, reason);
             }
         } catch (err) {
@@ -322,7 +355,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     // A change is sent at once unless a report went out less than minChangeIntervalMs
     // ago; then one is sent when that time is up.
     function requestChangeSend(): void {
-        if (stopped || changeTimer) return;
+        if (stopped || !config || changeTimer) return;
         const waitMs =
             lastAttemptAtMs === null
                 ? 0
@@ -341,6 +374,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     function onSnapshot(): void {
         if (stopped) return;
         snapshotSeen = true;
+        if (!config) return;
         try {
             if (inFlight) return;
             const signature = payloadSignature(build());
@@ -350,9 +384,8 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         }
     }
 
-    function start(): void {
-        if (!config || started) return;
-        started = true;
+    function logStarted(): void {
+        if (!config) return;
         console.log(`[key-vault] reporting to ${endpoint} as "${config.instance}"`);
         diagnostics?.event('key-vault-reporter-started', {
             instance: config.instance,
@@ -362,8 +395,82 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             timeoutMs: options.timeoutMs,
             retryDelaysMs: options.retryDelaysMs,
         });
+    }
+
+    // Registered whether or not Key Vault is set up, so that setting it up in Settings
+    // needs no restart; while it is off a poll costs one check.
+    function start(): void {
+        if (started) return;
+        started = true;
+        loadConfig();
+        logStarted();
         health.onSnapshot(onSnapshot);
         scheduleHeartbeat();
+    }
+
+    // Applies the settings as they are now. Called after the operator saves them.
+    function reconfigure(): void {
+        if (!started || stopped) return;
+        const before = settingsKey(config);
+        loadConfig();
+        if (settingsKey(config) === before) return;
+
+        // Everything that belonged to the old settings goes: the report on its way, the
+        // waiting timers, the hashes (they are keyed by the old secret), the failure episode.
+        settingsAbort.abort();
+        settingsAbort = new AbortController();
+        if (heartbeatTimer) clearTimeout(heartbeatTimer);
+        if (changeTimer) clearTimeout(changeTimer);
+        heartbeatTimer = null;
+        changeTimer = null;
+        hashCache.clear();
+        lastSignature = null;
+        lastAttemptAtMs = null;
+        lastSuccessAtMs = null;
+        episode = null;
+        diagnostics?.event('key-vault-settings-changed', {
+            enabled: config !== null,
+            instance: config?.instance ?? null,
+            endpoint,
+        });
+        if (!config) {
+            console.log('[key-vault] reporting is off');
+            return;
+        }
+        logStarted();
+        scheduleHeartbeat();
+        // The report on its way ends in finally, which then sends the new one at once.
+        if (inFlight) resendRequested = true;
+        else requestChangeSend();
+    }
+
+    // One report to the saved settings, now and without retries, for the Settings page's
+    // "Send test report": the operator sees at once whether the link works. It does not
+    // change the failure episode or the schedule.
+    async function testReport(): Promise<TestReportResult> {
+        const cfg = config;
+        if (!cfg) return { ok: false, error: 'Key Vault is not set up' };
+        if (inFlight) return { ok: false, error: 'A report is on its way; try again in a moment' };
+        inFlight = true;
+        try {
+            let payload: KeyVaultPayload;
+            try {
+                payload = build();
+            } catch (err) {
+                return { ok: false, error: `could not build the report: ${errorText(err)}` };
+            }
+            const cancel = AbortSignal.any([shutdownController.signal, settingsAbort.signal]);
+            await postOnce(cfg, JSON.stringify(payload), cancel);
+            return { ok: true, outputs: payload.outputs.length };
+        } catch (err) {
+            return { ok: false, error: errorText(err) };
+        } finally {
+            inFlight = false;
+            if (resendRequested) {
+                resendRequested = false;
+                requestChangeSend();
+            }
+        }
     }
 
     function shutdown(): void {
@@ -377,6 +484,8 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
 
     return {
         start,
+        reconfigure,
+        testReport,
         shutdown,
         getState: (): KeyVaultReporterState => ({
             enabled: config !== null,

@@ -8,7 +8,6 @@
     "ffprobe_path": "./objs/ffprobe",
     "dashboard_password": "admin",
     "stream_key_count": 100,
-    "key_vault": null,
     "output_watchdog": {
         "warmup_ms": 90000,
         "stall_ms": 45000,

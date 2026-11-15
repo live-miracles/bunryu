@@ -139,6 +139,27 @@ export const updateGeneralSettings = (name: string, publicHost: string) =>
         body: { name, publicHost },
     });
 
+export interface KeyVaultSettingsInput {
+    url: string;
+    instance: string;
+    // Empty keeps the saved one.
+    token: string;
+    hashSecret: string;
+}
+
+export const updateKeyVaultSettings = (input: KeyVaultSettingsInput) =>
+    apiRequest<{ keyVault: ConfigData['keyVault'] }>('/api/settings/key-vault', {
+        method: 'POST',
+        body: input,
+    });
+
+// A failed report comes back as `ok: false` with the reason, not as an error toast.
+export const testKeyVault = () =>
+    apiRequest<{ ok: true; outputs: number } | { ok: false; error: string }>(
+        '/api/settings/key-vault/test',
+        { method: 'POST', timeoutMs: 20_000 },
+    );
+
 export const updateLayoutOrder = (order: LayoutOrderEntry[]) =>
     apiRequest<{ layoutOrder: LayoutOrderEntry[] }>('/api/settings/layout-order', {
         method: 'POST',

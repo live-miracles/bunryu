@@ -68,10 +68,11 @@ Hardening that is on by default:
   service user (root runs code from it on every update); the service user writes
   only to the data and config directories. `server-reset-password.sh` also signs
   out every existing session.
-- **Key Vault reports (optional):** with a `key_vault` block the app makes one outbound
-  HTTPS request a minute, carrying the configured bearer token. The URL must be `https`
-  (plain `http` only for localhost), no redirect is followed, and the token and
-  `hash_secret` live only in `bunryu.json` (mode `0600`) and are never logged. Destinations
+- **Key Vault reports (optional):** once the link is set in Settings the app makes one
+  outbound HTTPS request a minute, carrying the bearer token. The URL must be `https`
+  (plain `http` only for localhost) and must not resolve to a link-local or unspecified
+  address, no redirect is followed, and the token and hash secret are stored in the
+  database, never returned by the API or the dashboard and never logged. Destinations
   leave the server only as an HMAC hash, and error text has URLs, passphrases and
   keys removed (see [Configuration](3-configuration.md#key-vault-status-reporting)).
 - **Hooks:** `/api/srs/*` is served only on `127.0.0.1:<hook_port>`; client IPs in

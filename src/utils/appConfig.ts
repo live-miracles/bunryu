@@ -20,30 +20,6 @@ export interface AppConfig {
     // uses one key, so this is also the most inputs the server can have.
     streamKeyCount: number;
     outputWatchdog: OutputWatchdogConfig;
-    // Where bunryu reports every output's status once a minute; null (no
-    // `key_vault` block) disables the reporter. See src/services/keyVaultReporter.ts.
-    keyVault: KeyVaultConfig | null;
-}
-
-export interface KeyVaultConfig {
-    // The ingest endpoint: https, or http only on loopback (a local test receiver).
-    url: string;
-    // Sent as `Authorization: Bearer <token>`.
-    token: string;
-    // Secret shared with Key Vault for the HMAC of each output's destination URL.
-    hashSecret: string;
-    // Names this bunryu to Key Vault (e.g. "prod").
-    instance: string;
-}
-
-// A setting that is present but wrong. Unlike the numeric keys, which fall back to
-// their default, a bad `key_vault` block would silently send nothing, so it stops the
-// start; isPermanentConfigError makes that exit 78 (no restart loop).
-export class ConfigInvalidError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'ConfigInvalidError';
-    }
 }
 
 export interface OutputWatchdogConfig {
@@ -67,7 +43,6 @@ interface RawAppConfig {
     dashboard_password?: unknown;
     stream_key_count?: unknown;
     output_watchdog?: unknown;
-    key_vault?: unknown;
 }
 
 // BUNRYU_CONFIG moves the file out of the app root: the installer keeps it in
@@ -167,69 +142,6 @@ function readWatchdogConfig(value: unknown): OutputWatchdogConfig {
     };
 }
 
-const KEY_VAULT_KEYS = ['url', 'token', 'hash_secret', 'instance'];
-const MIN_HASH_SECRET_LENGTH = 16;
-
-function keyVaultString(raw: Record<string, unknown>, key: string): string {
-    const value = raw[key];
-    if (typeof value !== 'string' || !value.trim()) {
-        throw new ConfigInvalidError(`key_vault.${key} must be a non-empty string`);
-    }
-    return value;
-}
-
-// `key_vault` absent or null disables the reporter. A block that is there must be
-// complete and usable, so a typo shows at start-up instead of as silence in Key Vault.
-function readKeyVaultConfig(value: unknown): KeyVaultConfig | null {
-    if (value === undefined || value === null) return null;
-    if (typeof value !== 'object' || Array.isArray(value)) {
-        throw new ConfigInvalidError('key_vault must be an object, or null to disable it');
-    }
-    const raw = value as Record<string, unknown>;
-    const extra = Object.keys(raw).filter((key) => !KEY_VAULT_KEYS.includes(key));
-    if (extra.length > 0) {
-        throw new ConfigInvalidError(`key_vault has unknown key(s): ${extra.join(', ')}`);
-    }
-
-    const urlText = keyVaultString(raw, 'url').trim();
-    let url: URL;
-    try {
-        url = new URL(urlText);
-    } catch {
-        throw new ConfigInvalidError('key_vault.url is not a valid URL');
-    }
-    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
-        throw new ConfigInvalidError(
-            'key_vault.url must be https (http is allowed only for localhost)',
-        );
-    }
-    if (url.username || url.password) {
-        throw new ConfigInvalidError('key_vault.url must not contain credentials; use token');
-    }
-
-    // Not trimmed, like the dashboard password; but both go into a header or a MAC key.
-    const token = keyVaultString(raw, 'token');
-    if (!/^[!-~]+$/.test(token)) {
-        throw new ConfigInvalidError(
-            'key_vault.token must be printable ASCII without spaces (it is sent in a header)',
-        );
-    }
-    const hashSecret = keyVaultString(raw, 'hash_secret');
-    if (hashSecret.length < MIN_HASH_SECRET_LENGTH) {
-        throw new ConfigInvalidError(
-            `key_vault.hash_secret must be at least ${MIN_HASH_SECRET_LENGTH} characters`,
-        );
-    }
-    const instance = keyVaultString(raw, 'instance').trim();
-    if (!/^[A-Za-z0-9._-]{1,64}$/.test(instance)) {
-        throw new ConfigInvalidError(
-            'key_vault.instance must be 1-64 characters of letters, digits, ".", "_" or "-"',
-        );
-    }
-    return { url: url.toString(), token, hashSecret, instance };
-}
-
 function resolveFilePath(value: string, configDir: string): string {
     return path.isAbsolute(value) ? value : path.resolve(configDir, value);
 }
@@ -279,15 +191,6 @@ export function readAppConfig(): AppConfig {
         });
     }
 
-    // Names the file, which the setting's own message does not.
-    let keyVault: KeyVaultConfig | null;
-    try {
-        keyVault = readKeyVaultConfig(raw.key_vault);
-    } catch (err) {
-        if (!(err instanceof ConfigInvalidError)) throw err;
-        throw new ConfigInvalidError(`Invalid app config ${CONFIG_PATH}: ${err.message}`);
-    }
-
     // PORT/DATABASE_PATH env vars override bunryu.json when set — lets an
     // isolated instance (e.g. automated UI testing) run alongside a
     // developer's own `npm run dev` without colliding on the port or
@@ -335,7 +238,6 @@ export function readAppConfig(): AppConfig {
         ),
         streamKeyCount: asStreamKeyCount(raw.stream_key_count),
         outputWatchdog: readWatchdogConfig(raw.output_watchdog),
-        keyVault,
     };
     return cachedConfig;
 }

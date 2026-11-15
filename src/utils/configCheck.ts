@@ -1,4 +1,4 @@
-import { ConfigInvalidError, readAppConfig } from './appConfig.js';
+import { readAppConfig } from './appConfig.js';
 import { readRelayConfig } from './relayConfig.js';
 import { readSrsConfigValues } from './srsConfig.js';
 
@@ -7,18 +7,12 @@ import { readSrsConfigValues } from './srsConfig.js';
 // unit failed with its message instead of restarting every 2 s forever.
 export const EXIT_NEEDS_OPERATOR = 78;
 
-// A read that fails the same way on every attempt: the file is missing, does
-// not parse or has a setting that is present but invalid (ConfigInvalidError). Anything else (EIO, EMFILE, ...) may pass on the next start, so it
+// A read that fails the same way on every attempt: the file is missing or does
+// not parse. Anything else (EIO, EMFILE, ...) may pass on the next start, so it
 // is left to crash and be restarted. The readers wrap the original error as `cause`.
 export function isPermanentConfigError(err: unknown): boolean {
     for (let e = err; e instanceof Error; e = e.cause) {
-        if (
-            e instanceof SyntaxError ||
-            e instanceof ConfigInvalidError ||
-            (e as NodeJS.ErrnoException).code === 'ENOENT'
-        ) {
-            return true;
-        }
+        if (e instanceof SyntaxError || (e as NodeJS.ErrnoException).code === 'ENOENT') return true;
     }
     return false;
 }

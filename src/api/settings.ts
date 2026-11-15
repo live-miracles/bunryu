@@ -5,6 +5,14 @@ import type { InputState } from '../services/inputState.js';
 import type { OutputService } from '../services/outputs.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import { generateSrtPassphrase, writeSrtPassphrase } from '../utils/srtPassphrase.js';
+import {
+    KEY_VAULT_SETTING,
+    checkKeyVaultHost,
+    parseKeyVaultInput,
+    publicKeyVaultConfig,
+    readStoredKeyVault,
+} from '../utils/keyVaultConfig.js';
+import type { KeyVaultReporter } from '../services/keyVaultReporter.js';
 
 const MAX_PIPELINE_GROUPS = 50;
 const MAX_PIPELINE_GROUP_NAME_LENGTH = 80;
@@ -64,6 +72,7 @@ export function registerSettingsApi(
     inputState: InputState,
     outputService: OutputService,
     diagnostics: DiagnosticsLogger,
+    keyVaultReporter: Pick<KeyVaultReporter, 'reconfigure' | 'testReport'>,
 ): void {
     app.post('/api/settings/general', (req, res) => {
         const parsedName = parseName(req.body?.name);
@@ -85,6 +94,39 @@ export function registerSettingsApi(
             serverName: name,
             publicHost: publicHost ?? db.getSetting('publicHost') ?? '',
         });
+    });
+
+    // The Key Vault link. A wrong value is refused here, when it is typed, so the saved one
+    // is always usable. An empty token or secret keeps the saved one (the dashboard never
+    // has them); an empty url turns the reports off and forgets the token and secret.
+    app.post('/api/settings/key-vault', async (req, res) => {
+        const body: unknown = req.body;
+        const rawUrl = (body as { url?: unknown } | null)?.url;
+        if (
+            rawUrl === undefined ||
+            rawUrl === null ||
+            (typeof rawUrl === 'string' && !rawUrl.trim())
+        ) {
+            db.setSetting(KEY_VAULT_SETTING, '');
+            keyVaultReporter.reconfigure();
+            return res.json({ keyVault: null });
+        }
+
+        const existing = readStoredKeyVault(db.getSetting(KEY_VAULT_SETTING)).config;
+        const parsed = parseKeyVaultInput(body, existing);
+        if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+        const blocked = await checkKeyVaultHost(parsed.config.url);
+        if (blocked) return res.status(400).json({ error: blocked });
+
+        db.setSetting(KEY_VAULT_SETTING, JSON.stringify(parsed.config));
+        keyVaultReporter.reconfigure();
+        console.log(`[settings] Key Vault link saved for instance "${parsed.config.instance}"`);
+        return res.json({ keyVault: publicKeyVaultConfig(parsed.config) });
+    });
+
+    // One report to the saved link, now, so the operator sees whether it works.
+    app.post('/api/settings/key-vault/test', async (_req, res) => {
+        return res.json(await keyVaultReporter.testReport());
     });
 
     app.post('/api/settings/layout-order', (req, res) => {

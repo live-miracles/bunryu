@@ -166,6 +166,12 @@ slow or rejecting reports cannot affect an input, an output or the dashboard.
   same way as `key-vault-report-build-failed` / `-recovered`.
 - Nothing is sent before the first health poll after a start, so a restart does not
   show every output as failed.
+- The link is a setting, never part of start-up: a value that cannot be saved is refused
+  when it is typed, and a stored one that cannot be used (the database edited by hand)
+  leaves the reports off with `key-vault-settings-invalid` in the journal and
+  diagnostics, and the server starts and runs as usual. Saving a change cancels the report
+  on its way, drops the old hashes and failure episode, writes `key-vault-settings-changed`
+  and sends the first report to the new link at once.
 - Key Vault treats a server it has not heard from for 3 minutes as offline and mutes the
   colours, so a dead Bunryu does not leave keys looking green.
 

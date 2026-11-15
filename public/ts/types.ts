@@ -390,6 +390,8 @@ export interface ConfigData {
     // A passphrase reset is waiting for the server or container to restart.
     srtPassphrasePending: boolean;
     publicHost: string;
+    // The Key Vault link without its token and secret; null while it is off.
+    keyVault: { url: string; instance: string; tokenSet: boolean; hashSecretSet: boolean } | null;
     layoutOrder: LayoutOrderEntry[];
 }
 

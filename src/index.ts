@@ -41,6 +41,7 @@ import { createRenditionReconciler } from './services/renditions.js';
 import { enforceDestinationPolicy } from './services/destinationPolicy.js';
 import { readSrsConfigValues } from './utils/srsConfig.js';
 import { createKeyVaultReporter } from './services/keyVaultReporter.js';
+import { KEY_VAULT_SETTING, readStoredKeyVault } from './utils/keyVaultConfig.js';
 
 const app = express();
 const PORT = readAppConfig().port;
@@ -138,7 +139,11 @@ const healthService = createHealthService(
     resourceUsage.processUsage,
 );
 const keyVaultReporter = createKeyVaultReporter({
-    config: readAppConfig().keyVault,
+    getConfig: () => {
+        const { config, problem } = readStoredKeyVault(db.getSetting(KEY_VAULT_SETTING));
+        if (problem) throw new Error(problem);
+        return config;
+    },
     db,
     health: healthService,
     diagnostics,
@@ -167,7 +172,7 @@ registerConfigApi(app, db);
 registerPipelineApi(app, db, outputService, previewService, srtRelayService);
 registerOutputApi(app, db, outputService);
 registerPreviewApi(app, previewService);
-registerSettingsApi(app, db, inputState, outputService, diagnostics);
+registerSettingsApi(app, db, inputState, outputService, diagnostics, keyVaultReporter);
 registerVersionApi(app);
 resourceUsage.start();
 registerMetricsApi(app, resourceUsage);
@@ -272,7 +277,7 @@ async function main(): Promise<void> {
     srtRelayService.start();
     renditionReconciler.start();
     healthService.start();
-    // After the health service: a report needs its first poll. Disabled without a key_vault block.
+    // After the health service: a report needs its first poll. Off until Key Vault is set up in Settings.
     keyVaultReporter.start();
 
     // Hooks first: /api/ready (what SRS waits for) must not answer before the

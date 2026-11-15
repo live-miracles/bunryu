@@ -111,12 +111,23 @@ function createHarness() {
     const liveInputs = new Set();
     const outputStatus = new Map();
     const events = [];
+    const keyVault = {
+        reconfigured: 0,
+        reconfigure() {
+            this.reconfigured += 1;
+        },
+        testResult: { ok: true, outputs: 3 },
+        testReport() {
+            return Promise.resolve(this.testResult);
+        },
+    };
     registerSettingsApi(
         app,
         db,
         { isLive: (id) => liveInputs.has(id) },
         { getStats: (id) => ({ status: outputStatus.get(id) ?? 'stopped' }) },
         { event: (type, fields) => events.push({ type, ...fields }) },
+        keyVault,
     );
     fs.writeFileSync(SRS_CONF_PATH, SRS_CONF);
     fs.writeFileSync(RELAY_CONF_PATH, RELAY_CONF);
@@ -126,6 +137,7 @@ function createHarness() {
         liveInputs,
         outputStatus,
         events,
+        keyVault,
         request: (method, route, body) => dispatch(app, method, route, body),
     };
 }
@@ -504,5 +516,133 @@ describe('Settings API integration', () => {
             assert.equal(fs.readFileSync(RELAY_CONF_PATH, 'utf8'), RELAY_CONF);
             assert.equal(harness.events[0].type, 'srt-passphrase-reset-failed');
         });
+    });
+});
+
+describe('Key Vault settings API', () => {
+    const LINK = {
+        url: 'https://203.0.113.5/functions/v1/ingest',
+        instance: 'prod',
+        token: 'fake-ingest-token-0123456789',
+        hashSecret: 'fake-hash-secret-0123456789',
+    };
+
+    test('saves the link, applies it at once and never returns the token or secret', async () => {
+        const harness = createHarness();
+        const res = await harness.request('POST', '/api/settings/key-vault', LINK);
+
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body, {
+            keyVault: {
+                url: LINK.url,
+                instance: 'prod',
+                tokenSet: true,
+                hashSecretSet: true,
+            },
+        });
+        assert.ok(!res.text.includes(LINK.token));
+        assert.ok(!res.text.includes(LINK.hashSecret));
+        assert.deepEqual(JSON.parse(harness.db.getSetting('keyVault')), LINK);
+        assert.equal(harness.keyVault.reconfigured, 1);
+    });
+
+    test('an empty token or secret keeps the saved one; a new one replaces it', async () => {
+        const harness = createHarness();
+        await harness.request('POST', '/api/settings/key-vault', LINK);
+
+        const kept = await harness.request('POST', '/api/settings/key-vault', {
+            ...LINK,
+            url: 'https://203.0.113.6/ingest',
+            token: '',
+            hashSecret: '',
+        });
+        assert.equal(kept.status, 200);
+        const saved = JSON.parse(harness.db.getSetting('keyVault'));
+        assert.equal(saved.url, 'https://203.0.113.6/ingest');
+        assert.equal(saved.token, LINK.token);
+        assert.equal(saved.hashSecret, LINK.hashSecret);
+
+        await harness.request('POST', '/api/settings/key-vault', {
+            ...LINK,
+            token: ' replacement-token-0123456789 ',
+            hashSecret: '',
+        });
+        const replaced = JSON.parse(harness.db.getSetting('keyVault'));
+        assert.equal(replaced.token, 'replacement-token-0123456789', 'pasted spaces are trimmed');
+        assert.equal(replaced.hashSecret, LINK.hashSecret);
+    });
+
+    test('refuses a wrong value with 400 and saves and applies nothing', async () => {
+        const harness = createHarness();
+        await harness.request('POST', '/api/settings/key-vault', LINK);
+        const before = harness.db.getSetting('keyVault');
+        const applied = harness.keyVault.reconfigured;
+
+        for (const [body, message] of [
+            [{ ...LINK, url: 'ftp://203.0.113.5/x' }, /https/],
+            [{ ...LINK, url: 'http://203.0.113.5/x' }, /https/],
+            [{ ...LINK, url: 'not a url' }, /valid URL/],
+            [{ ...LINK, url: 'https://user:pw@203.0.113.5/x' }, /credentials/],
+            [{ ...LINK, url: 'https://169.254.169.254/latest' }, /not allowed/],
+            [{ ...LINK, token: 'has a space' }, /printable ASCII/],
+            [{ ...LINK, hashSecret: 'short' }, /at least 16/],
+            [{ ...LINK, instance: '' }, /instance/],
+            [{ ...LINK, instance: 'has space' }, /instance/],
+            [{ ...LINK, token: 12345 }, /string/],
+        ]) {
+            const res = await harness.request('POST', '/api/settings/key-vault', body);
+            assert.equal(res.status, 400, JSON.stringify(body));
+            assert.match(res.body.error, message);
+        }
+        assert.equal(harness.db.getSetting('keyVault'), before);
+        assert.equal(harness.keyVault.reconfigured, applied);
+    });
+
+    test('the first save needs a token and a secret', async () => {
+        const harness = createHarness();
+        const noToken = await harness.request('POST', '/api/settings/key-vault', {
+            ...LINK,
+            token: '',
+        });
+        assert.equal(noToken.status, 400);
+        assert.match(noToken.body.error, /token is required/);
+        const noSecret = await harness.request('POST', '/api/settings/key-vault', {
+            ...LINK,
+            hashSecret: '',
+        });
+        assert.equal(noSecret.status, 400);
+        assert.match(noSecret.body.error, /hashSecret is required/);
+        assert.equal(harness.db.getSetting('keyVault'), null);
+    });
+
+    test('http is accepted for localhost, a receiver on this machine', async () => {
+        const harness = createHarness();
+        const res = await harness.request('POST', '/api/settings/key-vault', {
+            ...LINK,
+            url: 'http://127.0.0.1:9999/ingest',
+        });
+        assert.equal(res.status, 200);
+    });
+
+    test('an empty link turns the reports off and forgets the token and secret', async () => {
+        const harness = createHarness();
+        await harness.request('POST', '/api/settings/key-vault', LINK);
+        const res = await harness.request('POST', '/api/settings/key-vault', { url: '' });
+
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body, { keyVault: null });
+        assert.equal(harness.db.getSetting('keyVault'), '');
+        assert.equal(harness.keyVault.reconfigured, 2);
+    });
+
+    test('POST /api/settings/key-vault/test answers with the result of one report', async () => {
+        const harness = createHarness();
+        const ok = await harness.request('POST', '/api/settings/key-vault/test');
+        assert.deepEqual(ok.body, { ok: true, outputs: 3 });
+
+        harness.keyVault.testResult = { ok: false, error: 'HTTP 401' };
+        const refused = await harness.request('POST', '/api/settings/key-vault/test');
+        assert.equal(refused.status, 200);
+        assert.deepEqual(refused.body, { ok: false, error: 'HTTP 401' });
     });
 });

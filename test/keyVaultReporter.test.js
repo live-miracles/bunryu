@@ -59,6 +59,8 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
         health: entry(),
         live: true,
         throwOnList: false,
+        // What Settings holds now; a test changes it and calls reporter.reconfigure().
+        config,
     };
     const snapshot = () => ({
         pipelines: {
@@ -93,7 +95,10 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
         getOutputErrorHistory: () => [],
     };
     const reporter = createKeyVaultReporter({
-        config,
+        getConfig: () => {
+            if (world.config instanceof Error) throw world.config;
+            return world.config;
+        },
         db: fakeDb,
         health: {
             onSnapshot: (listener) => listeners.push(listener),
@@ -126,15 +131,158 @@ function recordingFetch(respond = ok) {
 }
 
 describe('Key Vault reporter', () => {
-    test('is disabled without a config block: nothing registered, nothing sent, nothing logged', async () => {
+    test('is off without saved settings: nothing sent, nothing logged', async () => {
         const { calls, fetchFn } = recordingFetch();
         const h = setup({ fetchFn, config: null });
         h.reporter.start();
-        assert.equal(h.listeners.length, 0);
         assert.equal(h.reporter.getState().enabled, false);
+        h.emit();
         await wait(FAST.heartbeatMs * 1.5);
         assert.equal(calls.length, 0);
         assert.deepEqual(h.events, []);
+    });
+
+    test('settings saved while running start the reports at once, without a restart', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn, config: null });
+        h.reporter.start();
+        h.emit();
+        await wait(50);
+        assert.equal(calls.length, 0);
+
+        h.world.config = CONFIG;
+        h.reporter.reconfigure();
+        await waitFor(() => calls.length === 1);
+        assert.equal(calls[0].url, CONFIG.url);
+        assert.equal(calls[0].init.headers.Authorization, `Bearer ${CONFIG.token}`);
+        assert.equal(h.reporter.getState().enabled, true);
+        assert.ok(h.events.some((e) => e.event === 'key-vault-settings-changed' && e.enabled));
+        // And the heartbeat runs from then on.
+        await waitFor(() => calls.length === 2);
+    });
+
+    test('a changed token, secret and link apply to the next report; the old ones are not used again', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => calls.length === 1);
+        const oldHash = calls[0].body.outputs[0].hash;
+
+        h.world.config = {
+            ...CONFIG,
+            url: 'https://other.example.invalid/ingest',
+            token: 'another-token-0123456789',
+            hashSecret: 'another-secret-0123456789',
+            instance: 'second',
+        };
+        h.reporter.reconfigure();
+        await waitFor(() => calls.length === 2);
+        assert.equal(calls[1].url, 'https://other.example.invalid/ingest');
+        assert.equal(calls[1].init.headers.Authorization, 'Bearer another-token-0123456789');
+        assert.equal(calls[1].body.instance, 'second');
+        assert.notEqual(calls[1].body.outputs[0].hash, oldHash, 'hashed with the new secret');
+        await wait(FAST.heartbeatMs * 0.5);
+        assert.ok(calls.slice(1).every((c) => c.url === 'https://other.example.invalid/ingest'));
+    });
+
+    test('settings changed while a report is on its way cancel it and send the new one', async () => {
+        const hung = [];
+        const { calls, fetchFn } = recordingFetch((n, init) =>
+            n === 1
+                ? new Promise((_resolve, reject) => {
+                      hung.push(init);
+                      init.signal.addEventListener('abort', () => reject(init.signal.reason));
+                  })
+                : ok(),
+        );
+        const h = setup({ fetchFn, options: { ...FAST, timeoutMs: 5000 } });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => calls.length === 1);
+
+        h.world.config = { ...CONFIG, token: 'replacement-token-0123456789' };
+        h.reporter.reconfigure();
+        await waitFor(() => calls.length === 2);
+        assert.equal(hung[0].signal.aborted, true, 'the old report was abandoned');
+        assert.equal(calls[1].init.headers.Authorization, 'Bearer replacement-token-0123456789');
+        assert.ok(
+            !h.events.some((e) => e.event === 'key-vault-report-failed'),
+            'a report cancelled by a settings change is not a failure',
+        );
+    });
+
+    test('removing the settings stops the reports and the heartbeat', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => calls.length === 1);
+
+        h.world.config = null;
+        h.reporter.reconfigure();
+        h.world.health = entry({ status: 'failed', lastError: `${Date.now()}\nboom` });
+        h.emit();
+        await wait(FAST.heartbeatMs * 1.5);
+        assert.equal(calls.length, 1);
+        assert.equal(h.reporter.getState().enabled, false);
+    });
+
+    test('unchanged settings are not a change: nothing is sent early', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => calls.length === 1);
+        h.reporter.reconfigure();
+        await wait(30);
+        assert.equal(calls.length, 1);
+    });
+
+    test('saved settings that cannot be used leave the reporter off and say so once', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn, config: new Error('url is not a valid URL') });
+        h.reporter.start();
+        h.emit();
+        await wait(FAST.heartbeatMs * 1.5);
+        assert.equal(calls.length, 0);
+        const invalid = h.events.filter((e) => e.event === 'key-vault-settings-invalid');
+        assert.equal(invalid.length, 1);
+        assert.match(invalid[0].error, /not a valid URL/);
+    });
+
+    test('a test report is one attempt, without retries, and leaves the failure log and schedule alone', async () => {
+        const { calls, fetchFn } = recordingFetch(() =>
+            Promise.resolve(new Response(null, { status: 503 })),
+        );
+        // A heartbeat far away, so only the test request is in the count.
+        const h = setup({ fetchFn, options: { ...FAST, heartbeatMs: 60_000 } });
+        h.reporter.start();
+        const result = await h.reporter.testReport();
+        assert.deepEqual(result, { ok: false, error: 'HTTP 503' });
+        assert.equal(calls.length, 1, 'a 503 is retried by the schedule, never by the test');
+        assert.deepEqual(
+            h.events.map((e) => e.event),
+            ['key-vault-reporter-started'],
+        );
+        assert.equal(h.reporter.getState().consecutiveFailures, 0);
+    });
+
+    test('a test report that Key Vault accepts says how many outputs it carried', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn, options: { ...FAST, heartbeatMs: 60_000 } });
+        h.reporter.start();
+        assert.deepEqual(await h.reporter.testReport(), { ok: true, outputs: 1 });
+        assert.equal(calls[0].body.outputs[0].status, 'running');
+    });
+
+    test('a test report without settings says so and sends nothing', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn, config: null });
+        h.reporter.start();
+        const result = await h.reporter.testReport();
+        assert.equal(result.ok, false);
+        assert.equal(calls.length, 0);
     });
 
     test('sends nothing before the first health poll, then a report right after it', async () => {

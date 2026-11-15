@@ -43,6 +43,7 @@ export function openSettings(): void {
     (document.getElementById('settings-server-name-input') as HTMLInputElement).value = current;
     (document.getElementById('settings-public-host-input') as HTMLInputElement).value =
         state.config.publicHost ?? '';
+    renderKeyVaultForm();
     (document.getElementById('current-password-input') as HTMLInputElement).value = '';
     (document.getElementById('new-password-input') as HTMLInputElement).value = '';
     (document.getElementById('confirm-password-input') as HTMLInputElement).value = '';
@@ -107,6 +108,79 @@ export async function submitGeneralSettingsForm(btn?: HTMLButtonElement): Promis
         document.title = name;
         await refreshAfterMutation();
         flashSaveSuccess('settings-general-save-success');
+    });
+}
+
+// The Key Vault fields as saved. The token and secret are never sent back, so their
+// boxes only say whether one is saved.
+function renderKeyVaultForm(): void {
+    const saved = state.config.keyVault ?? null;
+    const input = (id: string) => document.getElementById(id) as HTMLInputElement;
+    input('settings-key-vault-url-input').value = saved?.url ?? '';
+    input('settings-key-vault-instance-input').value = saved?.instance ?? '';
+    for (const [id, isSet] of [
+        ['settings-key-vault-token-input', saved?.tokenSet],
+        ['settings-key-vault-secret-input', saved?.hashSecretSet],
+    ] as const) {
+        input(id).value = '';
+        input(id).placeholder = isSet ? 'Saved; leave empty to keep it' : '';
+    }
+    (document.getElementById('settings-key-vault-test-btn') as HTMLButtonElement).disabled = !saved;
+    setKeyVaultResult('');
+}
+
+function setKeyVaultResult(message: string, isError = false): void {
+    const el = document.getElementById('settings-key-vault-result');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle('text-error', isError);
+}
+
+export async function submitKeyVaultForm(btn?: HTMLButtonElement): Promise<void> {
+    const input = (id: string) => document.getElementById(id) as HTMLInputElement;
+    const url = input('settings-key-vault-url-input').value.trim();
+    const instance = input('settings-key-vault-instance-input').value.trim();
+    const token = input('settings-key-vault-token-input').value.trim();
+    const hashSecret = input('settings-key-vault-secret-input').value.trim();
+    for (const id of [
+        'settings-key-vault-url-input',
+        'settings-key-vault-instance-input',
+        'settings-key-vault-token-input',
+        'settings-key-vault-secret-input',
+    ]) {
+        input(id).classList.remove('input-error');
+    }
+    if (url && !instance) {
+        input('settings-key-vault-instance-input').classList.add('input-error');
+        api.showError('Enter an instance name for this server, for example "prod".');
+        return;
+    }
+
+    await withBusy(btn, async () => {
+        const result = await api.updateKeyVaultSettings({ url, instance, token, hashSecret });
+        if (!result) return;
+        await refreshAfterMutation();
+        renderKeyVaultForm();
+        setKeyVaultResult(
+            result.keyVault ? 'Saved. A report is sent now.' : 'Saved. Reports are off.',
+        );
+        flashSaveSuccess('settings-key-vault-save-success');
+    });
+}
+
+export async function testKeyVaultBtn(btn?: HTMLButtonElement): Promise<void> {
+    setKeyVaultResult('Sending...');
+    await withBusy(btn, async () => {
+        const result = await api.testKeyVault();
+        if (!result) {
+            setKeyVaultResult('');
+            return;
+        }
+        if (result.ok) {
+            setKeyVaultResult(`Key Vault accepted the report (${result.outputs} outputs).`);
+        } else {
+            setKeyVaultResult(`Key Vault did not accept the report: ${result.error}`, true);
+        }
     });
 }
 
