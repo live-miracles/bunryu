@@ -70,7 +70,14 @@ function setup(t) {
     const alerts = (over = {}) =>
         lifecycle.alerts(
             1,
-            { fpsStream: undefined, nominalFps: null, connected: true, keyframes: null, ...over },
+            {
+                fpsStream: undefined,
+                nominalFps: null,
+                connected: true,
+                keyframes: null,
+                video: null,
+                ...over,
+            },
             Date.now(),
         );
     const tick = (ms) => t.mock.timers.tick(ms);
@@ -261,6 +268,29 @@ describe('input lifecycle: alerts', () => {
             ['input-keyframe-interval'],
         );
         assert.deepEqual(alerts({ keyframes, connected: false }), []);
+    });
+
+    test('an interlaced input alerts, naming its scan, only while connected', (t) => {
+        const { alerts } = setup(t);
+        const video = { codec: 'h264', width: 1920, height: 1080, fps: 25, fieldOrder: 'tt' };
+        const found = alerts({ video });
+        assert.deepEqual(
+            found.map((a) => a.code),
+            ['input-interlaced'],
+        );
+        assert.equal(found[0].severity, 'warning');
+        assert.match(found[0].message, /^Input is interlaced \(1080i25tff\)/);
+        assert.equal(alerts({ video: { ...video, fieldOrder: 'bb' } })[0].code, 'input-interlaced');
+        assert.deepEqual(alerts({ video, connected: false }), []);
+    });
+
+    test('progressive, unknown or unprobed scan does not alert', (t) => {
+        const { alerts } = setup(t);
+        const video = { codec: 'h264', width: 1920, height: 1080, fps: 50 };
+        for (const fieldOrder of ['progressive', 'unknown', null, undefined]) {
+            assert.deepEqual(alerts({ video: { ...video, fieldOrder } }), [], String(fieldOrder));
+        }
+        assert.deepEqual(alerts({ video: null }), []);
     });
 });
 

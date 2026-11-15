@@ -53,11 +53,12 @@ function formatOutputMemory(output: OutputView): string | null {
 }
 
 // The badges of a running output: one per figure that is off, so a healthy output has
-// none and the Overview's Outputs table is where the full set is read. The bitrate shows
-// when it is below the minimum or, for a copy of a live input with a known rate, outside the
-// band around it (see BITRATE_BADGE_LOW); the CPU when a copy output uses CPU_BADGE_PERCENT
-// or more; the memory from the warning level; the speed when off realtime. A shared
-// encode is judged the same way. Empty when nothing is shown.
+// none and the Overview's Outputs table is where the full set is read. The bitrate shows,
+// in warning colour like the status dot, when it is below the minimum or, for a copy of a
+// live input with a known rate, outside the band around it (see BITRATE_BADGE_LOW); the
+// CPU when a copy output uses CPU_BADGE_PERCENT or more; the memory from the warning
+// level; the speed when off realtime. A shared encode is judged the same way. Empty when
+// nothing is shown.
 export function outputMetricsBadge(output: OutputView, input?: InputHealth): string {
     if (
         output.status !== 'running' ||
@@ -86,9 +87,13 @@ export function outputMetricsBadge(output: OutputView, input?: InputHealth): str
         output.bitrateKbps >= LOW_BITRATE_KBPS &&
         output.bitrateKbps >= expected * BITRATE_BADGE_LOW &&
         output.bitrateKbps <= expected * BITRATE_BADGE_HIGH;
+    const bitrateLow = output.bitrateKbps !== null && output.bitrateKbps < LOW_BITRATE_KBPS;
     const bitrateOff =
-        output.bitrateKbps !== null &&
-        (output.bitrateKbps < LOW_BITRATE_KBPS || (expected !== null && !bitrateAsExpected));
+        output.bitrateKbps !== null && (bitrateLow || (expected !== null && !bitrateAsExpected));
+    // Says why it is shown, in the colour of the status dot's own bitrate warning.
+    const bitrateLabel = bitrateLow
+        ? `bitrate: below ${LOW_BITRATE_KBPS} kbps`
+        : `bitrate: input is ${formatBitrate(expected)}`;
     const cpuOff =
         output.cpuPercent !== null && copiesVideo && output.cpuPercent >= CPU_BADGE_PERCENT;
     const memoryOff =
@@ -98,8 +103,8 @@ export function outputMetricsBadge(output: OutputView, input?: InputHealth): str
     const shown: Array<{ text: string | null; label: string; cls: string }> = [
         {
             text: bitrateOff ? formatBitrate(output.bitrateKbps as number) : null,
-            label: 'bitrate',
-            cls: '',
+            label: bitrateLabel,
+            cls: 'badge-warning',
         },
         {
             text: cpuOff ? formatCpuPercent(output.cpuPercent as number) : null,

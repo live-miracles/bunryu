@@ -34,12 +34,14 @@ describe('output badge: only what is abnormal', () => {
 
     test('shows the bitrate alone when it is off the input', () => {
         const html = outputMetricsBadge(output({ bitrateKbps: 4000, cpuPercent: 2 }), input);
-        assert.match(html, />4\.0 Mbps</);
-        assert.match(html, /title="bitrate"/);
+        assert.match(html, /badge-warning[^>]*title="bitrate: input is 8\.9 Mbps">4\.0 Mbps</);
     });
 
     test('shows a bitrate below the minimum even without a baseline', () => {
-        assert.match(outputMetricsBadge(output({ bitrateKbps: 150 })), /150 kbps/);
+        assert.match(
+            outputMetricsBadge(output({ bitrateKbps: 150 })),
+            /badge-warning[^>]*title="bitrate: below 200 kbps">150 kbps</,
+        );
     });
 
     test('shows the CPU alone from 50% of a core on a copy output', () => {
@@ -93,10 +95,11 @@ describe('output badge: only what is abnormal', () => {
         const badges = [...html.matchAll(/<span class="([^"]*)" title="([^"]*)">([^<]*)<\/span>/g)];
         assert.deepEqual(
             badges.map((b) => b[2]),
-            ['bitrate', 'CPU (% of a core)', 'memory', 'speed (x realtime)'],
+            ['bitrate: input is 8.9 Mbps', 'CPU (% of a core)', 'memory', 'speed (x realtime)'],
         );
         assert.match(badges[2][1], /badge-error/);
         assert.match(badges[3][1], /badge-warning/);
-        assert.ok(!/badge-(error|warning)/.test(badges[0][1] + badges[1][1]));
+        assert.match(badges[0][1], /badge-warning/);
+        assert.ok(!/badge-(error|warning)/.test(badges[1][1]));
     });
 });

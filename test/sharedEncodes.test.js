@@ -346,7 +346,7 @@ describe('Shared encodes card', () => {
             deps(),
         );
 
-        assert.match(html, /title="bitrate">120 kbps</);
+        assert.match(html, /badge-warning[^>]*title="bitrate: below 200 kbps">120 kbps</);
         assert.match(html, /title="memory"/);
         assert.match(html, /title="speed \(x realtime\)"/);
         assert.ok(!/title="CPU/.test(html), 'CPU of a video encode is never flagged');

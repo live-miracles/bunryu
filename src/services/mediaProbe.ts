@@ -34,6 +34,20 @@ export interface ProbeFailure {
 
 const STDERR_TAIL_CHARS = 1000;
 
+// ffprobe's field_order for interlaced video: top or bottom field first.
+const INTERLACED_FIELD_ORDERS = new Set(['tt', 'bb', 'tb', 'bt']);
+
+// The scan of an interlaced video as the dashboard writes it ("1080i25tff"), or null
+// for progressive video and when ffprobe could not tell ("unknown" or no field order).
+export function interlacedScan(
+    video: Pick<SrsStreamVideo, 'height' | 'fps' | 'fieldOrder'> | null | undefined,
+): string | null {
+    if (!video?.fieldOrder || !INTERLACED_FIELD_ORDERS.has(video.fieldOrder)) return null;
+    const field = video.fieldOrder === 'tt' || video.fieldOrder === 'tb' ? 'tff' : 'bff';
+    const rate = video.fps != null ? Math.round(video.fps) : '';
+    return `${video.height > 0 ? video.height : ''}i${rate}${field}`;
+}
+
 export function isProbeUsable(result: ProbeResult | null): boolean {
     const video = result?.video;
     return !!video?.codec && video.width > 0 && video.height > 0;

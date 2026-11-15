@@ -39,6 +39,10 @@ const ERROR_HINTS: Array<[RegExp, string]> = [
         'The destination format cannot carry this codec. RTMP carries H.264/H.265 video with AAC audio; use an SRT destination or re-encode the audio.',
     ],
     [
+        /output bitrate is below/i,
+        'The output sends far less than it should. If the input’s bitrate is fine, FFmpeg may be dropping the video (for example interlaced input): see the input’s Issues and the output’s History.',
+    ],
+    [
         /falling behind/i,
         'The output cannot keep up with live. Check that the destination and the network are healthy and the server has CPU headroom; the input itself may also be delivering slowly.',
     ],
@@ -70,6 +74,8 @@ const ALERT_HINTS: Record<string, string> = {
         'The input is arriving faster than its nominal rate: check the encoder’s frame rate setting and clock.',
     'input-keyframe-interval':
         'Set the encoder’s keyframe interval to 2 s (never more than 4 s); with a longer one platforms may reject the stream and previews start late.',
+    'input-interlaced':
+        'Set the encoder’s output to progressive scan (1080p, not 1080i). With interlaced video an RTMP output can end up sending audio only.',
     'input-flapping':
         'Check the encoder (power, crashes, cabling) and its uplink; the pipeline log lists each disconnect.',
     'relay-forwarding-stalled':

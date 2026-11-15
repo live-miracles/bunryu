@@ -7,7 +7,8 @@ import {
     formatBitrate,
     formatLocalTime,
 } from '../core/utils.js';
-import { displayInputBitrateKbps, inputStatusMessage } from '../core/status.js';
+import { displayInputBitrateKbps, inputHealth, inputStatusMessage } from '../core/status.js';
+import { issueLinesHtml } from './status-tooltip.js';
 import type { InputHealth } from '../types.js';
 
 type InputStatsOptions = {
@@ -70,6 +71,10 @@ export function renderInputStats(input: InputHealth, options: InputStatsOptions)
         : '';
     const keyframes = input.keyframes;
     const keyframesTooLong = (input.alerts ?? []).some((a) => a.code === 'input-keyframe-interval');
+    // The same issues the status dot lists on hover (no audio, a low bitrate, the input
+    // alerts with their hints), so a warning is never only in a tooltip.
+    const issues = inputHealth(input).issues;
+    const issuesHtml = issues.length > 0 ? `<div class="mt-2">${issueLinesHtml(issues)}</div>` : '';
     const row = (label: string, value: string) =>
         `<span class="text-muted">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;
 
@@ -83,6 +88,7 @@ export function renderInputStats(input: InputHealth, options: InputStatsOptions)
             ${audioLines.length > 0 ? row('Audio', audioLines.join('<br>')) : ''}
             ${keyframes ? row('Keyframes', `<span class="${keyframesTooLong ? 'text-warning' : ''}" title="Measured over ${keyframes.windowSec} s of video about a minute after the publisher connected. Platforms need a keyframe at least every 4 s; 2 s is recommended.">${escapeHtml(keyframeSpec(keyframes))}</span>`) : ''}
         </div>
+        ${issuesHtml}
         ${v ? '' : renderMediaProbeNotice(input)}
         ${options.directSrt ? renderDirectSrtNotice(options.relayPort) : ''}
     `;

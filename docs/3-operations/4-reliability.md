@@ -373,6 +373,18 @@ ffprobe processes at once; a queued check whose publisher changed is dropped. Th
 cost and the reasons are in the
 [design decision](../4-reference/3-design-decisions.md#measure-the-keyframe-interval-once-per-publisher-in-a-second-ffprobe-and-only-report-it).
 
+## Interlaced input
+
+When ffprobe reports the input's video as interlaced (top or bottom field first, shown
+as `1080i25tff` in the pipeline panel), the pipeline gets an `input-interlaced`
+warning alert for as long as that publisher is connected. It is reporting only:
+nothing is restarted or converted. YouTube and other RTMP platforms need progressive
+video, and on 2026-11-15 a 1080i SRT input left every copy output of a pipeline
+sending only audio (about 58 kb/s of a 9 Mb/s input) while the FFmpeg processes ran
+as if healthy and logged `non-existing PPS 0 referenced`. Setting the encoder to
+progressive fixed it. The reason is in the
+[design decision](../4-reference/3-design-decisions.md#warn-about-interlaced-input-do-not-convert-or-refuse-it).
+
 ## Flapping inputs
 
 When an input disconnects 3 or more times within 5 minutes (a bad uplink, a
@@ -382,7 +394,7 @@ than 3 disconnects remain inside the window. Each disconnect is still its own li
 the pipeline log; the alert is what makes a pattern visible without reading it.
 
 Input alerts (`input-flapping`, `input-low-framerate`, `input-high-framerate`,
-`input-keyframe-interval`) belong
+`input-keyframe-interval`, `input-interlaced`) belong
 to the input itself, so they show on every input, RTMP included: the pipeline's
 status icon and the Inputs table's status and Issues column turn to warning, with the
 time the alert began. The SRT link-quality alerts (loss, drops, retransmissions,

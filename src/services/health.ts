@@ -606,6 +606,7 @@ export function createHealthService(
                     nominalFps: probedMedia?.video?.fps ?? null,
                     connected: displayConnected,
                     keyframes,
+                    video: probedMedia?.video ?? null,
                 },
                 now,
             );

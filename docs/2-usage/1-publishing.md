@@ -187,6 +187,15 @@ and recommends 2 s; with a longer interval the pipeline gets a warning alert, an
 preview starts late. Set the encoder's keyframe interval to 2 s (the commands above
 do). **Preview** plays the input in the dashboard.
 
+Whatever is wrong with the input (no audio track, a very low bitrate, an alert) is
+listed in yellow under these lines with advice, and in the hover text of the input's
+status dot.
+
+Send **progressive** video (`1080p50`, not `1080i25`): the dashboard writes the scan in
+the stream specification, and an interlaced input gets a warning alert, because RTMP
+destinations such as YouTube need progressive video and an output can end up sending
+only audio. Set the encoder's output to progressive scan.
+
 ### Preview
 
 The preview is an HLS stream made by the server's FFmpeg. The input's video is

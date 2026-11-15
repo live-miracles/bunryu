@@ -119,6 +119,7 @@ export const INPUT_ALERT_CODES = new Set([
     'input-flapping',
     'input-low-framerate',
     'input-high-framerate',
+    'input-interlaced',
     'input-keyframe-interval',
 ]);
 

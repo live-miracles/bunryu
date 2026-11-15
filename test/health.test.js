@@ -1187,7 +1187,13 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         // One pipeline; the probe answers the stream JSON, the keyframe call `keyframeAnswer`.
         async function keyframes(
             t,
-            { gop, keyframeError = null, hangKeyframe = null, settleFirst = true },
+            {
+                gop,
+                keyframeError = null,
+                hangKeyframe = null,
+                settleFirst = true,
+                fieldOrder = null,
+            },
         ) {
             let cid = 'cid-1';
             t.mock.method(globalThis, 'fetch', async (url) => {
@@ -1218,6 +1224,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                                     width: 1920,
                                     height: 1080,
                                     r_frame_rate: '50/1',
+                                    ...(fieldOrder ? { field_order: fieldOrder } : {}),
                                 },
                             ],
                         }),
@@ -1280,6 +1287,22 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             assert.equal(event.tooLong, true);
             assert.equal(event.maxGapSec, 6);
             assert.equal(ctx.db.logs.filter((l) => l.event === 'keyframe_interval').length, 1);
+            ctx.shutdown();
+        });
+
+        test('an interlaced probe raises input-interlaced', async (t) => {
+            const ctx = await keyframes(t, { gop: 2, fieldOrder: 'tt' });
+            const alert = (await ctx.snapshot()).alerts.find((a) => a.code === 'input-interlaced');
+            assert.ok(alert);
+            assert.equal(alert.severity, 'warning');
+            assert.match(alert.message, /1080i50tff/);
+            ctx.shutdown();
+        });
+
+        test('a progressive probe does not', async (t) => {
+            const ctx = await keyframes(t, { gop: 2, fieldOrder: 'progressive' });
+            const alerts = (await ctx.snapshot()).alerts;
+            assert.ok(!alerts.some((a) => a.code === 'input-interlaced'));
             ctx.shutdown();
         });
 

@@ -11,7 +11,8 @@ import {
     outputMetricsBadge,
 } from './output-badges.js';
 import { errorHint } from '../core/hints.js';
-import { lastErrorLine, outputHealth, statusColor } from '../core/status.js';
+import { lastErrorLine, outputHealth, statusColor, type StatusIssue } from '../core/status.js';
+import { issueLinesHtml } from './status-tooltip.js';
 
 // outputId lets an output card leave itself out of its own duplicate list.
 export type DupRef = { pipelineName: string; outputName?: string; outputId?: string };
@@ -102,8 +103,9 @@ function currentErrorLine(output: OutputView): string {
     return output.lastErrorAt === null ? '' : lastErrorLine(output);
 }
 
-// Every warning the card shows, whether reported by the running output, a
-// destination shared with another output or advice about the encoding settings.
+// Every warning the card shows, whether reported by the running output, one behind the
+// status dot (outputHealth: a low bitrate, waiting to start), a destination shared with
+// another output or advice about the encoding settings. A yellow dot always has a line.
 function outputWarnings(
     output: OutputView,
     input: InputHealth,
@@ -112,10 +114,18 @@ function outputWarnings(
     const otherDupRefs = (output.url ? (dupUrls.get(output.url) ?? []) : []).filter(
         (ref) => ref.outputId !== output.id,
     );
+    const own = output.warningReason
+        ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
+        : [];
+    const fromHealth = outputHealth(output, input)
+        .issues.filter(
+            (issue) =>
+                issue.severity === 'warning' && !own.some((w) => w.message === issue.message),
+        )
+        .map((issue) => ({ message: issue.message }));
     return [
-        ...(output.warningReason
-            ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
-            : []),
+        ...own,
+        ...fromHealth,
         ...(otherDupRefs.length > 0
             ? [
                   {
@@ -226,6 +236,22 @@ export function renderOutputCard(
         ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
     const warnings = outputWarnings(output, input, dupUrls);
+    // The dot's hover text: the same problems as the lines below, so it never shows
+    // a colour without the reason. A healthy output has nothing to say.
+    const dotIssues: StatusIssue[] = [
+        ...outputHealth(output, input).issues.filter((issue) => issue.severity === 'error'),
+        ...warnings.map(({ message, sinceMs }) => ({
+            severity: 'warning' as const,
+            message,
+            hint: errorHint(message) ?? undefined,
+            sinceMs: sinceMs ?? undefined,
+        })),
+    ];
+    const statusDot = `<div aria-label="status" class="status status-lg mx-1 shrink-0" style="background-color: ${statusHex}"></div>`;
+    const statusDotHtml =
+        dotIssues.length > 0
+            ? `<span class="js-tooltip shrink-0 inline-flex" tabindex="0">${statusDot}<div class="js-tooltip-content hidden">${issueLinesHtml(dotIssues)}</div></span>`
+            : statusDot;
     const warningsHtml = warnings
         .map(
             ({
@@ -251,7 +277,7 @@ export function renderOutputCard(
     <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0" data-output-card="${output.id}" ${cardTint}>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">
-                <div aria-label="status" class="status status-lg mx-1 shrink-0" style="background-color: ${statusHex}"></div>
+                ${statusDotHtml}
                 <button class="btn btn-xs btn-square shrink-0 ${isStopped ? 'btn-primary' : 'btn-outline btn-stop'}"
                     data-action="${isStopped ? 'start' : 'stop'}" data-out-id="${output.id}"
                     title="${isStopped ? 'Start' : 'Stop'}" aria-label="${isStopped ? 'Start' : 'Stop'}"${isPending ? ' disabled' : ''}>

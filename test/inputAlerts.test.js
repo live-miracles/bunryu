@@ -64,6 +64,7 @@ describe('input-level alerts', () => {
         assert.deepEqual([...INPUT_ALERT_CODES].sort(), [
             'input-flapping',
             'input-high-framerate',
+            'input-interlaced',
             'input-keyframe-interval',
             'input-low-framerate',
         ]);

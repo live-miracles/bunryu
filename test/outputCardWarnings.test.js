@@ -56,6 +56,37 @@ describe('RTMP input with Track 1 audio on an RTMP output', () => {
     });
 });
 
+describe('a yellow status dot always says why', () => {
+    // A copy output sending far less than the input: the dot is yellow because of the
+    // low bitrate, so the card names it on a line and in the dot's hover text.
+    test('a low bitrate is a warning line and the dot has a tooltip with it', () => {
+        const html = render({ bitrateKbps: 58 });
+
+        assert.match(html, /text-xs text-warning[^>]*>Output bitrate is below 200 kb\/s\./);
+        assert.match(
+            html,
+            /<span class="js-tooltip[^"]*"[^>]*><div aria-label="status"[^>]*><\/div><div class="js-tooltip-content hidden">.*Output bitrate is below 200 kb\/s\./,
+        );
+    });
+
+    test('a warning the output reports itself is listed once', () => {
+        const html = render({ warningReason: 'Timestamps are jumping' });
+
+        assert.equal(html.match(/<span class="text-warning shrink-0">/g).length, 1); // one card line
+        assert.match(
+            html,
+            /<div aria-label="status"[^>]*><\/div><div class="js-tooltip-content hidden">.*Timestamps are jumping/,
+        );
+    });
+
+    test('a healthy output has a plain dot and no extra line', () => {
+        const html = render({ bitrateKbps: 5000 });
+
+        assert.ok(!/js-tooltip-content/.test(html));
+        assert.ok(!/text-warning/.test(html));
+    });
+});
+
 describe('output stopped after repeated failed attempts', () => {
     const stoppedAfterFailures = (over) =>
         render({

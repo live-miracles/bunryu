@@ -182,9 +182,11 @@ The output card shows status and uptime, and a small badge for each figure that 
 with its own tooltip; a healthy output has none (every figure, per output, is in the
 Overview's Outputs table). The badges are:
 
-- **Bitrate**, when it is below 60% or above 140% of the input's (the output copies the
-  video and the input's rate is known), or below 200 kbps. Without an input rate to compare
-  with, only the 200 kbps floor applies.
+- **Bitrate** (yellow, as the status dot is), when it is below 60% or above 140% of the
+  input's (the output copies the video and the input's rate is known), or below 200 kbps.
+  Without an input rate to compare with, only the 200 kbps floor applies. Its tooltip says
+  which. A copy output at a few dozen kbps from a multi-Mbps input is sending audio only:
+  look at the input's Issues (an interlaced input is one cause).
 - **CPU**, from 50% of a core on an output that copies the video. An output with a video
   encode is expected to be busy, so its CPU is not flagged.
 - **Memory**, from 70% of the output's limit (yellow; red from 90%).
@@ -216,6 +218,9 @@ unresolvable host, a failed SRT handshake, an output falling behind realtime) th
 adds an info icon to the line; hover or focus it for a "Hint:" with what to check first.
 The pipeline alerts show their hint as a muted line. An error it has no advice for is
 shown as is.
+The card's status dot says the same on hover: every error and warning on the card, with
+the hint. A yellow dot always has a line on the card (for example "Output bitrate is
+below 200 kb/s."); a healthy output's dot has no hover text.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.
 

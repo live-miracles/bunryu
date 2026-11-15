@@ -150,7 +150,16 @@ describe('renderInputStats', () => {
         assert.match(ok, /every 2\.0 s/);
         assert.ok(!/text-warning[^>]*>every/.test(ok));
         const bad = renderInputStats(
-            input({ keyframes, alerts: [{ code: 'input-keyframe-interval' }] }),
+            input({
+                keyframes,
+                alerts: [
+                    {
+                        severity: 'warning',
+                        code: 'input-keyframe-interval',
+                        message: 'Keyframes too far apart.',
+                    },
+                ],
+            }),
             {},
         );
         assert.match(bad, /text-warning[^>]*>every 6\.0 s/);
@@ -163,6 +172,44 @@ describe('renderInputStats', () => {
             /class="text-warning"[^>]*>150 kbps/,
         );
         assert.ok(!/text-warning/.test(renderInputStats(input({ recvBitrateKbps: 900 }), {})));
+    });
+
+    test('prints what is wrong with the input as text, not only in the status dot', () => {
+        const noAudio = renderInputStats(input({ audioTracks: [], audio: null }), {});
+        assert.match(noAudio, /text-warning[^>]*>No audio track detected in input\./);
+        assert.match(
+            renderInputStats(input({ recvBitrateKbps: 150, uptimeMs: 60_000 }), {}),
+            />Input bitrate is below 200 kb\/s\./,
+        );
+    });
+
+    test('prints an input alert with its hint', () => {
+        const html = renderInputStats(
+            input({
+                alerts: [
+                    {
+                        severity: 'warning',
+                        code: 'input-interlaced',
+                        message: 'Input is interlaced (1080i25tff).',
+                        sinceMs: Date.now() - 60_000,
+                    },
+                ],
+            }),
+            {},
+        );
+        assert.match(html, />Input is interlaced \(1080i25tff\)\./);
+        assert.match(html, /Hint: Set the encoder/);
+        assert.match(html, /since 1 min ago/);
+    });
+
+    test('a healthy input prints no issue lines', () => {
+        const html = renderInputStats(input({ recvBitrateKbps: 900 }), {});
+        assert.ok(!/text-warning|text-error|Hint:/.test(html));
+    });
+
+    test('an input still being probed shows its notice once, not also as an issue', () => {
+        const html = renderInputStats(input({ mediaOk: null, live: true }), {});
+        assert.equal(html.match(/Waiting for ffprobe/g).length, 1);
     });
 
     test('prefers the relay-reported source IP', () => {

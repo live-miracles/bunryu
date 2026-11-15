@@ -60,6 +60,7 @@ describe('alertHint', () => {
             'input-bitrate-collapse',
             'input-low-framerate',
             'input-keyframe-interval',
+            'input-interlaced',
             'input-flapping',
             'relay-forwarding-stalled',
         ]) {

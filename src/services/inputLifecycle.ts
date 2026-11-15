@@ -1,5 +1,5 @@
 import type { Db } from '../types.js';
-import type { SrsStream } from '../utils/srs.js';
+import type { SrsStream, SrsStreamVideo } from '../utils/srs.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import { formatDuration } from '../utils/duration.js';
 import { createPipelineMaps } from '../utils/pipelineMaps.js';
@@ -7,6 +7,7 @@ import type { PipelineAlert } from '../utils/srtLinkAlerts.js';
 import type { OutputService } from './outputs.js';
 import type { InputProtocol, InputState } from './inputState.js';
 import {
+    interlacedScan,
     keyframeIntervalTooLong,
     keyframeSummary,
     type KeyframeStats,
@@ -77,6 +78,8 @@ export interface InputAlertSources {
     nominalFps: number | null;
     connected: boolean;
     keyframes: (KeyframeStats & { checkedAt: number }) | null;
+    // The video ffprobe reports for the publisher (its scan type, for the interlaced alert).
+    video: SrsStreamVideo | null;
 }
 
 export function createInputLifecycle({
@@ -246,7 +249,8 @@ export function createInputLifecycle({
         },
 
         // The input's own alerts for this poll: a frame rate off the probed one, keyframes
-        // too far apart, an input that keeps disconnecting, a publisher that just changed.
+        // too far apart, interlaced video, an input that keeps disconnecting, a publisher
+        // that just changed.
         alerts(pipelineId: number, sources: InputAlertSources, now: number): PipelineAlert[] {
             const alerts: PipelineAlert[] = [];
             const inputFps = measureFps(pipelineId, sources.fpsStream, now);
@@ -268,6 +272,17 @@ export function createInputLifecycle({
                     code: 'input-keyframe-interval',
                     message: `Input keyframes are too far apart: ${keyframeSummary(keyframes)}`,
                     sinceMs: keyframes.checkedAt,
+                });
+            }
+            // Seen on 2026-11-15: a 1080i input to YouTube left every copy output sending only
+            // audio (about 58 kb/s of a 9 Mb/s input) while the process ran as if fine.
+            const scan = sources.connected ? interlacedScan(sources.video) : null;
+            if (scan) {
+                alerts.push({
+                    severity: 'warning',
+                    code: 'input-interlaced',
+                    message: `Input is interlaced (${scan}); RTMP destinations such as YouTube need progressive video.`,
+                    sinceMs: now,
                 });
             }
             const recentDisconnects = (disconnectsAt.get(pipelineId) ?? []).filter(
