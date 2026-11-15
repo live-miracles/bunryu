@@ -9,6 +9,7 @@ import {
 } from '../core/utils.js';
 import { displayInputBitrateKbps, inputHealth, inputStatusMessage } from '../core/status.js';
 import { issueLinesHtml } from './status-tooltip.js';
+import { ICON_RESTART } from './output-badges.js';
 import type { InputHealth } from '../types.js';
 
 type InputStatsOptions = {
@@ -31,11 +32,14 @@ function formatMediaProbeStatus(input: InputHealth): string | null {
     return null;
 }
 
+// Asks the server for a fresh ffprobe of the connected input; render.ts handles the click.
+const REPROBE_BUTTON = `<button class="btn btn-xs btn-square btn-ghost shrink-0" data-action="reprobe" title="Probe the input again" aria-label="Probe the input again">${ICON_RESTART}</button>`;
+
 function renderMediaProbeNotice(input: InputHealth): string {
     const message = inputStatusMessage(input);
     const toneClass = input.mediaError ? 'text-error' : input.live ? 'text-muted' : 'text-warning';
     const probeStatus = input.mediaError ? null : formatMediaProbeStatus(input);
-    return `<p class="text-xs ${toneClass} mt-2">${escapeHtml(message)}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>`;
+    return `<div class="mt-2 flex items-start justify-between gap-2"><p class="text-xs ${toneClass}">${escapeHtml(message)}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>${REPROBE_BUTTON}</div>`;
 }
 
 function renderDirectSrtNotice(relayPort: number | undefined): string {
@@ -69,6 +73,7 @@ export function renderInputStats(input: InputHealth, options: InputStatsOptions)
     const probed = input.mediaCheckedAt
         ? `<span class="text-muted shrink-0" title="When ffprobe last read the input: ${formatLocalTime(input.mediaCheckedAt)}">probed ${formatAgo(input.mediaCheckedAt, healthNowMs())}</span>`
         : '';
+    const probedWithButton = `<span class="flex shrink-0 items-center gap-1">${probed}${REPROBE_BUTTON}</span>`;
     const keyframes = input.keyframes;
     const keyframesTooLong = (input.alerts ?? []).some((a) => a.code === 'input-keyframe-interval');
     // The same issues the status dot lists on hover (no audio, a low bitrate, the input
@@ -83,7 +88,7 @@ export function renderInputStats(input: InputHealth, options: InputStatsOptions)
     return `
         <div class="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-0.5 text-xs">
             <span class="text-muted">Source</span>
-            <div class="flex min-w-0 justify-between gap-2"><span class="font-mono">${source}</span>${probed}</div>
+            <div class="flex min-w-0 justify-between gap-2"><span class="font-mono">${source}</span>${probedWithButton}</div>
             ${row('Video', v ? escapeHtml(v) : '—')}
             ${audioLines.length > 0 ? row('Audio', audioLines.join('<br>')) : ''}
             ${keyframes ? row('Keyframes', `<span class="${keyframesTooLong ? 'text-warning' : ''}" title="Measured over ${keyframes.windowSec} s of video about a minute after the publisher connected. Platforms need a keyframe at least every 4 s; 2 s is recommended.">${escapeHtml(keyframeSpec(keyframes))}</span>`) : ''}

@@ -39,7 +39,12 @@ import type {
     SrtBondingLeg,
     VideoInfo,
 } from '../types.js';
-import { updateLayoutOrder, updatePipeline, updatePipelineGroups } from '../core/api.js';
+import {
+    reprobeInput,
+    updateLayoutOrder,
+    updatePipeline,
+    updatePipelineGroups,
+} from '../core/api.js';
 import {
     dupTooltip,
     formatOutputName,
@@ -1357,7 +1362,13 @@ function renderPipelineInfo(selectedId: string | null): void {
         relayPort: state.health.srtRelay?.port,
     });
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
-    if (statsEl) statsEl.innerHTML = inputHtml;
+    if (statsEl) {
+        statsEl.innerHTML = inputHtml;
+        statsEl.onclick = (e) => {
+            const btn = (e.target as Element).closest('[data-action="reprobe"]');
+            if (btn) void reprobeInput(pipeline.id);
+        };
+    }
     renderSharedEncodes(pipeline, {
         ffmpegHealth: (rendition) => outputHealth(rendition, pipeline.input, false),
         inputHealth,

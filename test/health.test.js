@@ -1628,6 +1628,107 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         });
     });
 
+    describe('POST /api/pipelines/:id/reprobe', () => {
+        function post(app, url) {
+            return new Promise((resolve, reject) => {
+                const req = new MockRequest();
+                req.method = 'POST';
+                req.url = url;
+                const res = new MockResponse((body) => resolve({ status: res.statusCode, body }));
+                app.handle(req, res, reject);
+            });
+        }
+
+        // One live RTMP pipeline whose ffprobe calls are counted, and a second one that is idle.
+        async function reprobeSetup(t) {
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({
+                        code: 0,
+                        streams: [streamFixture({ publish: { active: true, cid: 'cid-1' } })],
+                    });
+                return jsonResponse({ code: 0, clients: [] });
+            });
+            const createHealthService = loadHealthService(t);
+            const probeCalls = [];
+            childProcess.execFile.mock.mockImplementation((_cmd, args, _opts, cb) => {
+                probeCalls.push(args.at(-1));
+                queueMicrotask(() =>
+                    cb(
+                        null,
+                        JSON.stringify({
+                            streams: [
+                                {
+                                    codec_type: 'video',
+                                    codec_name: 'h264',
+                                    width: 1920,
+                                    height: 1080,
+                                    r_frame_rate: '50/1',
+                                },
+                            ],
+                        }),
+                        '',
+                    ),
+                );
+                return { kill() {} };
+            });
+            const db = makeFakeDb([
+                { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 },
+                { id: 2, name: 'P2', streamKey: 'key02', streamKeyId: 2 },
+            ]);
+            const service = createHealthService(
+                db,
+                makeFakeOutputService(),
+                makeFakeSrtRelay(),
+                makeFakeInputState(),
+            );
+            const app = express();
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
+            service.start();
+            await sleep(300); // first poll and its probe
+            return { app, probeCalls, shutdown: () => service.shutdown() };
+        }
+
+        test('probes the connected input again and answers ok', async (t) => {
+            const ctx = await reprobeSetup(t);
+            assert.equal(ctx.probeCalls.length, 1, 'the poll probed pipeline 1 once');
+            const answer = await post(ctx.app, '/api/pipelines/1/reprobe');
+            assert.equal(answer.status, 200);
+            assert.deepEqual(answer.body, { ok: true });
+            await sleep(100);
+            assert.equal(ctx.probeCalls.length, 2);
+            assert.equal(ctx.probeCalls[1], ctx.probeCalls[0], 'the same stream is read');
+            ctx.shutdown();
+        });
+
+        test('refuses an unknown pipeline and one whose input is not connected', async (t) => {
+            const ctx = await reprobeSetup(t);
+            const unknown = await post(ctx.app, '/api/pipelines/99/reprobe');
+            assert.equal(unknown.status, 404);
+            const idle = await post(ctx.app, '/api/pipelines/2/reprobe');
+            assert.equal(idle.status, 409);
+            assert.match(idle.body.error, /not connected/);
+            const junk = await post(ctx.app, '/api/pipelines/abc/reprobe');
+            assert.equal(junk.status, 404);
+            assert.equal(ctx.probeCalls.length, 1, 'none of them started an ffprobe');
+            ctx.shutdown();
+        });
+
+        test('refuses a second request while the first probe is still running', async (t) => {
+            const ctx = await reprobeSetup(t);
+            // Held open: the fake ffprobe of the reprobe never answers.
+            childProcess.execFile.mock.mockImplementation(() => ({ kill() {} }));
+            const first = await post(ctx.app, '/api/pipelines/1/reprobe');
+            assert.equal(first.status, 200);
+            await sleep(50);
+            const second = await post(ctx.app, '/api/pipelines/1/reprobe');
+            assert.equal(second.status, 409);
+            assert.match(second.body.error, /already running/);
+            ctx.shutdown();
+        });
+    });
+
     test('records one started and one ended event per alert episode', async (t) => {
         const stream = streamFixture();
         t.mock.method(globalThis, 'fetch', async (url) => {

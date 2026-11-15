@@ -345,6 +345,81 @@ describe('probe scheduler', () => {
         assert.equal(scheduler.ensure(1, 'key01', 'rtmp', 1), false, 'already validated');
     });
 
+    test('reprobe() probes at once and keeps the last result until the new one lands', async (t) => {
+        const { scheduler, ffprobe, events, usable, settle } = setup(t);
+        scheduler.ensure(1, 'key01', 'rtmp', 3);
+        t.mock.timers.tick(600);
+        await settle();
+        ffprobe.calls[0].finish(USABLE);
+        await settle();
+        const first = scheduler.status(1);
+        assert.equal(first.ok, true);
+
+        t.mock.timers.tick(5_000);
+        assert.equal(scheduler.reprobe(1, 'key01', 'rtmp'), true);
+        t.mock.timers.tick(0);
+        await settle();
+        assert.equal(ffprobe.calls.length, 2, 'no stagger and no wait for the 30 s retry');
+        assert.equal(scheduler.status(1), first, 'the old result stays on show while it runs');
+        assert.equal(scheduler.inFlightSince(1), 1_005_600);
+
+        ffprobe.calls[1].finish({ ...USABLE, video: { codec: 'h264', width: 1280, height: 720 } });
+        await settle();
+        assert.equal(scheduler.status(1).result.video.width, 1280);
+        assert.equal(scheduler.status(1).checkedAt, 1_005_600);
+        assert.equal(usable.length, 2, 'the new result goes through the usable-probe callback');
+        assert.deepEqual(
+            events.filter((e) => e.event === 'media-probe-requested'),
+            [{ event: 'media-probe-requested', pipelineId: 1, protocol: 'rtmp' }],
+        );
+    });
+
+    test('reprobe() does nothing while a probe is queued or running, or after shutdown()', async (t) => {
+        const { scheduler, ffprobe, settle } = setup(t);
+        scheduler.ensure(1, 'key01', 'rtmp', 1);
+        assert.equal(scheduler.reprobe(1, 'key01', 'rtmp'), false, 'its launch is queued');
+        t.mock.timers.tick(200);
+        await settle();
+        assert.equal(scheduler.reprobe(1, 'key01', 'rtmp'), false, 'it is running');
+        assert.equal(ffprobe.calls.length, 1);
+
+        ffprobe.calls[0].finish(USABLE);
+        await settle();
+        scheduler.shutdown();
+        assert.equal(scheduler.reprobe(1, 'key01', 'rtmp'), false);
+        t.mock.timers.tick(1_000);
+        await settle();
+        assert.equal(ffprobe.calls.length, 1);
+    });
+
+    test('a reprobe that fails after a good probe is recorded and retried every 30 s', async (t) => {
+        t.mock.method(console, 'warn', () => {});
+        const { scheduler, ffprobe, logs, settle } = setup(t);
+        scheduler.ensure(1, 'key01', 'rtmp', 0);
+        t.mock.timers.tick(0);
+        await settle();
+        ffprobe.calls[0].finish(USABLE);
+        await settle();
+
+        scheduler.reprobe(1, 'key01', 'rtmp');
+        t.mock.timers.tick(0);
+        await settle();
+        ffprobe.calls[1].finish(UNUSABLE);
+        await settle();
+        assert.equal(scheduler.status(1).ok, false);
+        assert.equal(scheduler.status(1).failedAttempts, 1);
+        assert.deepEqual(
+            logs.map((l) => l.event),
+            ['probe_failed'],
+        );
+
+        t.mock.timers.tick(30_000);
+        scheduler.ensure(1, 'key01', 'rtmp', 0);
+        t.mock.timers.tick(0);
+        await settle();
+        assert.equal(ffprobe.calls.length, 3, 'the normal retry takes over');
+    });
+
     test('a failing onUsableProbe callback is contained and the result is still kept', async (t) => {
         t.mock.method(console, 'error', () => {});
         const { scheduler, ffprobe, settle } = setup(t, {

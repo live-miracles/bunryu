@@ -226,6 +226,9 @@ export const stopOutput = (pipelineId: string, outId: string) =>
 export const restartOutput = (pipelineId: string, outId: string) =>
     apiRequest(`/api/pipelines/${pipelineId}/outputs/${outId}/restart`, { method: 'POST' });
 
+export const reprobeInput = (pipelineId: string) =>
+    apiRequest(`/api/pipelines/${pipelineId}/reprobe`, { method: 'POST' });
+
 export const getOutputErrorHistory = (pipelineId: string, outId: string) =>
     apiRequest<OutputErrorRecord[]>(`/api/pipelines/${pipelineId}/outputs/${outId}/errors`);
 

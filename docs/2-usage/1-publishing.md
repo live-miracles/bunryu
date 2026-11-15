@@ -187,6 +187,11 @@ and recommends 2 s; with a longer interval the pipeline gets a warning alert, an
 preview starts late. Set the encoder's keyframe interval to 2 s (the commands above
 do). **Preview** plays the input in the dashboard.
 
+The input is probed once when the publisher connects (and again every 30 s while
+the probe fails). After changing something on the encoder without reconnecting it,
+press the refresh button next to **probed ... ago** to read the input again. The
+keyframe interval is measured only once per publisher, so the button does not repeat it.
+
 Whatever is wrong with the input (no audio track, a very low bitrate, an alert) is
 listed in yellow under these lines with advice, and in the hover text of the input's
 status dot.

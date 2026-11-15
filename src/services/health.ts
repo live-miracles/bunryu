@@ -838,6 +838,25 @@ export function createHealthService(
         app.get('/api/health', (_req, res) => {
             res.json(snapshot);
         });
+        app.post('/api/pipelines/:pipelineId/reprobe', (req, res) => {
+            const pipelineId = Number(req.params.pipelineId);
+            const pipeline = db.listPipelines().find((p) => p.id === pipelineId);
+            if (!pipeline) {
+                res.status(404).json({ error: 'Pipeline not found' });
+                return;
+            }
+            const protocol = inputState.getProtocol(pipelineId);
+            if (!protocol) {
+                res.status(409).json({ error: 'Input is not connected' });
+                return;
+            }
+            if (!probes.reprobe(pipelineId, pipeline.streamKey, protocol)) {
+                res.status(409).json({ error: 'An ffprobe is already running for this input' });
+                return;
+            }
+            console.log(`[probe] user reprobe requested: pipeline ${pipelineId} (${protocol})`);
+            res.json({ ok: true });
+        });
         app.get('/api/health/pipelines/:pipelineId/legs/history', (req, res) => {
             const pipelineId = Number(req.params.pipelineId);
             if (

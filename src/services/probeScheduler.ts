@@ -59,6 +59,11 @@ export interface ProbeScheduler {
         protocol: InputProtocol,
         stagger: number,
     ): boolean;
+    // A user asked for a fresh ffprobe of the connected publisher. Starts it now
+    // (no stagger) and keeps the last result on show until the new one lands. False
+    // when one is already queued or running, which will refresh the result anyway,
+    // or after shutdown. The keyframe check is not repeated: it runs once per publisher.
+    reprobe(pipelineId: number, streamKey: string, protocol: InputProtocol): boolean;
     // The publisher changed, the input went away or the pipeline was removed:
     // cancels its timers and kills its ffprobe children, drops its results, and
     // makes anything still in flight discard its result when it lands.
@@ -401,6 +406,13 @@ export function createProbeScheduler({
                 });
             }
             return scheduled;
+        },
+
+        reprobe(pipelineId, streamKey, protocol) {
+            if (stopped || timers.has(pipelineId) || inFlight.has(pipelineId)) return false;
+            diagnostics?.event('media-probe-requested', { pipelineId, protocol });
+            scheduleFfprobe(pipelineId, streamKey, protocol, 0);
+            return true;
         },
 
         clear,
