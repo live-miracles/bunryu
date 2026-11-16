@@ -117,10 +117,6 @@ function createHarness() {
         reconfigure() {
             this.reconfigured += 1;
         },
-        testResult: { ok: true, outputs: 3 },
-        testReport() {
-            return Promise.resolve(this.testResult);
-        },
     };
     registerSettingsApi(
         app,
@@ -623,16 +619,5 @@ describe('Key Vault settings API', () => {
         assert.deepEqual(res.body, { keyVault: null });
         assert.equal(harness.db.getSetting('keyVault'), '');
         assert.equal(harness.keyVault.reconfigured, 2);
-    });
-
-    test('POST /api/settings/key-vault/test answers with the result of one report', async () => {
-        const harness = createHarness();
-        const ok = await harness.request('POST', '/api/settings/key-vault/test');
-        assert.deepEqual(ok.body, { ok: true, outputs: 3 });
-
-        harness.keyVault.testResult = { ok: false, error: 'HTTP 401' };
-        const refused = await harness.request('POST', '/api/settings/key-vault/test');
-        assert.equal(refused.status, 200);
-        assert.deepEqual(refused.body, { ok: false, error: 'HTTP 401' });
     });
 });

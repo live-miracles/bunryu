@@ -264,40 +264,6 @@ describe('Key Vault reporter', () => {
         assert.match(invalid[0].error, /not a valid URL/);
     });
 
-    test('a test report is one attempt, without retries, and leaves the failure log and schedule alone', async () => {
-        const { calls, fetchFn } = recordingFetch(() =>
-            Promise.resolve(new Response(null, { status: 503 })),
-        );
-        // A heartbeat far away, so only the test request is in the count.
-        const h = setup({ fetchFn, options: { ...FAST, heartbeatMs: 60_000 } });
-        h.reporter.start();
-        const result = await h.reporter.testReport();
-        assert.deepEqual(result, { ok: false, error: 'HTTP 503' });
-        assert.equal(calls.length, 1, 'a 503 is retried by the schedule, never by the test');
-        assert.deepEqual(
-            h.events.map((e) => e.event),
-            ['key-vault-reporter-started'],
-        );
-        assert.equal(h.reporter.getState().consecutiveFailures, 0);
-    });
-
-    test('a test report that Key Vault accepts says how many outputs it carried', async () => {
-        const { calls, fetchFn } = recordingFetch();
-        const h = setup({ fetchFn, options: { ...FAST, heartbeatMs: 60_000 } });
-        h.reporter.start();
-        assert.deepEqual(await h.reporter.testReport(), { ok: true, outputs: 1 });
-        assert.equal(calls[0].body.outputs[0].status, 'running');
-    });
-
-    test('a test report without settings says so and sends nothing', async () => {
-        const { calls, fetchFn } = recordingFetch();
-        const h = setup({ fetchFn, config: null });
-        h.reporter.start();
-        const result = await h.reporter.testReport();
-        assert.equal(result.ok, false);
-        assert.equal(calls.length, 0);
-    });
-
     test('sends nothing before the first health poll, then a report right after it', async () => {
         const { calls, fetchFn } = recordingFetch();
         const h = setup({ fetchFn });

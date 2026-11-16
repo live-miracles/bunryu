@@ -44,7 +44,6 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | GET | `/api/pipelines/:id/outputs/:outId/errors` | Output History, oldest first (also for a shared encode). A repeated crash is one record with `count` and `lastTs`; `recoveredTs` is set once the output ran steadily again |
 | POST | `/api/settings/general` | Update the server name and public host `{ name, publicHost? }` |
 | POST | `/api/settings/key-vault` | Save the Key Vault link `{ url, secret? }` and apply it at once. An empty `secret` keeps the saved one (needed the first time); an empty `url` turns the reports off and forgets it. Answers `{ keyVault }`, the link without its secret (`{ url, secretSet }`, or `null` when off). `400` for a value that is not valid or a host that is link-local or unspecified; nothing is saved then |
-| POST | `/api/settings/key-vault/test` | Send one report to the saved link now, without retries. Always `200` with `{ ok: true, outputs }` or `{ ok: false, error }` (for example `HTTP 401`) |
 | POST | `/api/settings/layout-order` | Save the dashboard's pipeline and output order `{ order: [{ id, outs: [outputId] }] }` |
 | POST | `/api/settings/pipeline-groups` | Replace the sidebar pipeline groups `{ groups: [{ id?, name }] }` |
 | POST | `/api/settings/regenerate-stream-keys` | Regenerate all stream keys |

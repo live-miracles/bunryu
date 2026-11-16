@@ -1093,7 +1093,8 @@
                 <p class="text-sm font-medium">Key Vault</p>
                 <p class="text-xs opacity-70">
                   Reports the status of every output to Key Vault once a minute. Leave the link empty to turn it off. This server reports under its
-                  Server Name above. The secret is the one Key Vault shows its owners. It is not shown again once saved; leave it empty to keep it.
+                  Server Name above. Copy the secret from Key Vault. Bunryu does not keep the text itself, so it cannot show it again; leave the box
+                  empty to keep the saved one.
                 </p>
               </div>
               <div class="flex gap-3 max-sm:flex-col">
@@ -1107,8 +1108,6 @@
                     placeholder="https://&lt;project&gt;.supabase.co/functions/v1/ingest"
                     oninput="this.classList.remove('input-error')" />
                 </fieldset>
-              </div>
-              <div class="flex gap-3 max-sm:flex-col">
                 <fieldset class="fieldset min-w-0 flex-1">
                   <legend class="fieldset-legend">Secret</legend>
                   <div class="relative">
@@ -1173,9 +1172,6 @@
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </span>
-                <button id="settings-key-vault-test-btn" type="button" class="btn btn-sm btn-outline" onclick="settingsKeyVaultTestBtn(this)">
-                  Send test report
-                </button>
                 <button type="button" class="btn btn-sm btn-accent" onclick="settingsKeyVaultFormBtn(this)">Save</button>
               </div>
             </div>

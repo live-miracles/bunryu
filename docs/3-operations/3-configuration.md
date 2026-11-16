@@ -132,8 +132,7 @@ persistent journald with a seven-day retention limit, 1 GB system journal cap,
 Key Vault colours each stream key from what Bunryu says about the outputs that use it.
 Set the link in the dashboard, under **Settings > Key Vault**, and Bunryu sends a report
 once a minute, and at once when an output changes status (at most one every 10 s). It
-applies when you save, with no restart; **Send test report** sends one report now and
-shows Key Vault's answer.
+applies when you save, with no restart, and a report is sent at once.
 
 | Field | What to enter |
 |---|---|

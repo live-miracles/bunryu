@@ -72,7 +72,7 @@ export function registerSettingsApi(
     inputState: InputState,
     outputService: OutputService,
     diagnostics: DiagnosticsLogger,
-    keyVaultReporter: Pick<KeyVaultReporter, 'reconfigure' | 'testReport'>,
+    keyVaultReporter: Pick<KeyVaultReporter, 'reconfigure'>,
 ): void {
     app.post('/api/settings/general', (req, res) => {
         const parsedName = parseName(req.body?.name);
@@ -122,11 +122,6 @@ export function registerSettingsApi(
         keyVaultReporter.reconfigure();
         console.log('[settings] Key Vault link saved');
         return res.json({ keyVault: publicKeyVaultConfig(parsed.config) });
-    });
-
-    // One report to the saved link, now, so the operator sees whether it works.
-    app.post('/api/settings/key-vault/test', async (_req, res) => {
-        return res.json(await keyVaultReporter.testReport());
     });
 
     app.post('/api/settings/layout-order', (req, res) => {

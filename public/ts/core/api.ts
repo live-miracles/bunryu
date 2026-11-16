@@ -151,13 +151,6 @@ export const updateKeyVaultSettings = (input: KeyVaultSettingsInput) =>
         body: input,
     });
 
-// A failed report comes back as `ok: false` with the reason, not as an error toast.
-export const testKeyVault = () =>
-    apiRequest<{ ok: true; outputs: number } | { ok: false; error: string }>(
-        '/api/settings/key-vault/test',
-        { method: 'POST', timeoutMs: 20_000 },
-    );
-
 export const updateLayoutOrder = (order: LayoutOrderEntry[]) =>
     apiRequest<{ layoutOrder: LayoutOrderEntry[] }>('/api/settings/layout-order', {
         method: 'POST',

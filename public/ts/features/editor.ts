@@ -119,8 +119,7 @@ function renderKeyVaultForm(): void {
     input('settings-key-vault-url-input').value = saved?.url ?? '';
     const secret = input('settings-key-vault-secret-input');
     secret.value = '';
-    secret.placeholder = saved?.secretSet ? 'Saved; leave empty to keep it' : '';
-    (document.getElementById('settings-key-vault-test-btn') as HTMLButtonElement).disabled = !saved;
+    secret.placeholder = saved?.secretSet ? '•••••••• saved (type a new one to replace it)' : '';
     setKeyVaultResult('');
 }
 
@@ -148,22 +147,6 @@ export async function submitKeyVaultForm(btn?: HTMLButtonElement): Promise<void>
             result.keyVault ? 'Saved. A report is sent now.' : 'Saved. Reports are off.',
         );
         flashSaveSuccess('settings-key-vault-save-success');
-    });
-}
-
-export async function testKeyVaultBtn(btn?: HTMLButtonElement): Promise<void> {
-    setKeyVaultResult('Sending...');
-    await withBusy(btn, async () => {
-        const result = await api.testKeyVault();
-        if (!result) {
-            setKeyVaultResult('');
-            return;
-        }
-        if (result.ok) {
-            setKeyVaultResult(`Key Vault accepted the report (${result.outputs} outputs).`);
-        } else {
-            setKeyVaultResult(`Key Vault did not accept the report: ${result.error}`, true);
-        }
     });
 }
 

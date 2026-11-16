@@ -1386,9 +1386,10 @@ dot, minus the advisory warnings (see
   hash secret sit in the database, like the dashboard password's hash, so they are written
   only and the dashboard reads back `secretSet`; an empty field keeps the saved value. The host is checked with the output destination policy's address
   classes (link-local and unspecified are refused) because an operator-typed URL is a
-  server-side request like an output destination. **Send test report** is one attempt
-  without retries that does not touch the failure episode, so the operator sees the
-  receiver's answer (`HTTP 401`) instead of waiting for the schedule.
+  server-side request like an output destination. A "Send test report" button
+  (one attempt, no retries, showing the receiver's answer such as `HTTP 401`) was removed:
+  saving already sends a report at once, and a failure is logged and retried on the
+  schedule.
 - **One secret, two derived values (November 2026).** The first version asked for two
   random secrets, a token and a hash secret, and they had to be copied to Key Vault and
   here without a mix-up. Now there is one, Key Vault's `KEY_VAULT_SECRET`, and both sides

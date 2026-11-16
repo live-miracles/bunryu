@@ -75,8 +75,6 @@ class ReportError extends Error {
     }
 }
 
-export type TestReportResult = { ok: true; outputs: number } | { ok: false; error: string };
-
 const MAX_HASH_CACHE = 5000;
 
 function errorText(err: unknown): string {
@@ -459,35 +457,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         else requestChangeSend();
     }
 
-    // One report to the saved settings, now and without retries, for the Settings page's
-    // "Send test report": the operator sees at once whether the link works. It does not
-    // change the failure episode or the schedule.
-    async function testReport(): Promise<TestReportResult> {
-        const cfg = config;
-        if (!cfg) return { ok: false, error: 'Key Vault is not set up' };
-        if (inFlight) return { ok: false, error: 'A report is on its way; try again in a moment' };
-        inFlight = true;
-        try {
-            let payload: KeyVaultPayload;
-            try {
-                payload = build();
-            } catch (err) {
-                return { ok: false, error: `could not build the report: ${errorText(err)}` };
-            }
-            const cancel = AbortSignal.any([shutdownController.signal, settingsAbort.signal]);
-            await postOnce(cfg, JSON.stringify(payload), cancel);
-            return { ok: true, outputs: payload.outputs.length };
-        } catch (err) {
-            return { ok: false, error: errorText(err) };
-        } finally {
-            inFlight = false;
-            if (resendRequested) {
-                resendRequested = false;
-                requestChangeSend();
-            }
-        }
-    }
-
     function shutdown(): void {
         stopped = true;
         if (heartbeatTimer) clearTimeout(heartbeatTimer);
@@ -500,7 +469,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     return {
         start,
         reconfigure,
-        testReport,
         shutdown,
         getState: (): KeyVaultReporterState => ({
             enabled: config !== null,
