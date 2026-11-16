@@ -522,7 +522,6 @@ describe('Settings API integration', () => {
 describe('Key Vault settings API', () => {
     const LINK = {
         url: 'https://203.0.113.5/functions/v1/ingest',
-        instance: 'prod',
         token: 'fake-ingest-token-0123456789',
         hashSecret: 'fake-hash-secret-0123456789',
     };
@@ -535,7 +534,6 @@ describe('Key Vault settings API', () => {
         assert.deepEqual(res.body, {
             keyVault: {
                 url: LINK.url,
-                instance: 'prod',
                 tokenSet: true,
                 hashSecretSet: true,
             },
@@ -586,8 +584,6 @@ describe('Key Vault settings API', () => {
             [{ ...LINK, url: 'https://169.254.169.254/latest' }, /not allowed/],
             [{ ...LINK, token: 'has a space' }, /printable ASCII/],
             [{ ...LINK, hashSecret: 'short' }, /at least 16/],
-            [{ ...LINK, instance: '' }, /instance/],
-            [{ ...LINK, instance: 'has space' }, /instance/],
             [{ ...LINK, token: 12345 }, /string/],
         ]) {
             const res = await harness.request('POST', '/api/settings/key-vault', body);

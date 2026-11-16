@@ -10,7 +10,6 @@ const CONFIG = {
     url: 'https://kv.example.invalid/functions/v1/ingest?project=fake',
     token: 'fake-ingest-token-0123456789',
     hashSecret: 'fake-hash-secret-0123456789',
-    instance: 'test',
 };
 const DESTINATION = 'rtmp://a.rtmp.youtube.com/live2/fake-0000-0000-0000-0000';
 
@@ -58,6 +57,8 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
     const world = {
         health: entry(),
         live: true,
+        // The server name from Settings.
+        instance: 'test',
         throwOnList: false,
         // What Settings holds now; a test changes it and calls reporter.reconfigure().
         config,
@@ -99,6 +100,7 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
             if (world.config instanceof Error) throw world.config;
             return world.config;
         },
+        getInstance: () => world.instance,
         db: fakeDb,
         health: {
             onSnapshot: (listener) => listeners.push(listener),
@@ -174,16 +176,27 @@ describe('Key Vault reporter', () => {
             url: 'https://other.example.invalid/ingest',
             token: 'another-token-0123456789',
             hashSecret: 'another-secret-0123456789',
-            instance: 'second',
         };
         h.reporter.reconfigure();
         await waitFor(() => calls.length === 2);
         assert.equal(calls[1].url, 'https://other.example.invalid/ingest');
         assert.equal(calls[1].init.headers.Authorization, 'Bearer another-token-0123456789');
-        assert.equal(calls[1].body.instance, 'second');
         assert.notEqual(calls[1].body.outputs[0].hash, oldHash, 'hashed with the new secret');
         await wait(FAST.heartbeatMs * 0.5);
         assert.ok(calls.slice(1).every((c) => c.url === 'https://other.example.invalid/ingest'));
+    });
+
+    test('reports under the server name, and a rename shows in the next report', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => calls.length === 1);
+        assert.equal(calls[0].body.instance, 'test');
+
+        h.world.instance = 'Studio B';
+        await waitFor(() => calls.length === 2, 3000);
+        assert.equal(calls[1].body.instance, 'Studio B', 'the heartbeat reads the name again');
     });
 
     test('settings changed while a report is on its way cancel it and send the new one', async () => {

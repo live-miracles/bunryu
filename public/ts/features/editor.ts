@@ -117,7 +117,6 @@ function renderKeyVaultForm(): void {
     const saved = state.config.keyVault ?? null;
     const input = (id: string) => document.getElementById(id) as HTMLInputElement;
     input('settings-key-vault-url-input').value = saved?.url ?? '';
-    input('settings-key-vault-instance-input').value = saved?.instance ?? '';
     for (const [id, isSet] of [
         ['settings-key-vault-token-input', saved?.tokenSet],
         ['settings-key-vault-secret-input', saved?.hashSecretSet],
@@ -139,25 +138,18 @@ function setKeyVaultResult(message: string, isError = false): void {
 export async function submitKeyVaultForm(btn?: HTMLButtonElement): Promise<void> {
     const input = (id: string) => document.getElementById(id) as HTMLInputElement;
     const url = input('settings-key-vault-url-input').value.trim();
-    const instance = input('settings-key-vault-instance-input').value.trim();
     const token = input('settings-key-vault-token-input').value.trim();
     const hashSecret = input('settings-key-vault-secret-input').value.trim();
     for (const id of [
         'settings-key-vault-url-input',
-        'settings-key-vault-instance-input',
         'settings-key-vault-token-input',
         'settings-key-vault-secret-input',
     ]) {
         input(id).classList.remove('input-error');
     }
-    if (url && !instance) {
-        input('settings-key-vault-instance-input').classList.add('input-error');
-        api.showError('Enter an instance name for this server, for example "prod".');
-        return;
-    }
 
     await withBusy(btn, async () => {
-        const result = await api.updateKeyVaultSettings({ url, instance, token, hashSecret });
+        const result = await api.updateKeyVaultSettings({ url, token, hashSecret });
         if (!result) return;
         await refreshAfterMutation();
         renderKeyVaultForm();

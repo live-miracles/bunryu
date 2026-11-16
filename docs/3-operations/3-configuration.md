@@ -138,7 +138,6 @@ shows Key Vault's answer.
 | Field | What to enter |
 |---|---|
 | Link | Key Vault's ingest endpoint, such as `https://<project>.supabase.co/functions/v1/ingest`. `https`, or `http` only for `localhost` (a test receiver); no credentials in it, and not a link-local or unspecified address |
-| Instance | Names this server to Key Vault, for example `prod`. Letters, digits, `.`, `_` and `-`, up to 64 |
 | Token | The ingest token from Key Vault, sent as `Authorization: Bearer <token>`. Printable ASCII without spaces |
 | Hash secret | The secret shared with Key Vault for the hash of each destination URL. At least 16 characters |
 
@@ -147,6 +146,10 @@ format goes. The token and secret are never shown again: leave them empty to kee
 saved ones, and clear the link to turn the reports off (this also forgets them). They
 are stored in the database, like the server name, and the dashboard and
 [API](../4-reference/1-api.md) return only whether they are set.
+
+Key Vault tells servers apart by the report's `instance`, which is this server's
+**Server Name** (**Settings > General**). Give each server that reports to the same Key Vault
+its own name. A rename shows in the next report, within a minute.
 
 The report is a JSON `POST` with the token as a bearer token:
 

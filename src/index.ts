@@ -14,7 +14,7 @@ import { createHealthService } from './services/health.js';
 import { createResourceUsage } from './services/resourceUsage.js';
 import { registerPipelineApi } from './api/pipelines.js';
 import { registerOutputApi } from './api/outputs.js';
-import { registerConfigApi } from './api/config.js';
+import { registerConfigApi, serverNameOf } from './api/config.js';
 import { registerMetricsApi } from './api/metrics.js';
 import { registerSettingsApi } from './api/settings.js';
 import { createPreviewService } from './services/preview.js';
@@ -139,6 +139,7 @@ const healthService = createHealthService(
     resourceUsage.processUsage,
 );
 const keyVaultReporter = createKeyVaultReporter({
+    getInstance: () => serverNameOf(db),
     getConfig: () => {
         const { config, problem } = readStoredKeyVault(db.getSetting(KEY_VAULT_SETTING));
         if (problem) throw new Error(problem);

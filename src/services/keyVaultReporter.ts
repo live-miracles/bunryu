@@ -40,6 +40,9 @@ export interface KeyVaultReporterDeps {
     // The saved settings; null means off. It may throw when the stored value cannot be
     // used: that is logged and the reporter stays off. Read at start() and reconfigure().
     getConfig: () => KeyVaultConfig | null;
+    // The name this server reports under: the server name from Settings, read for every
+    // report so that a rename needs no new settings.
+    getInstance: () => string;
     db: Pick<Db, 'listPipelines' | 'listOutputs' | 'getOutputErrorHistory'>;
     health: {
         onSnapshot(listener: (snapshot: HealthSnapshot) => void): void;
@@ -141,6 +144,17 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         endpoint = endpointOf(config);
     }
 
+    // For logs and diagnostics only: a failing read of the name must not break the
+    // failure path that is reporting something else. (build() reads it unguarded; its
+    // failure is reported as a build failure.)
+    function instanceForLog(): string {
+        try {
+            return deps.getInstance();
+        } catch {
+            return '(unknown)';
+        }
+    }
+
     function hashOf(url: string): string {
         let hash = hashCache.get(url);
         if (hash === undefined) {
@@ -161,7 +175,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
 
     function build(): KeyVaultPayload {
         return buildPayload({
-            instance: config!.instance,
+            instance: deps.getInstance(),
             hashSecret: config!.hashSecret,
             pipelines: db.listPipelines(),
             outputs: db.listOutputs(),
@@ -255,7 +269,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             `[key-vault] report to ${endpoint} failed: ${error} (further failures are not logged until it recovers)`,
         );
         diagnostics?.event('key-vault-report-failed', {
-            instance: config!.instance,
+            instance: instanceForLog(),
             endpoint,
             reason,
             error,
@@ -273,7 +287,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             `[key-vault] reporting to ${endpoint} recovered after ${failedReports} failed report(s)`,
         );
         diagnostics?.event('key-vault-report-recovered', {
-            instance: config!.instance,
+            instance: instanceForLog(),
             endpoint,
             failedReports,
             downMs: now() - sinceMs,
@@ -386,9 +400,10 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
 
     function logStarted(): void {
         if (!config) return;
-        console.log(`[key-vault] reporting to ${endpoint} as "${config.instance}"`);
+        const instance = instanceForLog();
+        console.log(`[key-vault] reporting to ${endpoint} as "${instance}"`);
         diagnostics?.event('key-vault-reporter-started', {
-            instance: config.instance,
+            instance,
             endpoint,
             heartbeatMs: options.heartbeatMs,
             minChangeIntervalMs: options.minChangeIntervalMs,
@@ -430,7 +445,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         episode = null;
         diagnostics?.event('key-vault-settings-changed', {
             enabled: config !== null,
-            instance: config?.instance ?? null,
+            instance: config ? instanceForLog() : null,
             endpoint,
         });
         if (!config) {

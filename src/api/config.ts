@@ -36,6 +36,12 @@ function parseLayoutOrder(raw: string | null): { id: number; outs: string[] }[] 
     }
 }
 
+// The name the operator gave this server in Settings. It is also how the Key Vault
+// reports name this server, so a rename shows up there with the next report.
+export function serverNameOf(db: Pick<Db, 'getSetting'>): string {
+    return db.getSetting('serverName') ?? 'Bunryu';
+}
+
 export function registerConfigApi(app: Express, db: Db): void {
     app.get('/api/config', (_req, res) => {
         // srtPassphrase feeds the relay URL (relay listener, port 10081);
@@ -64,7 +70,7 @@ export function registerConfigApi(app: Express, db: Db): void {
             groups: db.listPipelineGroups(),
             encodings: Object.keys(ENCODINGS),
             streamKeys: db.listStreamKeys(),
-            serverName: db.getSetting('serverName') ?? 'Bunryu',
+            serverName: serverNameOf(db),
             srtPassphrase,
             // A reset is written to the files but SRS and Goryu run the old one until they restart.
             srtPassphrasePending: srtPassphrasePending(),

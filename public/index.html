@@ -1092,12 +1092,12 @@
               <div>
                 <p class="text-sm font-medium">Key Vault</p>
                 <p class="text-xs opacity-70">
-                  Reports the status of every output to Key Vault once a minute. Leave the link empty to turn it off. The token and secret are not
-                  shown again once saved; leave them empty to keep them.
+                  Reports the status of every output to Key Vault once a minute. Leave the link empty to turn it off. This server reports under its
+                  Server Name above. The token and secret are not shown again once saved; leave them empty to keep them.
                 </p>
               </div>
               <div class="flex gap-3 max-sm:flex-col">
-                <fieldset class="fieldset min-w-0 flex-[2]">
+                <fieldset class="fieldset min-w-0 flex-1">
                   <legend class="fieldset-legend">Link</legend>
                   <input
                     type="text"
@@ -1107,35 +1107,101 @@
                     placeholder="https://&lt;project&gt;.supabase.co/functions/v1/ingest"
                     oninput="this.classList.remove('input-error')" />
                 </fieldset>
-                <fieldset class="fieldset min-w-0 flex-1">
-                  <legend class="fieldset-legend">Instance</legend>
-                  <input
-                    type="text"
-                    id="settings-key-vault-instance-input"
-                    autocomplete="off"
-                    class="input w-full font-mono text-sm"
-                    placeholder="prod"
-                    oninput="this.classList.remove('input-error')" />
-                </fieldset>
               </div>
               <div class="flex gap-3 max-sm:flex-col">
                 <fieldset class="fieldset min-w-0 flex-1">
                   <legend class="fieldset-legend">Token</legend>
-                  <input
-                    type="password"
-                    id="settings-key-vault-token-input"
-                    autocomplete="off"
-                    class="input w-full font-mono text-sm"
-                    oninput="this.classList.remove('input-error')" />
+                  <div class="relative">
+                    <input
+                      type="password"
+                      id="settings-key-vault-token-input"
+                      autocomplete="off"
+                      class="input w-full pr-10 font-mono text-sm"
+                      oninput="this.classList.remove('input-error')" />
+                    <button
+                      type="button"
+                      class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                      onclick="togglePwVisibility('settings-key-vault-token-input', this)"
+                      tabindex="-1"
+                      aria-label="Toggle token visibility">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="hidden">
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                        <line x1="2" x2="22" y1="2" y2="22" />
+                      </svg>
+                    </button>
+                  </div>
                 </fieldset>
                 <fieldset class="fieldset min-w-0 flex-1">
                   <legend class="fieldset-legend">Hash secret</legend>
-                  <input
-                    type="password"
-                    id="settings-key-vault-secret-input"
-                    autocomplete="off"
-                    class="input w-full font-mono text-sm"
-                    oninput="this.classList.remove('input-error')" />
+                  <div class="relative">
+                    <input
+                      type="password"
+                      id="settings-key-vault-secret-input"
+                      autocomplete="off"
+                      class="input w-full pr-10 font-mono text-sm"
+                      oninput="this.classList.remove('input-error')" />
+                    <button
+                      type="button"
+                      class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                      onclick="togglePwVisibility('settings-key-vault-secret-input', this)"
+                      tabindex="-1"
+                      aria-label="Toggle hash secret visibility">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="hidden">
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                        <line x1="2" x2="22" y1="2" y2="22" />
+                      </svg>
+                    </button>
+                  </div>
                 </fieldset>
               </div>
               <div class="flex items-center justify-end gap-2">

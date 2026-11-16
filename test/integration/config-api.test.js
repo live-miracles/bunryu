@@ -172,13 +172,11 @@ describe('Config API integration', () => {
                 url: 'https://kv.example.invalid/ingest',
                 token: 'fake-ingest-token-0123456789',
                 hashSecret: 'fake-hash-secret-0123456789',
-                instance: 'prod',
             }),
         );
         const res = await get();
         assert.deepEqual(res.body.keyVault, {
             url: 'https://kv.example.invalid/ingest',
-            instance: 'prod',
             tokenSet: true,
             hashSecretSet: true,
         });

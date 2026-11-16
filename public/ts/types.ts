@@ -391,7 +391,7 @@ export interface ConfigData {
     srtPassphrasePending: boolean;
     publicHost: string;
     // The Key Vault link without its token and secret; null while it is off.
-    keyVault: { url: string; instance: string; tokenSet: boolean; hashSecretSet: boolean } | null;
+    keyVault: { url: string; tokenSet: boolean; hashSecretSet: boolean } | null;
     layoutOrder: LayoutOrderEntry[];
 }
 

@@ -141,7 +141,6 @@ export const updateGeneralSettings = (name: string, publicHost: string) =>
 
 export interface KeyVaultSettingsInput {
     url: string;
-    instance: string;
     // Empty keeps the saved one.
     token: string;
     hashSecret: string;

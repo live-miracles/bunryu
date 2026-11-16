@@ -14,14 +14,11 @@ export interface KeyVaultConfig {
     token: string;
     // Secret shared with Key Vault for the HMAC of each output's destination URL.
     hashSecret: string;
-    // Names this bunryu to Key Vault (e.g. "prod").
-    instance: string;
 }
 
 // What the dashboard may read back: the secrets only as "is one saved".
 export interface KeyVaultPublicConfig {
     url: string;
-    instance: string;
     tokenSet: boolean;
     hashSecretSet: boolean;
 }
@@ -29,9 +26,7 @@ export interface KeyVaultPublicConfig {
 const MIN_HASH_SECRET_LENGTH = 16;
 
 export function publicKeyVaultConfig(config: KeyVaultConfig | null): KeyVaultPublicConfig | null {
-    return config
-        ? { url: config.url, instance: config.instance, tokenSet: true, hashSecretSet: true }
-        : null;
+    return config ? { url: config.url, tokenSet: true, hashSecretSet: true } : null;
 }
 
 // The stored value, or null when there is none. A value that cannot be used (the
@@ -70,7 +65,7 @@ export function parseKeyVaultInput(
     }
     const raw = input as Record<string, unknown>;
     const fields: Record<string, string> = {};
-    for (const key of ['url', 'token', 'hashSecret', 'instance']) {
+    for (const key of ['url', 'token', 'hashSecret']) {
         const value = text(raw, key);
         if (typeof value !== 'string') return value;
         fields[key] = value;
@@ -102,10 +97,7 @@ export function parseKeyVaultInput(
     if (hashSecret.length < MIN_HASH_SECRET_LENGTH) {
         return { error: `hashSecret must be at least ${MIN_HASH_SECRET_LENGTH} characters` };
     }
-    if (!/^[A-Za-z0-9._-]{1,64}$/.test(fields.instance)) {
-        return { error: 'instance must be 1-64 characters of letters, digits, ".", "_" or "-"' };
-    }
-    return { config: { url: url.toString(), token, hashSecret, instance: fields.instance } };
+    return { config: { url: url.toString(), token, hashSecret } };
 }
 
 // The server posts to whatever host the operator types, like an output destination:

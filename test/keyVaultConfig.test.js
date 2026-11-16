@@ -13,7 +13,6 @@ const GOOD = {
     url: 'https://kv.example.invalid/functions/v1/ingest',
     token: 'fake-ingest-token-0123456789',
     hashSecret: 'fake-hash-secret-0123456789',
-    instance: 'prod',
 };
 
 describe('parseKeyVaultInput', () => {
@@ -21,6 +20,11 @@ describe('parseKeyVaultInput', () => {
         assert.deepEqual(parseKeyVaultInput({ ...GOOD, url: ` ${GOOD.url} ` }, null), {
             config: GOOD,
         });
+    });
+
+    test('a leftover instance field is not kept: the server name is the instance', () => {
+        const parsed = parseKeyVaultInput({ ...GOOD, instance: 'prod' }, null);
+        assert.deepEqual(parsed, { config: GOOD });
     });
 
     test('http is for loopback only', () => {
@@ -42,9 +46,6 @@ describe('parseKeyVaultInput', () => {
             [{ ...GOOD, token: 'two words' }, /printable ASCII/],
             [{ ...GOOD, token: 'tôken-with-accent' }, /printable ASCII/],
             [{ ...GOOD, hashSecret: 'x'.repeat(15) }, /at least 16/],
-            [{ ...GOOD, instance: 'a/b' }, /instance/],
-            [{ ...GOOD, instance: 'x'.repeat(65) }, /instance/],
-            [{ ...GOOD, instance: 7 }, /string/],
         ];
         for (const [input, message] of cases) {
             const parsed = parseKeyVaultInput(input, null);
@@ -90,7 +91,6 @@ describe('publicKeyVaultConfig', () => {
         const shown = publicKeyVaultConfig(GOOD);
         assert.deepEqual(shown, {
             url: GOOD.url,
-            instance: 'prod',
             tokenSet: true,
             hashSecretSet: true,
         });

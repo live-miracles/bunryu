@@ -120,7 +120,7 @@ export function registerSettingsApi(
 
         db.setSetting(KEY_VAULT_SETTING, JSON.stringify(parsed.config));
         keyVaultReporter.reconfigure();
-        console.log(`[settings] Key Vault link saved for instance "${parsed.config.instance}"`);
+        console.log('[settings] Key Vault link saved');
         return res.json({ keyVault: publicKeyVaultConfig(parsed.config) });
     });
 
