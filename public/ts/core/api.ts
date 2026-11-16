@@ -142,8 +142,7 @@ export const updateGeneralSettings = (name: string, publicHost: string) =>
 export interface KeyVaultSettingsInput {
     url: string;
     // Empty keeps the saved one.
-    token: string;
-    hashSecret: string;
+    secret: string;
 }
 
 export const updateKeyVaultSettings = (input: KeyVaultSettingsInput) =>

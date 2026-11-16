@@ -1384,12 +1384,24 @@ dot, minus the advisory warnings (see
   (`reconfigure()`): it cancels the report on its way, drops the hashes (keyed by the old
   secret) and the failure episode, and sends to the new link at once. The token and the
   hash secret sit in the database, like the dashboard password's hash, so they are written
-  only and the dashboard reads back `tokenSet` / `hashSecretSet`; an empty field keeps
-  the saved value. The host is checked with the output destination policy's address
+  only and the dashboard reads back `secretSet`; an empty field keeps the saved value. The host is checked with the output destination policy's address
   classes (link-local and unspecified are refused) because an operator-typed URL is a
   server-side request like an output destination. **Send test report** is one attempt
   without retries that does not touch the failure episode, so the operator sees the
   receiver's answer (`HTTP 401`) instead of waiting for the schedule.
+- **One secret, two derived values (November 2026).** The first version asked for two
+  random secrets, a token and a hash secret, and they had to be copied to Key Vault and
+  here without a mix-up. Now there is one, Key Vault's `KEY_VAULT_SECRET`, and both sides
+  derive the two values as `HMAC-SHA256(secret, label)` in hex (`key-vault/ingest-token`,
+  `key-vault/hash-secret`). They stay independent: the token travels in a header every
+  minute, and seeing it says nothing about the hash secret, which never leaves this
+  server and Key Vault. A split of one long value into a left and a right half was
+  rejected because it needs a fixed length and a short value silently gives weak
+  halves; the derivation takes any secret of 32 or more characters. Only the two derived
+  values are saved, so the reporter and the saved format did not change and the secret
+  is not kept. The derivation is pinned by the same two values in both repositories'
+  tests (`test/keyVaultConfig.test.js`). A link saved before this change keeps working
+  with its old token and hash secret until Key Vault is moved to the new secret.
 - **Push, not pull.** Key Vault runs on a free serverless tier and Bunryu sits behind a
   tunnel with a login, so Key Vault cannot call in without a second credential and a new
   public route. One outbound request a minute is about 43,000 a month against the

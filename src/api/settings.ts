@@ -97,8 +97,8 @@ export function registerSettingsApi(
     });
 
     // The Key Vault link. A wrong value is refused here, when it is typed, so the saved one
-    // is always usable. An empty token or secret keeps the saved one (the dashboard never
-    // has them); an empty url turns the reports off and forgets the token and secret.
+    // is always usable. An empty secret keeps the saved one (the dashboard never has
+    // it); an empty url turns the reports off and forgets it.
     app.post('/api/settings/key-vault', async (req, res) => {
         const body: unknown = req.body;
         const rawUrl = (body as { url?: unknown } | null)?.url;

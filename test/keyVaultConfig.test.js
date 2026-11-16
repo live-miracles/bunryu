@@ -4,35 +4,54 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
     checkKeyVaultHost,
+    deriveKeyVaultSecrets,
     parseKeyVaultInput,
     publicKeyVaultConfig,
     readStoredKeyVault,
 } = require('../src/utils/keyVaultConfig');
 
-const GOOD = {
-    url: 'https://kv.example.invalid/functions/v1/ingest',
-    token: 'fake-ingest-token-0123456789',
-    hashSecret: 'fake-hash-secret-0123456789',
-};
+const SECRET = 'fake-key-vault-secret-0123456789-abcdef';
+const INPUT = { url: 'https://kv.example.invalid/functions/v1/ingest', secret: SECRET };
+// What is saved: the two values derived from the secret, not the secret itself.
+const GOOD = { url: INPUT.url, ...deriveKeyVaultSecrets(SECRET) };
+
+describe('deriveKeyVaultSecrets', () => {
+    test('matches the values Key Vault derives from the same secret', () => {
+        // Pinned in Key Vault's test/secrets.test.mjs, computed there independently.
+        assert.deepEqual(deriveKeyVaultSecrets('0123456789abcdef0123456789abcdef'), {
+            token: '5899fc7ac70ac6e23c92cc4df577eea12fb89387be1b5a259359eb63d01ed506',
+            hashSecret: '93a67513fc94b90004f8f0e49a786044707e0ad3a3a5d6545c88c5d4f981fb59',
+        });
+    });
+
+    test('the token and the hash secret differ and do not contain the secret', () => {
+        const { token, hashSecret } = deriveKeyVaultSecrets(SECRET);
+        assert.notEqual(token, hashSecret);
+        assert.ok(!token.includes(SECRET) && !hashSecret.includes(SECRET));
+    });
+});
 
 describe('parseKeyVaultInput', () => {
-    test('accepts a complete, valid link and normalises the url', () => {
-        assert.deepEqual(parseKeyVaultInput({ ...GOOD, url: ` ${GOOD.url} ` }, null), {
+    test('derives the token and hash secret from the secret and normalises the url', () => {
+        assert.deepEqual(parseKeyVaultInput({ ...INPUT, url: ` ${INPUT.url} ` }, null), {
             config: GOOD,
         });
     });
 
-    test('a leftover instance field is not kept: the server name is the instance', () => {
-        const parsed = parseKeyVaultInput({ ...GOOD, instance: 'prod' }, null);
+    test('a leftover instance, token or hashSecret field is not kept', () => {
+        const parsed = parseKeyVaultInput(
+            { ...INPUT, instance: 'prod', token: 'old', hashSecret: 'old-old-old-old-old' },
+            null,
+        );
         assert.deepEqual(parsed, { config: GOOD });
     });
 
     test('http is for loopback only', () => {
         for (const host of ['localhost', '127.0.0.1', '[::1]']) {
-            const parsed = parseKeyVaultInput({ ...GOOD, url: `http://${host}:8000/in` }, null);
+            const parsed = parseKeyVaultInput({ ...INPUT, url: `http://${host}:8000/in` }, null);
             assert.ok('config' in parsed, host);
         }
-        const remote = parseKeyVaultInput({ ...GOOD, url: 'http://kv.example.invalid/in' }, null);
+        const remote = parseKeyVaultInput({ ...INPUT, url: 'http://kv.example.invalid/in' }, null);
         assert.match(remote.error, /https/);
     });
 
@@ -40,12 +59,13 @@ describe('parseKeyVaultInput', () => {
         const cases = [
             [null, /object/],
             [[], /object/],
-            [{ ...GOOD, url: undefined }, /url is required/],
-            [{ ...GOOD, url: 'nope' }, /valid URL/],
-            [{ ...GOOD, url: 'https://a:b@kv.example.invalid/' }, /credentials/],
-            [{ ...GOOD, token: 'two words' }, /printable ASCII/],
-            [{ ...GOOD, token: 'tôken-with-accent' }, /printable ASCII/],
-            [{ ...GOOD, hashSecret: 'x'.repeat(15) }, /at least 16/],
+            [{ ...INPUT, url: undefined }, /url is required/],
+            [{ ...INPUT, url: 'nope' }, /valid URL/],
+            [{ ...INPUT, url: 'https://a:b@kv.example.invalid/' }, /credentials/],
+            [{ ...INPUT, secret: 'two words '.repeat(5) }, /printable ASCII/],
+            [{ ...INPUT, secret: 'sécret-with-accent-0123456789-abcdef' }, /printable ASCII/],
+            [{ ...INPUT, secret: 'x'.repeat(31) }, /at least 32/],
+            [{ ...INPUT, secret: 12345 }, /string/],
         ];
         for (const [input, message] of cases) {
             const parsed = parseKeyVaultInput(input, null);
@@ -53,10 +73,15 @@ describe('parseKeyVaultInput', () => {
         }
     });
 
-    test('an empty token or secret falls back to the saved one only', () => {
-        const empty = { ...GOOD, token: '', hashSecret: '' };
-        assert.match(parseKeyVaultInput(empty, null).error, /token is required/);
+    test('an empty secret falls back to the saved one only', () => {
+        const empty = { ...INPUT, secret: '' };
+        assert.match(parseKeyVaultInput(empty, null).error, /secret is required/);
         assert.deepEqual(parseKeyVaultInput(empty, GOOD), { config: GOOD });
+        const moved = parseKeyVaultInput(
+            { ...empty, url: 'https://other.example.invalid/in' },
+            GOOD,
+        );
+        assert.deepEqual(moved, { config: { ...GOOD, url: 'https://other.example.invalid/in' } });
     });
 });
 
@@ -89,11 +114,7 @@ describe('readStoredKeyVault', () => {
 describe('publicKeyVaultConfig', () => {
     test('has no token or secret in it', () => {
         const shown = publicKeyVaultConfig(GOOD);
-        assert.deepEqual(shown, {
-            url: GOOD.url,
-            tokenSet: true,
-            hashSecretSet: true,
-        });
+        assert.deepEqual(shown, { url: GOOD.url, secretSet: true });
         assert.equal(publicKeyVaultConfig(null), null);
     });
 });

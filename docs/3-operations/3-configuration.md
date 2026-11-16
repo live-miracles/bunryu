@@ -138,14 +138,17 @@ shows Key Vault's answer.
 | Field | What to enter |
 |---|---|
 | Link | Key Vault's ingest endpoint, such as `https://<project>.supabase.co/functions/v1/ingest`. `https`, or `http` only for `localhost` (a test receiver); no credentials in it, and not a link-local or unspecified address |
-| Token | The ingest token from Key Vault, sent as `Authorization: Bearer <token>`. Printable ASCII without spaces |
-| Hash secret | The secret shared with Key Vault for the hash of each destination URL. At least 16 characters |
+| Secret | The secret Key Vault shows its owners (its `KEY_VAULT_SECRET`). At least 32 characters of printable ASCII, no spaces |
+
+One secret is all the link needs: Bunryu derives from it the bearer token it sends
+(`Authorization: Bearer <token>`) and the hash secret for the destination hashes, the same
+way Key Vault does, so the two always agree.
 
 A wrong value is refused when you save it, so the saved link always works as far as its
-format goes. The token and secret are never shown again: leave them empty to keep the
-saved ones, and clear the link to turn the reports off (this also forgets them). They
-are stored in the database, like the server name, and the dashboard and
-[API](../4-reference/1-api.md) return only whether they are set.
+format goes. The secret is never shown again: leave it empty to keep the saved one, and
+clear the link to turn the reports off (this also forgets it). The token and hash secret
+derived from it are stored in the database, like the server name (the secret itself is
+not), and the dashboard and [API](../4-reference/1-api.md) return only whether it is set.
 
 Key Vault tells servers apart by the report's `instance`, which is this server's
 **Server Name** (**Settings > General**). Give each server that reports to the same Key Vault
@@ -179,7 +182,7 @@ The report is a JSON `POST` with the token as a bearer token:
   is plain `stopped`. Advice about the configuration (an output that shares a destination
   with another, encoding tips) is not a warning here.
 - **`hash`** identifies the destination without revealing it: the first 32 hex characters of
-  HMAC-SHA256 (keyed with the hash secret) of the URL, trimmed, with a lowercase scheme and host and
+  HMAC-SHA256 (keyed with the hash secret derived from the secret) of the URL, trimmed, with a lowercase scheme and host and
   no trailing `/`. Key Vault matches its own server and key to the same hash. The
   test vectors both sides check are in
   [`test/fixtures/key-vault-hash-vectors.json`](../../test/fixtures/key-vault-hash-vectors.json).

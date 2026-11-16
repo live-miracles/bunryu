@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { classifyAddress, resolveAddresses } from './destination.js';
 
 // The Key Vault link as the operator sets it in Settings (stored as JSON in the
@@ -16,17 +17,32 @@ export interface KeyVaultConfig {
     hashSecret: string;
 }
 
-// What the dashboard may read back: the secrets only as "is one saved".
+// What the dashboard may read back: the secret only as "is one saved".
 export interface KeyVaultPublicConfig {
     url: string;
-    tokenSet: boolean;
-    hashSecretSet: boolean;
+    secretSet: boolean;
 }
 
-const MIN_HASH_SECRET_LENGTH = 16;
+// The operator enters one secret, the same `KEY_VAULT_SECRET` Key Vault is set up with.
+// Key Vault derives the token and the hash secret from it; so does this server (below),
+// and only those two are saved. The shortest secret Key Vault accepts, so a value this
+// server takes is one Key Vault will take.
+export const MIN_SECRET_LENGTH = 32;
+
+// HMAC-SHA256 of the secret under a label, hex. The labels and the pinned values in
+// test/keyVaultConfig.test.js are Key Vault's (supabase/functions/_shared/secrets.ts):
+// change them together or the token will never be accepted.
+export function deriveKeyVaultSecrets(secret: string): { token: string; hashSecret: string } {
+    const derive = (label: string) =>
+        crypto.createHmac('sha256', secret).update(label).digest('hex');
+    return {
+        token: derive('key-vault/ingest-token'),
+        hashSecret: derive('key-vault/hash-secret'),
+    };
+}
 
 export function publicKeyVaultConfig(config: KeyVaultConfig | null): KeyVaultPublicConfig | null {
-    return config ? { url: config.url, tokenSet: true, hashSecretSet: true } : null;
+    return config ? { url: config.url, secretSet: true } : null;
 }
 
 // The stored value, or null when there is none. A value that cannot be used (the
@@ -39,9 +55,13 @@ export function readStoredKeyVault(raw: string | null): {
     if (!raw) return { config: null, problem: null };
     try {
         const stored = JSON.parse(raw) as Record<string, unknown>;
-        const parsed = parseKeyVaultInput(stored, null);
-        if ('error' in parsed) return { config: null, problem: parsed.error };
-        return { config: parsed.config, problem: null };
+        const url = checkUrl(stored.url);
+        if (typeof url !== 'string') return { config: null, problem: url.error };
+        const { token, hashSecret } = stored;
+        if (typeof token !== 'string' || !token || typeof hashSecret !== 'string' || !hashSecret) {
+            return { config: null, problem: 'the saved secret is missing; enter it again' };
+        }
+        return { config: { url, token, hashSecret }, problem: null };
     } catch (err) {
         return { config: null, problem: `not valid JSON (${String(err)})` };
     }
@@ -54,27 +74,11 @@ function text(raw: Record<string, unknown>, key: string): string | { error: stri
     return value.trim();
 }
 
-// Checks what the operator sent. A token or secret that is left empty keeps the saved
-// one (the dashboard never shows them), so it is only required the first time.
-export function parseKeyVaultInput(
-    input: unknown,
-    existing: KeyVaultConfig | null,
-): { config: KeyVaultConfig } | { error: string } {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        return { error: 'Key Vault settings must be an object' };
-    }
-    const raw = input as Record<string, unknown>;
-    const fields: Record<string, string> = {};
-    for (const key of ['url', 'token', 'hashSecret']) {
-        const value = text(raw, key);
-        if (typeof value !== 'string') return value;
-        fields[key] = value;
-    }
-
-    if (!fields.url) return { error: 'url is required' };
+function checkUrl(value: unknown): string | { error: string } {
+    if (typeof value !== 'string' || !value.trim()) return { error: 'url is required' };
     let url: URL;
     try {
-        url = new URL(fields.url);
+        url = new URL(value.trim());
     } catch {
         return { error: 'url is not a valid URL' };
     }
@@ -83,21 +87,39 @@ export function parseKeyVaultInput(
         return { error: 'url must be https (http is allowed only for localhost)' };
     }
     if (url.username || url.password) {
-        return { error: 'url must not contain credentials; use the token' };
+        return { error: 'url must not contain credentials; use the secret' };
     }
+    return url.toString();
+}
 
-    // Both go into a header or a MAC key.
-    const token = fields.token || existing?.token || '';
-    if (!token) return { error: 'token is required' };
-    if (!/^[!-~]+$/.test(token)) {
-        return { error: 'token must be printable ASCII without spaces (it is sent in a header)' };
+// Checks what the operator sent. A secret that is left empty keeps the saved one (the
+// dashboard never shows it), so it is only required the first time.
+export function parseKeyVaultInput(
+    input: unknown,
+    existing: KeyVaultConfig | null,
+): { config: KeyVaultConfig } | { error: string } {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return { error: 'Key Vault settings must be an object' };
     }
-    const hashSecret = fields.hashSecret || existing?.hashSecret || '';
-    if (!hashSecret) return { error: 'hashSecret is required' };
-    if (hashSecret.length < MIN_HASH_SECRET_LENGTH) {
-        return { error: `hashSecret must be at least ${MIN_HASH_SECRET_LENGTH} characters` };
+    const raw = input as Record<string, unknown>;
+    const url = checkUrl(raw.url);
+    if (typeof url !== 'string') return url;
+
+    const secret = text(raw, 'secret');
+    if (typeof secret !== 'string') return secret;
+    if (!secret) {
+        if (!existing) return { error: 'secret is required' };
+        return { config: { ...existing, url } };
     }
-    return { config: { url: url.toString(), token, hashSecret } };
+    // It becomes a MAC key, and printable ASCII leaves no doubt about the bytes both
+    // sides hash.
+    if (!/^[!-~]+$/.test(secret)) {
+        return { error: 'secret must be printable ASCII without spaces' };
+    }
+    if (secret.length < MIN_SECRET_LENGTH) {
+        return { error: `secret must be at least ${MIN_SECRET_LENGTH} characters` };
+    }
+    return { config: { url, ...deriveKeyVaultSecrets(secret) } };
 }
 
 // The server posts to whatever host the operator types, like an output destination:

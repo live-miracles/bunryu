@@ -71,7 +71,8 @@ Hardening that is on by default:
 - **Key Vault reports (optional):** once the link is set in Settings the app makes one
   outbound HTTPS request a minute, carrying the bearer token. The URL must be `https`
   (plain `http` only for localhost) and must not resolve to a link-local or unspecified
-  address, no redirect is followed, and the token and hash secret are stored in the
+  address, no redirect is followed, and the token and hash secret (derived from the secret
+  you enter, which is not itself stored) are kept in the
   database, never returned by the API or the dashboard and never logged. Destinations
   leave the server only as an HMAC hash, and error text has URLs, passphrases and
   keys removed (see [Configuration](3-configuration.md#key-vault-status-reporting)).

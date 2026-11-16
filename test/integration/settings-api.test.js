@@ -29,6 +29,7 @@ process.env.BUNRYU_CONFIG = path.join(confDir, 'bunryu.json');
 
 const { createDb } = require('../../src/db/index');
 const { registerSettingsApi } = require('../../src/api/settings');
+const { deriveKeyVaultSecrets } = require('../../src/utils/keyVaultConfig');
 
 class MockRequest extends Readable {
     constructor(method, url, body) {
@@ -522,52 +523,51 @@ describe('Settings API integration', () => {
 describe('Key Vault settings API', () => {
     const LINK = {
         url: 'https://203.0.113.5/functions/v1/ingest',
-        token: 'fake-ingest-token-0123456789',
-        hashSecret: 'fake-hash-secret-0123456789',
+        secret: 'fake-key-vault-secret-0123456789-abcdef',
     };
+    const DERIVED = deriveKeyVaultSecrets(LINK.secret);
 
-    test('saves the link, applies it at once and never returns the token or secret', async () => {
+    test('saves the link, applies it at once and never returns the secret or what is derived from it', async () => {
         const harness = createHarness();
         const res = await harness.request('POST', '/api/settings/key-vault', LINK);
 
         assert.equal(res.status, 200);
         assert.deepEqual(res.body, {
-            keyVault: {
-                url: LINK.url,
-                tokenSet: true,
-                hashSecretSet: true,
-            },
+            keyVault: { url: LINK.url, secretSet: true },
         });
-        assert.ok(!res.text.includes(LINK.token));
-        assert.ok(!res.text.includes(LINK.hashSecret));
-        assert.deepEqual(JSON.parse(harness.db.getSetting('keyVault')), LINK);
+        for (const value of [LINK.secret, DERIVED.token, DERIVED.hashSecret]) {
+            assert.ok(!res.text.includes(value));
+        }
+        // Only the derived values are stored, never the secret itself.
+        const stored = harness.db.getSetting('keyVault');
+        assert.deepEqual(JSON.parse(stored), { url: LINK.url, ...DERIVED });
+        assert.ok(!stored.includes(LINK.secret));
         assert.equal(harness.keyVault.reconfigured, 1);
     });
 
-    test('an empty token or secret keeps the saved one; a new one replaces it', async () => {
+    test('an empty secret keeps the saved one; a new one replaces it', async () => {
         const harness = createHarness();
         await harness.request('POST', '/api/settings/key-vault', LINK);
 
         const kept = await harness.request('POST', '/api/settings/key-vault', {
-            ...LINK,
             url: 'https://203.0.113.6/ingest',
-            token: '',
-            hashSecret: '',
+            secret: '',
         });
         assert.equal(kept.status, 200);
-        const saved = JSON.parse(harness.db.getSetting('keyVault'));
-        assert.equal(saved.url, 'https://203.0.113.6/ingest');
-        assert.equal(saved.token, LINK.token);
-        assert.equal(saved.hashSecret, LINK.hashSecret);
+        assert.deepEqual(JSON.parse(harness.db.getSetting('keyVault')), {
+            url: 'https://203.0.113.6/ingest',
+            ...DERIVED,
+        });
 
+        const replacement = 'replacement-secret-0123456789-abcdefg';
         await harness.request('POST', '/api/settings/key-vault', {
             ...LINK,
-            token: ' replacement-token-0123456789 ',
-            hashSecret: '',
+            secret: ` ${replacement} `,
         });
-        const replaced = JSON.parse(harness.db.getSetting('keyVault'));
-        assert.equal(replaced.token, 'replacement-token-0123456789', 'pasted spaces are trimmed');
-        assert.equal(replaced.hashSecret, LINK.hashSecret);
+        assert.deepEqual(JSON.parse(harness.db.getSetting('keyVault')), {
+            url: LINK.url,
+            ...deriveKeyVaultSecrets(replacement),
+        });
     });
 
     test('refuses a wrong value with 400 and saves and applies nothing', async () => {
@@ -582,9 +582,9 @@ describe('Key Vault settings API', () => {
             [{ ...LINK, url: 'not a url' }, /valid URL/],
             [{ ...LINK, url: 'https://user:pw@203.0.113.5/x' }, /credentials/],
             [{ ...LINK, url: 'https://169.254.169.254/latest' }, /not allowed/],
-            [{ ...LINK, token: 'has a space' }, /printable ASCII/],
-            [{ ...LINK, hashSecret: 'short' }, /at least 16/],
-            [{ ...LINK, token: 12345 }, /string/],
+            [{ ...LINK, secret: 'has a space' }, /printable ASCII/],
+            [{ ...LINK, secret: 'short' }, /at least 32/],
+            [{ ...LINK, secret: 12345 }, /string/],
         ]) {
             const res = await harness.request('POST', '/api/settings/key-vault', body);
             assert.equal(res.status, 400, JSON.stringify(body));
@@ -594,20 +594,14 @@ describe('Key Vault settings API', () => {
         assert.equal(harness.keyVault.reconfigured, applied);
     });
 
-    test('the first save needs a token and a secret', async () => {
+    test('the first save needs a secret', async () => {
         const harness = createHarness();
-        const noToken = await harness.request('POST', '/api/settings/key-vault', {
+        const res = await harness.request('POST', '/api/settings/key-vault', {
             ...LINK,
-            token: '',
+            secret: '',
         });
-        assert.equal(noToken.status, 400);
-        assert.match(noToken.body.error, /token is required/);
-        const noSecret = await harness.request('POST', '/api/settings/key-vault', {
-            ...LINK,
-            hashSecret: '',
-        });
-        assert.equal(noSecret.status, 400);
-        assert.match(noSecret.body.error, /hashSecret is required/);
+        assert.equal(res.status, 400);
+        assert.match(res.body.error, /secret is required/);
         assert.equal(harness.db.getSetting('keyVault'), null);
     });
 
@@ -620,7 +614,7 @@ describe('Key Vault settings API', () => {
         assert.equal(res.status, 200);
     });
 
-    test('an empty link turns the reports off and forgets the token and secret', async () => {
+    test('an empty link turns the reports off and forgets the secret', async () => {
         const harness = createHarness();
         await harness.request('POST', '/api/settings/key-vault', LINK);
         const res = await harness.request('POST', '/api/settings/key-vault', { url: '' });

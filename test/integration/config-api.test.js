@@ -162,7 +162,7 @@ describe('Config API integration', () => {
         assert.ok(Array.isArray(res.body.encodings) && res.body.encodings.includes('copy'));
     });
 
-    test('shows the Key Vault link without its token and secret, and null while it is off', async () => {
+    test('shows the Key Vault link without its secret, and null while it is off', async () => {
         const { db, get } = loadHarness();
         assert.equal((await get()).body.keyVault, null);
 
@@ -177,8 +177,7 @@ describe('Config API integration', () => {
         const res = await get();
         assert.deepEqual(res.body.keyVault, {
             url: 'https://kv.example.invalid/ingest',
-            tokenSet: true,
-            hashSecretSet: true,
+            secretSet: true,
         });
         const wire = JSON.stringify(res.body);
         assert.ok(!wire.includes('fake-ingest-token'));
