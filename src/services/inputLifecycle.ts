@@ -274,14 +274,15 @@ export function createInputLifecycle({
                     sinceMs: keyframes.checkedAt,
                 });
             }
-            // Seen on 2026-11-15: a 1080i input to YouTube left every copy output sending only
-            // audio (about 58 kb/s of a 9 Mb/s input) while the process ran as if fine.
+            // YouTube's help page calls interlaced video unsupported (artifacts). Seen on 2026-11-15:
+            // a 1080i input also left every copy output sending only audio (about 58 kb/s of a
+            // 9 Mb/s input) while the process ran as if fine; the cause was not pinned down.
             const scan = sources.connected ? interlacedScan(sources.video) : null;
             if (scan) {
                 alerts.push({
                     severity: 'warning',
                     code: 'input-interlaced',
-                    message: `Input is interlaced (${scan}); RTMP destinations such as YouTube need progressive video.`,
+                    message: `Input is interlaced (${scan}). YouTube does not support interlaced video and warns of artifacts.`,
                     sinceMs: now,
                 });
             }

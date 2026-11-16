@@ -197,9 +197,9 @@ listed in yellow under these lines with advice, and in the hover text of the inp
 status dot.
 
 Send **progressive** video (`1080p50`, not `1080i25`): the dashboard writes the scan in
-the stream specification, and an interlaced input gets a warning alert, because RTMP
-destinations such as YouTube need progressive video and an output can end up sending
-only audio. Set the encoder's output to progressive scan.
+the stream specification, and an interlaced input gets a warning alert, because YouTube
+does not support interlaced video (it warns of artifacts) and an interlaced input has
+also left outputs sending only audio. Set the encoder's output to progressive scan.
 
 ### Preview
 

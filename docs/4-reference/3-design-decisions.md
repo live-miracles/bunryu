@@ -1882,6 +1882,12 @@ is restarted, de-interlaced or rejected. The output card's status dot also lists
 problems on hover, and a yellow dot always has a line on the card.
 
 **Why:**
+- **YouTube does not support interlaced video.** Its help page "Live streaming error
+  messages" lists "The current video is interlaced, but interlaced video is not
+  supported" and says to send progressive video, otherwise "you will see artifacts on
+  the video which severely impact the quality". It does not say whether the video is
+  shown, deinterlaced or dropped, and RTMP itself carries H.264 without a scan type, so
+  the stream is accepted on ingest.
 - **It broke every output on the pipeline without an error.** On 2026-11-15 a 1080i
   SRT input at 8 to 10 Mb/s reached YouTube as about 58 kb/s on each of three
   FFmpegs (two outputs and a shared encode): audio only. The FFmpeg arguments map the
@@ -1889,7 +1895,9 @@ problems on hover, and a yellow dot always has a line on the card.
   failing, and the processes ran at speed 1.0 with `non-existing PPS 0 referenced`
   in their stderr. The only sign was a yellow dot with no explanation anywhere. The
   operator found the cause (the encoder was set to interlaced) and switching it to
-  progressive fixed it. We did not reproduce the exact FFmpeg mechanism.
+  progressive fixed it. We did not reproduce the exact FFmpeg mechanism, so the alert
+  names YouTube's documented effect (artifacts) and the hint mentions the audio-only
+  incident as something that has happened.
 - **A warning matches the other input faults** (keyframe interval, frame rate): an
   encoder setting only the operator can fix, shown on the input where they look.
 - **The yellow dot had no text** because the card listed only the warnings the output
@@ -1899,8 +1907,8 @@ problems on hover, and a yellow dot always has a line on the card.
 the copy path avoids); making the video map required (an audio-only input is valid
 and would then never start); refusing the publish (an interlaced input is valid for SRT destinations).
 
-**Revisit when:** an interlaced input is found that works to RTMP, which would make
-the alert noise, or the cause of the dropped video is pinned down in FFmpeg.
+**Revisit when:** an interlaced input is found that plays fine on YouTube, which would
+make the alert noise, or the cause of the dropped video is pinned down in FFmpeg.
 
 ## Ingest protection
 

@@ -407,11 +407,11 @@ cost and the reasons are in the
 When ffprobe reports the input's video as interlaced (top or bottom field first, shown
 as `1080i25tff` in the pipeline panel), the pipeline gets an `input-interlaced`
 warning alert for as long as that publisher is connected. It is reporting only:
-nothing is restarted or converted. YouTube and other RTMP platforms need progressive
-video, and on 2026-11-15 a 1080i SRT input left every copy output of a pipeline
-sending only audio (about 58 kb/s of a 9 Mb/s input) while the FFmpeg processes ran
-as if healthy and logged `non-existing PPS 0 referenced`. Setting the encoder to
-progressive fixed it. The reason is in the
+nothing is restarted or converted. YouTube's help page says interlaced video is not
+supported and warns of artifacts. On 2026-11-15 a 1080i SRT input also left every copy
+output of a pipeline sending only audio (about 58 kb/s of a 9 Mb/s input) while the
+FFmpeg processes ran as if healthy and logged `non-existing PPS 0 referenced`; setting
+the encoder to progressive fixed it, but the mechanism was not pinned down. The reason is in the
 [design decision](../4-reference/3-design-decisions.md#warn-about-interlaced-input-do-not-convert-or-refuse-it).
 
 ## Flapping inputs
