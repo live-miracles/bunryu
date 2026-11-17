@@ -1445,6 +1445,26 @@ dot, minus the advisory warnings (see
   of desired state, process status, bitrate, warning, error age, failures and input
   state, and on shared-encode outputs, and fails if they differ.
 
+- **Inputs are reported too, matched by name (November 2026).** The report also carries the
+  state of each pipeline's input, so Key Vault can say that a stream is failing because the
+  signal is not arriving, which is not the platform's fault, instead of sending the media
+  team to chase the vendor. The match is by the pipeline's name, ignoring case and extra
+  spaces, because an id would have to be configured on both sides and a link that cannot be
+  mistyped is not worth that; Key Vault's input form tells the team to name them alike, and
+  a pipeline that matches nothing is ignored. Outputs already carry their pipeline's name,
+  so Key Vault can also warn when a stream's link runs in a differently named pipeline,
+  with no new data. **No signal with an output set to run is an error**, not `stopped`:
+  that is what makes the feature useful, since an input nobody is sending to would never
+  otherwise read as a problem. The cost is that before an event, with outputs set to run
+  and no encoder connected yet, every input reads "Not arriving"; Bunryu runs during events
+  and this is the state somebody wants to know about, so it was accepted. The status rules
+  are a second copy (`src/utils/inputStatus.ts`, the twin of `inputHealth` in
+  `public/ts/core/status.ts`), for the reason above, pinned by
+  `test/inputStatusParity.test.js`. Alerts count only when they are about the input (the
+  codes the dashboard merges into its input: `INPUT_ALERT_CODES`); the SRT relay link
+  alerts do not. The report carries no `hint`: Key Vault writes its own advice for the media team
+  (see [Hints are a dashboard lookup, not an API field](#hints-are-a-dashboard-lookup-not-an-api-field)).
+
 **Revisit when:** the status rules change often, or a build change gives the server and
 the dashboard a common source folder.
 

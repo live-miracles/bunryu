@@ -65,7 +65,20 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
     };
     const snapshot = () => ({
         pipelines: {
-            1: { input: { live: world.live }, outputs: { '1-1': world.health } },
+            1: {
+                input: {
+                    connected: world.live,
+                    live: world.live,
+                    mediaOk: true,
+                    mediaError: null,
+                    recvBitrateKbps: 4000,
+                    uptimeMs: 120_000,
+                    audioTracks: [{}],
+                    audio: null,
+                },
+                outputs: { '1-1': world.health },
+                alerts: [],
+            },
         },
     });
     const events = [];
@@ -297,6 +310,39 @@ describe('Key Vault reporter', () => {
         assert.doesNotMatch(init.body, /youtube\.com|fake-0000/);
         assert.doesNotMatch(init.body, new RegExp(CONFIG.token));
         assert.doesNotMatch(init.body, new RegExp(CONFIG.hashSecret));
+    });
+
+    test('the report carries the input of every pipeline, and an input change is sent early', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn, options: { ...FAST, minChangeIntervalMs: 50 } });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => calls.length === 1);
+        assert.deepEqual(
+            calls[0].body.inputs.map(({ pipeline, status, message }) => ({
+                pipeline,
+                status,
+                message,
+            })),
+            [{ pipeline: 'Hindi', status: 'running', message: '' }],
+        );
+
+        // The encoder disconnects while the output is still set to run: the input's status
+        // changes, which is enough to send before the next heartbeat. (Wait until the first
+        // report is done: a poll while one is on its way is checked at the next poll.)
+        await wait(20);
+        h.world.live = false;
+        h.emit();
+        await waitFor(() => calls.length === 2);
+        assert.ok(calls[1].at - calls[0].at < FAST.heartbeatMs, 'sent before the next heartbeat');
+        assert.deepEqual(
+            calls[1].body.inputs.map(({ pipeline, status, message }) => ({
+                pipeline,
+                status,
+                message,
+            })),
+            [{ pipeline: 'Hindi', status: 'error', message: 'No signal is arriving.' }],
+        );
     });
 
     test('repeats the report every heartbeat when nothing changes', async () => {
@@ -552,7 +598,19 @@ describe('Key Vault reporter against a local receiver', () => {
         assert.equal(request.headers.authorization, `Bearer ${CONFIG.token}`);
         assert.equal(request.headers['content-type'], 'application/json');
         const payload = JSON.parse(request.body);
-        assert.deepEqual(Object.keys(payload), ['version', 'instance', 'sentAt', 'outputs']);
+        assert.deepEqual(Object.keys(payload), [
+            'version',
+            'instance',
+            'sentAt',
+            'outputs',
+            'inputs',
+        ]);
+        assert.deepEqual(Object.keys(payload.inputs[0]), [
+            'pipeline',
+            'status',
+            'message',
+            'sinceMs',
+        ]);
         assert.deepEqual(Object.keys(payload.outputs[0]), [
             'hash',
             'pipeline',

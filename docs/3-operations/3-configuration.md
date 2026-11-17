@@ -129,10 +129,11 @@ persistent journald with a seven-day retention limit, 1 GB system journal cap,
 
 ### Key Vault status reporting
 
-Key Vault colours each stream key from what Bunryu says about the outputs that use it.
+Key Vault colours each stream key from what Bunryu says about the outputs that use it, and
+shows whether the signal of each input is arriving from what it says about the pipelines.
 Set the link in the dashboard, under **Settings > Key Vault**, and Bunryu sends a report
-once a minute, and at once when an output changes status (at most one every 10 s). It
-applies when you save, with no restart, and a report is sent at once.
+once a minute, and at once when an output or an input changes status (at most one every
+10 s). It applies when you save, with no restart, and a report is sent at once.
 
 | Field | What to enter |
 |---|---|
@@ -171,6 +172,14 @@ The report is a JSON `POST` with the token as a bearer token:
             "stoppedAfterFailures": false,
             "sinceMs": 1730455200000
         }
+    ],
+    "inputs": [
+        {
+            "pipeline": "Hindi",
+            "status": "running",
+            "message": "",
+            "sinceMs": 1730455100000
+        }
     ]
 }
 ```
@@ -191,6 +200,27 @@ The report is a JSON `POST` with the token as a bearer token:
 - **`sinceMs`** is when the output entered this status (milliseconds since the epoch);
   `failures` counts the failed starts since it last started.
 - Shared-encode rows, which Bunryu manages itself, are not reported.
+
+`inputs` has one entry for every pipeline, also one with no outputs. It is the state of the
+signal coming in, from the same rules as the input's dot on the dashboard:
+
+| Dashboard input | Reported `status` | Key Vault shows |
+|---|---|---|
+| Good | `running` | Receiving |
+| Warning (no audio, low bitrate, still probing, an alert about the input) | `warning` | Unstable |
+| Error (the probe failed, an error alert) | `error` | Not arriving |
+| Off, and at least one output of the pipeline is set to run | `error`, "No signal is arriving." | Not arriving |
+| Off, and no output of the pipeline is set to run | `stopped` | Idle |
+
+- **`pipeline`** is the pipeline's name exactly as it is typed. Key Vault matches it to the
+  input of the same name, ignoring case, leading and trailing spaces and repeated spaces
+  ("Hindi", "hindi" and " Hindi " are one), so **name each pipeline the same as its input
+  in Key Vault**. A pipeline whose name matches no input there is ignored. A blank name is
+  not reported, and a name is cut at 200 characters.
+- **`message`** is the first problem, redacted like an output's, and empty for `running` and
+  `stopped`. **`sinceMs`** is when the input entered this status.
+- Key Vault also compares an output's `pipeline` with the input its stream was filed under,
+  and warns when they differ. That needs nothing more from Bunryu.
 
 What the reporter does when Key Vault is unreachable is under
 [Reliability](4-reliability.md#key-vault-status-reporting).

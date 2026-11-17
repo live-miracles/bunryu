@@ -6,7 +6,9 @@ import {
     type OutputHealthEntry,
     type ReportedStatus,
 } from './outputStatus.js';
+import { reportedInputState, type InputStatusEntry } from './inputStatus.js';
 import { isRenditionUrl } from './renditions.js';
+import type { PipelineAlert } from './srtLinkAlerts.js';
 
 // The heartbeat bunryu sends to Key Vault (see docs/3-operations/3-configuration.md).
 // Key Vault shows the state of each stream key from it, so the payload names an
@@ -28,12 +30,26 @@ export interface ReportedOutput {
     sinceMs: number;
 }
 
+// The signal arriving in one pipeline. Key Vault matches it to one of its inputs by the
+// pipeline's name (ignoring case and extra spaces), so the name goes out as typed.
+export interface ReportedInput {
+    pipeline: string;
+    status: ReportedStatus;
+    message: string;
+    // When the input entered this status (ms since epoch).
+    sinceMs: number;
+}
+
 export interface KeyVaultPayload {
     version: typeof PAYLOAD_VERSION;
     instance: string;
     sentAt: string;
     outputs: ReportedOutput[];
+    inputs: ReportedInput[];
 }
+
+// Key Vault rejects the whole heartbeat for an empty pipeline name or one over 200 characters.
+const MAX_PIPELINE_NAME_LENGTH = 200;
 
 // The string that is hashed: the URL trimmed, with a lowercase scheme and host (the
 // rest, including the stream key, keeps its case) and no trailing "/". Key Vault builds
@@ -105,13 +121,20 @@ export interface PayloadSource {
     // The health snapshot: per pipeline, whether its input is live and each output's state.
     health: Record<
         string,
-        { input: { live: boolean }; outputs: Record<string, OutputHealthEntry> } | undefined
+        | {
+              input: Partial<InputStatusEntry> & { live: boolean };
+              outputs: Record<string, OutputHealthEntry>;
+              alerts?: readonly PipelineAlert[];
+          }
+        | undefined
     >;
     // A stop after repeated failures: how many attempts failed, from the output's History.
     failedAttemptsOf?: (outputId: string) => number;
     // Status changes seen so far, so `sinceMs` survives from one report to the next.
     // The caller owns it; it is updated here.
     sinceById: Map<string, { status: ReportedStatus; sinceMs: number }>;
+    // The same for inputs, keyed `input:<pipeline id>`; the caller owns it too.
+    inputSinceById?: Map<string, { status: ReportedStatus; sinceMs: number }>;
     nowMs: number;
     // Caches hashes of URLs already seen (the HMAC is cheap, but there can be 500 outputs).
     hashOf?: (url: string) => string;
@@ -128,12 +151,61 @@ export function buildPayload(source: PayloadSource): KeyVaultPayload {
         else outputsOf.set(output.pipelineId, [output]);
     }
 
+    const inputSinceById = source.inputSinceById ?? new Map();
+    const seenInputs = new Set<string>();
+    const reportedInputs: ReportedInput[] = [];
     const seen = new Set<string>();
     const reported: ReportedOutput[] = [];
     for (const pipeline of source.pipelines) {
         const pipelineHealth = source.health[String(pipeline.id)];
         const input = { live: pipelineHealth?.input.live ?? false };
         const views = buildOutputViews(outputsOf.get(pipeline.id) ?? [], pipelineHealth?.outputs);
+
+        // Every pipeline has an input, whether or not it has outputs. A name Key Vault
+        // would reject (blank) is left out rather than failing the whole report.
+        const pipelineName = pipeline.name.slice(0, MAX_PIPELINE_NAME_LENGTH);
+        if (pipelineName.trim()) {
+            const outputsShouldRun = (outputsOf.get(pipeline.id) ?? []).some(
+                (o) => o.desiredState !== 'stopped' && !isRenditionUrl(o.url),
+            );
+            const inputState = reportedInputState(
+                {
+                    connected: false,
+                    mediaOk: null,
+                    mediaError: null,
+                    recvBitrateKbps: null,
+                    uptimeMs: null,
+                    audioTracks: [],
+                    audio: null,
+                    ...pipelineHealth?.input,
+                    live: input.live,
+                },
+                pipelineHealth?.alerts ?? [],
+                outputsShouldRun,
+            );
+            const key = `input:${pipeline.id}`;
+            seenInputs.add(key);
+            let inputSince = inputSinceById.get(key);
+            if (inputSince?.status !== inputState.status) {
+                // A signal that is arriving began when the publisher connected, where known.
+                const uptimeMs = pipelineHealth?.input.uptimeMs;
+                inputSince = {
+                    status: inputState.status,
+                    sinceMs:
+                        inputState.status === 'running' && uptimeMs != null && uptimeMs > 0
+                            ? source.nowMs - uptimeMs
+                            : source.nowMs,
+                };
+                inputSinceById.set(key, inputSince);
+            }
+            reportedInputs.push({
+                pipeline: pipelineName,
+                status: inputState.status,
+                message: redactMessage(inputState.message),
+                sinceMs: inputSince.sinceMs,
+            });
+        }
+
         for (const view of views) {
             if (isRenditionUrl(view.url)) continue;
             const state = reportedState(view, input);
@@ -162,12 +234,16 @@ export function buildPayload(source: PayloadSource): KeyVaultPayload {
     }
     // An output that was deleted must not keep its entry for ever.
     for (const id of source.sinceById.keys()) if (!seen.has(id)) source.sinceById.delete(id);
+    for (const key of inputSinceById.keys()) {
+        if (!seenInputs.has(key)) inputSinceById.delete(key);
+    }
 
     return {
         version: PAYLOAD_VERSION,
         instance: source.instance,
         sentAt: new Date(source.nowMs).toISOString(),
         outputs: reported,
+        inputs: reportedInputs,
     };
 }
 
@@ -192,8 +268,10 @@ function sinceOf(
 // What changes the colour of a key in Key Vault: used to send at once on a change
 // without sending for every new message or counter.
 export function payloadSignature(payload: KeyVaultPayload): string {
-    return payload.outputs
-        .map((o) => `${o.hash}:${o.status}:${o.stoppedAfterFailures ? 1 : 0}`)
+    return [
+        ...payload.outputs.map((o) => `${o.hash}:${o.status}:${o.stoppedAfterFailures ? 1 : 0}`),
+        ...payload.inputs.map((i) => `i:${i.pipeline}:${i.status}`),
+    ]
         .sort()
         .join('|');
 }

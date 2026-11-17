@@ -92,6 +92,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     const now = deps.now ?? Date.now;
 
     const sinceById = new Map<string, { status: ReportedStatus; sinceMs: number }>();
+    const inputSinceById = new Map<string, { status: ReportedStatus; sinceMs: number }>();
     const hashCache = new Map<string, string>();
     const shutdownController = new AbortController();
     // Ends the report on its way when the settings change, so the old token and URL are
@@ -180,6 +181,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             health: health.getSnapshot().pipelines,
             failedAttemptsOf,
             sinceById,
+            inputSinceById,
             nowMs: now(),
             hashOf,
         });

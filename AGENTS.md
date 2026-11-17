@@ -251,9 +251,11 @@ only for a new module.
   `keyVault` setting and applies a change at once, `reconfigure()`); `utils/keyVaultConfig.ts`
   validates and reads that setting (`api/settings.ts` saves it, `api/config.ts` shows it without
   its secrets); `utils/keyVaultPayload.ts`
-  builds the payload (destination hash, message redaction); `utils/outputStatus.ts` is the
+  builds the payload (destination hash, message redaction, one entry per output and one per
+  pipeline input); `utils/outputStatus.ts` is the
   server twin of the dashboard's `public/ts/core/status.ts` `outputHealth` (pinned by
-  `test/outputStatusParity.test.js`, so change them together).
+  `test/outputStatusParity.test.js`, so change them together), and `utils/inputStatus.ts` the
+  twin of `inputHealth` plus the reported input state (pinned by `test/inputStatusParity.test.js`).
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `preview.ts`
   (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.

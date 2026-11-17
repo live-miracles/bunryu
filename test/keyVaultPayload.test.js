@@ -182,7 +182,13 @@ describe('buildPayload', () => {
 
     test('has the heartbeat shape, with a hash instead of the URL', () => {
         const payload = buildPayload(source());
-        assert.deepEqual(Object.keys(payload), ['version', 'instance', 'sentAt', 'outputs']);
+        assert.deepEqual(Object.keys(payload), [
+            'version',
+            'instance',
+            'sentAt',
+            'outputs',
+            'inputs',
+        ]);
         assert.equal(payload.version, 1);
         assert.equal(payload.instance, 'prod');
         assert.equal(payload.sentAt, new Date(T).toISOString());
@@ -388,5 +394,222 @@ describe('buildPayload', () => {
         const fewer = base();
         fewer.outputs.pop();
         assert.notEqual(payloadSignature(fewer), payloadSignature(base()));
+    });
+
+    describe('inputs', () => {
+        // A healthy, connected input; `over` changes what the case is about.
+        const inputEntry = (over = {}) => ({
+            connected: true,
+            live: true,
+            mediaOk: true,
+            mediaError: null,
+            recvBitrateKbps: 4000,
+            uptimeMs: 120_000,
+            audioTracks: [{}],
+            audio: null,
+            ...over,
+        });
+        // One pipeline, "Hindi", with one output that should run (or not).
+        const one = (input, { alerts = [], outputDesired = 'running', nowMs = T, ...rest } = {}) =>
+            buildPayload(
+                source({
+                    pipelines: [pipelines[0]],
+                    outputs: outputDesired ? [out('1-1', 1, { desiredState: outputDesired })] : [],
+                    health: {
+                        1: { input, outputs: { '1-1': healthEntry() }, alerts },
+                    },
+                    nowMs,
+                    ...rest,
+                }),
+            ).inputs[0];
+
+        test('every pipeline gets an entry, with its name as typed, also with no outputs', () => {
+            const payload = buildPayload(
+                source({
+                    pipelines: [{ ...pipelines[0], name: ' Hindi  ' }, pipelines[1]],
+                    outputs: [out('1-1', 1)],
+                    health: {
+                        1: { input: inputEntry(), outputs: { '1-1': healthEntry() } },
+                        2: { input: inputEntry({ connected: false, live: false }), outputs: {} },
+                    },
+                }),
+            );
+            assert.deepEqual(payload.inputs, [
+                { pipeline: ' Hindi  ', status: 'running', message: '', sinceMs: T - 120_000 },
+                { pipeline: 'Tamil', status: 'stopped', message: '', sinceMs: T },
+            ]);
+        });
+
+        test('maps each verdict of the dashboard to a reported status', () => {
+            const cases = [
+                ['good', inputEntry(), {}, 'running', ''],
+                [
+                    'warn: no audio',
+                    inputEntry({ audioTracks: [] }),
+                    {},
+                    'warning',
+                    'No audio track detected in input.',
+                ],
+                [
+                    'warn: waiting for ffprobe',
+                    inputEntry({ mediaOk: null }),
+                    {},
+                    'warning',
+                    'Waiting for ffprobe to finish and return the input encoding.',
+                ],
+                [
+                    'warn: a pipeline alert',
+                    inputEntry(),
+                    {
+                        alerts: [
+                            {
+                                severity: 'warning',
+                                code: 'input-interlaced',
+                                message: 'Input is interlaced.',
+                                sinceMs: T,
+                            },
+                        ],
+                    },
+                    'warning',
+                    'Input is interlaced.',
+                ],
+                [
+                    'good: an alert about the relay link is not about the input',
+                    inputEntry(),
+                    {
+                        alerts: [
+                            {
+                                severity: 'warning',
+                                code: 'srt-packets-dropped',
+                                message: 'SRT input dropped 3 packets.',
+                                sinceMs: T,
+                            },
+                        ],
+                    },
+                    'running',
+                    '',
+                ],
+                [
+                    'error: a failed probe',
+                    inputEntry({ mediaOk: false, mediaError: 'Invalid data found' }),
+                    {},
+                    'error',
+                    'Invalid data found',
+                ],
+                [
+                    'error: an error alert',
+                    inputEntry(),
+                    {
+                        alerts: [
+                            {
+                                severity: 'error',
+                                code: 'input-flapping',
+                                message: 'Input keeps reconnecting.',
+                                sinceMs: T,
+                            },
+                        ],
+                    },
+                    'error',
+                    'Input keeps reconnecting.',
+                ],
+                [
+                    'off, an output should run',
+                    inputEntry({ connected: false, live: false }),
+                    {},
+                    'error',
+                    'No signal is arriving.',
+                ],
+                [
+                    'off, every output stopped',
+                    inputEntry({ connected: false, live: false }),
+                    { outputDesired: 'stopped' },
+                    'stopped',
+                    '',
+                ],
+                [
+                    'off, no outputs at all',
+                    inputEntry({ connected: false, live: false }),
+                    { outputDesired: null },
+                    'stopped',
+                    '',
+                ],
+            ];
+            for (const [label, input, options, status, message] of cases) {
+                const reported = one(input, options);
+                assert.equal(reported.status, status, label);
+                assert.equal(reported.message, message, label);
+            }
+        });
+
+        test('a pipeline with no health yet is not arriving when an output should run', () => {
+            const reported = buildPayload(
+                source({ pipelines: [pipelines[0]], outputs: [out('1-1', 1)], health: {} }),
+            ).inputs[0];
+            assert.equal(reported.status, 'error');
+            assert.equal(reported.message, 'No signal is arriving.');
+        });
+
+        test('the message is redacted like an output message', () => {
+            const reported = one(
+                inputEntry({
+                    mediaOk: false,
+                    mediaError:
+                        'Failed to open srt://host.example:9000?streamid=abc&passphrase=secretvalue123',
+                }),
+            );
+            assert.equal(reported.status, 'error');
+            assert.doesNotMatch(reported.message, /host\.example|secretvalue|streamid=abc/);
+            assert.match(reported.message, /<url>/);
+            const long = one(inputEntry({ mediaOk: false, mediaError: 'x '.repeat(400) }));
+            assert.ok(long.message.length <= MAX_MESSAGE_LENGTH);
+        });
+
+        test('a blank name is left out and a long one is cut, so Key Vault never rejects the report', () => {
+            const payload = buildPayload(
+                source({
+                    pipelines: [
+                        { ...pipelines[0], name: '   ' },
+                        { ...pipelines[1], name: 'T'.repeat(500) },
+                    ],
+                    outputs: [],
+                    health: {},
+                }),
+            );
+            assert.deepEqual(
+                payload.inputs.map((i) => i.pipeline),
+                ['T'.repeat(200)],
+            );
+        });
+
+        test('sinceMs holds while the status holds, restarts on a change and forgets deleted pipelines', () => {
+            const inputSinceById = new Map();
+            const build = (nowMs, input) =>
+                one(input, { inputSinceById, nowMs, sinceById: new Map() });
+            const off = inputEntry({ connected: false, live: false });
+            assert.equal(build(T, off).sinceMs, T);
+            assert.equal(build(T + 5000, off).sinceMs, T, 'unchanged status keeps its time');
+            const noAudio = inputEntry({ audioTracks: [] });
+            assert.equal(build(T + 9000, noAudio).sinceMs, T + 9000, 'a change restarts it');
+            assert.equal(build(T + 9500, noAudio).sinceMs, T + 9000);
+            assert.equal(inputSinceById.size, 1);
+
+            buildPayload(source({ pipelines: [], outputs: [], health: {}, inputSinceById }));
+            assert.equal(inputSinceById.size, 0);
+        });
+
+        test('the signature changes when only an input status changes, not with its message', () => {
+            const base = () => buildPayload(source());
+            const changedMessage = base();
+            changedMessage.inputs[0].message = 'something else';
+            changedMessage.inputs[0].sinceMs = 5;
+            assert.equal(payloadSignature(changedMessage), payloadSignature(base()));
+            const changedStatus = base();
+            changedStatus.inputs[0].status =
+                changedStatus.inputs[0].status === 'running' ? 'warning' : 'running';
+            assert.notEqual(payloadSignature(changedStatus), payloadSignature(base()));
+            const fewer = base();
+            fewer.inputs.pop();
+            assert.notEqual(payloadSignature(fewer), payloadSignature(base()));
+        });
     });
 });
