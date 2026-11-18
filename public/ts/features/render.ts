@@ -79,6 +79,7 @@ import {
 } from '../core/outputs-filter.js';
 import { srtPassphraseResetBlock } from '../core/pipeline.js';
 import { countLabel, searchBoxHtml } from '../core/overview-filter.js';
+import { whilePending, type PendingOutputs } from '../core/pending-outputs.js';
 import {
     groupProblems,
     pipelineProblems,
@@ -129,7 +130,7 @@ const OUTPUT_VIDEO_PRESETS: Record<string, OutputVideoDisplayPreset> = {
     },
 };
 
-const pendingOutputs = new Map<string, 'start' | 'stop'>();
+const pendingOutputs: PendingOutputs = new Set();
 const METRIC_WARN_PERCENT = 70;
 const METRIC_ERROR_PERCENT = 90;
 
@@ -1570,21 +1571,6 @@ function renderOutputsList(pipeline: PipelineView): void {
         return;
     }
 
-    // Clear pending state once the output's actual status has settled into the
-    // desired state (or for outputs that no longer exist, e.g. deleted).
-    const presentIds = new Set(pipeline.outs.map((o) => o.id));
-    for (const id of pendingOutputs.keys()) {
-        if (!presentIds.has(id)) pendingOutputs.delete(id);
-    }
-    for (const o of pipeline.outs) {
-        const action = pendingOutputs.get(o.id);
-        if (!action) continue;
-        const settled =
-            (action === 'start' && o.desiredState === 'running') ||
-            (action === 'stop' && o.desiredState === 'stopped');
-        if (settled) pendingOutputs.delete(o.id);
-    }
-
     // Destination URL → the outputs that use it, across all pipelines, to flag duplicates.
     const ctx = problemContext(
         state.pipelines,
@@ -1639,13 +1625,21 @@ function renderOutputsList(pipeline: PipelineView): void {
         const action = btn.dataset.action!;
         const outId = btn.dataset.outId!;
         if (action === 'start' || action === 'stop') {
-            pendingOutputs.set(outId, action);
             btn.disabled = true;
+            void whilePending(
+                pendingOutputs,
+                outId,
+                async () => {
+                    const ed = await import('../features/editor.js');
+                    if (action === 'start') await ed.startOutput(pipeline.id, outId);
+                    else await ed.stopOutput(pipeline.id, outId);
+                },
+                renderPipelines,
+            );
+            return;
         }
         void import('../features/editor.js').then((ed) => {
-            if (action === 'start') void ed.startOutput(pipeline.id, outId);
-            else if (action === 'stop') void ed.stopOutput(pipeline.id, outId);
-            else if (action === 'edit') ed.openEditOutput(pipeline.id, outId);
+            if (action === 'edit') ed.openEditOutput(pipeline.id, outId);
             else if (action === 'delete') void ed.confirmDeleteOutput(pipeline.id, outId);
             else if (action === 'error-info') void ed.showOutputError(pipeline.id, outId);
         });

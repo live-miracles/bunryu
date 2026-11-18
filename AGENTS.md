@@ -336,6 +336,8 @@ only for a new module.
   Status view's cards) or a tip (on the output card only);
   `core/outputs-filter.ts` has the Outputs list's filter, "Problems" test and summary
   counts (`outputProblem` in `core/problems.ts` says what counts as a problem);
+  `core/pending-outputs.ts` keeps an output's Start/Stop button disabled from the click until the
+  operation and its refresh end, however they end (`whilePending`);
   `core/alert-sound.ts` decides which changes between polls beep;
   `features/sound-alerts.ts` is the navbar bell and volume and plays the beeps.
   `features/status-tooltip.ts` is the hover text and gradient of every two-half

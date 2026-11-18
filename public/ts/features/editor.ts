@@ -789,7 +789,8 @@ export async function confirmRestartSharedEncode(pipelineId: string, outId: stri
 export async function startOutput(pipelineId: string, outId: string): Promise<void> {
     await api.startOutput(pipelineId, outId);
     // desiredState lives in config, so refetch it (not just health) to flip the
-    // Start/Stop label and let the pending-button logic settle correctly.
+    // Start/Stop label. The card's pending button is released when this returns,
+    // whether or not the start worked.
     await refreshAfterMutation();
 }
 
