@@ -152,14 +152,14 @@ The report to Key Vault (see [Configuration](3-configuration.md#key-vault-status
 is a side channel: nothing in the control plane waits for it, so Key Vault being down,
 slow or rejecting reports cannot affect an input, an output or the dashboard.
 
-- Each request times out after 10 s. A timeout, a network error, a `5xx`, `408` or `429`
-  is retried twice, after 2 s and 5 s, so one report takes 37 s at the very most, inside
-  the minute. Other `4xx` answers (a wrong token, a rejected payload) are not retried.
-- After a report fails the next one is the next heartbeat or status change, never sooner
-  than 10 s later; a status change during an outage does not add requests. At most one
-  request is open at a time, and a redirect is refused, so the token cannot be sent
-  elsewhere.
-- The first failed report writes `key-vault-report-failed` (error, HTTP status, attempts)
+- Each request times out after 10 s. A failed report is not retried: every report carries
+  the whole state, so the next heartbeat (at most a minute later) is the retry, and a
+  status change that arrives sooner is sent at most 10 s after the last attempt. Key Vault
+  mutes its colours only after 3 minutes of silence, which covers two failed reports in a
+  row.
+- During an outage a status change does not add requests. At most one request is open at
+  a time, and a redirect is refused, so the token cannot be sent elsewhere.
+- The first failed report writes `key-vault-report-failed` (error, HTTP status)
   to the journal and the diagnostics; further failures are silent until a report goes
   through, which writes `key-vault-report-recovered` with the number of failed reports and
   how long it lasted. A failure to build the report (a database error) is logged the

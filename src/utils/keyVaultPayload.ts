@@ -113,6 +113,38 @@ export function redactMessage(message: string): string {
         : redacted;
 }
 
+// When each output and input entered its current status, so that `sinceMs` holds from
+// one report to the next. The reporter owns one for as long as it runs; building a
+// payload notes the status of everything in it, so a change is timed when it is seen
+// and not when the report that carries it is sent.
+export interface SinceTracker {
+    // When `key` entered `status`: the earlier answer while the status holds, else
+    // `startedAtMs` where it is known (and not in the future), else `nowMs`.
+    of(key: string, status: ReportedStatus, startedAtMs: number | null, nowMs: number): number;
+    // Forgets every key not in `keys`, so a deleted output or pipeline does not keep its
+    // entry for ever.
+    retain(keys: ReadonlySet<string>): void;
+}
+
+export function createSinceTracker(): SinceTracker {
+    const seen = new Map<string, { status: ReportedStatus; sinceMs: number }>();
+    return {
+        of(key, status, startedAtMs, nowMs) {
+            const before = seen.get(key);
+            if (before?.status === status) return before.sinceMs;
+            const sinceMs =
+                startedAtMs !== null && startedAtMs > 0 && startedAtMs <= nowMs
+                    ? startedAtMs
+                    : nowMs;
+            seen.set(key, { status, sinceMs });
+            return sinceMs;
+        },
+        retain(keys) {
+            for (const key of seen.keys()) if (!keys.has(key)) seen.delete(key);
+        },
+    };
+}
+
 export interface PayloadSource {
     instance: string;
     hashSecret: string;
@@ -130,15 +162,13 @@ export interface PayloadSource {
     >;
     // A stop after repeated failures: how many attempts failed, from the output's History.
     failedAttemptsOf?: (outputId: string) => number;
-    // Status changes seen so far, so `sinceMs` survives from one report to the next.
-    // The caller owns it; it is updated here.
-    sinceById: Map<string, { status: ReportedStatus; sinceMs: number }>;
-    // The same for inputs, keyed `input:<pipeline id>`; the caller owns it too.
-    inputSinceById?: Map<string, { status: ReportedStatus; sinceMs: number }>;
+    since: SinceTracker;
     nowMs: number;
     // Caches hashes of URLs already seen (the HMAC is cheap, but there can be 500 outputs).
     hashOf?: (url: string) => string;
 }
+
+type PipelineHealth = NonNullable<PayloadSource['health'][string]>;
 
 // Every configured output of every pipeline, but not the shared-encode rows that
 // bunryu manages itself.
@@ -151,73 +181,25 @@ export function buildPayload(source: PayloadSource): KeyVaultPayload {
         else outputsOf.set(output.pipelineId, [output]);
     }
 
-    const inputSinceById = source.inputSinceById ?? new Map();
-    const seenInputs = new Set<string>();
+    const keys = new Set<string>();
     const reportedInputs: ReportedInput[] = [];
-    const seen = new Set<string>();
     const reported: ReportedOutput[] = [];
     for (const pipeline of source.pipelines) {
         const pipelineHealth = source.health[String(pipeline.id)];
+        const outputs = outputsOf.get(pipeline.id) ?? [];
         const input = { live: pipelineHealth?.input.live ?? false };
-        const views = buildOutputViews(outputsOf.get(pipeline.id) ?? [], pipelineHealth?.outputs);
 
-        // Every pipeline has an input, whether or not it has outputs. A name Key Vault
-        // would reject (blank) is left out rather than failing the whole report.
-        const pipelineName = pipeline.name.slice(0, MAX_PIPELINE_NAME_LENGTH);
-        if (pipelineName.trim()) {
-            const outputsShouldRun = (outputsOf.get(pipeline.id) ?? []).some(
-                (o) => o.desiredState !== 'stopped' && !isRenditionUrl(o.url),
-            );
-            const inputState = reportedInputState(
-                {
-                    connected: false,
-                    mediaOk: null,
-                    mediaError: null,
-                    recvBitrateKbps: null,
-                    uptimeMs: null,
-                    audioTracks: [],
-                    audio: null,
-                    ...pipelineHealth?.input,
-                    live: input.live,
-                },
-                pipelineHealth?.alerts ?? [],
-                outputsShouldRun,
-            );
-            const key = `input:${pipeline.id}`;
-            seenInputs.add(key);
-            let inputSince = inputSinceById.get(key);
-            if (inputSince?.status !== inputState.status) {
-                // A signal that is arriving began when the publisher connected, where known.
-                const uptimeMs = pipelineHealth?.input.uptimeMs;
-                inputSince = {
-                    status: inputState.status,
-                    sinceMs:
-                        inputState.status === 'running' && uptimeMs != null && uptimeMs > 0
-                            ? source.nowMs - uptimeMs
-                            : source.nowMs,
-                };
-                inputSinceById.set(key, inputSince);
-            }
-            reportedInputs.push({
-                pipeline: pipelineName,
-                status: inputState.status,
-                message: redactMessage(inputState.message),
-                sinceMs: inputSince.sinceMs,
-            });
+        // Every pipeline has an input, whether or not it has outputs.
+        const reportedInput = reportInput(source, pipeline, pipelineHealth, outputs);
+        if (reportedInput) {
+            keys.add(inputKey(pipeline));
+            reportedInputs.push(reportedInput);
         }
 
-        for (const view of views) {
+        for (const view of buildOutputViews(outputs, pipelineHealth?.outputs)) {
             if (isRenditionUrl(view.url)) continue;
             const state = reportedState(view, input);
-            seen.add(view.id);
-            let since = source.sinceById.get(view.id);
-            if (since?.status !== state.status) {
-                since = {
-                    status: state.status,
-                    sinceMs: sinceOf(state.status, view, source.nowMs),
-                };
-                source.sinceById.set(view.id, since);
-            }
+            keys.add(view.id);
             reported.push({
                 hash: hashOf(view.url),
                 pipeline: pipeline.name,
@@ -228,15 +210,16 @@ export function buildPayload(source: PayloadSource): KeyVaultPayload {
                     ? Math.max(view.failures, source.failedAttemptsOf?.(view.id) ?? 0)
                     : view.failures,
                 stoppedAfterFailures: state.stoppedAfterFailures,
-                sinceMs: since.sinceMs,
+                sinceMs: source.since.of(
+                    view.id,
+                    state.status,
+                    knownStart(state.status, view),
+                    source.nowMs,
+                ),
             });
         }
     }
-    // An output that was deleted must not keep its entry for ever.
-    for (const id of source.sinceById.keys()) if (!seen.has(id)) source.sinceById.delete(id);
-    for (const key of inputSinceById.keys()) {
-        if (!seenInputs.has(key)) inputSinceById.delete(key);
-    }
+    source.since.retain(keys);
 
     return {
         version: PAYLOAD_VERSION,
@@ -247,22 +230,64 @@ export function buildPayload(source: PayloadSource): KeyVaultPayload {
     };
 }
 
-// The first time an output is seen in a status (after a restart of bunryu, or when it
-// changes): when it really began where the output knows, else now.
-function sinceOf(
+// Output ids are `<pipeline id>-<n>`, so this cannot be one.
+const inputKey = (pipeline: Pipeline): string => `input:${pipeline.id}`;
+
+// A pipeline's input as reported, or null for a name Key Vault would reject (blank),
+// which is left out rather than failing the whole report.
+function reportInput(
+    source: PayloadSource,
+    pipeline: Pipeline,
+    pipelineHealth: PipelineHealth | undefined,
+    outputs: readonly Output[],
+): ReportedInput | null {
+    const name = pipeline.name.slice(0, MAX_PIPELINE_NAME_LENGTH);
+    if (!name.trim()) return null;
+    const outputsShouldRun = outputs.some(
+        (o) => o.desiredState !== 'stopped' && !isRenditionUrl(o.url),
+    );
+    const state = reportedInputState(
+        {
+            connected: false,
+            mediaOk: null,
+            mediaError: null,
+            recvBitrateKbps: null,
+            uptimeMs: null,
+            audioTracks: [],
+            audio: null,
+            ...pipelineHealth?.input,
+            live: pipelineHealth?.input.live ?? false,
+        },
+        pipelineHealth?.alerts ?? [],
+        outputsShouldRun,
+    );
+    // A signal that is arriving began when the publisher connected, where known.
+    const uptimeMs = pipelineHealth?.input.uptimeMs;
+    const connectedAtMs =
+        state.status === 'running' && uptimeMs != null && uptimeMs > 0
+            ? source.nowMs - uptimeMs
+            : null;
+    return {
+        pipeline: name,
+        status: state.status,
+        message: redactMessage(state.message),
+        sinceMs: source.since.of(inputKey(pipeline), state.status, connectedAtMs, source.nowMs),
+    };
+}
+
+// When the output really entered this status, where it knows (the first time it is seen
+// after a restart of bunryu, or when the status changes).
+function knownStart(
     status: ReportedStatus,
     view: { startedAtMs: number | null; warningSinceMs: number | null; lastErrorAt: number | null },
-    nowMs: number,
-): number {
-    const known =
-        status === 'running'
-            ? view.startedAtMs
-            : status === 'warning'
-              ? view.warningSinceMs
-              : status === 'error'
-                ? view.lastErrorAt
-                : null;
-    return known && known > 0 && known <= nowMs ? known : nowMs;
+): number | null {
+    return status === 'running'
+        ? view.startedAtMs
+        : status === 'warning'
+          ? view.warningSinceMs
+          : status === 'error'
+            ? view.lastErrorAt
+            : null;
 }
 
 // What changes the colour of a key in Key Vault: used to send at once on a change

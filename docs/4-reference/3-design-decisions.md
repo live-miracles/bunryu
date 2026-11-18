@@ -1388,8 +1388,10 @@ dot, minus the advisory warnings (see
   classes (link-local and unspecified are refused) because an operator-typed URL is a
   server-side request like an output destination. A "Send test report" button
   (one attempt, no retries, showing the receiver's answer such as `HTTP 401`) was removed:
-  saving already sends a report at once, and a failure is logged and retried on the
-  schedule.
+  saving already sends a report at once, and a failure is logged and the next
+  heartbeat sends the state again. A report is not retried within itself (the first
+  version retried twice, after 2 s and 5 s): every report carries the whole state, so the
+  heartbeat is already the retry, and Key Vault tolerates two missed ones before it mutes.
 - **One secret, two derived values (November 2026).** The first version asked for two
   random secrets, a token and a hash secret, and they had to be copied to Key Vault and
   here without a mix-up. Now there is one, Key Vault's `KEY_VAULT_SECRET`, and both sides

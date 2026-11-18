@@ -4,16 +4,17 @@ import type { HealthSnapshot } from './health.js';
 import type { Db } from '../types.js';
 import {
     buildPayload,
+    createSinceTracker,
     hashDestination,
     payloadSignature,
     type KeyVaultPayload,
 } from '../utils/keyVaultPayload.js';
-import type { ReportedStatus } from '../utils/outputStatus.js';
 
 // Pushes the status of every configured output to Key Vault: one report a minute,
 // and one at once when a status changes (at most one per 10 s). The reporter is a
 // side channel: whatever the receiver does (down, slow, errors), the control plane,
-// the outputs and the dashboard are not affected, and it never retries in a tight loop.
+// the outputs and the dashboard are not affected. A failed report is not retried: the
+// next heartbeat (or status change) carries the whole state again.
 // Its settings are the operator's, from Settings: `reconfigure()` applies a change while
 // the server runs, so nothing here needs a restart and nothing can stop the server starting.
 
@@ -22,18 +23,14 @@ export interface KeyVaultReporterOptions {
     heartbeatMs: number;
     // After a send, a status change waits until this much time has passed.
     minChangeIntervalMs: number;
-    // One request; a report is given up after the last retry.
+    // One request; a report that takes longer is given up.
     timeoutMs: number;
-    // Waits before each retry of a failed report: 2 retries, 37 s at the very most
-    // with the default timeout, inside one heartbeat.
-    retryDelaysMs: number[];
 }
 
 export const DEFAULT_REPORTER_OPTIONS: KeyVaultReporterOptions = {
     heartbeatMs: 60_000,
     minChangeIntervalMs: 10_000,
     timeoutMs: 10_000,
-    retryDelaysMs: [2_000, 5_000],
 };
 
 export interface KeyVaultReporterDeps {
@@ -55,21 +52,12 @@ export interface KeyVaultReporterDeps {
     now?: () => number;
 }
 
-export interface KeyVaultReporterState {
-    enabled: boolean;
-    lastAttemptAtMs: number | null;
-    lastSuccessAtMs: number | null;
-    // Failed reports in a row (0 while Key Vault accepts them).
-    consecutiveFailures: number;
-}
-
 type SendReason = 'heartbeat' | 'change';
 
 class ReportError extends Error {
     constructor(
         message: string,
         readonly status: number | null,
-        readonly retryable: boolean,
     ) {
         super(message);
     }
@@ -91,8 +79,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     const fetchFn = deps.fetchFn ?? fetch;
     const now = deps.now ?? Date.now;
 
-    const sinceById = new Map<string, { status: ReportedStatus; sinceMs: number }>();
-    const inputSinceById = new Map<string, { status: ReportedStatus; sinceMs: number }>();
+    const since = createSinceTracker();
     const hashCache = new Map<string, string>();
     const shutdownController = new AbortController();
     // Ends the report on its way when the settings change, so the old token and URL are
@@ -105,7 +92,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     let inFlight = false;
     let resendRequested = false;
     let lastAttemptAtMs: number | null = null;
-    let lastSuccessAtMs: number | null = null;
     let lastSignature: string | null = null;
     let heartbeatTimer: NodeJS.Timeout | null = null;
     let changeTimer: NodeJS.Timeout | null = null;
@@ -180,29 +166,13 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             outputs: db.listOutputs(),
             health: health.getSnapshot().pipelines,
             failedAttemptsOf,
-            sinceById,
-            inputSinceById,
+            since,
             nowMs: now(),
             hashOf,
         });
     }
 
-    function sleep(ms: number, cancel: AbortSignal): Promise<void> {
-        return new Promise((resolve) => {
-            const timer = setTimeout(resolve, ms);
-            timer.unref();
-            cancel.addEventListener(
-                'abort',
-                () => {
-                    clearTimeout(timer);
-                    resolve();
-                },
-                { once: true },
-            );
-        });
-    }
-
-    async function postOnce(cfg: KeyVaultConfig, body: string, cancel: AbortSignal): Promise<void> {
+    async function post(cfg: KeyVaultConfig, body: string, cancel: AbortSignal): Promise<void> {
         let response: Response;
         try {
             response = await fetchFn(cfg.url, {
@@ -221,7 +191,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             throw new ReportError(
                 timedOut ? `timed out after ${options.timeoutMs} ms` : errorText(err),
                 null,
-                true,
             );
         }
         // The answer is not used; free the connection.
@@ -230,36 +199,11 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         } catch {
             // Already closed.
         }
-        if (!response.ok) {
-            // A client error (a wrong token, a rejected payload) will not pass by waiting.
-            const retryable =
-                response.status >= 500 || response.status === 408 || response.status === 429;
-            throw new ReportError(`HTTP ${response.status}`, response.status, retryable);
-        }
-    }
-
-    // One report: the first try and, while the failure may pass, the retries.
-    async function post(cfg: KeyVaultConfig, body: string, cancel: AbortSignal): Promise<number> {
-        for (let attempt = 1; ; attempt++) {
-            try {
-                await postOnce(cfg, body, cancel);
-                return attempt;
-            } catch (err) {
-                const retryDelay = options.retryDelaysMs[attempt - 1];
-                const retryable = err instanceof ReportError ? err.retryable : true;
-                if (!retryable || retryDelay === undefined || cancel.aborted) {
-                    if (err instanceof ReportError) throw Object.assign(err, { attempts: attempt });
-                    throw err;
-                }
-                await sleep(retryDelay, cancel);
-                if (cancel.aborted) throw err;
-            }
-        }
+        if (!response.ok) throw new ReportError(`HTTP ${response.status}`, response.status);
     }
 
     function recordFailure(err: unknown, reason: SendReason): void {
         const error = errorText(err);
-        const attempts = (err as { attempts?: number }).attempts ?? 1;
         if (episode) {
             episode.failedReports += 1;
             return;
@@ -274,12 +218,10 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             reason,
             error,
             status: err instanceof ReportError ? err.status : null,
-            attempts,
         });
     }
 
-    function recordSuccess(outputs: number, attempts: number): void {
-        lastSuccessAtMs = now();
+    function recordSuccess(outputs: number): void {
         if (!episode) return;
         const { failedReports, sinceMs } = episode;
         episode = null;
@@ -292,7 +234,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             failedReports,
             downMs: now() - sinceMs,
             outputs,
-            attempts,
         });
     }
 
@@ -337,9 +278,9 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             // Whatever happens next, an unchanged status waits for the next heartbeat.
             lastSignature = payloadSignature(payload);
             try {
-                const attempts = await post(cfg, JSON.stringify(payload), cancel);
+                await post(cfg, JSON.stringify(payload), cancel);
                 if (cancel.aborted) return;
-                recordSuccess(payload.outputs.length, attempts);
+                recordSuccess(payload.outputs.length);
             } catch (err) {
                 // Shut down, or the settings changed: this report is of no interest any more.
                 if (cancel.aborted) return;
@@ -408,7 +349,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             heartbeatMs: options.heartbeatMs,
             minChangeIntervalMs: options.minChangeIntervalMs,
             timeoutMs: options.timeoutMs,
-            retryDelaysMs: options.retryDelaysMs,
         });
     }
 
@@ -441,7 +381,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         hashCache.clear();
         lastSignature = null;
         lastAttemptAtMs = null;
-        lastSuccessAtMs = null;
         episode = null;
         diagnostics?.event('key-vault-settings-changed', {
             enabled: config !== null,
@@ -472,12 +411,6 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         start,
         reconfigure,
         shutdown,
-        getState: (): KeyVaultReporterState => ({
-            enabled: config !== null,
-            lastAttemptAtMs,
-            lastSuccessAtMs,
-            consecutiveFailures: episode?.failedReports ?? 0,
-        }),
     };
 }
 

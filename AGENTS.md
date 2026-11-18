@@ -247,7 +247,7 @@ only for a new module.
   readings, including `watchedFilesystems`, the one rule for which disks the dashboard figure
   and the host disk alert look at.
 - `src/services/keyVaultReporter.ts` - the Key Vault status report (60 s heartbeat, on a change
-  at most every 10 s; bounded retry, one log per failure episode; reads its link from the
+  at most every 10 s; no retries (the next heartbeat is the retry), one log per failure episode; reads its link from the
   `keyVault` setting and applies a change at once, `reconfigure()`); `utils/keyVaultConfig.ts`
   validates and reads that setting (`api/settings.ts` saves it, `api/config.ts` shows it without
   its secrets); `utils/keyVaultPayload.ts`

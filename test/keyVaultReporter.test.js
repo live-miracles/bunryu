@@ -18,7 +18,6 @@ const FAST = {
     heartbeatMs: 400,
     minChangeIntervalMs: 120,
     timeoutMs: 100,
-    retryDelaysMs: [5, 5],
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -150,7 +149,6 @@ describe('Key Vault reporter', () => {
         const { calls, fetchFn } = recordingFetch();
         const h = setup({ fetchFn, config: null });
         h.reporter.start();
-        assert.equal(h.reporter.getState().enabled, false);
         h.emit();
         await wait(FAST.heartbeatMs * 1.5);
         assert.equal(calls.length, 0);
@@ -170,7 +168,6 @@ describe('Key Vault reporter', () => {
         await waitFor(() => calls.length === 1);
         assert.equal(calls[0].url, CONFIG.url);
         assert.equal(calls[0].init.headers.Authorization, `Bearer ${CONFIG.token}`);
-        assert.equal(h.reporter.getState().enabled, true);
         assert.ok(h.events.some((e) => e.event === 'key-vault-settings-changed' && e.enabled));
         // And the heartbeat runs from then on.
         await waitFor(() => calls.length === 2);
@@ -251,7 +248,6 @@ describe('Key Vault reporter', () => {
         h.emit();
         await wait(FAST.heartbeatMs * 1.5);
         assert.equal(calls.length, 1);
-        assert.equal(h.reporter.getState().enabled, false);
     });
 
     test('unchanged settings are not a change: nothing is sent early', async () => {
@@ -393,7 +389,7 @@ describe('Key Vault reporter', () => {
         assert.ok(calls[1].at - calls[0].at < FAST.heartbeatMs);
     });
 
-    test('a failing receiver is retried a bounded number of times and logged once per episode', async () => {
+    test('a failing receiver is not retried and is logged once per episode', async () => {
         const { calls, fetchFn } = recordingFetch(() =>
             Promise.reject(
                 new TypeError('fetch failed', {
@@ -405,17 +401,15 @@ describe('Key Vault reporter', () => {
         h.reporter.start();
         h.emit();
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
-        assert.equal(calls.length, 1 + FAST.retryDelaysMs.length, 'first try plus the retries');
+        assert.equal(calls.length, 1, 'the next try is the next heartbeat');
 
         // Three more heartbeats fail the same way: no more log lines.
-        await waitFor(() => calls.length >= 4 * (1 + FAST.retryDelaysMs.length), 5000);
+        await waitFor(() => calls.length >= 4, 5000);
         const failed = h.events.filter((e) => e.event === 'key-vault-report-failed');
         assert.equal(failed.length, 1);
         assert.match(failed[0].error, /ECONNREFUSED/);
-        assert.equal(failed[0].attempts, 3);
         assert.equal(failed[0].instance, 'test');
         assert.equal(failed[0].endpoint, 'https://kv.example.invalid/functions/v1/ingest');
-        assert.ok(h.reporter.getState().consecutiveFailures >= 3);
         assert.equal(h.events.filter((e) => e.event === 'key-vault-report-recovered').length, 0);
     });
 
@@ -427,18 +421,17 @@ describe('Key Vault reporter', () => {
         const h = setup({ fetchFn });
         h.reporter.start();
         h.emit();
-        await waitFor(() => calls.length >= 6); // two failed reports
+        await waitFor(() => calls.length >= 2); // two failed reports
         failing = false;
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-recovered'));
         const recovered = h.events.find((e) => e.event === 'key-vault-report-recovered');
         assert.ok(recovered.failedReports >= 2);
         assert.ok(recovered.downMs > 0);
-        assert.equal(h.reporter.getState().consecutiveFailures, 0);
-        assert.ok(h.reporter.getState().lastSuccessAtMs);
 
         // Good reports after the recovery log nothing.
         const logged = h.events.length;
-        await waitFor(() => calls.length >= 8);
+        const sent = calls.length;
+        await waitFor(() => calls.length >= sent + 2);
         assert.equal(h.events.length, logged);
 
         failing = true;
@@ -447,7 +440,7 @@ describe('Key Vault reporter', () => {
         );
     });
 
-    test('a client error such as a wrong token is not retried', async () => {
+    test('a client error such as a wrong token is logged with its status', async () => {
         const { calls, fetchFn } = recordingFetch(() =>
             Promise.resolve(new Response('no', { status: 401 })),
         );
@@ -458,19 +451,6 @@ describe('Key Vault reporter', () => {
         assert.equal(calls.length, 1);
         const failed = h.events.find((e) => e.event === 'key-vault-report-failed');
         assert.equal(failed.status, 401);
-        assert.equal(failed.attempts, 1);
-    });
-
-    test('a rate limit or timeout answer is retried', async () => {
-        const { calls, fetchFn } = recordingFetch((n) =>
-            Promise.resolve(new Response(null, { status: n < 3 ? (n === 1 ? 429 : 408) : 200 })),
-        );
-        const h = setup({ fetchFn });
-        h.reporter.start();
-        h.emit();
-        await waitFor(() => h.reporter.getState().lastSuccessAtMs !== null);
-        assert.equal(calls.length, 3);
-        assert.equal(h.events.filter((e) => e.event === 'key-vault-report-failed').length, 0);
     });
 
     test('a receiver that never answers times out and does not block anything else', async () => {
@@ -486,7 +466,7 @@ describe('Key Vault reporter', () => {
         h.emit(); // returns at once: the poll that triggered the report is not held up
         assert.ok(Date.now() - startedAt < 50);
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
-        assert.equal(calls.length, 3);
+        assert.equal(calls.length, 1);
         assert.match(h.events[1].error, /timed out after 100 ms/);
     });
 
@@ -546,9 +526,14 @@ describe('Key Vault reporter', () => {
         assert.ok(h.events.some((e) => e.event === 'key-vault-reporter-started'));
     });
 
-    test('a shutdown stops the timers and abandons a retry that is waiting', async () => {
-        const { calls, fetchFn } = recordingFetch(() => Promise.reject(new Error('down')));
-        const h = setup({ fetchFn, options: { ...FAST, retryDelaysMs: [10_000, 10_000] } });
+    test('a shutdown stops the timers and abandons the report on its way', async () => {
+        const { calls, fetchFn } = recordingFetch(
+            (_n, init) =>
+                new Promise((_resolve, reject) => {
+                    init.signal.addEventListener('abort', () => reject(init.signal.reason));
+                }),
+        );
+        const h = setup({ fetchFn, options: { ...FAST, timeoutMs: 10_000 } });
         h.reporter.start();
         h.emit();
         await waitFor(() => calls.length === 1);
@@ -660,7 +645,7 @@ describe('Key Vault reporter against a local receiver', () => {
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
         broken = false;
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-recovered'));
-        assert.ok(requests.length >= 4);
+        assert.ok(requests.length >= 2);
     });
 
     test('survives a receiver that is gone', async () => {
@@ -671,7 +656,6 @@ describe('Key Vault reporter against a local receiver', () => {
         h.emit();
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
         const failed = h.events.find((e) => e.event === 'key-vault-report-failed');
-        assert.equal(failed.attempts, 3);
         assert.match(failed.error, /fetch failed|ECONNREFUSED/);
     });
 });

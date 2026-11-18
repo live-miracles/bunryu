@@ -6,6 +6,7 @@ const vectors = require('./fixtures/key-vault-hash-vectors.json');
 const {
     MAX_MESSAGE_LENGTH,
     buildPayload,
+    createSinceTracker,
     hashDestination,
     normalizeDestinationUrl,
     payloadSignature,
@@ -175,7 +176,7 @@ describe('buildPayload', () => {
             1: { input: { live: true }, outputs: { '1-1': healthEntry() } },
             2: { input: { live: false }, outputs: { '2-1': healthEntry({ status: 'stopped' }) } },
         },
-        sinceById: new Map(),
+        since: createSinceTracker(),
         nowMs: T,
         ...over,
     });
@@ -352,7 +353,7 @@ describe('buildPayload', () => {
     });
 
     test('sinceMs holds while the status holds, restarts on a change and forgets deleted outputs', () => {
-        const sinceById = new Map();
+        const since = createSinceTracker();
         const health = (over) => ({
             1: { input: { live: true }, outputs: { '1-1': healthEntry(over) } },
         });
@@ -362,7 +363,7 @@ describe('buildPayload', () => {
                 source({
                     outputs,
                     health: health(over),
-                    sinceById,
+                    since,
                     nowMs,
                     pipelines: [pipelines[0]],
                 }),
@@ -374,8 +375,9 @@ describe('buildPayload', () => {
         assert.equal(build(T + 9000, {}).sinceMs, T - 60_000, 'running again: when it started');
         assert.equal(build(T + 9500, {}).sinceMs, T - 60_000);
 
-        buildPayload(source({ outputs: [], health: {}, sinceById, pipelines: [pipelines[0]] }));
-        assert.equal(sinceById.size, 0);
+        // Deleted, then back again: nothing is remembered of the earlier entry.
+        buildPayload(source({ outputs: [], health: {}, since, pipelines: [pipelines[0]] }));
+        assert.equal(build(T + 20_000, warn).sinceMs, T + 20_000);
     });
 
     test('the signature changes with a status and not with a message or counter', () => {
@@ -582,19 +584,17 @@ describe('buildPayload', () => {
         });
 
         test('sinceMs holds while the status holds, restarts on a change and forgets deleted pipelines', () => {
-            const inputSinceById = new Map();
-            const build = (nowMs, input) =>
-                one(input, { inputSinceById, nowMs, sinceById: new Map() });
+            const since = createSinceTracker();
+            const build = (nowMs, input) => one(input, { since, nowMs });
             const off = inputEntry({ connected: false, live: false });
             assert.equal(build(T, off).sinceMs, T);
             assert.equal(build(T + 5000, off).sinceMs, T, 'unchanged status keeps its time');
             const noAudio = inputEntry({ audioTracks: [] });
             assert.equal(build(T + 9000, noAudio).sinceMs, T + 9000, 'a change restarts it');
             assert.equal(build(T + 9500, noAudio).sinceMs, T + 9000);
-            assert.equal(inputSinceById.size, 1);
 
-            buildPayload(source({ pipelines: [], outputs: [], health: {}, inputSinceById }));
-            assert.equal(inputSinceById.size, 0);
+            buildPayload(source({ pipelines: [], outputs: [], health: {}, since }));
+            assert.equal(build(T + 20_000, noAudio).sinceMs, T + 20_000);
         });
 
         test('the signature changes when only an input status changes, not with its message', () => {
