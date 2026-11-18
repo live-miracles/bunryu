@@ -210,6 +210,10 @@ only for a new module.
   rendition failure, `restart()` and `retire()` (stop for good before a row is deleted).
   `outputSockets.ts` parses `ss` for
   destination socket health.
+- `src/services/outputDesiredState.ts` - the one place a person, the destination policy or the
+  shared-encode reconciler changes what an output should be doing: `wantRunning` (desired-running,
+  then start, back to desired-stopped if the start throws) and `wantStopped` (desired-stopped, then
+  stop). `retire()` is the third, for an output about to be deleted.
 - `src/services/renditions.ts` - the shared-encode reconciler (1 s tick): creates
   and removes the rendition output rows, starts them with their first running
   output and idle-stops them after 15 s. `src/utils/renditions.ts` has the recipe

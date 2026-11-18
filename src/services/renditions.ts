@@ -1,5 +1,6 @@
 import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
+import { wantRunning, wantStopped } from './outputDesiredState.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import { cyan, red, yellow } from '../utils/ansiColor.js';
 import { createLogThrottle } from '../utils/logThrottle.js';
@@ -145,7 +146,6 @@ export function createRenditionReconciler(
             if (now < (startBlockedUntil.get(row.id) ?? 0)) return;
             // Only on the stopped -> running edge: start() resets the retry
             // back-off, so calling it every tick would defeat it.
-            db.setOutputDesiredState(row.id, 'running');
             startBlockedUntil.delete(row.id);
             console.log(
                 cyan(
@@ -153,9 +153,8 @@ export function createRenditionReconciler(
                 ),
             );
             try {
-                await outputService.start(row.id);
+                await wantRunning(db, outputService, row.id);
             } catch (err) {
-                db.setOutputDesiredState(row.id, 'stopped');
                 startBlockedUntil.set(row.id, now + START_RETRY_MS);
                 const message = err instanceof Error ? err.message : String(err);
                 console.warn(
@@ -180,8 +179,7 @@ export function createRenditionReconciler(
         idleSince.set(row.id, since);
         if (now - since < RENDITION_IDLE_GRACE_MS) return;
         idleSince.delete(row.id);
-        db.setOutputDesiredState(row.id, 'stopped');
-        outputService.stop(row.id);
+        wantStopped(db, outputService, row.id);
         console.log(
             yellow(
                 `[renditions] ${row.id} (${row.name}) stopped: no running output for ${Math.round((now - since) / 1000)}s`,

@@ -1,5 +1,6 @@
 import type { Db } from '../types.js';
 import type { OutputService } from './outputs.js';
+import { wantStopped } from './outputDesiredState.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import { checkOutputDestination } from '../utils/destination.js';
 import { createRestreamLoopChecker } from '../utils/restreamLoop.js';
@@ -31,8 +32,7 @@ export async function enforceDestinationPolicy(
                         }));
                     if (!reason) return;
                     blockedCount++;
-                    db.setOutputDesiredState(output.id, 'stopped');
-                    outputService.stop(output.id);
+                    wantStopped(db, outputService, output.id);
                     db.setOutputLastError(output.id, `Output stopped: ${reason}`, 'crash');
                     console.warn(
                         `[outputs] ${output.id} (${output.name}) stopped by destination policy: ${reason}`,

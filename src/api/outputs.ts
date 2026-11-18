@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import { validateOutputUrl, validateAudioEncoding, isKnownEncoding } from '../utils/ffmpeg.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
+import { wantRunning, wantStopped } from '../services/outputDesiredState.js';
 import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
 import { isRenditionOutput, splitOutputs } from '../utils/renditions.js';
@@ -172,8 +173,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             return res.status(404).json({ error: 'Pipeline not found' });
 
         const outputs = db.listOutputsForPipeline(pipelineId);
-        db.setDesiredStateForPipeline(pipelineId, 'stopped');
-        for (const o of outputs) outputService.stop(o.id);
+        for (const o of outputs) wantStopped(db, outputService, o.id);
         console.log(
             cyan(
                 `[outputs] user stop-all requested: pipeline=${pipelineId} count=${outputs.length}`,
@@ -295,16 +295,10 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
 
         console.log(cyan(`[outputs] user start requested: ${outId} (${output.name})`));
         try {
-            db.setOutputDesiredState(outId, 'running');
-            await outputService.start(outId, { byUser: true });
+            await wantRunning(db, outputService, outId, { byUser: true });
             const stats = outputService.getStats(outId);
             return res.json({ ok: true, status: stats });
         } catch (err) {
-            try {
-                db.setOutputDesiredState(outId, 'stopped');
-            } catch {
-                /* best-effort */
-            }
             return res.status(400).json({ error: (err as Error).message });
         }
     });
@@ -348,8 +342,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         console.log(cyan(`[outputs] user stop requested: ${outId} (${output.name})`));
-        db.setOutputDesiredState(outId, 'stopped');
-        outputService.stop(outId);
+        wantStopped(db, outputService, outId);
         return res.json({ ok: true });
     });
 }
