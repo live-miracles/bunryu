@@ -164,6 +164,13 @@ slow or rejecting reports cannot affect an input, an output or the dashboard.
   through, which writes `key-vault-report-recovered` with the number of failed reports and
   how long it lasted. A failure to build the report (a database error) is logged the
   same way as `key-vault-report-build-failed` / `-recovered`.
+- The same episode is what **Settings > Key Vault** shows (`status()` on the reporter, read
+  through `GET /api/settings/key-vault/status`), so an operator sees a failing link without
+  reading the journal: the failure was otherwise visible only as one log line per episode.
+  It is kept in memory, starts again when the settings are saved, and is asked for only while
+  Settings is the open view. Key Vault's answer is read up to 4 KB, only for the number of
+  entries it left out, and an answer that cannot be read never turns an accepted report into
+  a failure.
 - Nothing is sent before the first health poll after a start, so a restart does not
   show every output as failed.
 - The link is a setting, never part of start-up: a value that cannot be saved is refused

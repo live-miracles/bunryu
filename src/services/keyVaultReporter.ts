@@ -1,4 +1,9 @@
 import type { KeyVaultConfig } from '../utils/keyVaultConfig.js';
+import {
+    BUILD_FAILURE_PROBLEM,
+    describeReportFailure,
+    type KeyVaultStatus,
+} from '../utils/keyVaultStatus.js';
 import type { DiagnosticsLogger } from '../utils/diagnostics.js';
 import type { HealthSnapshot } from './health.js';
 import type { Db } from '../types.js';
@@ -64,6 +69,8 @@ class ReportError extends Error {
 }
 
 const MAX_HASH_CACHE = 5000;
+// Key Vault's answer is a few bytes; only this much of it is ever read.
+const MAX_ANSWER_BYTES = 4096;
 
 function errorText(err: unknown): string {
     if (err instanceof Error) {
@@ -100,6 +107,11 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     let episode: { sinceMs: number; failedReports: number } | null = null;
     // A failure to build the report (a database error) has its own episode.
     let buildFailing = false;
+    // What Settings shows (status()): when Key Vault last accepted a report, and the problem
+    // since the first report that did not go through.
+    let lastReportAtMs: number | null = null;
+    let problem: { text: string; sinceMs: number } | null = null;
+    let skipped: number | null = null;
 
     let config: KeyVaultConfig | null = null;
     // The endpoint without its query: where the reports go, for the log.
@@ -172,7 +184,37 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         });
     }
 
-    async function post(cfg: KeyVaultConfig, body: string, cancel: AbortSignal): Promise<void> {
+    // The number of entries Key Vault left out, from its answer; null when it does not say.
+    // Reading it must never turn an accepted report into a failure.
+    async function readSkipped(response: Response): Promise<number | null> {
+        const reader = response.body?.getReader();
+        if (!reader) return null;
+        try {
+            const chunks: Uint8Array[] = [];
+            let received = 0;
+            while (received < MAX_ANSWER_BYTES) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.byteLength;
+            }
+            const text = Buffer.concat(chunks).toString('utf8');
+            const count = (JSON.parse(text) as { skipped?: unknown }).skipped;
+            return typeof count === 'number' && Number.isInteger(count) && count >= 0
+                ? count
+                : null;
+        } catch {
+            return null;
+        } finally {
+            await reader.cancel().catch(() => {});
+        }
+    }
+
+    async function post(
+        cfg: KeyVaultConfig,
+        body: string,
+        cancel: AbortSignal,
+    ): Promise<number | null> {
         let response: Response;
         try {
             response = await fetchFn(cfg.url, {
@@ -193,17 +235,25 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
                 null,
             );
         }
-        // The answer is not used; free the connection.
+        if (response.ok) return readSkipped(response);
+        // Only the status matters; free the connection.
         try {
             await response.body?.cancel();
         } catch {
             // Already closed.
         }
-        if (!response.ok) throw new ReportError(`HTTP ${response.status}`, response.status);
+        throw new ReportError(`HTTP ${response.status}`, response.status);
+    }
+
+    // The problem Settings shows. It keeps its start through a run of failures and takes the
+    // latest wording.
+    function noteProblem(text: string): void {
+        problem = { text, sinceMs: problem?.sinceMs ?? now() };
     }
 
     function recordFailure(err: unknown, reason: SendReason): void {
         const error = errorText(err);
+        noteProblem(describeReportFailure(err instanceof ReportError ? err.status : null, error));
         if (episode) {
             episode.failedReports += 1;
             return;
@@ -221,7 +271,10 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         });
     }
 
-    function recordSuccess(outputs: number): void {
+    function recordSuccess(outputs: number, skippedEntries: number | null): void {
+        lastReportAtMs = now();
+        problem = null;
+        skipped = skippedEntries;
         if (!episode) return;
         const { failedReports, sinceMs } = episode;
         episode = null;
@@ -278,9 +331,9 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
             // Whatever happens next, an unchanged status waits for the next heartbeat.
             lastSignature = payloadSignature(payload);
             try {
-                await post(cfg, JSON.stringify(payload), cancel);
+                const skippedEntries = await post(cfg, JSON.stringify(payload), cancel);
                 if (cancel.aborted) return;
-                recordSuccess(payload.outputs.length);
+                recordSuccess(payload.outputs.length, skippedEntries);
             } catch (err) {
                 // Shut down, or the settings changed: this report is of no interest any more.
                 if (cancel.aborted) return;
@@ -300,6 +353,7 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
     }
 
     function reportBuildFailure(err: unknown): void {
+        noteProblem(BUILD_FAILURE_PROBLEM);
         if (buildFailing) return;
         buildFailing = true;
         const error = errorText(err);
@@ -382,6 +436,9 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         lastSignature = null;
         lastAttemptAtMs = null;
         episode = null;
+        lastReportAtMs = null;
+        problem = null;
+        skipped = null;
         diagnostics?.event('key-vault-settings-changed', {
             enabled: config !== null,
             instance: config ? instanceForLog() : null,
@@ -407,10 +464,23 @@ export function createKeyVaultReporter(deps: KeyVaultReporterDeps) {
         shutdownController.abort();
     }
 
+    // The state of the connection for Settings; null while the reports are off.
+    function status(): KeyVaultStatus | null {
+        if (!config) return null;
+        return {
+            state: problem ? 'failing' : lastReportAtMs === null ? 'waiting' : 'ok',
+            lastReportAtMs,
+            problem: problem?.text ?? null,
+            failingSinceMs: problem?.sinceMs ?? null,
+            skipped,
+        };
+    }
+
     return {
         start,
         reconfigure,
         shutdown,
+        status,
     };
 }
 

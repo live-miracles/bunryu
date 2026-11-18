@@ -545,6 +545,146 @@ describe('Key Vault reporter', () => {
     });
 });
 
+describe('Key Vault reporter status', () => {
+    const reply = (status, body) => () => Promise.resolve(new Response(body ?? null, { status }));
+
+    test('is null while the reports are off', () => {
+        const h = setup({ fetchFn: recordingFetch().fetchFn, config: null });
+        h.reporter.start();
+        assert.equal(h.reporter.status(), null);
+    });
+
+    test('waits for the first answer, then is ok with the time of the last report', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        assert.deepEqual(h.reporter.status(), {
+            state: 'waiting',
+            lastReportAtMs: null,
+            problem: null,
+            failingSinceMs: null,
+            skipped: null,
+        });
+        h.emit();
+        await waitFor(() => calls.length === 1);
+        await waitFor(() => h.reporter.status().state === 'ok');
+        const status = h.reporter.status();
+        assert.ok(Math.abs(status.lastReportAtMs - Date.now()) < 2000);
+        assert.equal(status.problem, null);
+        assert.equal(status.skipped, null, 'an answer that does not say leaves it unknown');
+    });
+
+    test('says what Key Vault left out, from the answer it gives', async () => {
+        const { fetchFn } = recordingFetch(reply(200, '{"ok":true,"stored":1,"skipped":2}'));
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => h.reporter.status().state === 'ok');
+        assert.equal(h.reporter.status().skipped, 2);
+    });
+
+    test('an answer that is not what was expected still counts as a report that went through', async () => {
+        for (const body of ['not json', '{"skipped":"many"}', '{"skipped":-1}', '[]']) {
+            const { fetchFn } = recordingFetch(reply(200, body));
+            const h = setup({ fetchFn });
+            h.reporter.start();
+            h.emit();
+            await waitFor(() => h.reporter.status().state === 'ok');
+            assert.equal(h.reporter.status().skipped, null, body);
+        }
+    });
+
+    test('a huge answer is cut off and does not stop the report from counting', async () => {
+        const { fetchFn } = recordingFetch(reply(200, 'x'.repeat(1_000_000)));
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => h.reporter.status().state === 'ok');
+        assert.equal(h.reporter.status().skipped, null);
+    });
+
+    test('names the problem and when it began, and keeps the last good report', async () => {
+        let answer = 200;
+        const { calls, fetchFn } = recordingFetch(() =>
+            Promise.resolve(new Response(null, { status: answer })),
+        );
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => h.reporter.status().state === 'ok');
+        const good = h.reporter.status().lastReportAtMs;
+
+        answer = 401;
+        await waitFor(() => h.reporter.status().state === 'failing', 5000);
+        const failing = h.reporter.status();
+        assert.match(failing.problem, /refused the secret \(HTTP 401\)/);
+        assert.equal(failing.lastReportAtMs, good);
+        assert.ok(failing.failingSinceMs >= good);
+
+        // Further failures keep when it began.
+        const sent = calls.length;
+        await waitFor(() => calls.length >= sent + 2, 5000);
+        assert.equal(h.reporter.status().failingSinceMs, failing.failingSinceMs);
+
+        answer = 200;
+        await waitFor(() => h.reporter.status().state === 'ok', 5000);
+        const recovered = h.reporter.status();
+        assert.equal(recovered.problem, null);
+        assert.equal(recovered.failingSinceMs, null);
+        assert.ok(recovered.lastReportAtMs > good);
+    });
+
+    test('a link whose host does not exist is named as such', async () => {
+        const { fetchFn } = recordingFetch(() =>
+            Promise.reject(
+                new TypeError('fetch failed', {
+                    cause: new Error('getaddrinfo ENOTFOUND kv.example.invalid'),
+                }),
+            ),
+        );
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => h.reporter.status().state === 'failing');
+        assert.match(h.reporter.status().problem, /host in the link was not found/);
+        assert.equal(h.reporter.status().lastReportAtMs, null);
+    });
+
+    test('a failure to build the report shows as a problem too, and clears when it recovers', async () => {
+        const { calls, fetchFn } = recordingFetch();
+        const h = setup({ fetchFn });
+        h.world.throwOnList = true;
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => h.reporter.status().state === 'failing');
+        assert.match(h.reporter.status().problem, /could not build the report/);
+        assert.equal(calls.length, 0);
+
+        h.world.throwOnList = false;
+        await waitFor(() => h.reporter.status().state === 'ok', 5000);
+        assert.equal(h.reporter.status().problem, null);
+    });
+
+    test('saving new settings starts the status again', async () => {
+        const { fetchFn } = recordingFetch(reply(503));
+        const h = setup({ fetchFn });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => h.reporter.status().state === 'failing');
+
+        h.world.config = { ...CONFIG, url: 'https://other.example.invalid/ingest' };
+        h.reporter.reconfigure();
+        const status = h.reporter.status();
+        assert.equal(status.problem, null);
+        assert.equal(status.lastReportAtMs, null);
+        assert.equal(status.state, 'waiting');
+
+        h.world.config = null;
+        h.reporter.reconfigure();
+        assert.equal(h.reporter.status(), null);
+    });
+});
+
 describe('Key Vault reporter against a local receiver', () => {
     let server;
     afterEach(async () => {
@@ -608,6 +748,19 @@ describe('Key Vault reporter against a local receiver', () => {
         ]);
         assert.equal(payload.outputs[0].status, 'running');
         assert.equal(h.events.filter((e) => e.event.startsWith('key-vault-report-')).length, 0);
+    });
+
+    test('reads how many entries Key Vault left out from its real answer', async () => {
+        const { requests, url } = await listen((_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, stored: 1, skipped: 3 }));
+        });
+        const h = setup({ config: { ...CONFIG, url }, fetchFn: undefined });
+        h.reporter.start();
+        h.emit();
+        await waitFor(() => requests.length === 1);
+        await waitFor(() => h.reporter.status().state === 'ok');
+        assert.equal(h.reporter.status().skipped, 3);
     });
 
     test('does not follow a redirect with the token', async () => {

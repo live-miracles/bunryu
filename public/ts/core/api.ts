@@ -2,6 +2,7 @@ import type {
     ActivityEvent,
     ConfigData,
     HealthData,
+    KeyVaultStatusData,
     RejectedPublishesData,
     PipelineLog,
     OutputPayload,
@@ -120,6 +121,8 @@ async function apiRequest<T>(
 
 export const getConfig = () => apiRequest<ConfigData>('/api/config');
 export const getHealth = () => apiRequest<HealthData>('/api/health');
+export const getKeyVaultStatus = () =>
+    apiRequest<KeyVaultStatusData>('/api/settings/key-vault/status');
 export const getRejectedPublishes = () =>
     apiRequest<RejectedPublishesData>('/api/rejected-publishes');
 export const getSystemMetrics = () => apiRequest<SystemMetrics>('/api/metrics/system');

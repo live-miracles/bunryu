@@ -252,7 +252,9 @@ only for a new module.
   and the host disk alert look at.
 - `src/services/keyVaultReporter.ts` - the Key Vault status report (60 s heartbeat, on a change
   at most every 10 s; no retries (the next heartbeat is the retry), one log per failure episode; reads its link from the
-  `keyVault` setting and applies a change at once, `reconfigure()`); `utils/keyVaultConfig.ts`
+  `keyVault` setting and applies a change at once, `reconfigure()`; `status()` says whether the reports
+  get through, worded by `utils/keyVaultStatus.ts`, served by `api/settings.ts` and shown by
+  `public/ts/features/key-vault-status.ts`); `utils/keyVaultConfig.ts`
   validates and reads that setting (`api/settings.ts` saves it, `api/config.ts` shows it without
   its secrets); `utils/keyVaultPayload.ts`
   builds the payload (destination hash, message redaction, one entry per output and one per

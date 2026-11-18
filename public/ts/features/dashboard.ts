@@ -10,6 +10,7 @@ import { mergeMetricSamples } from '../core/metrics-history.js';
 import { parsePipelines } from '../core/pipeline.js';
 import { state } from '../core/state.js';
 import { renderPipelines, renderMetrics } from './render.js';
+import { refreshKeyVaultStatus } from './key-vault-status.js';
 import { getUrlParam } from '../core/utils.js';
 import { noteDashboardSnapshot } from './sound-alerts.js';
 
@@ -105,6 +106,8 @@ async function fetchAndRender(): Promise<void> {
         state.health = healthResult;
         resyncConfigIfChanged(healthResult.configRev);
     }
+    // Only asks while Settings is the open view.
+    void refreshKeyVaultStatus();
     // Recompute even when health couldn't be fetched: if the server itself is
     // unreachable, the connection banner already covers it, so suppress the
     // SRS-down banner to avoid showing two alerts at once.

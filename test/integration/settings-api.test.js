@@ -117,6 +117,11 @@ function createHarness() {
         reconfigure() {
             this.reconfigured += 1;
         },
+        // What the reporter says about its connection; a test sets it.
+        current: null,
+        status() {
+            return this.current;
+        },
     };
     registerSettingsApi(
         app,
@@ -608,6 +613,24 @@ describe('Key Vault settings API', () => {
             url: 'http://127.0.0.1:9999/ingest',
         });
         assert.equal(res.status, 200);
+    });
+
+    test('shows whether the reports get through, with the server clock, and null while off', async () => {
+        const harness = createHarness();
+        let res = await harness.request('GET', '/api/settings/key-vault/status');
+        assert.equal(res.status, 200);
+        assert.equal(res.body.status, null);
+        assert.ok(Math.abs(res.body.nowMs - Date.now()) < 2000);
+
+        harness.keyVault.current = {
+            state: 'failing',
+            lastReportAtMs: 1000,
+            problem: 'Key Vault refused the secret (HTTP 401).',
+            failingSinceMs: 2000,
+            skipped: null,
+        };
+        res = await harness.request('GET', '/api/settings/key-vault/status');
+        assert.deepEqual(res.body.status, harness.keyVault.current);
     });
 
     test('an empty link turns the reports off and forgets the secret', async () => {

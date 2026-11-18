@@ -434,6 +434,24 @@ export interface ConfigData {
     layoutOrder: LayoutOrderEntry[];
 }
 
+// Whether the reports reach Key Vault (GET /api/settings/key-vault/status). The server words
+// the problem; the dashboard only shows it.
+export interface KeyVaultStatus {
+    state: 'waiting' | 'ok' | 'failing';
+    lastReportAtMs: number | null;
+    problem: string | null;
+    failingSinceMs: number | null;
+    // Entries Key Vault left out of the last accepted report; null when it did not say.
+    skipped: number | null;
+}
+
+export interface KeyVaultStatusData {
+    // null while the reports are off.
+    status: KeyVaultStatus | null;
+    // The server's clock, for "N s ago".
+    nowMs: number;
+}
+
 export interface ProcUsage {
     cpuPercent: number | null;
     ramBytes: number | null;

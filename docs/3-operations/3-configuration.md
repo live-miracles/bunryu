@@ -150,6 +150,13 @@ clear the link to turn the reports off (this also forgets it). The token and has
 derived from it are stored in the database, like the server name (the secret itself is
 not), and the dashboard and [API](../4-reference/1-api.md) return only whether it is set.
 
+Under the fields, Settings shows whether the reports get through: **Connected** with the
+time of the last report, or **Not reaching Key Vault** with the reason (a refused secret, a
+link whose host does not exist, Key Vault down) and how long it has lasted. A report is sent
+as soon as you save, and the line updates every few seconds while Settings is open. When Key
+Vault says it left entries out of a report because it could not use them, the line says how
+many; the reasons are in Key Vault's function logs.
+
 Key Vault tells servers apart by the report's `instance`, which is this server's
 **Server Name** (**Settings > General**). Give each server that reports to the same Key Vault
 its own name. A rename shows in the next report, within a minute.

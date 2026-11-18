@@ -13,6 +13,7 @@ import {
     formatBytes,
 } from '../core/utils.js';
 import { refreshAfterMutation } from './dashboard.js';
+import { refreshKeyVaultStatus } from './key-vault-status.js';
 import { renderSrtPassphraseReset } from './render.js';
 import { noteSharedEncodeRestart } from './shared-encodes.js';
 import { ICON_COPY } from './output-badges.js';
@@ -44,6 +45,7 @@ export function openSettings(): void {
     (document.getElementById('settings-public-host-input') as HTMLInputElement).value =
         state.config.publicHost ?? '';
     renderKeyVaultForm();
+    void refreshKeyVaultStatus();
     (document.getElementById('current-password-input') as HTMLInputElement).value = '';
     (document.getElementById('new-password-input') as HTMLInputElement).value = '';
     (document.getElementById('confirm-password-input') as HTMLInputElement).value = '';

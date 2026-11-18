@@ -72,7 +72,7 @@ export function registerSettingsApi(
     inputState: InputState,
     outputService: OutputService,
     diagnostics: DiagnosticsLogger,
-    keyVaultReporter: Pick<KeyVaultReporter, 'reconfigure'>,
+    keyVaultReporter: Pick<KeyVaultReporter, 'reconfigure' | 'status'>,
 ): void {
     app.post('/api/settings/general', (req, res) => {
         const parsedName = parseName(req.body?.name);
@@ -94,6 +94,12 @@ export function registerSettingsApi(
             serverName: name,
             publicHost: publicHost ?? db.getSetting('publicHost') ?? '',
         });
+    });
+
+    // Whether the reports reach Key Vault, for Settings. `nowMs` is this server's clock, so the
+    // browser can say "12 s ago" without trusting its own.
+    app.get('/api/settings/key-vault/status', (_req, res) => {
+        res.json({ status: keyVaultReporter.status(), nowMs: Date.now() });
     });
 
     // The Key Vault link. A wrong value is refused here, when it is typed, so the saved one
