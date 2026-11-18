@@ -382,6 +382,8 @@ symlinks `.claude/skills` and `.agents/skills`; add new ones there, not in a
 tool folder.
 
 - `run-bunryu` - isolated local test stack and dashboard screenshots.
+- `record-bunryu-demo` - record the README's walkthrough GIF (and fresh stills) from the
+  Docker image with real outputs, on any machine with Docker, Windows and macOS included.
 - `control-bunryu` - drive a running instance (local, test stack or production)
   through the REST API: login, read health, create/start/stop outputs.
 - `investigate-prod` - read-only inspection of the production VM (logs,

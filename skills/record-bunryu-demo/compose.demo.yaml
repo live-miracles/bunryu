@@ -1,0 +1,15 @@
+# Demo only: a local SRS that accepts any RTMP publish, standing in for the destination
+# platforms. The aliases exist only inside this compose network, so the dashboard's
+# "YT RTMP" preset (rtmp://a.rtmp.youtube.com/live2) reaches this container, not YouTube.
+# Use it on top of the repo's compose.yaml:
+#   docker compose -p bunryu-demo -f compose.yaml -f skills/record-bunryu-demo/compose.demo.yaml up -d
+services:
+    receiver:
+        image: ossrs/srs:5
+        restart: unless-stopped
+        networks:
+            default:
+                aliases:
+                    - a.rtmp.youtube.com
+                    - cdn-a.example.test
+                    - cdn-b.example.test

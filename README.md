@@ -17,6 +17,10 @@ Built on official [SRS](https://github.com/ossrs/srs) for ingest, [`goryu`](http
 | [Install](docs/1-getting-started/3-install.md) | [Try with Docker](docs/1-getting-started/2-docker.md) | [Documentation](docs/README.md) |
 | --- | --- | --- |
 
+![Bunryu walkthrough: create a pipeline, publish a stream to it, preview the live input, add three destinations and start them](.github/assets/how-it-works.gif)
+
+_How it works in 50 seconds: one input, three destinations. The control plane, SRS and FFmpeg are real; the destinations are local test receivers, not live platforms. The preview plays an excerpt of [Sintel](https://durian.blender.org/) (© Blender Foundation, [CC BY 3.0](https://durian.blender.org/sharing/)), cropped and re-encoded._
+
 ![Bunryu dashboard: a pipeline with live preview and seven running outputs](.github/assets/pipeline-view.jpg)
 
 _The preview plays Hokusai's The Great Wave (public domain, [The Met Open Access](https://www.metmuseum.org/art/collection/search/45434)) animated for this screenshot. The outputs are simulated._
