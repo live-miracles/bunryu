@@ -338,15 +338,43 @@ async function setup({
     await sleep(1500);
 
     await api('POST', `/api/pipelines/${PIPELINE}/outputs/stop-all`);
-    await waitFor(
+    // Wait on the process table, not on /api/health: right after the previous scenario's
+    // destinations were killed, health can show every output as failed and waiting to
+    // retry while a retry has already started an FFmpeg, and stop-all only signals them.
+    // A DELETE sent then is refused with 409 (an output's FFmpeg is still running).
+    const stopped = await waitFor(
         'outputs stopped',
-        async () => {
-            const o = await outputsHealth();
-            return Object.values(o).every((x) => x.status !== 'running');
-        },
+        async () => sample([]).ffmpegCount === 0,
         30_000,
+        500,
     );
-    await api('DELETE', `/api/pipelines/${PIPELINE}/outputs`);
+    if (!stopped) throw new Error('FFmpeg processes of the previous scenario did not exit');
+    // The app records an exit just after the process is gone, so a 409 may still be seen.
+    const cleared = await waitFor(
+        'outputs cleared',
+        async () => {
+            try {
+                await api('DELETE', `/api/pipelines/${PIPELINE}/outputs`);
+                return true;
+            } catch (err) {
+                if (String(err.message).includes('-> 409')) return false;
+                throw err;
+            }
+        },
+        10_000,
+        250,
+    );
+    if (!cleared) throw new Error('the previous scenario’s outputs could not be cleared');
+    // /api/health is a shared 5 s poll and output ids repeat between scenarios: until it
+    // has dropped the cleared outputs, this scenario's "running" wait and its baseline
+    // (start times) would be read from the previous scenario's outputs.
+    const listed = await waitFor(
+        'cleared outputs leave the health list',
+        async () => Object.keys(await outputsHealth()).length === 0,
+        15_000,
+        500,
+    );
+    if (!listed) throw new Error('health still lists the previous scenario’s outputs');
     // Output ids repeat from one scenario to the next (the 51st output is `1-51` in
     // each), and the stop-all above made the previous scenario's outputs exit just now.
     // Events from here on belong to this scenario's outputs.
