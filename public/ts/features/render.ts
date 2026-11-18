@@ -73,8 +73,6 @@ import {
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import {
     displayInputBitrateKbps,
-    inputHealth,
-    outputHealth,
     statusColor,
     type InputStatus,
     type OutStatus,
@@ -251,14 +249,6 @@ function setMetricSeverity(id: string, percent: number | null): void {
     el.classList.toggle('font-semibold', isError || isWarning);
 }
 
-function outStatus(o: OutputView, input: InputHealth): OutStatus {
-    return outputHealth(o, input).status;
-}
-
-function inputStatus(input: InputHealth): InputStatus {
-    return inputHealth(input).status;
-}
-
 function overviewStatusBadge(st: InputStatus | OutStatus): string {
     if (st === 'error') return '<span class="badge badge-sm badge-error">ERROR</span>';
     if (st === 'warn') return '<span class="badge badge-sm badge-warning">WARNING</span>';
@@ -269,14 +259,6 @@ function overviewStatusBadge(st: InputStatus | OutStatus): string {
 function renderOverviewIssues(issues: OverviewIssue[]): string {
     if (issues.length === 0) return '<span class="text-muted">—</span>';
     return issueLinesHtml(issues);
-}
-
-function inputIssues(input: InputHealth): OverviewIssue[] {
-    return inputHealth(input).issues;
-}
-
-function outputIssues(o: OutputView, input: InputHealth): OverviewIssue[] {
-    return outputHealth(o, input).issues;
 }
 
 function selectedAudioTrack(
@@ -456,7 +438,7 @@ function relayInputSeverityColor(
     relay: RelayHealth,
     inputColor: string,
 ): string {
-    if (inputStatus(pipeline.input) !== 'good') return inputColor;
+    if (pipeline.input.verdict.status !== 'good') return inputColor;
     if (relay.input === 'error' || relay.output === 'error') return STATUS_COLOR_ERROR;
     if (relay.input === 'warn' || relay.output === 'warn') return STATUS_COLOR_WARN;
     return inputColor;
@@ -469,12 +451,12 @@ function renderPipelineList(): void {
     if (!listEl) return;
     if (draggingPipelineEl || draggingGroupEl) return; // preserve the DOM while a drag is in progress
 
-    const inputsOn = state.pipelines.filter((p) => inputStatus(p.input) === 'good').length;
-    const inputsWarn = state.pipelines.filter((p) => inputStatus(p.input) === 'warn').length;
-    const inputsFailed = state.pipelines.filter((p) => inputStatus(p.input) === 'error').length;
+    const inputsOn = state.pipelines.filter((p) => p.input.verdict.status === 'good').length;
+    const inputsWarn = state.pipelines.filter((p) => p.input.verdict.status === 'warn').length;
+    const inputsFailed = state.pipelines.filter((p) => p.input.verdict.status === 'error').length;
     const totalOutputs = state.pipelines.reduce((s, p) => s + p.outs.length, 0);
     const outputCounts = outputStatusCounts(
-        state.pipelines.flatMap((p) => p.outs.map((o) => outStatus(o, p.input))),
+        state.pipelines.flatMap((p) => p.outs.map((o) => o.verdict.status)),
     );
     const outputsOff = state.pipelines.reduce(
         (s, p) => s + p.outs.filter((o) => o.desiredState === 'stopped').length,
@@ -487,7 +469,7 @@ function renderPipelineList(): void {
     setBadgeCount('pipe-warns', inputsWarn + inputsFailed);
     setBadgeCount(
         'pipe-offs',
-        state.pipelines.filter((p) => inputStatus(p.input) === 'off').length,
+        state.pipelines.filter((p) => p.input.verdict.status === 'off').length,
     );
     setInnerText('out-cnt', totalOutputs);
     setInnerText('out-cnt-label', totalOutputs === 1 ? 'Output' : 'Outputs');
@@ -518,10 +500,10 @@ function renderPipelineList(): void {
             warn: outWarn,
             error: outFailed,
             off: outOff,
-        } = tallyStatuses(p.outs.map((o) => outStatus(o, p.input)));
+        } = tallyStatuses(p.outs.map((o) => o.verdict.status));
 
         const relay = relayHealth(p, relayProcessRunning, healthNowMs());
-        const inColor = relayInputSeverityColor(p, relay, statusColor(inputStatus(p.input)));
+        const inColor = relayInputSeverityColor(p, relay, statusColor(p.input.verdict.status));
         const outColor =
             outFailed > 0
                 ? STATUS_COLOR_ERROR
@@ -536,7 +518,7 @@ function renderPipelineList(): void {
         const statusTooltip = renderStatusTooltip(
             {
                 label: 'Input',
-                issues: [...inputIssues(p.input), ...relayIssueList(relay)],
+                issues: [...p.input.verdict.issues, ...relayIssueList(relay)],
                 active: p.input.connected,
                 ok: 'Input is live.',
                 off: 'No input.',
@@ -544,7 +526,7 @@ function renderPipelineList(): void {
             {
                 label: 'Outputs',
                 issues: p.outs.flatMap((o) =>
-                    outputIssues(o, p.input).map((issue) => ({
+                    o.verdict.issues.map((issue) => ({
                         severity: issue.severity,
                         message: `${o.name}: ${issue.message}`,
                     })),
@@ -776,8 +758,8 @@ function renderGroupHeader(
     collapsed: boolean,
 ): string {
     let inSt: InputStatus = 'off';
-    for (const p of members) inSt = worstStatus(inSt, inputStatus(p.input));
-    const outs = tallyStatuses(members.flatMap((p) => p.outs.map((o) => outStatus(o, p.input))));
+    for (const p of members) inSt = worstStatus(inSt, p.input.verdict.status);
+    const outs = tallyStatuses(members.flatMap((p) => p.outs.map((o) => o.verdict.status)));
     const outSt: OutStatus = worstOfTally(outs);
     const inColor = statusColor(inSt);
     const outColor = statusColor(outSt);
@@ -942,7 +924,7 @@ function renderOverview(): void {
             return `<tr class="hover" ${statusBg(isError, isWarn)}>
                 <td class="overview-name-col font-semibold cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}">${escapeHtml(p.name)}</td>
                 <td>${overviewStatusBadge(st)}</td>
-                <td>${renderOverviewIssues(affected > 0 ? [{ severity: 'warning', message: `No publisher is connected; ${affected} output${affected === 1 ? '' : 's'} affected.` }] : inputIssues(inp))}</td>
+                <td>${renderOverviewIssues(affected > 0 ? [{ severity: 'warning', message: `No publisher is connected; ${affected} output${affected === 1 ? '' : 's'} affected.` }] : inp.verdict.issues)}</td>
                 <td class="tabular-nums text-xs">${inp.live ? formatUptime(inp.uptimeMs) : '—'}</td>
                 <td class="tabular-nums text-xs">${inp.connected ? formatBitrate(displayInputBitrateKbps(inp)) : '—'}</td>
                 <td>${typeBadge(protocolLabel)}</td>
@@ -965,7 +947,7 @@ function renderOverview(): void {
         return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
             <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
             <td>${overviewStatusBadge(st)}</td>
-            <td>${renderOverviewIssues(outputIssues(o, p.input))}</td>
+            <td>${renderOverviewIssues(o.verdict.issues)}</td>
             <td class="tabular-nums text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
             ${td(formatBitrate(o.bitrateKbps))}
             <td class="tabular-nums text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
@@ -989,7 +971,7 @@ function renderOverview(): void {
             return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
             <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(sharedEncodeLabel(r))} ${errorBadge}</td>
             <td>${overviewStatusBadge(st)}</td>
-            <td>${renderOverviewIssues(outputIssues(r, p.input))}</td>
+            <td>${renderOverviewIssues(r.verdict.issues)}</td>
             <td class="tabular-nums text-xs">${uptimeMs !== null ? formatUptime(uptimeMs) : '—'}</td>
             ${td(formatBitrate(r.bitrateKbps))}
             <td class="tabular-nums text-xs">${r.cpuPercent != null ? formatCpuPercent(r.cpuPercent) : '—'}</td>
@@ -1369,10 +1351,7 @@ function renderPipelineInfo(selectedId: string | null): void {
             if (btn) void reprobeInput(pipeline.id);
         };
     }
-    renderSharedEncodes(pipeline, {
-        ffmpegHealth: (rendition) => outputHealth(rendition, pipeline.input, false),
-        inputHealth,
-    });
+    renderSharedEncodes(pipeline);
     const bondingCard = document.getElementById('srt-bonding-card');
     const bondingDot = document.getElementById('srt-bonding-status-dot');
     const bondingDotFill = document.getElementById('srt-bonding-status-fill');
@@ -1649,7 +1628,7 @@ function renderOutputsList(pipeline: PipelineView): void {
     }
 
     const rows = pipeline.outs.map((output) => {
-        const status = outStatus(output, pipeline.input);
+        const status = output.verdict.status;
         return {
             output,
             status,

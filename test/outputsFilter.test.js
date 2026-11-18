@@ -9,6 +9,7 @@ const {
     noMatchingOutputsText,
 } = require('../public/ts/core/outputs-filter');
 const { outputSeverity } = require('../public/ts/features/output-card');
+const { withInputVerdict, withVerdict } = require('./helpers/verdicts');
 
 describe('countOutputs', () => {
     test('running and stopped are every output, whatever is wrong with it; errors and warnings overlap', () => {
@@ -99,7 +100,7 @@ describe('outputSeverity', () => {
     });
     const rtmpInput = { connected: true, live: true, isSrt: false, audioTracks: [] };
     const severity = (over, dupUrls = new Map()) =>
-        outputSeverity(output(over), rtmpInput, dupUrls);
+        outputSeverity(withVerdict(output(over), rtmpInput), withInputVerdict(rtmpInput), dupUrls);
     const stopped = { desiredState: 'stopped', status: 'stopped' };
 
     test('a healthy output has none', () => {

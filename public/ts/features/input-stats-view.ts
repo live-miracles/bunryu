@@ -7,10 +7,10 @@ import {
     formatBitrate,
     formatLocalTime,
 } from '../core/utils.js';
-import { displayInputBitrateKbps, inputHealth, inputStatusMessage } from '../core/status.js';
+import { displayInputBitrateKbps } from '../core/status.js';
 import { issueLinesHtml } from './status-tooltip.js';
 import { ICON_RESTART } from './output-badges.js';
-import type { InputHealth } from '../types.js';
+import type { InputHealth, PipelineView } from '../types.js';
 
 type InputStatsOptions = {
     // Overrides the publisher IP when SRS only sees the relay (loopback).
@@ -35,8 +35,9 @@ function formatMediaProbeStatus(input: InputHealth): string | null {
 // Asks the server for a fresh ffprobe of the connected input; render.ts handles the click.
 const REPROBE_BUTTON = `<button class="btn btn-xs btn-square btn-ghost shrink-0" data-action="reprobe" title="Probe the input again" aria-label="Probe the input again">${ICON_RESTART}</button>`;
 
-function renderMediaProbeNotice(input: InputHealth): string {
-    const message = inputStatusMessage(input);
+function renderMediaProbeNotice(input: PipelineView['input']): string {
+    // Shown only while the input is not good yet, so the verdict's first issue is why.
+    const message = input.verdict.issues[0]?.message ?? '';
     const toneClass = input.mediaError ? 'text-error' : input.live ? 'text-muted' : 'text-warning';
     const probeStatus = input.mediaError ? null : formatMediaProbeStatus(input);
     return `<div class="mt-2 flex items-start justify-between gap-2"><p class="text-xs ${toneClass}">${escapeHtml(message)}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>${REPROBE_BUTTON}</div>`;
@@ -47,7 +48,7 @@ function renderDirectSrtNotice(relayPort: number | undefined): string {
     return `<p class="text-xs text-muted mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the SRT relay input${port} to get them.</p>`;
 }
 
-export function renderInputStats(input: InputHealth, options: InputStatsOptions): string {
+export function renderInputStats(input: PipelineView['input'], options: InputStatsOptions): string {
     if (!input.connected) return '';
     // mediaError takes priority over `!live` below: for RTMP inputs, SRS keeps
     // reporting its own (stale) demuxed video/audio metadata even while our
@@ -78,7 +79,7 @@ export function renderInputStats(input: InputHealth, options: InputStatsOptions)
     const keyframesTooLong = (input.alerts ?? []).some((a) => a.code === 'input-keyframe-interval');
     // The same issues the status dot lists on hover (no audio, a low bitrate, the input
     // alerts with their hints), so a warning is never only in a tooltip.
-    const issues = inputHealth(input).issues;
+    const issues = input.verdict.issues;
     const issuesHtml = issues.length > 0 ? `<div class="mt-2">${issueLinesHtml(issues)}</div>` : '';
     const row = (label: string, value: string) =>
         `<span class="text-muted">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;

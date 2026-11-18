@@ -9,8 +9,9 @@ const {
     sharedEncodeUsage,
     SHARED_ENCODE_RESTART_LOCKOUT_MS,
 } = require('../public/ts/features/shared-encodes');
-const { sharedEncodeIssue } = require('../public/ts/core/status');
+const { sharedEncodeIssue } = require('../src/utils/outputStatus');
 const { sharedEncodeLabel } = require('../public/ts/core/renditions');
+const { buildHealthVerdicts } = require('../src/utils/healthVerdicts');
 
 const ENCODINGS = ['copy', '720p', '1080p', 'vertical_rotate'];
 const R720 = 'rtmp://127.0.0.1:21935/internal/r1_720p_a1';
@@ -56,15 +57,32 @@ const outputHealth = (overrides = {}) => ({
     ...overrides,
 });
 
+// A live input with good media: the right half of a shared encode's dot is green.
+const GOOD_INPUT = {
+    connected: true,
+    live: true,
+    mediaOk: true,
+    mediaError: null,
+    recvBitrateKbps: 4000,
+    uptimeMs: 120_000,
+    audioTracks: [{}],
+    audio: null,
+};
+
 function parse({ outputs, health = {}, layoutOrder = [] }) {
+    const pipelines = [{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1, groupId: null }];
+    const pipelineHealth = { input: GOOD_INPUT, outputs: health, alerts: [] };
     return parsePipelines(
+        { pipelines, outputs, layoutOrder, encodings: ENCODINGS },
         {
-            pipelines: [{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1, groupId: null }],
-            outputs,
-            layoutOrder,
-            encodings: ENCODINGS,
+            pipelines: { 1: pipelineHealth },
+            // What the server sends: its verdicts on the same outputs and health.
+            verdicts: buildHealthVerdicts({
+                pipelines,
+                outputs: outputs.map((o) => ({ ...o, pipelineId: 1 })),
+                health: { 1: pipelineHealth },
+            }),
         },
-        { pipelines: { 1: { outputs: health } } },
     )[0];
 }
 
@@ -297,16 +315,16 @@ describe('sharedEncodeLabel and sharedEncodeUsage', () => {
 
 describe('Shared encodes card', () => {
     const side = (status, issues = []) => ({ status, issues });
-    const deps = (overrides = {}) => ({
-        ffmpegHealth: (o) =>
-            o.status === 'failed'
-                ? side('error', [{ severity: 'error', message: 'ffmpeg boom' }])
-                : o.desiredState === 'stopped'
-                  ? side('off')
-                  : side('good'),
-        inputHealth: () => side('good'),
-        restartLocked: () => false,
-        ...overrides,
+    const deps = (overrides = {}) => ({ restartLocked: () => false, ...overrides });
+    // The pipeline with the verdicts the two halves of the dot show replaced: the encode's
+    // own, and the input's.
+    const withSides = (pipeline, { ffmpeg, input }) => ({
+        ...pipeline,
+        input: { ...pipeline.input, verdict: input ?? pipeline.input.verdict },
+        renditions: pipeline.renditions.map((r) => ({
+            ...r,
+            verdict: { ...r.verdict, withoutInput: ffmpeg ?? r.verdict.withoutInput },
+        })),
     });
     const pipelineWith = (renditionHealth = {}, rows = FLEET()) =>
         parse({
@@ -361,11 +379,11 @@ describe('Shared encodes card', () => {
 
         test('is split: the left half is FFmpeg, the right half is the SRS input', () => {
             const html = renderSharedEncodeRows(
-                pipelineWith(),
-                deps({
-                    ffmpegHealth: () => side('error', [{ severity: 'error', message: 'x' }]),
-                    inputHealth: () => side('warn', [{ severity: 'warning', message: 'y' }]),
+                withSides(pipelineWith(), {
+                    ffmpeg: side('error', [{ severity: 'error', message: 'x' }]),
+                    input: side('warn', [{ severity: 'warning', message: 'y' }]),
                 }),
+                deps(),
             );
             assert.match(
                 dot(html),
@@ -375,12 +393,11 @@ describe('Shared encodes card', () => {
 
         test('the tooltip lists each side under its own heading', () => {
             const html = renderSharedEncodeRows(
-                pipelineWith(),
-                deps({
-                    ffmpegHealth: () => side('error', [{ severity: 'error', message: 'enc died' }]),
-                    inputHealth: () =>
-                        side('warn', [{ severity: 'warning', message: 'no keyframes' }]),
+                withSides(pipelineWith(), {
+                    ffmpeg: side('error', [{ severity: 'error', message: 'enc died' }]),
+                    input: side('warn', [{ severity: 'warning', message: 'no keyframes' }]),
                 }),
+                deps(),
             );
             const tip = tooltip(html);
             assert.match(
@@ -398,7 +415,7 @@ describe('Shared encodes card', () => {
             assert.match(ok, /Encoding normally\./);
             assert.match(ok, /Input is live\./);
             const noInput = tooltip(
-                renderSharedEncodeRows(pipelineWith(), deps({ inputHealth: () => side('off') })),
+                renderSharedEncodeRows(withSides(pipelineWith(), { input: side('off') }), deps()),
             );
             assert.match(noInput, /No input on this stream key\./);
         });
@@ -408,8 +425,11 @@ describe('Shared encodes card', () => {
                 o.id === '1-2' ? { ...o, desiredState: 'stopped' } : o,
             );
             const html = renderSharedEncodeRows(
-                pipelineWith({ status: 'stopped', startedAtMs: null, ready: false }, rows),
-                deps({ inputHealth: () => side('error', [{ severity: 'error', message: 'z' }]) }),
+                withSides(
+                    pipelineWith({ status: 'stopped', startedAtMs: null, ready: false }, rows),
+                    { input: side('error', [{ severity: 'error', message: 'z' }]) },
+                ),
+                deps(),
             );
             assert.match(
                 dot(html),

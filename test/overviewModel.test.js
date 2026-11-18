@@ -4,6 +4,7 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { buildOverviewModel } = require('../public/ts/core/overview-model');
+const { withVerdicts } = require('./helpers/verdicts');
 
 const NOW = 1_000_000;
 
@@ -81,20 +82,21 @@ const idleBonding = () => ({
     },
 });
 
-const pipeline = (id, input, outs, extra = {}) => ({
-    id: String(id),
-    name: `Pipeline ${id}`,
-    streamKey: `key0${id}_secret`,
-    rtmpPublishUrl: `rtmp://srv.example/live/key0${id}_secret`,
-    srtPublishUrl: `srt://srv.example:8890?streamid=publish:live/key0${id}_secret`,
-    groupId: null,
-    alerts: [],
-    srtBonding: idleBonding(),
-    input,
-    outs,
-    renditions: [],
-    ...extra,
-});
+const pipeline = (id, input, outs, extra = {}) =>
+    withVerdicts({
+        id: String(id),
+        name: `Pipeline ${id}`,
+        streamKey: `key0${id}_secret`,
+        rtmpPublishUrl: `rtmp://srv.example/live/key0${id}_secret`,
+        srtPublishUrl: `srt://srv.example:8890?streamid=publish:live/key0${id}_secret`,
+        groupId: null,
+        alerts: [],
+        srtBonding: idleBonding(),
+        input,
+        outs,
+        renditions: [],
+        ...extra,
+    });
 
 const leg = (over = {}) => ({
     ip: '203.0.113.10',

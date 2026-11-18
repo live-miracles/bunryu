@@ -1,3 +1,5 @@
+import type { StatusIssue } from './core/status.js';
+
 export interface StreamKey {
     id: number;
     slot: number;
@@ -350,6 +352,42 @@ export interface LegHistoryData {
     legs: LegHistorySeries[];
 }
 
+// The server's verdict on an input or an output: its status and the problems behind it
+// (src/utils/healthVerdicts.ts). The dashboard shows it; it works out nothing itself.
+export type StatusLevel = 'good' | 'warn' | 'error' | 'off';
+
+export interface VerdictIssue {
+    severity: 'warning' | 'error';
+    message: string;
+    // An input alert's code and start; the dashboard adds the hint for the code.
+    code?: string;
+    sinceMs?: number;
+}
+
+export interface Verdict {
+    status: StatusLevel;
+    issues: VerdictIssue[];
+}
+
+// A shared encode also has `withoutInput`: its own state without "the input is not live",
+// which its two-half status dot shows on the input's side.
+export type OutputVerdict = Verdict & { withoutInput?: Verdict };
+
+export interface HealthVerdicts {
+    // By pipeline id.
+    inputs: Record<string, Verdict>;
+    // By output id, shared encodes included.
+    outputs: Record<string, OutputVerdict>;
+}
+
+// A verdict as the views hold it, with the hints added to its issues (see toStatusVerdict).
+export interface StatusVerdict {
+    status: StatusLevel;
+    issues: StatusIssue[];
+}
+
+export type OutputStatusVerdict = StatusVerdict & { withoutInput?: StatusVerdict };
+
 export interface HealthData {
     generatedAt: string;
     srsReachable: boolean;
@@ -358,6 +396,7 @@ export interface HealthData {
     hostAlerts?: string[];
     configRev: number;
     pipelines: Record<string, PipelineHealth>;
+    verdicts: HealthVerdicts;
 }
 
 export interface RejectedPublish {
@@ -429,7 +468,7 @@ export interface PipelineView {
     srtBonding: SrtBondingStatus;
     rtmpPublishUrl: string;
     srtPublishUrl: string;
-    input: InputHealth & { live: boolean };
+    input: InputHealth & { live: boolean; verdict: StatusVerdict };
     alerts: PipelineAlert[];
     // Your outputs. Shared-encode rows are kept apart in `renditions` so every
     // count, status and list built from `outs` ignores them.
@@ -463,4 +502,6 @@ export interface OutputView extends Output {
     dependents: { id: string; name: string }[];
     // Your outputs: the shared encode (rendition row) this one pulls, if any.
     sharedEncode: OutputView | null;
+    // The server's verdict on this output (the dot's colour and Issues).
+    verdict: OutputStatusVerdict;
 }

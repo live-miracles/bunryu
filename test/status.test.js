@@ -1,128 +1,20 @@
 'use strict';
 
+// What the dashboard does with a status: it takes the server's verdict (see
+// healthVerdicts.test.js for how that is worked out) and adds the hints.
+
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    hasCurrentError,
-    inputHealth,
     lastErrorLine,
-    outputHealth,
     summarizeOutputError,
+    toOutputStatusVerdict,
+    toStatusVerdict,
 } = require('../public/ts/core/status');
-
-const output = (over = {}) => ({
-    id: '1-1',
-    desiredState: 'running',
-    status: 'running',
-    failures: 0,
-    lastError: null,
-    lastErrorAt: null,
-    warningReason: null,
-    startedAtMs: 1000,
-    bitrateKbps: 5000,
-    sharedEncode: null,
-    ...over,
-});
-const liveInput = { connected: true, live: true };
-const verdict = (over, input = liveInput, includeInput) =>
-    outputHealth(output(over), input, includeInput);
-
-describe('outputHealth', () => {
-    test('a stopped output is off, whatever it last said', () => {
-        assert.deepEqual(verdict({ desiredState: 'stopped', status: 'failed' }), {
-            status: 'off',
-            issues: [],
-        });
-    });
-
-    test('running with data is good', () => {
-        assert.deepEqual(verdict({}), { status: 'good', issues: [] });
-    });
-
-    test('running while the input is not live warns, unless the input is left out of the verdict', () => {
-        const input = { connected: true, live: false };
-        assert.equal(verdict({}, input).status, 'warn');
-        assert.match(verdict({}, input).issues[0].message, /input is not live/);
-        assert.equal(
-            verdict({}, input, false).status,
-            'good',
-            'a shared encode shows it elsewhere',
-        );
-    });
-
-    test('a warning the server reported is the issue', () => {
-        const v = verdict({ warningReason: 'High memory usage: 150MB' });
-        assert.equal(v.status, 'warn');
-        assert.equal(v.issues[0].message, 'High memory usage: 150MB');
-    });
-
-    test('bitrate: below 200 kb/s warns, none yet warns, none after an error is an error', () => {
-        assert.match(verdict({ bitrateKbps: 100 }).issues[0].message, /below 200 kb\/s/);
-        assert.match(verdict({ bitrateKbps: null }).issues[0].message, /no bitrate is reported/);
-        const afterError = verdict({ bitrateKbps: null, lastError: 'boom', lastErrorAt: 2000 });
-        assert.equal(afterError.status, 'error');
-        assert.equal(afterError.issues[0].message, 'boom');
-    });
-
-    test('a failed output is an error that counts the errors since the last start', () => {
-        const v = verdict({ status: 'failed', failures: 3, lastError: 'a\nConnection refused' });
-        assert.equal(v.status, 'error');
-        assert.equal(v.issues[0].message, '3 errors since last start. Connection refused');
-        assert.equal(
-            verdict({ status: 'failed', failures: 1 }).issues[0].message,
-            '1 error since last start. Output process failed.',
-        );
-    });
-
-    test('between retries: the error while one is current, waiting otherwise', () => {
-        const between = { status: 'stopped', startedAtMs: null };
-        assert.equal(
-            verdict({ ...between, failures: 2, lastError: 'x', lastErrorAt: 1 }).status,
-            'error',
-        );
-        // A manual start that has not spawned yet must not resurrect an old error.
-        const fresh = verdict({ ...between, failures: 0, lastError: 'old', lastErrorAt: 1 });
-        assert.equal(fresh.status, 'warn');
-        assert.match(fresh.issues[0].message, /waiting to start or retry/);
-    });
-
-    test('an output waiting for its shared encode is a warning, not an error', () => {
-        const waiting = verdict({
-            status: 'stopped',
-            sharedEncode: { name: 'Shared encode 720p', ready: false, status: 'running' },
-        });
-        assert.equal(waiting.status, 'warn');
-        assert.equal(waiting.issues[0].message, 'Waiting for Shared encode 720p');
-        const failed = verdict({
-            status: 'stopped',
-            sharedEncode: { name: 'x', ready: false, status: 'failed', lastError: 'boom' },
-        });
-        assert.equal(failed.status, 'warn');
-        assert.match(failed.issues[0].message, /^Shared encode failed: boom$/);
-    });
-});
+const { alertHint } = require('../public/ts/core/hints');
+const { parsePipelines } = require('../public/ts/core/pipeline');
 
 describe('the error helpers', () => {
-    test('an error is current in its own run, or while waiting to retry after a failure', () => {
-        assert.equal(hasCurrentError(output({ lastError: 'x', lastErrorAt: 2000 })), true);
-        assert.equal(
-            hasCurrentError(output({ lastError: 'x', lastErrorAt: 500 })),
-            false,
-            'earlier run',
-        );
-        assert.equal(
-            hasCurrentError(output({ lastError: 'x', lastErrorAt: 1, startedAtMs: null })),
-            false,
-        );
-        assert.equal(
-            hasCurrentError(
-                output({ lastError: 'x', lastErrorAt: 1, startedAtMs: null, failures: 1 }),
-            ),
-            true,
-        );
-        assert.equal(hasCurrentError(output({ lastError: null })), false);
-    });
-
     test('lastErrorLine is the last non-empty line', () => {
         assert.equal(lastErrorLine({ lastError: 'a\nb\n\n' }), 'b');
         assert.equal(lastErrorLine({ lastError: null }), '');
@@ -137,72 +29,109 @@ describe('the error helpers', () => {
     });
 });
 
-describe('inputHealth', () => {
-    const input = (over = {}) => ({
-        connected: true,
-        live: true,
-        mediaOk: true,
-        mediaError: null,
-        uptimeMs: 120_000,
-        recvBitrateKbps: 6000,
-        audioTracks: [{ index: 0 }],
-        audio: null,
-        alerts: [],
-        ...over,
+describe('toStatusVerdict', () => {
+    test('keeps the status and the issues, and adds the hint for an alert code', () => {
+        const verdict = toStatusVerdict({
+            status: 'warn',
+            issues: [
+                {
+                    severity: 'warning',
+                    message: 'Input is interlaced',
+                    code: 'input-interlaced',
+                    sinceMs: 5,
+                },
+                { severity: 'warning', message: 'No audio track detected in input.' },
+            ],
+        });
+        assert.equal(verdict.status, 'warn');
+        assert.deepEqual(verdict.issues, [
+            {
+                severity: 'warning',
+                message: 'Input is interlaced',
+                hint: alertHint('input-interlaced'),
+                sinceMs: 5,
+            },
+            { severity: 'warning', message: 'No audio track detected in input.' },
+        ]);
+        assert.ok(alertHint('input-interlaced'), 'the code has a hint to add');
     });
 
-    test('not connected is off', () => {
-        assert.deepEqual(inputHealth(input({ connected: false })), { status: 'off', issues: [] });
+    test('a code with no hint adds none', () => {
+        const [issue] = toStatusVerdict({
+            status: 'warn',
+            issues: [{ severity: 'warning', message: 'x', code: 'no-such-alert' }],
+        }).issues;
+        assert.equal('hint' in issue, false);
     });
 
-    test('a failed probe is an error and outranks the pending state', () => {
-        const v = inputHealth(input({ mediaOk: false, mediaError: '10:00:00 ffprobe failed' }));
-        assert.equal(v.status, 'error');
-        assert.equal(v.issues[0].message, '10:00:00 ffprobe failed');
-        assert.equal(inputHealth(input({ mediaOk: null, mediaError: 'boom' })).status, 'error');
+    test('no verdict at all is unknown, a warning, never "fine"', () => {
+        const verdict = toStatusVerdict(undefined);
+        assert.equal(verdict.status, 'warn');
+        assert.equal(verdict.issues[0].message, 'The status is not available yet.');
     });
 
-    test('waiting for the first probe, or for media, warns', () => {
-        assert.match(
-            inputHealth(input({ mediaOk: null })).issues[0].message,
-            /Waiting for ffprobe/,
-        );
-        assert.match(
-            inputHealth(input({ live: false })).issues[0].message,
-            /waiting for valid media/,
-        );
-    });
-
-    test('a healthy input is good', () => {
-        assert.deepEqual(inputHealth(input()), { status: 'good', issues: [] });
-    });
-
-    test('low bitrate warns only once SRS has real statistics (not the startup zero)', () => {
-        assert.equal(inputHealth(input({ recvBitrateKbps: 0, uptimeMs: 10_000 })).status, 'good');
-        const low = inputHealth(input({ recvBitrateKbps: 0, uptimeMs: 40_000 }));
-        assert.equal(low.status, 'warn');
-        assert.match(low.issues[0].message, /Input bitrate is below 200 kb\/s/);
-    });
-
-    test('no audio track warns', () => {
-        const v = inputHealth(input({ audioTracks: [], audio: null }));
-        assert.equal(v.status, 'warn');
-        assert.equal(v.issues[0].message, 'No audio track detected in input.');
+    test('a shared encode keeps its verdict without the input', () => {
+        const verdict = toOutputStatusVerdict({
+            status: 'warn',
+            issues: [{ severity: 'warning', message: 'Output is running but input is not live.' }],
+            withoutInput: { status: 'good', issues: [] },
+        });
+        assert.deepEqual(verdict.withoutInput, { status: 'good', issues: [] });
         assert.equal(
-            inputHealth(input({ audioTracks: [], audio: { codec: 'aac' } })).status,
-            'good',
+            'withoutInput' in toOutputStatusVerdict({ status: 'good', issues: [] }),
+            false,
         );
     });
+});
 
-    test('server alerts are listed with their severity, and an error alert makes it an error', () => {
-        const alerts = [{ code: 'x', severity: 'warning', message: 'Late packets', sinceMs: 5 }];
-        const warn = inputHealth(input({ alerts }));
-        assert.equal(warn.status, 'warn');
-        assert.equal(warn.issues[0].message, 'Late packets');
-        assert.equal(warn.issues[0].sinceMs, 5);
-        const error = inputHealth(
-            input({ alerts: [...alerts, { code: 'y', severity: 'error', message: 'Down' }] }),
-        );
-        assert.equal(error.status, 'error');
+describe('parsePipelines attaches the server verdicts', () => {
+    const config = {
+        pipelines: [{ id: '1', name: 'Hindi', streamKey: 'k', streamKeyId: 1 }],
+        outputs: [
+            {
+                id: '1-1',
+                pipelineId: '1',
+                seq: 1,
+                name: 'YouTube',
+                desiredState: 'running',
+                videoEncoding: 'copy',
+                url: 'rtmp://a.example/live/k',
+                audioEncoding: 'copy',
+                lastError: null,
+                hasErrorHistory: false,
+            },
+        ],
+        encodings: ['copy'],
+    };
+
+    test('to the input and to each output, by pipeline id and output id', () => {
+        const [pipeline] = parsePipelines(config, {
+            pipelines: {},
+            verdicts: {
+                inputs: { 1: { status: 'good', issues: [] } },
+                outputs: {
+                    '1-1': {
+                        status: 'warn',
+                        issues: [{ severity: 'warning', message: 'Falling behind' }],
+                    },
+                },
+            },
+        });
+        assert.deepEqual(pipeline.input.verdict, { status: 'good', issues: [] });
+        assert.equal(pipeline.outs[0].verdict.status, 'warn');
+        assert.equal(pipeline.outs[0].verdict.issues[0].message, 'Falling behind');
+    });
+
+    test('an input or output the server sent no verdict for is unknown', () => {
+        const [pipeline] = parsePipelines(config, {
+            pipelines: {},
+            verdicts: { inputs: {}, outputs: {} },
+        });
+        assert.equal(pipeline.input.verdict.status, 'warn');
+        assert.equal(pipeline.outs[0].verdict.status, 'warn');
+        // Before the first health response there are no verdicts at all.
+        const [first] = parsePipelines(config, {});
+        assert.equal(first.input.verdict.status, 'warn');
+        assert.equal(first.outs[0].verdict.status, 'warn');
     });
 });

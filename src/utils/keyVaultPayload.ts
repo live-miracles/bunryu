@@ -2,13 +2,13 @@ import crypto from 'crypto';
 import type { Output, Pipeline } from '../types.js';
 import {
     buildOutputViews,
+    outputsByPipeline,
     reportedState,
-    type OutputHealthEntry,
     type ReportedStatus,
 } from './outputStatus.js';
-import { reportedInputState, type InputStatusEntry } from './inputStatus.js';
+import { reportedInputState, toInputStatusEntry } from './inputStatus.js';
+import type { PipelineStatusHealth } from './healthVerdicts.js';
 import { isRenditionUrl } from './renditions.js';
-import type { PipelineAlert } from './srtLinkAlerts.js';
 
 // The heartbeat bunryu sends to Key Vault (see docs/3-operations/3-configuration.md).
 // Key Vault shows the state of each stream key from it, so the payload names an
@@ -151,15 +151,7 @@ export interface PayloadSource {
     pipelines: readonly Pipeline[];
     outputs: readonly Output[];
     // The health snapshot: per pipeline, whether its input is live and each output's state.
-    health: Record<
-        string,
-        | {
-              input: Partial<InputStatusEntry> & { live: boolean };
-              outputs: Record<string, OutputHealthEntry>;
-              alerts?: readonly PipelineAlert[];
-          }
-        | undefined
-    >;
+    health: Record<string, PipelineStatusHealth | undefined>;
     // A stop after repeated failures: how many attempts failed, from the output's History.
     failedAttemptsOf?: (outputId: string) => number;
     since: SinceTracker;
@@ -168,18 +160,11 @@ export interface PayloadSource {
     hashOf?: (url: string) => string;
 }
 
-type PipelineHealth = NonNullable<PayloadSource['health'][string]>;
-
 // Every configured output of every pipeline, but not the shared-encode rows that
 // bunryu manages itself.
 export function buildPayload(source: PayloadSource): KeyVaultPayload {
     const hashOf = source.hashOf ?? ((url: string) => hashDestination(source.hashSecret, url));
-    const outputsOf = new Map<number, Output[]>();
-    for (const output of source.outputs) {
-        const list = outputsOf.get(output.pipelineId);
-        if (list) list.push(output);
-        else outputsOf.set(output.pipelineId, [output]);
-    }
+    const outputsOf = outputsByPipeline(source.outputs);
 
     const keys = new Set<string>();
     const reportedInputs: ReportedInput[] = [];
@@ -238,7 +223,7 @@ const inputKey = (pipeline: Pipeline): string => `input:${pipeline.id}`;
 function reportInput(
     source: PayloadSource,
     pipeline: Pipeline,
-    pipelineHealth: PipelineHealth | undefined,
+    pipelineHealth: PipelineStatusHealth | undefined,
     outputs: readonly Output[],
 ): ReportedInput | null {
     const name = pipeline.name.slice(0, MAX_PIPELINE_NAME_LENGTH);
@@ -247,17 +232,7 @@ function reportInput(
         (o) => o.desiredState !== 'stopped' && !isRenditionUrl(o.url),
     );
     const state = reportedInputState(
-        {
-            connected: false,
-            mediaOk: null,
-            mediaError: null,
-            recvBitrateKbps: null,
-            uptimeMs: null,
-            audioTracks: [],
-            audio: null,
-            ...pipelineHealth?.input,
-            live: pipelineHealth?.input.live ?? false,
-        },
+        toInputStatusEntry(pipelineHealth?.input),
         pipelineHealth?.alerts ?? [],
         outputsShouldRun,
     );

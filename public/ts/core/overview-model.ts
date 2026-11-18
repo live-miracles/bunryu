@@ -5,7 +5,7 @@ import type {
     SrtBondingLeg,
     SystemMetrics,
 } from '../types.js';
-import { inputHealth, outputHealth, type InputStatus, type OutStatus } from './status.js';
+import type { InputStatus, OutStatus } from './status.js';
 import { relayHealth, type RelayHealth } from './relay-status.js';
 import { affectedOutputCount, isOffline, isProblem, matchesName } from './overview-filter.js';
 import { sharedEncodeLabel } from './renditions.js';
@@ -215,10 +215,10 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
     // also an issue, so the Issues view lists the cause beside its affected outputs.
     const inputs = buildTable(
         pipelines.map((pipeline): Candidate<InputRow> => {
-            const status = inputHealth(pipeline.input).status;
+            const status = pipeline.input.verdict.status;
             const affectedOutputs = affectedOutputCount(
                 status,
-                pipeline.outs.map((o) => outputHealth(o, pipeline.input).status),
+                pipeline.outs.map((o) => o.verdict.status),
             );
             return {
                 row: { pipeline, status, affectedOutputs },
@@ -249,7 +249,7 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
         output: OutputView,
         names: string[],
     ): Candidate<OutputRow> => {
-        const status = outputHealth(output, pipeline.input).status;
+        const status = output.verdict.status;
         return {
             row: { pipeline, output, status },
             problem: isProblem(status),

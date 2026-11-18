@@ -5,8 +5,10 @@ import type {
     PipelineView,
     OutputView,
     SrtBondingStatus,
+    StatusVerdict,
 } from '../types.js';
 import { isRenditionUrl, renditionKey, sharedRecipeKey } from './renditions.js';
+import { toOutputStatusVerdict, toStatusVerdict } from './status.js';
 
 const EMPTY_INPUT: InputHealth = {
     connected: false,
@@ -139,9 +141,10 @@ export function parsePipelines(
 
     return pipelines.map((p) => {
         const ph = pipelinesHealth[String(p.id)];
-        const input: InputHealth = {
+        const input: InputHealth & { verdict: StatusVerdict } = {
             ...(ph?.input ?? EMPTY_INPUT),
             alerts: (ph?.alerts ?? []).filter((a) => INPUT_ALERT_CODES.has(a.code)),
+            verdict: toStatusVerdict(health.verdicts?.inputs[String(p.id)]),
         };
 
         const pipelineOutputs = reconcileOrder(
@@ -178,6 +181,7 @@ export function parsePipelines(
                 readers: oh?.readers ?? null,
                 dependents: [],
                 sharedEncode: null,
+                verdict: toOutputStatusVerdict(health.verdicts?.outputs[o.id]),
             };
         });
 

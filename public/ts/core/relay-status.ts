@@ -41,7 +41,7 @@ export function relayHealth(
         if (alert.code === 'bonded-leg-no-flow' || alert.code === 'bonded-leg-quality') {
             continue;
         }
-        // Input alerts are shown with the input (see inputHealth).
+        // Input alerts are shown with the input (see the input's verdict).
         if (INPUT_ALERT_CODES.has(alert.code)) continue;
         issues.push({
             side: alert.code === 'relay-forwarding-stalled' ? 'output' : 'input',

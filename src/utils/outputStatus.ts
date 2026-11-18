@@ -1,13 +1,12 @@
 import type { Output } from '../types.js';
 import { encodeRecipe, isRenditionUrl, recipeOfRendition } from './renditions.js';
 
-// What state an output is in and why, as the dashboard shows it (dot colour, Issues
-// text, "Problems" rule). This is the server's twin of public/ts/core/status.ts
-// (the dashboard cannot import backend code and the backend cannot import the
-// dashboard's); test/outputStatusParity.test.js runs both on the same outputs and
-// asserts they agree, so change them together. It feeds the Key Vault reporter.
+// What state an output is in and why: the one place these rules live. The verdict they give
+// (dot colour, Issues text) goes to the dashboard in /api/health (healthVerdicts.ts), and
+// `reportedState` below turns it into what the Key Vault reporter sends. The dashboard has
+// no copy; the few values it repeats for display are pinned in test/statusConstants.test.js.
 
-// Same value as LOW_BITRATE_KBPS in public/ts/core/utils.ts.
+// The dashboard repeats this one (LOW_BITRATE_KBPS in public/ts/core/utils.ts) for badges.
 const LOW_BITRATE_KBPS = 200;
 
 export type OutStatus = 'good' | 'warn' | 'error' | 'off';
@@ -60,6 +59,17 @@ function parseLastError(raw: string | null): { message: string; ts: number } | n
     if (nl === -1) return { message: raw, ts: 0 };
     const ts = parseInt(raw.slice(0, nl), 10);
     return { message: raw.slice(nl + 1), ts: isNaN(ts) ? 0 : ts };
+}
+
+// The outputs grouped by the pipeline they belong to.
+export function outputsByPipeline(outputs: readonly Output[]): Map<number, Output[]> {
+    const byPipeline = new Map<number, Output[]>();
+    for (const output of outputs) {
+        const list = byPipeline.get(output.pipelineId);
+        if (list) list.push(output);
+        else byPipeline.set(output.pipelineId, [output]);
+    }
+    return byPipeline;
 }
 
 // The outputs of one pipeline as views, each linked to the shared encode it pulls
@@ -164,9 +174,12 @@ export function sharedEncodeIssue(output: OutputStatusView): OutputIssue | null 
     return { severity: 'warning', message: `Waiting for ${rendition.name}` };
 }
 
+// `includeInput` false leaves out "the input is not live", which a shared encode's status
+// shows on its own side of the dot.
 export function outputHealth(
     o: OutputStatusView,
     input: { live: boolean },
+    includeInput = true,
 ): { status: OutStatus; issues: OutputIssue[] } {
     if (o.desiredState === 'stopped') return { status: 'off', issues: [] };
 
@@ -191,7 +204,7 @@ export function outputHealth(
     }
 
     if (o.status === 'running') {
-        if (!input.live) return warn('Output is running but input is not live.');
+        if (includeInput && !input.live) return warn('Output is running but input is not live.');
         if (o.warningReason !== null) return warn(o.warningReason);
         if (o.bitrateKbps !== null && o.bitrateKbps >= LOW_BITRATE_KBPS) {
             return { status: 'good', issues: [] };

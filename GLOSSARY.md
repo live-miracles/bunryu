@@ -85,6 +85,10 @@ _Avoid_: telemetry, metrics (only the API path keeps the word)
 A bounded loop that finds a stuck output and restarts it. Each one has a stated reason and a limit, so none can cause a restart storm.
 _Avoid_: monitor, supervisor
 
+**Verdict**:
+The status of an input or output (good, warn, error or off) and the problems behind it, worked out by the server and shown by the dashboard and Key Vault. The dashboard works out no status of its own.
+_Avoid_: health (alone), state
+
 **Problem**:
 An output or input with an error or a warning, as the card colours it. The Problems filter lists exactly these.
 _Avoid_: issue (that is a GitHub issue)

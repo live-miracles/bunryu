@@ -36,6 +36,7 @@ Short records of decisions that are hard to reverse and surprising without conte
 - [0003 No database migrations and no legacy-format tolerance](adr/0003-no-migrations-and-no-legacy-tolerance.md)
 - [0004 The FFmpeg warning and progress monitor stays inside `outputs.ts`](adr/0004-warning-monitor-stays-in-outputs.md)
 - [0005 `inputState` stays separate from the health poll](adr/0005-input-state-stays-separate-from-the-health-poll.md)
+- [0006 The server decides the status of an input or output; the dashboard shows it](adr/0006-the-server-decides-status.md)
 
 ## For coding agents
 

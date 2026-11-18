@@ -38,6 +38,8 @@ import { createLegTracker } from './legTracker.js';
 import { createInputLifecycle, type PollStaggers } from './inputLifecycle.js';
 import { pipelineDiagnosticsOf } from './healthDiagnostics.js';
 import { createPipelineMaps } from '../utils/pipelineMaps.js';
+import { createLogThrottle } from '../utils/logThrottle.js';
+import { buildHealthVerdicts, type HealthVerdicts } from '../utils/healthVerdicts.js';
 import { createHostMonitor, type HostAlertKind } from './hostMonitor.js';
 import type { ProcessUsages } from './resourceUsage.js';
 import {
@@ -46,7 +48,7 @@ import {
     type RelayInputSample,
 } from '../utils/srtLinkAlerts.js';
 
-export type { PipelineAlert };
+export type { PipelineAlert, HealthVerdicts };
 export type { LegHistorySample, LegHistorySeries } from './legTracker.js';
 
 export { isProbeUsable };
@@ -60,6 +62,9 @@ const LEG_HISTORY_MAX_SAMPLES = (60 * 60 * 1000) / POLL_INTERVAL_MS;
 const LEG_HISTORY_MAX_WINDOW_MS = 30 * 60 * 1000;
 const LEG_HEALTH_WINDOW_MS = 60 * 1000;
 const DIAGNOSTICS_SNAPSHOT_INTERVAL_MS = 60 * 1000;
+// A verdict that cannot be worked out is asked for again by every dashboard every 5 s;
+// it is logged once a minute per input or output, with the others counted.
+const VERDICT_ERROR_LOG_INTERVAL_MS = 60 * 1000;
 
 export interface InputHealth {
     connected: boolean;
@@ -834,9 +839,48 @@ export function createHealthService(
         pollTimer.unref();
     }
 
+    const verdictErrorLog = createLogThrottle({
+        intervalMs: VERDICT_ERROR_LOG_INTERVAL_MS,
+        maxKeys: 1000,
+    });
+
+    function reportVerdictError(what: string, id: string, err: unknown): void {
+        const error = err instanceof Error ? err.message : String(err);
+        const { shouldLog, suppressed } = verdictErrorLog.note(`${what}:${id}`, Date.now());
+        if (!shouldLog) return;
+        console.error(`[health] the status of ${what} ${id} could not be worked out: ${error}`);
+        diagnostics?.event('status-verdict-failed', {
+            what,
+            id,
+            error,
+            suppressedSimilar: suppressed,
+        });
+    }
+
+    // The verdicts are worked out when they are asked for, from the saved pipelines and
+    // outputs as they are now and the last poll, so a change the operator just made (an
+    // output started, a pipeline added) is in them before the next poll. If the database
+    // cannot be read there are none, which the dashboard shows as "unknown" instead of
+    // failing the whole health response.
+    function currentVerdicts(): HealthVerdicts {
+        try {
+            return buildHealthVerdicts(
+                {
+                    pipelines: db.listPipelines(),
+                    outputs: db.listOutputs(),
+                    health: snapshot.pipelines,
+                },
+                reportVerdictError,
+            );
+        } catch (err) {
+            reportVerdictError('verdicts', 'all', err);
+            return { inputs: {}, outputs: {} };
+        }
+    }
+
     function registerRoutes(app: Express): void {
         app.get('/api/health', (_req, res) => {
-            res.json(snapshot);
+            res.json({ ...snapshot, verdicts: currentVerdicts() });
         });
         app.post('/api/pipelines/:pipelineId/reprobe', (req, res) => {
             const pipelineId = Number(req.params.pipelineId);

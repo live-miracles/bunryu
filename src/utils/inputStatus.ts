@@ -1,19 +1,20 @@
 import type { PipelineAlert } from './srtLinkAlerts.js';
 import type { ReportedStatus } from './outputStatus.js';
 
-// The state of a pipeline's input, as the dashboard shows it (dot colour and Issues
-// text), and what the Key Vault reporter sends from it. This is the server's twin of
-// inputHealth in public/ts/core/status.ts (the dashboard cannot import backend code and
-// the backend cannot import the dashboard's); test/inputStatusParity.test.js runs both
-// on the same inputs and asserts they agree, so change them together.
+// The state of a pipeline's input and why: the one place these rules live. The verdict they
+// give (dot colour, Issues text) goes to the dashboard in /api/health (healthVerdicts.ts),
+// and `reportedInputState` below turns it into what the Key Vault reporter sends. The
+// dashboard has no copy; the few values it repeats for display are pinned in
+// test/statusConstants.test.js.
 
-// Same values as LOW_BITRATE_KBPS in public/ts/core/utils.ts and
-// INPUT_BITRATE_STATS_WARMUP_MS in public/ts/core/status.ts.
+// The dashboard repeats these two (LOW_BITRATE_KBPS in public/ts/core/utils.ts and
+// INPUT_BITRATE_STATS_WARMUP_MS in public/ts/core/status.ts) for the bitrate it shows.
 const LOW_BITRATE_KBPS = 200;
 const INPUT_BITRATE_STATS_WARMUP_MS = 30_000;
 
 // Alerts about the input itself, which belong to its status; every other pipeline alert
-// is about the SRT relay link. Same list as INPUT_ALERT_CODES in public/ts/core/pipeline.ts.
+// is about the SRT relay link. The dashboard repeats this list (INPUT_ALERT_CODES in
+// public/ts/core/pipeline.ts) to sort alerts into the input's and the relay's.
 export const INPUT_ALERT_CODES: ReadonlySet<string> = new Set([
     'input-flapping',
     'input-low-framerate',
@@ -40,6 +41,25 @@ export interface InputStatusEntry {
 export interface InputIssue {
     severity: 'warning' | 'error';
     message: string;
+    // An alert's code and start, for the dashboard's hint and "since"; the other issues have none.
+    code?: string;
+    sinceMs?: number;
+}
+
+// The input as the status rules need it, from a health snapshot's input (which can be
+// missing or partial before the first poll that sees the pipeline): nothing connected.
+export function toInputStatusEntry(input: Partial<InputStatusEntry> | undefined): InputStatusEntry {
+    return {
+        connected: false,
+        live: false,
+        mediaOk: null,
+        mediaError: null,
+        recvBitrateKbps: null,
+        uptimeMs: null,
+        audioTracks: [],
+        audio: null,
+        ...input,
+    };
 }
 
 function inputStatusMessage(input: InputStatusEntry): string {
@@ -100,7 +120,12 @@ export function inputHealth(
     }
     for (const alert of alerts) {
         if (!INPUT_ALERT_CODES.has(alert.code)) continue;
-        issues.push({ severity: alert.severity, message: alert.message });
+        issues.push({
+            severity: alert.severity,
+            message: alert.message,
+            code: alert.code,
+            sinceMs: alert.sinceMs,
+        });
     }
     if (issues.some((issue) => issue.severity === 'error')) return { status: 'error', issues };
     return { status: issues.length > 0 ? 'warn' : 'good', issues };

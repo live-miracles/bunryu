@@ -1,5 +1,5 @@
 import type { ActivityEvent, PipelineGroup, PipelineView } from '../types.js';
-import { inputHealth, outputHealth, type InputStatus, type OutStatus } from './status.js';
+import type { InputStatus, OutStatus } from './status.js';
 import { relayHealth, relayIssueList } from './relay-status.js';
 import { isProblem, tallyStatuses, type StatusTally } from './overview-filter.js';
 
@@ -48,7 +48,7 @@ const SEVERITY: Record<OutStatus, number> = { off: 0, good: 0, warn: 1, error: 2
 // relay, the relay path in front of it (a degraded leg, a lost leg, a stalled forward).
 // An input nobody publishes to stays off.
 function cardInput(p: PipelineView, relay: RelayContext): { status: InputStatus; message: string } {
-    const input = inputHealth(p.input);
+    const input = p.input.verdict;
     const path = relayHealth(p, relay.relayProcessRunning, relay.nowMs);
     let status = input.status;
     if (status !== 'off') {
@@ -64,7 +64,7 @@ export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext)
     return pipelines.map((p) => {
         const input = cardInput(p, relay);
         const dots = p.outs.map((o): StatusDot => {
-            const health = outputHealth(o, p.input);
+            const health = o.verdict;
             return {
                 id: o.id,
                 name: o.name,

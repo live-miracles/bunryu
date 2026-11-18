@@ -511,6 +511,65 @@ describe('createHealthService poll orchestration', () => {
         service.shutdown();
     });
 
+    test('/api/health carries a verdict for every saved input and output, worked out when asked', async (t) => {
+        t.mock.method(console, 'error', () => {});
+        const createHealthService = loadHealthService(t);
+        const outputs = [
+            {
+                id: '1-1',
+                pipelineId: 1,
+                seq: 1,
+                name: 'YouTube',
+                desiredState: 'stopped',
+                videoEncoding: 'copy',
+                url: 'rtmp://a.example/live/key',
+                audioEncoding: 'copy',
+                lastError: null,
+                hasErrorHistory: false,
+            },
+        ];
+        const db = makeFakeDb(
+            [{ id: 1, name: 'Hindi', streamKey: 'key01_a', streamKeyId: 1, groupId: null }],
+            outputs,
+        );
+        const diagnostics = makeDiagnosticsSpy();
+        const service = createHealthService(
+            db,
+            makeFakeOutputService(),
+            makeFakeSrtRelay(),
+            makeFakeInputState(),
+            diagnostics,
+            undefined,
+            fakeSrs(),
+        );
+        const app = express();
+        service.registerRoutes(app);
+        service.start();
+        await sleep(20);
+
+        let { verdicts } = await getSnapshot(app);
+        assert.deepEqual(verdicts.inputs[1], { status: 'off', issues: [] });
+        assert.deepEqual(verdicts.outputs['1-1'], { status: 'off', issues: [] });
+
+        // The operator starts the output: its verdict follows at once, not at the next poll.
+        outputs[0].desiredState = 'running';
+        ({ verdicts } = await getSnapshot(app));
+        assert.equal(verdicts.outputs['1-1'].status, 'warn');
+        assert.match(verdicts.outputs['1-1'].issues[0].message, /waiting to start/);
+
+        // A database that cannot be read leaves the response without verdicts, not failed.
+        db.listOutputs = () => {
+            throw new Error('database is locked');
+        };
+        const snapshot = await getSnapshot(app);
+        assert.deepEqual(snapshot.verdicts, { inputs: {}, outputs: {} });
+        assert.equal(typeof snapshot.srsReachable, 'boolean');
+        const failed = diagnostics.events.find((e) => e.event === 'status-verdict-failed');
+        assert.match(failed.error, /database is locked/);
+
+        service.shutdown();
+    });
+
     test('a poll that throws is recorded and does not reject unhandled', async (t) => {
         t.mock.method(globalThis, 'fetch', async () => {
             throw new Error('ECONNREFUSED');
@@ -570,7 +629,10 @@ describe('createHealthService poll orchestration', () => {
 
         assert.equal(seen.length, 1);
         assert.equal(seen[0], service.getSnapshot());
-        assert.deepEqual(await getSnapshot(app), JSON.parse(JSON.stringify(seen[0])));
+        // The response is the snapshot plus the verdicts worked out when it is asked for.
+        const { verdicts, ...served } = await getSnapshot(app);
+        assert.deepEqual(served, JSON.parse(JSON.stringify(seen[0])));
+        assert.deepEqual(verdicts, { inputs: {}, outputs: {} });
         const failed = events.filter((e) => e.event === 'health-snapshot-listener-failed');
         assert.equal(failed.length, 1);
         assert.match(failed[0].error, /listener bug/);

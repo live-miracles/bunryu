@@ -9,6 +9,7 @@ const {
     problemEvents,
     statusTotals,
 } = require('../public/ts/core/status-grid');
+const { withVerdicts } = require('./helpers/verdicts');
 
 const liveInput = (overrides = {}) => ({
     connected: true,
@@ -65,17 +66,18 @@ const failed = (id) =>
     });
 const warning = (id) => output(id, { warningReason: 'Timestamp discontinuities' });
 
-const pipeline = (id, input, outs, extra = {}) => ({
-    id: String(id),
-    name: `Pipeline ${id}`,
-    groupId: null,
-    alerts: [],
-    srtBonding: { acceptedBySrs: false, input: { bonded: false } },
-    input,
-    outs,
-    renditions: [],
-    ...extra,
-});
+const pipeline = (id, input, outs, extra = {}) =>
+    withVerdicts({
+        id: String(id),
+        name: `Pipeline ${id}`,
+        groupId: null,
+        alerts: [],
+        srtBonding: { acceptedBySrs: false, input: { bonded: false } },
+        input,
+        outs,
+        renditions: [],
+        ...extra,
+    });
 
 const NOW = 1_000_000;
 const RELAY_UP = { relayProcessRunning: true, nowMs: NOW };

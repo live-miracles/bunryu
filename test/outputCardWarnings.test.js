@@ -3,6 +3,7 @@
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { renderOutputCard } = require('../public/ts/features/output-card');
+const { withInputVerdict, withVerdict } = require('./helpers/verdicts');
 
 const output = (over) => ({
     id: '1-1',
@@ -23,7 +24,8 @@ const output = (over) => ({
 });
 const rtmpInput = { connected: true, live: true, isSrt: false, audioTracks: [] };
 const deps = { pendingOutputs: new Set() };
-const render = (over, input = rtmpInput) => renderOutputCard(output(over), input, new Map(), deps);
+const render = (over, input = rtmpInput) =>
+    renderOutputCard(withVerdict(output(over), input), withInputVerdict(input), new Map(), deps);
 
 describe('RTMP input with Track 1 audio on an RTMP output', () => {
     test('warns that the audio is re-encoded and copy is cheaper', () => {
@@ -138,7 +140,12 @@ describe('duplicate destination', () => {
     ]);
 
     test('is a warning line naming the other outputs, with the card tinted', () => {
-        const html = renderOutputCard(output({ url }), rtmpInput, dups, deps);
+        const html = renderOutputCard(
+            withVerdict(output({ url }), rtmpInput),
+            withInputVerdict(rtmpInput),
+            dups,
+            deps,
+        );
         assert.deepEqual(warningLines(html), ['Same destination as Other → YT, Main']);
         assert.ok(tinted(html));
     });
@@ -153,12 +160,22 @@ describe('duplicate destination', () => {
                 ],
             ],
         ]);
-        const html = renderOutputCard(output({ url }), rtmpInput, self, deps);
+        const html = renderOutputCard(
+            withVerdict(output({ url }), rtmpInput),
+            withInputVerdict(rtmpInput),
+            self,
+            deps,
+        );
         assert.deepEqual(warningLines(html), ['Same destination as Other → YT']);
     });
 
     test('no longer marks the URL itself', () => {
-        const html = renderOutputCard(output({ url }), rtmpInput, dups, deps);
+        const html = renderOutputCard(
+            withVerdict(output({ url }), rtmpInput),
+            withInputVerdict(rtmpInput),
+            dups,
+            deps,
+        );
         assert.ok(!/Duplicate/.test(html));
         assert.ok(!/<code class="[^"]*text-warning/.test(html));
     });
@@ -175,8 +192,11 @@ describe('all output warnings share one style', () => {
         const url = 'rtmp://a.example/live/key';
         const dups = new Map([[url, [{ pipelineName: 'Other', outputName: 'YT' }]]]);
         const html = renderOutputCard(
-            output({ url, warningReason: 'High memory usage', audioEncoding: '0' }),
-            rtmpInput,
+            withVerdict(
+                output({ url, warningReason: 'High memory usage', audioEncoding: '0' }),
+                rtmpInput,
+            ),
+            withInputVerdict(rtmpInput),
             dups,
             deps,
         );

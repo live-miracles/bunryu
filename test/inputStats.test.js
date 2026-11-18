@@ -4,6 +4,7 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { videoSpec, audioSpecLines, keyframeSpec } = require('../public/ts/core/media-spec');
 const { renderInputStats } = require('../public/ts/features/input-stats-view');
+const { withInputVerdict } = require('./helpers/verdicts');
 
 const video = {
     codec: 'h264',
@@ -109,19 +110,20 @@ describe('audioSpecLines', () => {
 });
 
 describe('renderInputStats', () => {
-    const input = (over) => ({
-        connected: true,
-        live: true,
-        mediaOk: true,
-        mediaError: null,
-        mediaCheckedAt: Date.now() - 125_000,
-        publisherIp: '198.51.100.7',
-        recvBitrateKbps: 5200,
-        video,
-        audio: null,
-        audioTracks: [track({})],
-        ...over,
-    });
+    const input = (over) =>
+        withInputVerdict({
+            connected: true,
+            live: true,
+            mediaOk: true,
+            mediaError: null,
+            mediaCheckedAt: Date.now() - 125_000,
+            publisherIp: '198.51.100.7',
+            recvBitrateKbps: 5200,
+            video,
+            audio: null,
+            audioTracks: [track({})],
+            ...over,
+        });
 
     test('shows source, video and audio as labelled lines with the probe time', () => {
         const html = renderInputStats(input({}), {});

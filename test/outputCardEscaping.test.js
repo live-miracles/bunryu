@@ -4,6 +4,7 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { renderOutputCard } = require('../public/ts/features/output-card');
 const { state } = require('../public/ts/core/state');
+const { withInputVerdict, withVerdict } = require('./helpers/verdicts');
 
 const output = (url) => ({
     id: '1-1',
@@ -22,7 +23,8 @@ const output = (url) => ({
 });
 const input = { connected: false, isSrt: false, audioTracks: [] };
 const deps = { pendingOutputs: new Set() };
-const render = (url) => renderOutputCard(output(url), input, new Map(), deps);
+const render = (url) =>
+    renderOutputCard(withVerdict(output(url), input), withInputVerdict(input), new Map(), deps);
 
 describe('output card escaping', () => {
     test('a destination URL containing markup is shown as text', () => {
@@ -52,8 +54,8 @@ describe('output card escaping', () => {
 
     test('an output name containing markup is shown as text', () => {
         const html = renderOutputCard(
-            { ...output('rtmp://h/live/k'), name: '"><script>x()</script>' },
-            input,
+            withVerdict({ ...output('rtmp://h/live/k'), name: '"><script>x()</script>' }, input),
+            withInputVerdict(input),
             new Map(),
             deps,
         );
@@ -65,8 +67,8 @@ describe('output card escaping', () => {
 describe('output card history button', () => {
     const history = (over) =>
         renderOutputCard(
-            { ...output('rtmp://x/y'), hasErrorHistory: true, ...over },
-            input,
+            withVerdict({ ...output('rtmp://x/y'), hasErrorHistory: true, ...over }, input),
+            withInputVerdict(input),
             new Map(),
             deps,
         );

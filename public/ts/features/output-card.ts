@@ -11,7 +11,7 @@ import {
     outputMetricsBadge,
 } from './output-badges.js';
 import { errorHint } from '../core/hints.js';
-import { lastErrorLine, outputHealth, statusColor, type StatusIssue } from '../core/status.js';
+import { lastErrorLine, statusColor, type StatusIssue } from '../core/status.js';
 import { issueLinesHtml } from './status-tooltip.js';
 
 // outputId lets an output card leave itself out of its own duplicate list.
@@ -104,7 +104,7 @@ function currentErrorLine(output: OutputView): string {
 }
 
 // Every warning the card shows, whether reported by the running output, one behind the
-// status dot (outputHealth: a low bitrate, waiting to start), a destination shared with
+// status dot (its verdict: a low bitrate, waiting to start), a destination shared with
 // another output or advice about the encoding settings. A yellow dot always has a line.
 function outputWarnings(
     output: OutputView,
@@ -117,8 +117,8 @@ function outputWarnings(
     const own = output.warningReason
         ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
         : [];
-    const fromHealth = outputHealth(output, input)
-        .issues.filter(
+    const fromHealth = output.verdict.issues
+        .filter(
             (issue) =>
                 issue.severity === 'warning' && !own.some((w) => w.message === issue.message),
         )
@@ -151,7 +151,7 @@ export function outputSeverity(
     input: InputHealth,
     dupUrls: Map<string, DupRef[]>,
 ): 'error' | 'warning' | null {
-    const status = outputHealth(output, input).status;
+    const status = output.verdict.status;
     if (status === 'error' || currentErrorLine(output)) return 'error';
     if (status === 'warn' || outputWarnings(output, input, dupUrls).length > 0) return 'warning';
     return null;
@@ -164,7 +164,7 @@ export function renderOutputCard(
     deps: OutputCardDeps,
 ): string {
     const isStopped = output.desiredState === 'stopped';
-    const status = outputHealth(output, input).status;
+    const status = output.verdict.status;
     const statusHex = statusColor(status);
     const uptimeMs = output.startedAtMs !== null ? Date.now() - output.startedAtMs : null;
     const badges: string[] = [];
@@ -239,7 +239,7 @@ export function renderOutputCard(
     // The dot's hover text: the same problems as the lines below, so it never shows
     // a colour without the reason. A healthy output has nothing to say.
     const dotIssues: StatusIssue[] = [
-        ...outputHealth(output, input).issues.filter((issue) => issue.severity === 'error'),
+        ...output.verdict.issues.filter((issue) => issue.severity === 'error'),
         ...warnings.map(({ message, sinceMs }) => ({
             severity: 'warning' as const,
             message,

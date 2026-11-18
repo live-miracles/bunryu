@@ -1306,6 +1306,57 @@ could not be told from the output's own error. Then log one TCP connect check to
 that destination in the output's existing failure event, which needs no
 configuration, loop, table or UI.
 
+### The server decides the status of an input or output; the dashboard shows it
+
+**Decision (November 2026):** the status of every saved input and output (good, warn, error
+or off) and the problems behind it, its verdict, is worked out on the server
+(`src/utils/healthVerdicts.ts`, with the rules in `outputStatus.ts` and `inputStatus.ts`)
+and sent in `/api/health` as `verdicts`. The dashboard reads it and works out nothing: its own
+copy of the rules (`outputHealth`, `inputHealth`) is deleted. The Key Vault report uses the
+same rules. See [ADR 0006](../adr/0006-the-server-decides-status.md).
+
+**Why:**
+- **There were two copies of the rules.** Key Vault needed the verdict on the server, and the
+  server cannot import `public/ts/core/status.ts`: a probe file in `src/` that imported it
+  failed `tsc -p tsconfig.backend.json` with `TS6059` (the imported `hints.ts`, `utils.ts` and
+  `types.ts` are outside `rootDir` `src`) and `Cannot find name 'document'` (`utils.ts` uses
+  the DOM; the backend has no DOM `lib`). So the server got a second copy, about 400 lines
+  with 390 lines of tests that ran both on every combination of state. Tests catch only the
+  combinations they list, and the copies had already drifted in shape (the dashboard's
+  `outputHealth` had an `includeInput` switch the server's lacked).
+- **The join was a third copy.** The dashboard assembles each output's view from the config
+  and the health response (`parsePipelines`, including which shared encode it reads); the
+  server assembles the same view (`buildOutputViews`). Sharing only the verdict function would
+  have left that twin.
+- **It costs the dashboard nothing it had.** The verdicts are worked out when `/api/health` is
+  asked for, from the saved rows as they are then and the last poll, so a change just made (an
+  output started) shows at once, as it did when the dashboard worked it out from a fresh
+  `/api/pipelines` and the polled status.
+- **A bad row cannot fail the health response.** A verdict that throws is `warn`, "The status
+  could not be worked out.", is logged once a minute per input or output, and the rest are
+  unaffected; if the database cannot be read there are none and the dashboard shows each as
+  unknown.
+
+**Not adopted:** one source file compiled into both builds. A shared folder needs a common
+`rootDir`, which moves the backend output from `dist/index.js` to `dist/src/index.js`
+(the `start` script, the systemd unit, `docker/entrypoint.sh`, the install docs); a copy step
+that generates a second copy at build time avoids that but still leaves the join twin.
+
+**Tradeoffs:** a dashboard tab left open across a server upgrade shows each status as unknown
+until it is reloaded. The Problems filter's advisory warnings (a destination shared with
+another output, encoding advice) and the relay path's verdict (`relayHealth`) are still worked
+out in the browser. The dashboard repeats three values for display: the input alert codes, the
+200 kb/s floor and the 30 s warm-up for SRS's zero bitrate; `test/statusConstants.test.js` pins
+them to the server's.
+
+**Checked on the isolated test stack:** a healthy pipeline showed every dot green; with the
+timestamp-discontinuity flood on, each output showed its warning and the pipeline dot was
+half yellow; with the publisher killed, each output said "Output is running but input is not
+live" and the input half went grey.
+
+**Revisit when:** another client needs the Problems rule (then the advisory warnings move to
+the server too), or tabs left open across upgrades turn out to matter.
+
 ### The dashboard keeps its own copy of the shared-encode recipe rule
 
 **Decision (October 2026):** `public/ts/core/renditions.ts` stays a hand-kept twin of
@@ -1430,22 +1481,12 @@ dot, minus the advisory warnings (see
   re-encodes the audio"). Neither means the stream is not being delivered, and a
   key shown amber for a working output would teach people to ignore the colour. A
   running output with an unresolved crash is an error, as in the Problems filter.
-- **A second copy of the status rules, pinned by a test.** The reporter needs the
-  dashboard's `outputHealth` (about 100 lines, with the error-age rule and the
-  shared-encode wait), and the server cannot import `public/ts/core/status.ts`: a
-  probe file in `src/` that imported it failed `tsc -p tsconfig.backend.json` with
-  `TS6059` (the imported `hints.ts`, `utils.ts` and `types.ts` are outside `rootDir`
-  `src`) and with `Cannot find name 'document'` / `'window'` (`utils.ts` uses the DOM;
-  the backend has no DOM `lib`). Making one file reach both builds means a shared source
-  folder and a common `rootDir`, which moves the backend output from `dist/index.js` to
-  `dist/src/index.js` (the `start` script, the systemd unit and the Dockerfile), or
-  splitting the pure rules out of `status.ts` and `utils.ts` and adding that folder to
-  both configs. That is the build change the
-  [recipe twin](#the-dashboard-keeps-its-own-copy-of-the-shared-encode-recipe-rule) was
-  also kept to avoid, for a file this size. So `src/utils/outputStatus.ts` mirrors
-  `outputHealth`, and `test/outputStatusParity.test.js` runs both on every combination
-  of desired state, process status, bitrate, warning, error age, failures and input
-  state, and on shared-encode outputs, and fails if they differ.
+- **The reporter uses the dashboard's status rules.** The statuses are the verdicts the
+  dashboard shows (`outputStatus.ts`, `inputStatus.ts`; see
+  [The server decides the status](#the-server-decides-the-status-of-an-input-or-output-the-dashboard-shows-it)),
+  mapped to `running`, `warning`, `error` and `stopped` by `reportedState`: a stop after repeated
+  failures and an unresolved crash on a running output are errors, and the advisory warnings
+  are left out, as above.
 
 - **Inputs are reported too, matched by name (November 2026).** The report also carries the
   state of each pipeline's input, so Key Vault can say that a stream is failing because the
@@ -1459,16 +1500,12 @@ dot, minus the advisory warnings (see
   that is what makes the feature useful, since an input nobody is sending to would never
   otherwise read as a problem. The cost is that before an event, with outputs set to run
   and no encoder connected yet, every input reads "Not arriving"; Bunryu runs during events
-  and this is the state somebody wants to know about, so it was accepted. The status rules
-  are a second copy (`src/utils/inputStatus.ts`, the twin of `inputHealth` in
-  `public/ts/core/status.ts`), for the reason above, pinned by
-  `test/inputStatusParity.test.js`. Alerts count only when they are about the input (the
-  codes the dashboard merges into its input: `INPUT_ALERT_CODES`); the SRT relay link
-  alerts do not. The report carries no `hint`: Key Vault writes its own advice for the media team
+  and this is the state somebody wants to know about, so it was accepted. Alerts count only
+  when they are about the input (`INPUT_ALERT_CODES`); the SRT relay link alerts do not. The report carries no `hint`: Key Vault writes its own advice for the media team
   (see [Hints are a dashboard lookup, not an API field](#hints-are-a-dashboard-lookup-not-an-api-field)).
 
-**Revisit when:** the status rules change often, or a build change gives the server and
-the dashboard a common source folder.
+**Revisit when:** matching inputs by name causes a wrong match in practice (then configure an
+id on both sides).
 
 **Evidence:** a report for 50 pipelines with 10 outputs each is 91 KB and builds in 3.4 ms
 once the hashes are cached (31 ms the first time), cheap enough for the check Bunryu
@@ -1924,7 +1961,7 @@ problems on hover, and a yellow dot always has a line on the card.
 - **A warning matches the other input faults** (keyframe interval, frame rate): an
   encoder setting only the operator can fix, shown on the input where they look.
 - **The yellow dot had no text** because the card listed only the warnings the output
-  reported itself, not the verdict behind the dot (`outputHealth`).
+  reported itself, not the verdict behind the dot.
 
 **Not adopted:** de-interlacing in copy mode (it is a video encode, which is the cost
 the copy path avoids); making the video map required (an audio-only input is valid

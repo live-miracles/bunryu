@@ -240,6 +240,10 @@ only for a new module.
     - `hostMonitor.ts` turns the host's memory, CPU pressure and disk readings into host
       alerts and Server events (readings are injectable).
     - `healthDiagnostics.ts` trims each pipeline's health for the per-minute snapshot event.
+    - `utils/healthVerdicts.ts` works out the verdict (status and issues) of every saved input
+      and output for `/api/health`, from the rules in `utils/outputStatus.ts` and
+      `utils/inputStatus.ts` (the only copy: the dashboard shows the result); one that throws is
+      unknown and logged, never a failed response.
 - `src/services/resourceUsage.ts` - samples the host's CPU, RAM, disk and network and the CPU/RAM
   of this server, SRS and the relay on timers, and keeps two hours of history (`createResourceUsage`;
   the readers and the clock are injectable). `api/metrics.ts` only serves it; the health poll's
@@ -252,10 +256,8 @@ only for a new module.
   validates and reads that setting (`api/settings.ts` saves it, `api/config.ts` shows it without
   its secrets); `utils/keyVaultPayload.ts`
   builds the payload (destination hash, message redaction, one entry per output and one per
-  pipeline input); `utils/outputStatus.ts` is the
-  server twin of the dashboard's `public/ts/core/status.ts` `outputHealth` (pinned by
-  `test/outputStatusParity.test.js`, so change them together), and `utils/inputStatus.ts` the
-  twin of `inputHealth` plus the reported input state (pinned by `test/inputStatusParity.test.js`).
+  pipeline input); `utils/outputStatus.ts` and `utils/inputStatus.ts` are the status rules (see
+  `healthVerdicts.ts` above) plus the state the report sends from them.
 - `src/services/srtRelay.ts` (relay status; a plain SRT input is presented as one link), `preview.ts`
   (HLS previews with a keepalive TTL),
   `rejectedPublishes.ts`.
@@ -286,9 +288,10 @@ only for a new module.
   `public/patterns/` has the Japanese pattern SVG masks the navbar uses (`seigaiha`).
   `public/ts/features/theme.ts` is the navbar's light/dark toggle.
 - `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
-  `core/status.ts` is the verdict on an output or input (`outputHealth`, `inputHealth`:
-  a status plus the issues behind it, and the error helpers); the Overview, the pipeline
-  panel, the output cards and the Problems filter all call it.
+  `core/status.ts` shows the server's verdict on an output or input (`toStatusVerdict` adds the
+  hints to what `/api/health` sends; there are no rules in the dashboard) and has the display
+  helpers (colour, error line, bitrate to show); the Overview, the pipeline panel, the output
+  cards and the Problems filter read `view.verdict`, which `parsePipelines` sets.
   `core/relay-status.ts` is the same for a pipeline's relay path (`relayHealth`: the input and
   output halves with the issues behind each, given the clock; the leg health colour and label).
   `core/status-grid.ts` builds the Status view's cards, dots, groups, counts and problem list

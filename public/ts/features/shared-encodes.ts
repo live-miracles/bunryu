@@ -9,7 +9,7 @@ import {
     ICON_RESTART,
     outputMetricsBadge,
 } from './output-badges.js';
-import type { InputHealth, OutputView, PipelineView } from '../types.js';
+import type { OutputView, PipelineView } from '../types.js';
 
 // Shared encodes (renditions): outputs of one pipeline that need the same encode
 // share one upstream FFmpeg, a server-managed output row. See
@@ -63,15 +63,12 @@ function plural(n: number, one: string, many: string): string {
 }
 
 // The two-half dot and the tooltip that says what each half means.
-function renderStatusDot(
-    rendition: OutputView,
-    input: InputHealth,
-    deps: SharedEncodeCardDeps,
-): string {
+function renderStatusDot(rendition: OutputView, input: PipelineView['input']): string {
+    // The encode's own verdict leaves out "the input is not live": the other half says it.
     const indicator = sharedEncodeIndicator(
         rendition,
-        deps.ffmpegHealth(rendition),
-        deps.inputHealth(input),
+        rendition.verdict.withoutInput ?? rendition.verdict,
+        input.verdict,
     );
     const tooltip = renderStatusTooltip(
         {
@@ -100,7 +97,11 @@ function renderStatusDot(
     </span>`;
 }
 
-function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncodeCardDeps): string {
+function renderRow(
+    rendition: OutputView,
+    input: PipelineView['input'],
+    deps: SharedEncodeCardDeps,
+): string {
     const isStopped = rendition.desiredState === 'stopped';
     const uptimeMs = rendition.startedAtMs !== null ? Date.now() - rendition.startedAtMs : null;
     // The encoding as badges, like an output card: video unless copy, audio as T<n>.
@@ -156,7 +157,7 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
     <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0" data-shared-encode="${escapeHtml(rendition.id)}">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 shrink-0 font-semibold">
-                ${renderStatusDot(rendition, input, deps)}
+                ${renderStatusDot(rendition, input)}
                 ${restartBtn}
             </div>
             <span class="js-tooltip inline-flex items-center gap-2" tabindex="0">
@@ -175,9 +176,6 @@ function renderRow(rendition: OutputView, input: InputHealth, deps: SharedEncode
 }
 
 export interface SharedEncodeCardDeps {
-    // The problems on each side of the status dot (see sharedEncodeIndicator).
-    ffmpegHealth: (output: OutputView) => SharedEncodeSide;
-    inputHealth: (input: InputHealth) => SharedEncodeSide;
     restartLocked: (outputId: string) => boolean;
 }
 
@@ -206,15 +204,12 @@ function restartLocked(outputId: string): boolean {
 
 // Fills the card in the pipeline info column and wires its buttons. The card is
 // hidden when the pipeline has no shared encodes.
-export function renderSharedEncodes(
-    pipeline: PipelineView,
-    deps: Omit<SharedEncodeCardDeps, 'restartLocked'>,
-): void {
+export function renderSharedEncodes(pipeline: PipelineView): void {
     const card = document.getElementById('shared-encodes-card');
     const listEl = document.getElementById('shared-encodes-list');
     if (!card || !listEl) return;
     card.classList.toggle('hidden', pipeline.renditions.length === 0);
-    listEl.innerHTML = renderSharedEncodeRows(pipeline, { ...deps, restartLocked });
+    listEl.innerHTML = renderSharedEncodeRows(pipeline, { restartLocked });
     listEl.onclick = (e) => {
         const btn = (e.target as Element).closest('[data-action]') as HTMLButtonElement | null;
         if (!btn || btn.disabled) return;
