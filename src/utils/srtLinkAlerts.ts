@@ -33,6 +33,53 @@ export function counterDelta(
     return current >= previous ? current - previous : current;
 }
 
+// The counters of one SRT link (a bonded leg, a plain connection, or the whole input) at
+// one poll. A counter the relay does not report for the link is null.
+export interface LinkCounters {
+    received: number | null;
+    loss: number | null;
+    drop: number | null;
+    retrans: number | null;
+    belated: number | null;
+}
+
+// What each counter grew by since the previous poll of the same link. Null when there is no
+// previous poll or the relay does not report the counter. The one place that turns two
+// polls into growth, for the interval alerts, a leg's history and its one-minute health.
+export type LinkGrowth = LinkCounters;
+
+export function linkGrowth(
+    current: LinkCounters,
+    previous: LinkCounters | null | undefined,
+): LinkGrowth {
+    return {
+        received: counterDelta(current.received, previous?.received),
+        loss: counterDelta(current.loss, previous?.loss),
+        drop: counterDelta(current.drop, previous?.drop),
+        retrans: counterDelta(current.retrans, previous?.retrans),
+        belated: counterDelta(current.belated, previous?.belated),
+    };
+}
+
+// A growth as a percentage of the packets received over the same span; null when nothing
+// was received or the growth is unknown.
+export function percentOfReceived(part: number | null, received: number | null): number | null {
+    return received && part !== null ? (part / received) * 100 : null;
+}
+
+// Whether a counter went back down between two polls (the relay stream restarted), so a
+// total that spans both polls would be wrong. Counters that are null in either poll say
+// nothing.
+export function anyCounterReset(
+    previous: readonly (number | null)[],
+    current: readonly (number | null)[],
+): boolean {
+    return current.some((value, i) => {
+        const before = previous[i];
+        return value !== null && before !== null && before !== undefined && value < before;
+    });
+}
+
 function formatKbps(kbps: number): string {
     return kbps >= 1000 ? `${Number((kbps / 1000).toFixed(1))} Mb/s` : `${Math.round(kbps)} kb/s`;
 }
@@ -47,12 +94,26 @@ export function srtIntervalAlerts(
     now: number,
 ): PipelineAlert[] {
     const alerts: PipelineAlert[] = [];
-    const dropped = counterDelta(current.recvDropTotal, previous.recvDropTotal);
-    const lost = counterDelta(current.recvLossTotal, previous.recvLossTotal);
-    const received = Math.max(0, current.recvUniquePacketsTotal - previous.recvUniquePacketsTotal);
+    const growth = linkGrowth(
+        {
+            received: current.recvUniquePacketsTotal,
+            loss: current.recvLossTotal,
+            drop: current.recvDropTotal,
+            retrans: current.retransTotal,
+            belated: current.belatedTotal,
+        },
+        {
+            received: previous.recvUniquePacketsTotal,
+            loss: previous.recvLossTotal,
+            drop: previous.recvDropTotal,
+            retrans: previous.retransTotal,
+            belated: previous.belatedTotal,
+        },
+    );
+    const { drop: dropped, loss: lost, retrans: retransmitted } = growth;
+    const received = growth.received ?? 0;
     const lossRatio = received > 0 && lost !== null ? lost / received : 0;
-    const retransmitted = counterDelta(current.retransTotal, previous.retransTotal);
-    const forwarded = Math.max(0, current.forwardedPackets - previous.forwardedPackets);
+    const forwarded = counterDelta(current.forwardedPackets, previous.forwardedPackets) ?? 0;
     if (dropped !== null && dropped > 0) {
         alerts.push({
             severity: 'warning',
@@ -76,10 +137,7 @@ export function srtIntervalAlerts(
             sinceMs: now,
         });
     }
-    const belated =
-        current.belatedTotal !== null && previous.belatedTotal !== null
-            ? Math.max(0, current.belatedTotal - previous.belatedTotal)
-            : 0;
+    const belated = growth.belated ?? 0;
     if (belated > 100) {
         alerts.push({
             severity: 'warning',

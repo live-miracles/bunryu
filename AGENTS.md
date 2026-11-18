@@ -237,7 +237,9 @@ only for a new module.
       legs stopped delivering, health, history, and the pipeline-log lines for a leg joining, leaving or
       changing health: `utils/legLog.ts` has their wording, rate limit and the 30 s recovery hold);
       `utils/srtLinkAlerts.ts` holds the pure SRT
-      link rules (the per-interval alerts and a leg's one-minute health thresholds);
+      link rules (the per-interval alerts, a leg's one-minute health thresholds, and `linkGrowth`, the
+      one rule that turns two polls of a link's counters into growth: a counter that went down
+      restarted, so its new value is the growth; `srtRecent.ts` shares the reset test);
       `utils/srtRecent.ts` keeps the 10-minute loss/retransmit/drop counts behind `recent`
       in the health payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError`
       into merged pipeline-log lines.

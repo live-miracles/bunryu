@@ -2,7 +2,14 @@
 
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
-const { counterDelta, legQualityHealth, srtIntervalAlerts } = require('../src/utils/srtLinkAlerts');
+const {
+    anyCounterReset,
+    counterDelta,
+    legQualityHealth,
+    linkGrowth,
+    percentOfReceived,
+    srtIntervalAlerts,
+} = require('../src/utils/srtLinkAlerts');
 
 const sample = (over = {}) => ({
     recvLossTotal: 0,
@@ -35,6 +42,67 @@ describe('counterDelta', () => {
         assert.equal(counterDelta(null, 10), null);
         assert.equal(counterDelta(10, null), null);
         assert.equal(counterDelta(10, undefined), null);
+    });
+});
+
+describe('linkGrowth', () => {
+    const counters = (over = {}) => ({
+        received: 1000,
+        loss: 10,
+        drop: 0,
+        retrans: 20,
+        belated: 5,
+        ...over,
+    });
+
+    test('is the growth of each counter since the previous poll', () => {
+        const growth = linkGrowth(
+            counters({ received: 2000, loss: 25, drop: 3, retrans: 50, belated: 5 }),
+            counters(),
+        );
+        assert.deepEqual(growth, { received: 1000, loss: 15, drop: 3, retrans: 30, belated: 0 });
+    });
+
+    test('has nothing to say without a previous poll', () => {
+        const growth = linkGrowth(counters(), undefined);
+        assert.deepEqual(growth, {
+            received: null,
+            loss: null,
+            drop: null,
+            retrans: null,
+            belated: null,
+        });
+    });
+
+    test('takes the new value of a counter that restarted, and leaves the others alone', () => {
+        const growth = linkGrowth(counters({ received: 300, loss: 12 }), counters());
+        assert.equal(growth.received, 300, 'the stream restarted: all of it is new');
+        assert.equal(growth.loss, 2, 'but this counter only grew');
+    });
+
+    test('keeps a counter the relay does not report as unknown', () => {
+        const growth = linkGrowth(counters({ loss: null }), counters());
+        assert.equal(growth.loss, null);
+        assert.equal(growth.received, 0);
+    });
+});
+
+describe('percentOfReceived', () => {
+    test('is the share of the received packets, or unknown', () => {
+        assert.equal(percentOfReceived(5, 1000), 0.5);
+        assert.equal(percentOfReceived(0, 1000), 0);
+        assert.equal(percentOfReceived(5, 0), null, 'nothing received');
+        assert.equal(percentOfReceived(5, null), null);
+        assert.equal(percentOfReceived(null, 1000), null);
+    });
+});
+
+describe('anyCounterReset', () => {
+    test('is true when any counter went down, ignoring ones that are null', () => {
+        assert.equal(anyCounterReset([10, 5, null], [12, 5, 3]), false);
+        assert.equal(anyCounterReset([10, 5, null], [12, 4, 3]), true);
+        assert.equal(anyCounterReset([10, null], [2, null]), true);
+        assert.equal(anyCounterReset([10, 5], [10, null]), false);
     });
 });
 
@@ -111,6 +179,49 @@ describe('srtIntervalAlerts', () => {
             assert.equal(alert.sinceMs, 5000);
             assert.equal(alert.severity, 'warning');
         }
+    });
+});
+
+describe('srtIntervalAlerts after the relay stream restarted', () => {
+    test('counts what the new stream received instead of skipping the interval', () => {
+        // 10 000 packets before, 1 000 after the restart, of which 20 were lost (2%).
+        const alerts = srtIntervalAlerts(
+            sample(),
+            sample({ recvUniquePacketsTotal: 1_000, forwardedPackets: 1_000, recvLossTotal: 20 }),
+            5000,
+        );
+        assert.deepEqual(codes(alerts), ['srt-packet-loss']);
+    });
+
+    test('does not read the restart as a relay that forwards nothing', () => {
+        const alerts = srtIntervalAlerts(
+            sample(),
+            sample({ recvUniquePacketsTotal: 1_000, forwardedPackets: 1_000 }),
+            5000,
+        );
+        assert.deepEqual(alerts, []);
+    });
+
+    test('still reports a relay that receives after the restart but forwards nothing', () => {
+        const alerts = srtIntervalAlerts(
+            sample({ forwardedPackets: 500 }),
+            sample({ recvUniquePacketsTotal: 1_000, forwardedPackets: 500 }),
+            5000,
+        );
+        assert.deepEqual(codes(alerts), ['relay-forwarding-stalled']);
+    });
+
+    test('does not read the restart as a belated-packet burst', () => {
+        const alerts = srtIntervalAlerts(
+            sample({ belatedTotal: 5000 }),
+            sample({
+                belatedTotal: 3,
+                recvUniquePacketsTotal: 1_000,
+                forwardedPackets: 1_000,
+            }),
+            5000,
+        );
+        assert.deepEqual(alerts, []);
     });
 });
 

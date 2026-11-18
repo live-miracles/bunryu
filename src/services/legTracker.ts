@@ -13,8 +13,9 @@ import {
     type LegLogState,
 } from '../utils/legLog.js';
 import {
-    counterDelta,
     legQualityHealth,
+    linkGrowth,
+    percentOfReceived,
     type LegHealth,
     type PipelineAlert,
 } from '../utils/srtLinkAlerts.js';
@@ -304,11 +305,22 @@ export function createLegTracker(options: LegTrackerOptions) {
                 const transportKey = `${leg.ip}:${leg.port}`;
                 const previousLeg = previousLegs.get(key);
                 const packets = leg.recvUniquePacketsTotal ?? leg.recvPacketsTotal;
-                const receivedDelta = counterDelta(packets, previousLeg?.packets);
-                const lossDelta = counterDelta(leg.recvLossTotal, previousLeg?.recvLossTotal);
-                const dropDelta = counterDelta(leg.recvDropTotal, previousLeg?.recvDropTotal);
-                const retransDelta = counterDelta(leg.retransTotal, previousLeg?.retransTotal);
-                const belatedDelta = counterDelta(leg.belatedTotal, previousLeg?.belatedTotal);
+                const growth = linkGrowth(
+                    {
+                        received: packets,
+                        loss: leg.recvLossTotal,
+                        drop: leg.recvDropTotal,
+                        retrans: leg.retransTotal,
+                        belated: leg.belatedTotal,
+                    },
+                    previousLeg && {
+                        received: previousLeg.packets,
+                        loss: previousLeg.recvLossTotal,
+                        drop: previousLeg.recvDropTotal,
+                        retrans: previousLeg.retransTotal,
+                        belated: previousLeg.belatedTotal,
+                    },
+                );
                 const series = pipelineLegHistory.get(key) ?? {
                     ip: leg.ip,
                     port: leg.port,
@@ -322,25 +334,16 @@ export function createLegTracker(options: LegTrackerOptions) {
                     recvRateMbps: leg.recvRateMbps,
                     rttMs: leg.rttMs,
                     latencyMs: leg.latencyMs,
-                    lossPct:
-                        receivedDelta && lossDelta !== null
-                            ? (lossDelta / receivedDelta) * 100
-                            : null,
-                    dropPct:
-                        receivedDelta && dropDelta !== null
-                            ? (dropDelta / receivedDelta) * 100
-                            : null,
-                    retransmissionPct:
-                        receivedDelta && retransDelta !== null
-                            ? (retransDelta / receivedDelta) * 100
-                            : null,
-                    belated: belatedDelta,
-                    receivedPackets: receivedDelta,
-                    lossPackets: lossDelta,
-                    dropPackets: dropDelta,
+                    lossPct: percentOfReceived(growth.loss, growth.received),
+                    dropPct: percentOfReceived(growth.drop, growth.received),
+                    retransmissionPct: percentOfReceived(growth.retrans, growth.received),
+                    belated: growth.belated,
+                    receivedPackets: growth.received,
+                    lossPackets: growth.loss,
+                    dropPackets: growth.drop,
                     lossTotal: leg.recvLossTotal,
                     dropTotal: leg.recvDropTotal,
-                    retransmittedPackets: retransDelta,
+                    retransmittedPackets: growth.retrans,
                 };
                 series.samples.push(sample);
                 const windowSamples = series.samples.filter(

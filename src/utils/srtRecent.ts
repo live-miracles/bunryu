@@ -1,4 +1,5 @@
 import type { SrtRelayStreamStatus } from '../services/srtRelay.js';
+import { anyCounterReset } from './srtLinkAlerts.js';
 
 export const SRT_RECENT_WINDOW_MS = 10 * 60 * 1000;
 // Polls come every 5 s. A longer silence means the link was gone, and its
@@ -32,14 +33,7 @@ class CounterWindow {
 
     push(ts: number, counters: Counters): void {
         const last = this.samples.at(-1);
-        if (
-            last &&
-            (ts - last.ts > MAX_POLL_GAP_MS ||
-                counters.some((value, i) => {
-                    const before = last.counters[i];
-                    return value !== null && before !== null && value < before;
-                }))
-        ) {
+        if (last && (ts - last.ts > MAX_POLL_GAP_MS || anyCounterReset(last.counters, counters))) {
             this.samples = [];
         }
         this.samples.push({ ts, counters });
