@@ -237,6 +237,11 @@ only for a new module.
       `utils/srtRecent.ts` keeps the 10-minute loss/retransmit/drop counts behind `recent`
       in the health payload; `utils/relayErrorLog.ts` turns Goryu's per-stream `lastError`
       into merged pipeline-log lines.
+    - `utils/pipelineHealth.ts` puts one pipeline's input and relay blocks together from what the
+      poll read (`buildPipelineHealth`: the displayed media, whether SRS accepted the relay's
+      stream and the publish conflict, the leg join) and builds once per poll the index of local
+      SRT outputs that publish into another pipeline's key (`localSrtTargets`). Pure: the poll
+      keeps every call with a side effect and its order.
     - `hostMonitor.ts` turns the host's memory, CPU pressure and disk readings into host
       alerts and Server events (readings are injectable).
     - `healthDiagnostics.ts` trims each pipeline's health for the per-minute snapshot event.

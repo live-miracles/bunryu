@@ -2,7 +2,6 @@ import type { Express } from 'express';
 import path from 'path';
 import {
     httpSrsApi,
-    extractStreamResource,
     type SrsApi,
     type SrsStream,
     type SrsClient,
@@ -12,6 +11,15 @@ import {
 } from '../utils/srs.js';
 import { readAppConfig } from '../utils/appConfig.js';
 import { readSrsConfigValues } from '../utils/srsConfig.js';
+import {
+    buildPipelineHealth,
+    displayedMedia,
+    hasLocalSrtConflict,
+    isLoopbackIp,
+    isSrtStream,
+    localSrtTargets,
+    type SrsPublisherInfo,
+} from '../utils/pipelineHealth.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { Db, Output } from '../types.js';
 import type { OutputService } from './outputs.js';
@@ -160,70 +168,6 @@ export interface SrsEvent {
     source: 'srs' | 'relay' | 'host';
     type: 'problem' | 'recovered';
     message: string;
-}
-
-interface SrsPublisherInfo {
-    id: string;
-    ip: string | null;
-    type: string | null;
-}
-
-// The address the relay publishes to SRS from. Narrower on purpose than the check in
-// api/srs.ts, which accepts all of 127.0.0.0/8: another local process must not look
-// like the relay.
-export function isLoopbackIp(ip: string | null | undefined): boolean {
-    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-}
-
-function srsClientLooksLikeRelayPublisher(client: SrsClient | undefined): boolean {
-    if (!client) return false;
-    if (!isLoopbackIp(client.ip)) return false;
-    return !client.type || client.type === 'srt-publish';
-}
-
-function srsPublisherInfo(client: SrsClient | undefined): SrsPublisherInfo | null {
-    if (!client) return null;
-    return {
-        id: client.id,
-        ip: client.ip ?? null,
-        type: client.type ?? null,
-    };
-}
-
-function isLocalSrsHost(hostname: string): boolean {
-    const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    return (
-        host === 'localhost' ||
-        host === '127.0.0.1' ||
-        host === '::1' ||
-        host.startsWith('127.') ||
-        host === '::ffff:7f00:1' ||
-        host.startsWith('::ffff:127.')
-    );
-}
-
-export function localSrtOutputTargetsStream(url: string, streamKey: string): boolean {
-    if (!url.startsWith('srt://')) return false;
-
-    const srs = readSrsConfigValues();
-    try {
-        const parsed = new URL(url);
-        const port = parsed.port ? Number(parsed.port) : 0;
-        if (port !== srs.srtPort) return false;
-        if (!isLocalSrsHost(parsed.hostname)) return false;
-    } catch {
-        return false;
-    }
-
-    return extractStreamResource(url) === `live/${streamKey}`;
-}
-
-export function hasBondedRelayPublishConflict(params: {
-    inputConnected: boolean;
-    relayInputActive: boolean;
-    relayAcceptedBySrs: boolean;
-}): boolean {
-    return params.inputConnected && params.relayInputActive && !params.relayAcceptedBySrs;
 }
 
 export function createHealthService(
@@ -476,6 +420,13 @@ export function createHealthService(
             hasErrorHistoryById.set(o.id, o.hasErrorHistory);
         }
 
+        // Which pipelines' running outputs publish into which local SRT stream, once per poll.
+        const localTargets = localSrtTargets(
+            outputRows,
+            (outputId) => outputService.getStats(outputId).status === 'running',
+            () => readSrsConfigValues().srtPort,
+        );
+
         let streams: SrsStream[] = [];
         let clients: SrsClient[] = [];
         let srsReachable = true;
@@ -579,12 +530,9 @@ export function createHealthService(
                 };
             }
 
-            const srtStream = displayLive && s?.tcUrl?.startsWith('srt://');
+            const srtStream = isSrtStream(displayLive, s);
             const mediaProbe = probes.status(pipeline.id);
-            const displayMediaOk = mediaProbe ? mediaProbe.ok : null;
-            const displayMediaError = mediaProbe?.error ?? null;
-            const probedMedia = mediaProbe?.ok ? mediaProbe.result : null;
-            const displayVideo = probedMedia?.video ?? s?.video ?? null;
+            const { probed: probedMedia, video: displayVideo } = displayedMedia(mediaProbe, s);
             inputState.setInputResolution(
                 pipeline.id,
                 displayConnected ? (displayVideo?.width ?? null) : null,
@@ -662,22 +610,6 @@ export function createHealthService(
                     });
                 }
             }
-            const localSrtPublisherConflict = outputRows.some((output) => {
-                if (output.pipelineId === pipeline.id) return false;
-                if (output.desiredState !== 'running') return false;
-                if (outputService.getStats(output.id).status !== 'running') return false;
-                return localSrtOutputTargetsStream(output.url, pipeline.streamKey);
-            });
-            const relayAcceptedBySrs =
-                !!srtStream &&
-                (!clientsKnown || srsClientLooksLikeRelayPublisher(publisher)) &&
-                !localSrtPublisherConflict;
-            const relayPublishConflict = hasBondedRelayPublishConflict({
-                inputConnected: displayConnected,
-                relayInputActive: rawBondingStatus.inputActive,
-                relayAcceptedBySrs,
-            });
-            const rawLegs = rawBondingStatus.input.legs;
             const recent = srtRecent.update(pipeline.id, now, rawBondingStatus);
             recordRelayError(
                 pipeline.id,
@@ -685,56 +617,31 @@ export function createHealthService(
                 rawBondingStatus.lastError,
                 rawBondingStatus.lastErrorAt,
             );
-            const bondingStatus: PipelineHealth['srtBonding'] = {
-                ...rawBondingStatus,
-                acceptedBySrs: relayAcceptedBySrs,
-                publishConflict: relayPublishConflict,
-                srsPublisher: srsPublisherInfo(publisher),
-                localSrtPublisherConflict,
-                input: {
-                    ...rawBondingStatus.input,
-                    expectedLegs,
-                    recent: recent.input,
-                    legs: rawLegs.map((leg) => {
-                        const status = legHealth.get(`${leg.ip}:${leg.port}`);
-                        return {
-                            ...leg,
-                            health: status?.health ?? 'ok',
-                            healthReason: status?.reason ?? null,
-                            recent: recent.legs.get(leg.ip) ?? null,
-                        };
-                    }),
+            const { input, srtBonding } = buildPipelineHealth({
+                stream: s,
+                publisher,
+                clientsKnown,
+                live: displayLive,
+                connected: displayConnected,
+                protocol: inputState.getProtocol(pipeline.id),
+                uptimeMs: displayLive ? inputLifecycle.uptimeMs(pipeline.id) : null,
+                probe: {
+                    status: mediaProbe,
+                    inFlightSince: probes.inFlightSince(pipeline.id),
+                    keyframes,
                 },
-                output: { ...rawBondingStatus.output, recent: recent.output },
-            };
-
+                relay: { status: rawBondingStatus, expectedLegs, legHealth, recent },
+                localSrtPublisherConflict: hasLocalSrtConflict(
+                    localTargets,
+                    pipeline.id,
+                    pipeline.streamKey,
+                ),
+            });
             pipelinesHealth[String(pipeline.id)] = {
-                input: {
-                    connected: displayConnected,
-                    live: displayLive,
-                    isSrt:
-                        !!srtStream ||
-                        (displayConnected && inputState.getProtocol(pipeline.id) === 'srt'),
-                    mediaOk: displayConnected ? displayMediaOk : null,
-                    mediaProbeStartedAt: displayConnected
-                        ? (probes.inFlightSince(pipeline.id) ?? mediaProbe?.startedAt ?? null)
-                        : null,
-                    mediaCheckedAt: displayConnected ? (mediaProbe?.checkedAt ?? null) : null,
-                    mediaError: displayConnected ? displayMediaError : null,
-                    keyframes: displayConnected ? keyframes : null,
-                    recvBitrateKbps: s?.kbps?.recv_30s ?? null,
-                    sendBitrateKbps: s?.kbps?.send_30s ?? null,
-                    readers: s ? Math.max(0, (s.clients ?? 0) - 1) : 0,
-                    uptimeMs: displayLive ? inputLifecycle.uptimeMs(pipeline.id) : null,
-                    publisherIp: displayConnected ? (publisher?.ip ?? null) : null,
-                    publisherType: displayConnected ? (publisher?.type ?? null) : null,
-                    video: displayVideo,
-                    audio: probedMedia?.audio ?? s?.audio ?? null,
-                    audioTracks: probedMedia?.audioTracks ?? [],
-                },
+                input,
                 outputs: outputsHealth,
                 alerts,
-                srtBonding: bondingStatus,
+                srtBonding,
             };
             trackAlertEpisodes(pipeline.id, alerts);
         }

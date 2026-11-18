@@ -9,12 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const {
-    hasBondedRelayPublishConflict,
-    isProbeUsable,
-    isLoopbackIp,
-    localSrtOutputTargetsStream,
-} = require('../src/services/health');
+const { isProbeUsable } = require('../src/services/health');
 
 describe('health media probe validation', () => {
     test('accepts video with codec and dimensions', () => {
@@ -52,112 +47,6 @@ describe('health media probe validation', () => {
                 },
                 audio: null,
                 audioTracks: [],
-            }),
-            false,
-        );
-    });
-});
-
-describe('health local SRT output detection', () => {
-    test('matches local SRS SRT outputs by stream resource', () => {
-        assert.equal(
-            localSrtOutputTargetsStream(
-                'srt://127.0.0.1:10080?streamid=#!::r=live/key01,m=publish',
-                'key01',
-            ),
-            true,
-        );
-        assert.equal(
-            localSrtOutputTargetsStream(
-                'srt://localhost:10080?streamid=%23!::r=live/key01,m=publish',
-                'key01',
-            ),
-            true,
-        );
-        assert.equal(
-            localSrtOutputTargetsStream(
-                'srt://localhost:10080?streamid=%23%21%3A%3Ar%3Dlive%2Fkey01%2Cm%3Dpublish',
-                'key01',
-            ),
-            true,
-        );
-    });
-
-    test('ignores non-local, wrong-port, and different-stream SRT outputs', () => {
-        assert.equal(
-            localSrtOutputTargetsStream(
-                'srt://192.0.2.10:10080?streamid=#!::r=live/key01,m=publish',
-                'key01',
-            ),
-            false,
-        );
-        assert.equal(
-            localSrtOutputTargetsStream(
-                'srt://127.0.0.1:10081?streamid=#!::r=live/key01,m=publish',
-                'key01',
-            ),
-            false,
-        );
-        assert.equal(
-            localSrtOutputTargetsStream(
-                'srt://127.0.0.1:10080?streamid=#!::r=live/key02,m=publish',
-                'key01',
-            ),
-            false,
-        );
-    });
-});
-
-describe('health loopback ip detection', () => {
-    test('accepts IPv4 and IPv6 loopback forms', () => {
-        assert.equal(isLoopbackIp('127.0.0.1'), true);
-        assert.equal(isLoopbackIp('::1'), true);
-        assert.equal(isLoopbackIp('::ffff:127.0.0.1'), true);
-    });
-
-    test('rejects non-loopback, malformed, and empty values', () => {
-        assert.equal(isLoopbackIp('127.0.0.2'), false);
-        assert.equal(isLoopbackIp('10.0.0.1'), false);
-        assert.equal(isLoopbackIp(''), false);
-        assert.equal(isLoopbackIp(null), false);
-        assert.equal(isLoopbackIp(undefined), false);
-    });
-});
-
-describe('health bonded relay publish conflict detection', () => {
-    test('flags any existing pipeline input when bonded relay input is active but not accepted', () => {
-        assert.equal(
-            hasBondedRelayPublishConflict({
-                inputConnected: true,
-                relayInputActive: true,
-                relayAcceptedBySrs: false,
-            }),
-            true,
-        );
-    });
-
-    test('does not flag idle pipelines or relay publishers accepted by SRS', () => {
-        assert.equal(
-            hasBondedRelayPublishConflict({
-                inputConnected: false,
-                relayInputActive: true,
-                relayAcceptedBySrs: false,
-            }),
-            false,
-        );
-        assert.equal(
-            hasBondedRelayPublishConflict({
-                inputConnected: true,
-                relayInputActive: false,
-                relayAcceptedBySrs: false,
-            }),
-            false,
-        );
-        assert.equal(
-            hasBondedRelayPublishConflict({
-                inputConnected: true,
-                relayInputActive: true,
-                relayAcceptedBySrs: true,
             }),
             false,
         );
@@ -2241,6 +2130,90 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             const failed = diagnostics.events.filter((e) => e.event === 'srs-clients-unavailable');
             assert.equal(failed.length, 1);
             assert.match(failed[0].message, /timed out/);
+        });
+    });
+
+    describe("another pipeline's SRT output into a pipeline's stream key", () => {
+        async function conflictSnapshot(t, outputOverrides) {
+            const stream = streamFixture({ tcUrl: 'srt://x:10080' });
+            t.mock.method(globalThis, 'fetch', async (url) => {
+                if (String(url).includes('/streams/'))
+                    return jsonResponse({ code: 0, streams: [stream] });
+                return jsonResponse({
+                    code: 0,
+                    clients: [{ id: 'cid-1', ip: '127.0.0.1', type: 'srt-publish', publish: true }],
+                });
+            });
+            const outputService = makeFakeOutputService();
+            const outputs = [
+                {
+                    id: '2-1',
+                    pipelineId: 2,
+                    seq: 1,
+                    name: 'Local SRT',
+                    desiredState: 'running',
+                    videoEncoding: 'copy',
+                    audioEncoding: 'copy',
+                    url: 'srt://127.0.0.1:10080?streamid=#!::r=live/key01,m=publish',
+                    lastError: null,
+                    hasErrorHistory: false,
+                    ...outputOverrides,
+                },
+            ];
+            outputService.getStats = () => ({
+                status: 'running',
+                pid: 1,
+                bitrateKbps: 4000,
+                startedAtMs: 1,
+                failures: 0,
+                warningReason: null,
+                memoryUsageBytes: null,
+                memoryLimitBytes: null,
+                cpuPercent: null,
+            });
+            const createHealthService = loadHealthService(t);
+            const service = createHealthService(
+                makeFakeDb(
+                    [
+                        { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 },
+                        { id: 2, name: 'P2', streamKey: 'key02', streamKeyId: 2 },
+                    ],
+                    outputs,
+                ),
+                outputService,
+                makeFakeSrtRelayMutable(makeBondingStatus({ input: { legs: [] } })),
+                makeFakeInputState(),
+                makeDiagnosticsSpy(),
+            );
+            const app = express();
+            service.registerRoutes(app);
+            t.mock.timers.enable({ apis: ['setInterval'] });
+            service.start();
+            await sleep(20);
+            const snapshot = await getSnapshot(app);
+            service.shutdown();
+            return snapshot.pipelines['1'].srtBonding;
+        }
+
+        test('stops SRS taking the relay for that pipeline', async (t) => {
+            const bonding = await conflictSnapshot(t, {});
+            assert.equal(bonding.localSrtPublisherConflict, true);
+            assert.equal(bonding.acceptedBySrs, false);
+            assert.equal(bonding.publishConflict, true);
+        });
+
+        test('does not when that output is stopped', async (t) => {
+            const stopped = await conflictSnapshot(t, { desiredState: 'stopped' });
+            assert.equal(stopped.localSrtPublisherConflict, false);
+            assert.equal(stopped.acceptedBySrs, true);
+        });
+
+        test('does not when it points at another stream key', async (t) => {
+            const other = await conflictSnapshot(t, {
+                url: 'srt://127.0.0.1:10080?streamid=#!::r=live/key09,m=publish',
+            });
+            assert.equal(other.localSrtPublisherConflict, false);
+            assert.equal(other.publishConflict, false);
         });
     });
 
