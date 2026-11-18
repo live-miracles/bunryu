@@ -125,6 +125,11 @@ const warningLines = (html) =>
     [...html.matchAll(/<span class="text-xs text-warning truncate[^"]*" title="([^"]*)">/g)].map(
         (m) => m[1],
     );
+// A tip is a note: muted, with an info icon, and it never tints the card.
+const tipLines = (html) =>
+    [...html.matchAll(/<span class="text-xs text-muted truncate[^"]*" title="([^"]*)">/g)].map(
+        (m) => m[1],
+    );
 const tinted = (html) => /data-output-card="[^"]*" style="background:color-mix/.test(html);
 
 describe('duplicate destination', () => {
@@ -188,12 +193,12 @@ describe('all output warnings share one style', () => {
         assert.ok(tinted(html));
     });
 
-    test('runtime, then duplicate, then encoding warnings, each on its own line', () => {
+    test('runtime, then duplicate destination, then audio mistakes, each on its own line', () => {
         const url = 'rtmp://a.example/live/key';
         const dups = new Map([[url, [{ pipelineName: 'Other', outputName: 'YT' }]]]);
         const html = renderOutputCard(
             withVerdict(
-                output({ url, warningReason: 'High memory usage', audioEncoding: '0' }),
+                output({ url, warningReason: 'High memory usage', audioEncoding: '1' }),
                 rtmpInput,
             ),
             withInputVerdict(rtmpInput),
@@ -204,7 +209,33 @@ describe('all output warnings share one style', () => {
         assert.equal(lines.length, 3);
         assert.equal(lines[0], 'High memory usage');
         assert.equal(lines[1], 'Same destination as Other → YT');
-        assert.match(lines[2], /re-encodes the audio/);
+        assert.match(lines[2], /only has one audio track/);
+    });
+
+    test('a tip is a muted note under the warnings: it never tints the card or counts as one', () => {
+        const html = render({ audioEncoding: '0' });
+        assert.deepEqual(warningLines(html), []);
+        assert.equal(tipLines(html).length, 1);
+        assert.match(tipLines(html)[0], /^Track 1 re-encodes the audio/);
+        assert.ok(!tinted(html));
+        // With a warning too, both show, the warning tints and the tip stays muted.
+        const both = render({ audioEncoding: '0', warningReason: 'High memory usage' });
+        assert.deepEqual(warningLines(both), ['High memory usage']);
+        assert.equal(tipLines(both).length, 1);
+        assert.ok(tinted(both));
+    });
+
+    test('the status dot lists the warnings, not the tips', () => {
+        const dotTip = (html) =>
+            html.match(
+                /aria-label="status"[\s\S]*?js-tooltip-content hidden">([\s\S]*?)<\/div><\/span>/,
+            )?.[1];
+        assert.equal(
+            dotTip(render({ audioEncoding: '0' })),
+            undefined,
+            'a tip gives the dot no text',
+        );
+        assert.match(dotTip(render({ audioEncoding: '1' })), /only has one audio track/);
     });
 
     test('an output with no warnings is not tinted', () => {
@@ -303,9 +334,9 @@ describe('card tint follows the most severe problem', () => {
     });
 
     test('red wins over warnings, which stay visible inside the card', () => {
-        const html = erroredCard({ audioEncoding: '0' });
+        const html = erroredCard({ audioEncoding: '1' });
         assert.equal(tintOf(html), 'error');
-        assert.match(warningLines(html).join('\n'), /re-encodes the audio/);
+        assert.match(warningLines(html).join('\n'), /only has one audio track/);
     });
 
     test('warnings alone tint it yellow', () => {

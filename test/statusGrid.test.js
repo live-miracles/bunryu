@@ -339,3 +339,61 @@ describe('problemEvents', () => {
         );
     });
 });
+
+describe('mistakes in how an output is configured', () => {
+    const shared = 'rtmp://live.example/app/shared';
+    const pipelines = () => [
+        pipeline(1, liveInput(), [
+            output('a', { url: shared, audioEncoding: 'copy' }),
+            output('b', { url: 'rtmp://live.example/app/b', audioEncoding: 'copy' }),
+            // A tip (Track 1 costs CPU on an RTMP input) is not a mistake.
+            output('c', { url: 'rtmp://live.example/app/c', audioEncoding: '0' }),
+        ]),
+        pipeline(2, liveInput(), [output('d', { url: shared, audioEncoding: 'copy' })]),
+    ];
+
+    test('the card is an issue, with the mistake as the dot text, and the dot keeps its colour', () => {
+        const [first, second] = cardsOf(pipelines());
+        assert.equal(first.mistakes, 1);
+        assert.equal(first.hasIssue, true);
+        assert.equal(first.severity, 'warn');
+        assert.deepEqual(
+            first.dots.map((d) => [d.status, d.message]),
+            [
+                ['good', 'Same destination as Pipeline 2 → Out d'],
+                ['good', ''],
+                ['good', ''],
+            ],
+        );
+        assert.equal(first.tally.warn, 0, 'a mistake is not a warning status');
+        assert.equal(second.mistakes, 1);
+        assert.equal(second.hasIssue, true);
+    });
+
+    test('a tip alone, or nothing, leaves the card healthy', () => {
+        const [card] = cardsOf([
+            pipeline(1, liveInput(), [output('c', { url: 'rtmp://x/c', audioEncoding: '0' })]),
+        ]);
+        assert.equal(card.mistakes, 0);
+        assert.equal(card.hasIssue, false);
+        assert.equal(card.severity, 'none');
+    });
+
+    test('a status problem is still the first thing the dot says', () => {
+        const rows = [
+            pipeline(1, liveInput(), [
+                output('a', {
+                    url: shared,
+                    audioEncoding: 'copy',
+                    warningReason: 'Falling behind',
+                }),
+            ]),
+            pipeline(2, liveInput(), [output('d', { url: shared, audioEncoding: 'copy' })]),
+        ];
+        assert.equal(cardsOf(rows)[0].dots[0].message, 'Falling behind');
+    });
+
+    test('the totals count the pipelines with a mistake as having issues', () => {
+        assert.equal(statusTotals(cardsOf(pipelines())).pipelinesWithIssues, 2);
+    });
+});

@@ -45,13 +45,8 @@ import {
     updatePipeline,
     updatePipelineGroups,
 } from '../core/api.js';
-import {
-    dupTooltip,
-    formatOutputName,
-    outputSeverity,
-    renderOutputCard,
-    type DupRef,
-} from './output-card.js';
+import { dupTooltip, formatOutputName, outputSeverity, renderOutputCard } from './output-card.js';
+import { duplicateDestinations, outputMistakes, sharedStreamKeys } from '../core/output-advice.js';
 import { ICON_PENCIL, ICON_TRASH, outputStatusCounts } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeUsage } from './shared-encodes.js';
 import { sharedEncodeLabel } from '../core/renditions.js';
@@ -483,16 +478,8 @@ function renderPipelineList(): void {
 
     // Pipelines sharing a stream key can't both actually publish — flag it the
     // same way duplicate output destination URLs are flagged.
-    const keyRefs = new Map<number, DupRef[]>();
-    for (const p of state.pipelines) {
-        const list = keyRefs.get(p.streamKeyId) ?? [];
-        list.push({ pipelineName: p.name });
-        keyRefs.set(p.streamKeyId, list);
-    }
-    const dupKeys = new Map<number, DupRef[]>();
-    for (const [id, refs] of keyRefs) {
-        if (refs.length > 1) dupKeys.set(id, refs);
-    }
+    const dupKeys = sharedStreamKeys(state.pipelines);
+    const dupUrls = duplicateDestinations(state.pipelines);
 
     const renderPipelineRow = (p: PipelineView, groupKey: string): string => {
         const {
@@ -526,7 +513,13 @@ function renderPipelineList(): void {
             {
                 label: 'Outputs',
                 issues: p.outs.flatMap((o) =>
-                    o.verdict.issues.map((issue) => ({
+                    [
+                        ...o.verdict.issues,
+                        ...outputMistakes(o, p.input, dupUrls).map((message) => ({
+                            severity: 'warning' as const,
+                            message,
+                        })),
+                    ].map((issue) => ({
                         severity: issue.severity,
                         message: `${o.name}: ${issue.message}`,
                     })),
@@ -934,20 +927,23 @@ function renderOverview(): void {
     );
 
     // ── Outputs ───────────────────────────────────────────
-    const outputRows = tableRows(model.outputs, 9, ({ pipeline: p, output: o, status: st }) => {
-        const isOn = o.status === 'running';
-        const media = isOn ? deriveOutputMedia(p.input, o) : null;
-        const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
-        const errorBadge =
-            o.failures > 0
-                ? `<span class="text-error inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
-                : '';
-        const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
-        const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
-        return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
+    const outputRows = tableRows(
+        model.outputs,
+        9,
+        ({ pipeline: p, output: o, status: st, mistakes }) => {
+            const isOn = o.status === 'running';
+            const media = isOn ? deriveOutputMedia(p.input, o) : null;
+            const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
+            const errorBadge =
+                o.failures > 0
+                    ? `<span class="text-error inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
+                    : '';
+            const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
+            const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
+            return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
             <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
             <td>${overviewStatusBadge(st)}</td>
-            <td>${renderOverviewIssues(o.verdict.issues)}</td>
+            <td>${renderOverviewIssues([...o.verdict.issues, ...mistakes.map((message) => ({ severity: 'warning' as const, message }))])}</td>
             <td class="tabular-nums text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
             ${td(formatBitrate(o.bitrateKbps))}
             <td class="tabular-nums text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
@@ -955,7 +951,8 @@ function renderOverview(): void {
             <td>${typeBadge(protocolLabel)}</td>
             <td class="font-mono text-xs">${spec}</td>
         </tr>`;
-    });
+        },
+    );
 
     // ── Shared encodes ────────────────────────────────────
     const encodeRows = tableRows(
@@ -1611,21 +1608,8 @@ function renderOutputsList(pipeline: PipelineView): void {
         if (settled) pendingOutputs.delete(o.id);
     }
 
-    // Build a URL → [{pipelineName, outputName}] map across all pipelines to detect duplicates.
-    const urlRefs = new Map<string, DupRef[]>();
-    for (const p of state.pipelines) {
-        for (const o of p.outs) {
-            if (o.url) {
-                const list = urlRefs.get(o.url) ?? [];
-                list.push({ pipelineName: p.name, outputName: o.name, outputId: o.id });
-                urlRefs.set(o.url, list);
-            }
-        }
-    }
-    const dupUrls = new Map<string, DupRef[]>();
-    for (const [url, refs] of urlRefs) {
-        if (refs.length > 1) dupUrls.set(url, refs);
-    }
+    // Destination URL → the outputs that use it, across all pipelines, to flag duplicates.
+    const dupUrls = duplicateDestinations(state.pipelines);
 
     const rows = pipeline.outs.map((output) => {
         const status = output.verdict.status;

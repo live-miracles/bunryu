@@ -1343,9 +1343,18 @@ same rules. See [ADR 0006](../adr/0006-the-server-decides-status.md).
 that generates a second copy at build time avoids that but still leaves the join twin.
 
 **Tradeoffs:** a dashboard tab left open across a server upgrade shows each status as unknown
-until it is reloaded. The Problems filter's advisory warnings (a destination shared with
-another output, encoding advice) and the relay path's verdict (`relayHealth`) are still worked
-out in the browser. The dashboard repeats three values for display: the input alert codes, the
+until it is reloaded. The relay path's verdict (`relayHealth`) is still worked out in the
+browser. So is the advice about how an output or pipeline is configured (a destination
+another output uses, audio settings that do not suit the input, a stream key two pipelines
+share): it is not a status, only the dashboard shows it, and its wording is the dashboard's to
+change, so it is a pure dashboard module (`public/ts/core/output-advice.ts`) and a change to
+it needs no server change. Each line is a mistake or a tip. A mistake (the same destination as
+another output, a track selection the input cannot supply) counts as a warning in every list
+and count of problems: the Outputs list, the Overview's Issues and the Status view's cards.
+A tip (Track 1 costs CPU, SRT to RTMP with copy audio can jitter) is a muted note on the card
+and counts nowhere: tips that turned working outputs amber would teach people to ignore amber,
+the reason Key Vault leaves advice out. Neither changes a status dot, which stays the
+server's verdict; before this the Outputs list counted all advice and the other views none. The dashboard repeats three values for display: the input alert codes, the
 200 kb/s floor and the 30 s warm-up for SRS's zero bitrate; `test/statusConstants.test.js` pins
 them to the server's.
 
@@ -1354,8 +1363,8 @@ timestamp-discontinuity flood on, each output showed its warning and the pipelin
 half yellow; with the publisher killed, each output said "Output is running but input is not
 live" and the input half went grey.
 
-**Revisit when:** another client needs the Problems rule (then the advisory warnings move to
-the server too), or tabs left open across upgrades turn out to matter.
+**Revisit when:** a second client needs the advice (an API consumer, notifications, a check
+when an output is saved), or tabs left open across upgrades turn out to matter.
 
 ### The dashboard keeps its own copy of the shared-encode recipe rule
 
@@ -1418,7 +1427,7 @@ endpoint with a bearer token, all set in Settings (see below). An output is name
 URL)` cut to 32 hex characters, never by its URL, and the `message` has URLs, `streamid=`,
 `passphrase=`, `key=` values and long token-like strings removed and is cut to 300
 characters. The status is worked out on the server by the same rules as the dashboard
-dot, minus the advisory warnings (see
+dot, minus the advice (see
 [Configuration](../3-operations/3-configuration.md#key-vault-status-reporting)).
 
 **Why:**
@@ -1476,7 +1485,7 @@ dot, minus the advisory warnings (see
   leaves the machine, so it is cleaned at the point of sending, after the text is chosen
   and before it is cut, so a secret cannot be left half-cut. It errs towards removing:
   any 16-character run with a digit goes.
-- **Advisory warnings are not warnings to Key Vault.** The dashboard's Problems rule
+- **Advice is not a warning to Key Vault.** The dashboard's Problems filter
   also counts a destination shared with another output and encoding advice ("Track 1
   re-encodes the audio"). Neither means the stream is not being delivered, and a
   key shown amber for a working output would teach people to ignore the colour. A
@@ -1485,8 +1494,8 @@ dot, minus the advisory warnings (see
   dashboard shows (`outputStatus.ts`, `inputStatus.ts`; see
   [The server decides the status](#the-server-decides-the-status-of-an-input-or-output-the-dashboard-shows-it)),
   mapped to `running`, `warning`, `error` and `stopped` by `reportedState`: a stop after repeated
-  failures and an unresolved crash on a running output are errors, and the advisory warnings
-  are left out, as above.
+  failures and an unresolved crash on a running output are errors, and the advice is left
+  out, as above.
 
 - **Inputs are reported too, matched by name (November 2026).** The report also carries the
   state of each pipeline's input, so Key Vault can say that a stream is failing because the

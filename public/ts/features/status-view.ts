@@ -75,6 +75,9 @@ function cardHtml(c: StatusCard): string {
     const typeBadge = c.type
         ? `<span class="badge badge-xs badge-outline shrink-0">${escapeHtml(c.type)}</span>`
         : '';
+    // Outputs set up wrongly (same destination, a track the input lacks): their dots keep the
+    // colour of what is happening, so the card says there is something to fix.
+    const fix = badge(c.mistakes, 'badge-warning', 'to fix');
     const body = inline
         ? `<span class="ml-auto flex shrink-0 flex-wrap items-center gap-1">${dots || '<span class="text-muted text-xs">no outputs</span>'}</span>`
         : '';
@@ -82,7 +85,7 @@ function cardHtml(c: StatusCard): string {
         <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
             ${dotHtml(c.inputStatus, inputTitle, 'h-3.5 w-3.5')}
             <span class="min-w-0 truncate font-semibold">${escapeHtml(c.name)}</span>
-            ${summary}${inline ? typeBadge : ''}${body}
+            ${summary}${inline ? typeBadge : ''}${fix}${body}
         </span>
         ${inline ? '' : `<span class="mt-1.5 flex flex-wrap gap-1">${dots}</span>`}
     </a>`;

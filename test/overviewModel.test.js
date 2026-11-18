@@ -570,3 +570,48 @@ describe('the System usage figures', () => {
         assert.deepEqual(build(pipelines, { filter: 'problems', outputSearch: 'zzz' }).usage, all);
     });
 });
+
+describe('mistakes in how an output is configured', () => {
+    const shared = 'rtmp://live.example/app/shared';
+    const pipelines = () => [
+        pipeline(1, liveInput(), [
+            output('a', { url: shared }),
+            output('ok'),
+            // Track 1 on an RTMP input only costs CPU: a tip, not a mistake.
+            output('tip', { audioEncoding: '0' }),
+        ]),
+        pipeline(2, liveInput(), [output('b', { url: shared })]),
+    ];
+
+    test('an output with one is an issue though its status is fine, and says what it is', () => {
+        const { outputs } = build(pipelines(), { filter: 'problems' });
+        assert.deepEqual(outputNames(outputs), ['Out a', 'Out b']);
+        assert.deepEqual(
+            outputs.rows.map((r) => [r.status, r.mistakes]),
+            [
+                ['good', ['Same destination as Pipeline 2 → Out b']],
+                ['good', ['Same destination as Pipeline 1 → Out a']],
+            ],
+        );
+    });
+
+    test('they are in the output count and the chips, and a tip is in neither', () => {
+        const model = build(pipelines());
+        assert.equal(model.outputs.problems, 2);
+        assert.equal(model.totals.problems, 2);
+        assert.deepEqual(
+            build(pipelines()).outputs.rows.find((r) => r.output.id === 'tip').mistakes,
+            [],
+        );
+    });
+
+    test('a mistake and a warning on the same output are one issue', () => {
+        const rows = [
+            pipeline(1, liveInput(), [
+                output('a', { url: shared, warningReason: 'Falling behind' }),
+            ]),
+            pipeline(2, liveInput(), [output('b', { url: shared })]),
+        ];
+        assert.equal(build(rows).outputs.problems, 2);
+    });
+});

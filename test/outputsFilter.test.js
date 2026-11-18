@@ -116,7 +116,12 @@ describe('outputSeverity', () => {
         assert.equal(severity({ ...stopped, lastError: 'boom', lastErrorAt: null }), null);
     });
 
-    test('every warning the card shows counts, even on a stopped output', () => {
+    test('a tip is not a problem: it is on the card and counts nowhere', () => {
+        assert.equal(severity({ audioEncoding: '0' }), null);
+        assert.equal(severity({ ...stopped, audioEncoding: '0' }), null);
+    });
+
+    test('every warning and mistake the card shows counts, even on a stopped output', () => {
         assert.equal(severity({ bitrateKbps: 100 }), 'warning');
         assert.equal(severity({ warningReason: 'timestamps' }), 'warning');
         assert.equal(severity({ ...stopped, audioEncoding: '1' }), 'warning');

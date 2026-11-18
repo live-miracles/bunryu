@@ -322,6 +322,11 @@ only for a new module.
   and the pipeline panel's input stats share.
   `core/audio-meter.ts` has the preview meter's level maths (peak dBFS, release
   fall-off), ported from live-gallery.
+  `core/output-advice.ts` is the advice about how an output or pipeline is configured (a
+  destination another output uses, audio settings that do not suit the input, a stream key
+  two pipelines share): pure, dashboard-only, never part of a status or of the Key Vault report.
+  A line is a mistake (counted as a warning by `outputSeverity`, the Overview's Issues and the
+  Status view's cards) or a tip (on the output card only);
   `core/outputs-filter.ts` has the Outputs list's filter, "Problems" test and summary
   counts (`outputSeverity` in `features/output-card.ts` says what counts as a problem);
   `core/alert-sound.ts` decides which changes between polls beep;

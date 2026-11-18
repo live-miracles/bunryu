@@ -159,6 +159,15 @@ for each pipeline you select, and only changes what is listed: **Start all**, **
 and Copy still act on every output of the pipeline. While it hides outputs the cards can't be
 dragged, because the saved order covers all of them.
 
+A card can also carry **advice** about how the output is set up, separate from what is
+happening to the stream. A *mistake* is a setup that will not do what you mean: the same
+destination as another output, a track selection the input cannot supply (an RTMP input has
+one audio track; an SRT input may have fewer than you chose). It shows as a yellow line and
+counts as a warning in **Problems**, the badges, the Overview's and the Status view's Issues
+tabs, but the dot keeps the colour of what is happening. A *tip* is a better way to do
+something that works (Track 1 re-encodes the audio and costs CPU; SRT to RTMP with copy audio
+can jitter): it is a muted note on the card and counts nowhere.
+
 ### Overview
 
 The dashboard's **Overview** lists every input and every output in two tables. Open it with
@@ -166,7 +175,7 @@ the grid icon at the start of the navbar (the sidebar's warning and error counts
 the Issues tab). The
 **All**, **Active** and **Issues** tabs narrow both: Active hides what is offline or
 stopped, and Issues keeps only warnings and errors, plus an offline input whose outputs
-are affected, with the reason. The search box on each table's heading line filters it as
+are affected and an output with a setup mistake (see advice above), with the reason. The search box on each table's heading line filters it as
 you type. An input matches on its name, stream key or publish URL; an output on its own
 name, its pipeline's name or its destination URL, so a full URL or a stream key finds it. The heading badge
 shows how many rows are left ("20 of 500").
@@ -231,10 +240,12 @@ pipeline list. Each pipeline is a card in the sidebar's groups and order, with a
 for its input and a small dot for each of its outputs: green is running, yellow a warning,
 red with a ring failed, and hollow stopped. Hover a dot for the output's name and what is
 wrong with it. A card with a warning or an error has a coloured border, and a pipeline with
-many outputs shows them as a block with its warning and failure counts.
+many outputs shows them as a block with its warning and failure counts. An output with a
+setup mistake keeps its dot's colour; its hover text names the mistake and the card says "1 to
+fix".
 
 The top line counts inputs and outputs, and the **Issues** tab keeps only the pipelines with
-a warning or an error (the same rule as the Overview's Issues tab). On the right are the
+a warning, an error or an output with a setup mistake (the same rule as the Overview's Issues tab). On the right are the
 host's CPU, RAM, downlink and uplink for the last 15 minutes, and the latest warnings and
 errors, oldest at the top. Click a card to open the pipeline; Ctrl-click opens it in a new
 tab, so Status can stay on a second screen. About 500 outputs in the shape of 100, 80 and

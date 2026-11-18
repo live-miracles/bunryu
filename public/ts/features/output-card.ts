@@ -11,11 +11,9 @@ import {
     outputMetricsBadge,
 } from './output-badges.js';
 import { errorHint } from '../core/hints.js';
+import { outputAdvice, refLabel, type Advice, type DupRef } from '../core/output-advice.js';
 import { lastErrorLine, statusColor, type StatusIssue } from '../core/status.js';
 import { issueLinesHtml } from './status-tooltip.js';
-
-// outputId lets an output card leave itself out of its own duplicate list.
-export type DupRef = { pipelineName: string; outputName?: string; outputId?: string };
 
 type OutputCardDeps = {
     pendingOutputs: Map<string, 'start' | 'stop'>;
@@ -39,47 +37,9 @@ function restreamSinkLabel(url: string): string | null {
 export function dupTooltip(headline: string, refs: DupRef[]): string {
     const lines = refs.map(
         (ref) =>
-            `<div class="text-xs leading-snug text-warning">${escapeHtml(ref.outputName ? `${ref.pipelineName} → ${ref.outputName}` : ref.pipelineName)}</div>`,
+            `<div class="text-xs leading-snug text-warning">${escapeHtml(refLabel(ref))}</div>`,
     );
     return `<div class="text-xs leading-snug font-semibold text-warning mb-0.5">${escapeHtml(headline)}</div>${lines.join('')}`;
-}
-
-function outputEncodingWarnings(output: OutputView, input: InputHealth): string[] {
-    if (!output.url || !input.connected) return [];
-    const warnings: string[] = [];
-    const outIsSrt = output.url.startsWith('srt://');
-
-    if (!input.isSrt && output.audioEncoding !== 'copy' && output.audioEncoding !== '0') {
-        warnings.push(
-            'RTMP input only has one audio track — use copy or Track 1, not a different track selection.',
-        );
-    }
-    if (!input.isSrt && !outIsSrt && output.audioEncoding === '0') {
-        warnings.push(
-            'Track 1 re-encodes the audio, which costs extra CPU — use copy unless the audio must be re-encoded.',
-        );
-    }
-    if (input.isSrt && !outIsSrt && output.audioEncoding === 'copy') {
-        warnings.push(
-            'SRT-to-RTMP output should not use copy audio — it can cause audio jitter; select a track instead.',
-        );
-    }
-    if (input.isSrt && input.audioTracks.length > 0) {
-        const outOfRange = output.audioEncoding
-            .split(',')
-            .map((value) => value.trim())
-            .filter((value) => /^\d+$/.test(value))
-            .map(Number)
-            .filter((index) => index >= input.audioTracks.length);
-        if (outOfRange.length > 0) {
-            const trackLabel = outOfRange.map((index) => index + 1).join(', ');
-            const count = input.audioTracks.length;
-            warnings.push(
-                `Output selects track ${trackLabel}, but the input only has ${count} audio track${count === 1 ? '' : 's'}.`,
-            );
-        }
-    }
-    return warnings;
 }
 
 // "since 3 min ago" after a warning that is still going on.
@@ -104,16 +64,13 @@ function currentErrorLine(output: OutputView): string {
 }
 
 // Every warning the card shows, whether reported by the running output, one behind the
-// status dot (its verdict: a low bitrate, waiting to start), a destination shared with
-// another output or advice about the encoding settings. A yellow dot always has a line.
+// status dot (its verdict: a low bitrate, waiting to start) or a mistake in how it is
+// configured (see core/output-advice.ts). A yellow dot always has a line. Tips are not
+// warnings: they are listed apart.
 function outputWarnings(
     output: OutputView,
-    input: InputHealth,
-    dupUrls: Map<string, DupRef[]>,
+    advice: Advice[],
 ): Array<{ message: string; sinceMs?: number | null }> {
-    const otherDupRefs = (output.url ? (dupUrls.get(output.url) ?? []) : []).filter(
-        (ref) => ref.outputId !== output.id,
-    );
     const own = output.warningReason
         ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
         : [];
@@ -126,20 +83,7 @@ function outputWarnings(
     return [
         ...own,
         ...fromHealth,
-        ...(otherDupRefs.length > 0
-            ? [
-                  {
-                      message: `Same destination as ${otherDupRefs
-                          .map((ref) =>
-                              ref.outputName
-                                  ? `${ref.pipelineName} → ${ref.outputName}`
-                                  : ref.pipelineName,
-                          )
-                          .join(', ')}`,
-                  },
-              ]
-            : []),
-        ...outputEncodingWarnings(output, input).map((message) => ({ message })),
+        ...advice.filter((a) => a.level === 'mistake').map(({ message }) => ({ message })),
     ];
 }
 
@@ -153,7 +97,8 @@ export function outputSeverity(
 ): 'error' | 'warning' | null {
     const status = output.verdict.status;
     if (status === 'error' || currentErrorLine(output)) return 'error';
-    if (status === 'warn' || outputWarnings(output, input, dupUrls).length > 0) return 'warning';
+    if (status === 'warn') return 'warning';
+    if (outputWarnings(output, outputAdvice(output, input, dupUrls)).length > 0) return 'warning';
     return null;
 }
 
@@ -235,7 +180,9 @@ export function renderOutputCard(
     const historyBtn = output.hasErrorHistory
         ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
-    const warnings = outputWarnings(output, input, dupUrls);
+    const advice = outputAdvice(output, input, dupUrls);
+    const warnings = outputWarnings(output, advice);
+    const tips = advice.filter((a) => a.level === 'tip');
     // The dot's hover text: the same problems as the lines below, so it never shows
     // a colour without the reason. A healthy output has nothing to say.
     const dotIssues: StatusIssue[] = [
@@ -260,6 +207,15 @@ export function renderOutputCard(
             }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
                 <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${hintHtml(errorHint(message))}${sinceHtml(sinceMs)}
+           </div>`,
+        )
+        .join('');
+    // Tips are notes, not warnings: muted, with an info icon, and they never tint the card.
+    const tipsHtml = tips
+        .map(
+            ({ message }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
+                <span class="text-muted shrink-0">${ICON_INFO}</span>
+                <span class="text-xs text-muted truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>
            </div>`,
         )
         .join('');
@@ -294,6 +250,7 @@ export function renderOutputCard(
             </div>
         </div>
         ${warningsHtml}
+        ${tipsHtml}
         ${lastErrorHtml}
     </div>`;
 }

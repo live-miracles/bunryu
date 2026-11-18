@@ -2,6 +2,7 @@ import type { ActivityEvent, PipelineGroup, PipelineView } from '../types.js';
 import type { InputStatus, OutStatus } from './status.js';
 import { relayHealth, relayIssueList } from './relay-status.js';
 import { isProblem, tallyStatuses, type StatusTally } from './overview-filter.js';
+import { duplicateDestinations, outputMistakes } from './output-advice.js';
 
 // The Status view: one card per pipeline with a dot for every output. Pure functions that
 // turn the dashboard's state into what the view draws, so the DOM code stays thin.
@@ -10,7 +11,8 @@ export interface StatusDot {
     id: string;
     name: string;
     status: OutStatus;
-    // The first thing wrong with it, or ''.
+    // The first thing wrong with it, or '': a problem with its status, else a mistake in how
+    // it is configured (which does not change its colour).
     message: string;
 }
 
@@ -24,8 +26,11 @@ export interface StatusCard {
     inputMessage: string;
     dots: StatusDot[];
     tally: StatusTally;
+    // How many outputs have a mistake in how they are configured (core/output-advice.ts).
+    mistakes: number;
     // The card belongs in the Issues view: its input or an output has a warning or an error
-    // (an offline input counts through its outputs, which then warn that it is not live).
+    // (an offline input counts through its outputs, which then warn that it is not live), or
+    // an output has a mistake.
     hasIssue: boolean;
     severity: 'error' | 'warn' | 'none';
 }
@@ -61,22 +66,26 @@ function cardInput(p: PipelineView, relay: RelayContext): { status: InputStatus;
 }
 
 export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext): StatusCard[] {
+    const dupUrls = duplicateDestinations(pipelines);
     return pipelines.map((p) => {
         const input = cardInput(p, relay);
+        let mistakes = 0;
         const dots = p.outs.map((o): StatusDot => {
             const health = o.verdict;
+            const found = outputMistakes(o, p.input, dupUrls);
+            if (found.length > 0) mistakes += 1;
             return {
                 id: o.id,
                 name: o.name,
                 status: health.status,
-                message: health.issues[0]?.message ?? '',
+                message: health.issues[0]?.message ?? found[0] ?? '',
             };
         });
         const tally = tallyStatuses(dots.map((d) => d.status));
         const severity =
             tally.error > 0 || input.status === 'error'
                 ? 'error'
-                : tally.warn > 0 || input.status === 'warn'
+                : tally.warn > 0 || input.status === 'warn' || mistakes > 0
                   ? 'warn'
                   : 'none';
         return {
@@ -88,7 +97,8 @@ export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext)
             inputMessage: input.message,
             dots,
             tally,
-            hasIssue: isProblem(input.status) || tally.warn > 0 || tally.error > 0,
+            mistakes,
+            hasIssue: isProblem(input.status) || tally.warn > 0 || tally.error > 0 || mistakes > 0,
             severity,
         };
     });

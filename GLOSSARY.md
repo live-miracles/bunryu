@@ -89,6 +89,10 @@ _Avoid_: monitor, supervisor
 The status of an input or output (good, warn, error or off) and the problems behind it, worked out by the server and shown by the dashboard and Key Vault. The dashboard works out no status of its own.
 _Avoid_: health (alone), state
 
+**Advice**:
+A hint about how an output or pipeline is configured, such as a destination another output also uses or audio settings that do not suit the input. It is a **mistake** (a setup that will not do what the operator means, counted as a warning in every list of problems) or a **tip** (a better way to do something that works, shown on the card only). The dashboard shows it; it is not part of a verdict, it never changes a status dot, and Key Vault never sees it.
+_Avoid_: advisory warning
+
 **Problem**:
 An output or input with an error or a warning, as the card colours it. The Problems filter lists exactly these.
 _Avoid_: issue (that is a GitHub issue)

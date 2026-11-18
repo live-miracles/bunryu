@@ -9,6 +9,7 @@ import type { InputStatus, OutStatus } from './status.js';
 import { relayHealth, type RelayHealth } from './relay-status.js';
 import { affectedOutputCount, isOffline, isProblem, matchesName } from './overview-filter.js';
 import { sharedEncodeLabel } from './renditions.js';
+import { duplicateDestinations, outputMistakes } from './output-advice.js';
 import type { OverviewFilter } from './state.js';
 
 // Everything the Overview draws that is a decision and not markup: which rows each
@@ -45,6 +46,9 @@ export interface OutputRow {
     pipeline: PipelineView;
     output: OutputView;
     status: OutStatus;
+    // Mistakes in how the output is configured (core/output-advice.ts): they make it an issue
+    // without changing its status.
+    mistakes: string[];
 }
 
 // One System usage figure per column. null is "not reported", drawn as a dash.
@@ -243,22 +247,30 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
         },
     );
 
+    // Destination → outputs using it, across all pipelines, for the "same destination" mistake.
+    const dupUrls = duplicateDestinations(pipelines);
+
     // `names` are what the Outputs search box matches besides the pipeline's name.
     const outputCandidate = (
         pipeline: PipelineView,
         output: OutputView,
         names: string[],
+        mistakes: string[] = [],
     ): Candidate<OutputRow> => {
         const status = output.verdict.status;
         return {
-            row: { pipeline, output, status },
-            problem: isProblem(status),
+            row: { pipeline, output, status, mistakes },
+            problem: isProblem(status) || mistakes.length > 0,
             offline: isOffline(status),
             matches: matchesName(input.outputSearch, pipeline.name, ...names),
         };
     };
     const outputs = buildTable(
-        pipelines.flatMap((p) => p.outs.map((o) => outputCandidate(p, o, [o.name, o.url ?? '']))),
+        pipelines.flatMap((p) =>
+            p.outs.map((o) =>
+                outputCandidate(p, o, [o.name, o.url ?? ''], outputMistakes(o, p.input, dupUrls)),
+            ),
+        ),
         filter,
         input.outputSearch,
         {
