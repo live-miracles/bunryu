@@ -296,12 +296,17 @@ only for a new module.
   cards and the Problems filter read `view.verdict`, which `parsePipelines` sets.
   `core/relay-status.ts` is the same for a pipeline's relay path (`relayHealth`: the input and
   output halves with the issues behind each, given the clock; the leg health colour and label).
+  `core/problems.ts` is the one place that decides what is a Problem and what status a pipeline's
+  dot shows (`problemContext` once per render, `pipelineProblems` per pipeline, `groupProblems`,
+  `outputProblem`): the input half is the verdict raised to the relay's warning or error, a
+  Problem also counts a mistake and an output stopped after repeated failures, and the sidebar,
+  Status view, Overview and Outputs list only draw its answer;
   `core/status-grid.ts` builds the Status view's cards, dots, groups, counts and problem list
   (`features/status-view.ts` draws it, in parts replaced only when their HTML changed);
   `core/overview-model.ts` is the same for the Overview (`buildOverviewModel`: each table's
   rows under the All / Active / Issues filter and the search boxes, its counts and empty-state
   sentence, the chip totals and the System usage sums; `features/render.ts` only draws the
-  HTML), on top of the one-line rules in `core/overview-filter.ts`;
+  HTML), on top of `core/problems.ts` and the search and label helpers in `core/overview-filter.ts`;
   `core/leg-history.ts` is the SRT details modal's leg history (`createLegHistory`: which
   30-minute window to load, the live window's increments, the page cache and read-ahead, and
   dropping a response a newer request replaced; fetch, clock and tab visibility are injected,
@@ -327,10 +332,10 @@ only for a new module.
   `core/output-advice.ts` is the advice about how an output or pipeline is configured (a
   destination another output uses, audio settings that do not suit the input, a stream key
   two pipelines share): pure, dashboard-only, never part of a status or of the Key Vault report.
-  A line is a mistake (counted as a warning by `outputSeverity`, the Overview's Issues and the
+  A line is a mistake (counted as a warning by `outputProblem`, the Overview's Issues and the
   Status view's cards) or a tip (on the output card only);
   `core/outputs-filter.ts` has the Outputs list's filter, "Problems" test and summary
-  counts (`outputSeverity` in `features/output-card.ts` says what counts as a problem);
+  counts (`outputProblem` in `core/problems.ts` says what counts as a problem);
   `core/alert-sound.ts` decides which changes between polls beep;
   `features/sound-alerts.ts` is the navbar bell and volume and plays the beeps.
   `features/status-tooltip.ts` is the hover text and gradient of every two-half

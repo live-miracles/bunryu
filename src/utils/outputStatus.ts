@@ -237,7 +237,7 @@ export interface ReportedState {
 }
 
 // The state the Key Vault reporter sends. The dashboard's "Problems" rule
-// (outputSeverity in public/ts/features/output-card.ts) without its advisory
+// (outputProblem in public/ts/core/problems.ts) without its advisory
 // warnings (a destination shared with another output, encoding advice): those are
 // about the configuration, not about whether the stream is being delivered.
 export function reportedState(o: OutputStatusView, input: { live: boolean }): ReportedState {

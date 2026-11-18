@@ -15,8 +15,6 @@ import {
     formatLocalDateTime,
     setHtmlKeepScroll,
     STATUS_COLOR_GOOD,
-    STATUS_COLOR_WARN,
-    STATUS_COLOR_ERROR,
     STATUS_COLOR_OFF,
     formatUptime,
 } from '../core/utils.js';
@@ -45,9 +43,9 @@ import {
     updatePipeline,
     updatePipelineGroups,
 } from '../core/api.js';
-import { dupTooltip, formatOutputName, outputSeverity, renderOutputCard } from './output-card.js';
-import { duplicateDestinations, outputMistakes, sharedStreamKeys } from '../core/output-advice.js';
-import { ICON_PENCIL, ICON_TRASH, outputStatusCounts } from './output-badges.js';
+import { dupTooltip, formatOutputName, renderOutputCard } from './output-card.js';
+import { sharedStreamKeys } from '../core/output-advice.js';
+import { ICON_PENCIL, ICON_TRASH } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeUsage } from './shared-encodes.js';
 import { sharedEncodeLabel } from '../core/renditions.js';
 import { buildOverviewModel, type OverviewTable, type UsageRow } from '../core/overview-model.js';
@@ -63,7 +61,6 @@ import {
     legHealthLabel,
     relayHealth,
     relayIssueList,
-    type RelayHealth,
 } from '../core/relay-status.js';
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import {
@@ -81,7 +78,14 @@ import {
     outputSummaryHtml,
 } from '../core/outputs-filter.js';
 import { srtPassphraseResetBlock } from '../core/pipeline.js';
-import { countLabel, searchBoxHtml, tallyStatuses, worstOfTally } from '../core/overview-filter.js';
+import { countLabel, searchBoxHtml } from '../core/overview-filter.js';
+import {
+    groupProblems,
+    pipelineProblems,
+    problemContext,
+    tallyStatuses,
+    worstOfTally,
+} from '../core/problems.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderInputStats } from './input-stats-view.js';
 import { renderStatusView } from './status-view.js';
@@ -93,10 +97,6 @@ declare global {
     }
 }
 
-const STATUS_RANK: Record<OutStatus, number> = { error: 3, warn: 2, good: 1, off: 0 };
-function worstStatus(a: OutStatus, b: OutStatus): OutStatus {
-    return STATUS_RANK[b] > STATUS_RANK[a] ? b : a;
-}
 function statusBadge(n: number, cls: string): string {
     return n > 0 ? `<div class="badge badge-sm ${cls} px-2">${n}</div>` : '';
 }
@@ -428,17 +428,6 @@ function getBondingIndicator(
     };
 }
 
-function relayInputSeverityColor(
-    pipeline: PipelineView,
-    relay: RelayHealth,
-    inputColor: string,
-): string {
-    if (pipeline.input.verdict.status !== 'good') return inputColor;
-    if (relay.input === 'error' || relay.output === 'error') return STATUS_COLOR_ERROR;
-    if (relay.input === 'warn' || relay.output === 'warn') return STATUS_COLOR_WARN;
-    return inputColor;
-}
-
 // ── Pipeline list (left column) ───────────────────────
 
 function renderPipelineList(): void {
@@ -446,12 +435,16 @@ function renderPipelineList(): void {
     if (!listEl) return;
     if (draggingPipelineEl || draggingGroupEl) return; // preserve the DOM while a drag is in progress
 
-    const inputsOn = state.pipelines.filter((p) => p.input.verdict.status === 'good').length;
-    const inputsWarn = state.pipelines.filter((p) => p.input.verdict.status === 'warn').length;
-    const inputsFailed = state.pipelines.filter((p) => p.input.verdict.status === 'error').length;
+    const relayProcessRunning = state.health.srtRelay?.status === 'running';
+    const ctx = problemContext(state.pipelines, relayProcessRunning, healthNowMs());
+    const rolled = new Map(state.pipelines.map((p) => [p.id, pipelineProblems(p, ctx)]));
+    const inputStatuses = [...rolled.values()].map((r) => r.input.status);
+    const inputsOn = inputStatuses.filter((s) => s === 'good').length;
+    const inputsWarn = inputStatuses.filter((s) => s === 'warn').length;
+    const inputsFailed = inputStatuses.filter((s) => s === 'error').length;
     const totalOutputs = state.pipelines.reduce((s, p) => s + p.outs.length, 0);
-    const outputCounts = outputStatusCounts(
-        state.pipelines.flatMap((p) => p.outs.map((o) => o.verdict.status)),
+    const outputCounts = tallyStatuses(
+        [...rolled.values()].flatMap((r) => r.outputs.map((o) => o.status)),
     );
     const outputsOff = state.pipelines.reduce(
         (s, p) => s + p.outs.filter((o) => o.desiredState === 'stopped').length,
@@ -462,66 +455,49 @@ function renderPipelineList(): void {
     setInnerText('pipe-cnt-label', state.pipelines.length === 1 ? 'Input' : 'Inputs');
     setBadgeCount('pipe-oks', inputsOn);
     setBadgeCount('pipe-warns', inputsWarn + inputsFailed);
-    setBadgeCount(
-        'pipe-offs',
-        state.pipelines.filter((p) => p.input.verdict.status === 'off').length,
-    );
+    setBadgeCount('pipe-offs', inputStatuses.filter((s) => s === 'off').length);
     setInnerText('out-cnt', totalOutputs);
     setInnerText('out-cnt-label', totalOutputs === 1 ? 'Output' : 'Outputs');
-    setBadgeCount('out-oks', outputCounts.running);
-    setBadgeCount('out-warns', outputCounts.warnings);
-    setBadgeCount('out-errors', outputCounts.errors);
+    setBadgeCount('out-oks', outputCounts.good);
+    setBadgeCount('out-warns', outputCounts.warn);
+    setBadgeCount('out-errors', outputCounts.error);
     setBadgeCount('out-offs', outputsOff);
 
     const selectedId = getUrlParam('p');
-    const relayProcessRunning = state.health.srtRelay?.status === 'running';
 
     // Pipelines sharing a stream key can't both actually publish — flag it the
     // same way duplicate output destination URLs are flagged.
     const dupKeys = sharedStreamKeys(state.pipelines);
-    const dupUrls = duplicateDestinations(state.pipelines);
 
     const renderPipelineRow = (p: PipelineView, groupKey: string): string => {
-        const {
-            good: outGood,
-            warn: outWarn,
-            error: outFailed,
-            off: outOff,
-        } = tallyStatuses(p.outs.map((o) => o.verdict.status));
+        const problems = rolled.get(p.id)!;
+        const { good: outGood, warn: outWarn, error: outFailed, off: outOff } = problems.tally;
 
-        const relay = relayHealth(p, relayProcessRunning, healthNowMs());
-        const inColor = relayInputSeverityColor(p, relay, statusColor(p.input.verdict.status));
-        const outColor =
-            outFailed > 0
-                ? STATUS_COLOR_ERROR
-                : outWarn > 0
-                  ? STATUS_COLOR_WARN
-                  : outGood > 0
-                    ? STATUS_COLOR_GOOD
-                    : STATUS_COLOR_OFF;
+        const inColor = statusColor(problems.input.status);
+        const outColor = statusColor(worstOfTally(problems.tally));
         const selected = p.id === selectedId ? 'bg-base-100' : '';
         // Same halves as the dot: everything on the way in (the input and, for SRT through
         // the relay, the relay), then the outputs.
         const statusTooltip = renderStatusTooltip(
             {
                 label: 'Input',
-                issues: [...p.input.verdict.issues, ...relayIssueList(relay)],
+                issues: problems.input.issues,
                 active: p.input.connected,
                 ok: 'Input is live.',
                 off: 'No input.',
             },
             {
                 label: 'Outputs',
-                issues: p.outs.flatMap((o) =>
+                issues: problems.outputs.flatMap(({ output, mistakes }) =>
                     [
-                        ...o.verdict.issues,
-                        ...outputMistakes(o, p.input, dupUrls).map((message) => ({
+                        ...output.verdict.issues,
+                        ...mistakes.map((message) => ({
                             severity: 'warning' as const,
                             message,
                         })),
                     ].map((issue) => ({
                         severity: issue.severity,
-                        message: `${o.name}: ${issue.message}`,
+                        message: `${output.name}: ${issue.message}`,
                     })),
                 ),
                 active: outOff < p.outs.length,
@@ -591,7 +567,11 @@ function renderPipelineList(): void {
             .map((g) => {
                 const members = byGroup.get(g.id) ?? [];
                 const collapsed = state.collapsedGroupIds.has(g.id);
-                const header = renderGroupHeader(g, members, collapsed);
+                const header = renderGroupHeader(
+                    g,
+                    groupProblems(members.map((m) => rolled.get(m.id)!)),
+                    collapsed,
+                );
                 const rows = collapsed
                     ? ''
                     : members.map((p) => renderPipelineRow(p, String(g.id))).join('');
@@ -747,15 +727,12 @@ const ICON_CHEVRON_DOWN = `<svg xmlns="http://www.w3.org/2000/svg" width="14" he
 // since the member rows underneath already show their own status individually.
 function renderGroupHeader(
     group: PipelineGroup,
-    members: PipelineView[],
+    problems: ReturnType<typeof groupProblems>,
     collapsed: boolean,
 ): string {
-    let inSt: InputStatus = 'off';
-    for (const p of members) inSt = worstStatus(inSt, p.input.verdict.status);
-    const outs = tallyStatuses(members.flatMap((p) => p.outs.map((o) => o.verdict.status)));
-    const outSt: OutStatus = worstOfTally(outs);
-    const inColor = statusColor(inSt);
-    const outColor = statusColor(outSt);
+    const { outputs: outs } = problems;
+    const inColor = statusColor(problems.input);
+    const outColor = statusColor(problems.output);
 
     const summary = collapsed
         ? `<div class="rounded-box h-5 w-5 shrink-0" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
@@ -1609,16 +1586,18 @@ function renderOutputsList(pipeline: PipelineView): void {
     }
 
     // Destination URL → the outputs that use it, across all pipelines, to flag duplicates.
-    const dupUrls = duplicateDestinations(state.pipelines);
+    const ctx = problemContext(
+        state.pipelines,
+        state.health.srtRelay?.status === 'running',
+        healthNowMs(),
+    );
+    const dupUrls = ctx.dupUrls;
 
-    const rows = pipeline.outs.map((output) => {
-        const status = output.verdict.status;
-        return {
-            output,
-            status,
-            severity: outputSeverity(output, pipeline.input, dupUrls),
-        };
-    });
+    const rows = pipelineProblems(pipeline, ctx).outputs.map(({ output, status, severity }) => ({
+        output,
+        status,
+        severity,
+    }));
     const { outputsListSearch: query, outputsListProblemsOnly: problemsOnly } = state;
     const visible = rows.filter((row) =>
         matchesOutputFilter(row.output, row.severity, query, problemsOnly),

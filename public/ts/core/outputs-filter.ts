@@ -7,7 +7,7 @@ export type OutputSeverity = 'error' | 'warning' | null;
 
 // What the summary counts. Running and stopped are the outputs' own state, so together
 // they are every output; errors and warnings count the outputs with one (the card's
-// rule, see outputSeverity) whatever their state, so they overlap with those two.
+// rule, see outputProblem in core/problems.ts) whatever their state, so they overlap with those two.
 export type OutputCounts = { error: number; warning: number; running: number; stopped: number };
 
 export function countOutputs(

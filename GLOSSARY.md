@@ -86,7 +86,7 @@ A bounded loop that finds a stuck output and restarts it. Each one has a stated 
 _Avoid_: monitor, supervisor
 
 **Verdict**:
-The status of an input or output (good, warn, error or off) and the problems behind it, worked out by the server and shown by the dashboard and Key Vault. The dashboard works out no status of its own.
+The status of an input or output (good, warn, error or off) and the problems behind it, worked out by the server and shown by the dashboard and Key Vault. The dashboard works out no status of its own. On a pipeline's dot the input half also takes the relay's warning or error, even while the input is off.
 _Avoid_: health (alone), state
 
 **Advice**:
@@ -94,7 +94,7 @@ A hint about how an output or pipeline is configured, such as a destination anot
 _Avoid_: advisory warning
 
 **Problem**:
-An output or input with an error or a warning, as the card colours it. The Problems filter lists exactly these.
+An output or input with an error or a warning, as the card colours it, and also an output with an advice mistake and an output stopped after repeated failures (its status stays off, its error is still current). A dot's colour and the counts beside it are status and leave out the mistake and the stopped output; every list, filter and "has issues" flag counts them. The Problems filter lists exactly these.
 _Avoid_: issue (that is a GitHub issue)
 
 **Diagnostics**:

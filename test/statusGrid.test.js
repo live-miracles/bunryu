@@ -147,6 +147,45 @@ describe('buildStatusCards', () => {
         assert.equal(card.severity, 'error');
     });
 
+    test('a relay that cannot reach SRS is an error even while the input is off', () => {
+        const [card] = cardsOf([
+            relayPipeline(
+                [okLeg('a'), okLeg('b')],
+                { outputConnected: false, acceptedBySrs: false, lastError: 'refused' },
+                { input: offInput() },
+            ),
+        ]);
+        assert.equal(card.inputStatus, 'error');
+        assert.match(card.inputMessage, /Relay output reconnecting: refused/);
+        assert.equal(card.severity, 'error');
+    });
+
+    test('an unstable leg shows on the input half while SRS has no live stream yet', () => {
+        const [card] = cardsOf([
+            relayPipeline(
+                [
+                    okLeg('a'),
+                    { ip: 'b', state: 'running', health: 'warn', healthReason: 'Leg is unstable' },
+                ],
+                { acceptedBySrs: false },
+                { input: offInput() },
+            ),
+        ]);
+        assert.equal(card.inputStatus, 'warn');
+        assert.match(card.inputMessage, /Leg b: Leg is unstable/);
+    });
+
+    test('a relay that is connected but not yet reported by SRS only warns', () => {
+        const [card] = cardsOf([
+            relayPipeline(
+                [okLeg('a'), okLeg('b')],
+                { acceptedBySrs: false },
+                { input: offInput() },
+            ),
+        ]);
+        assert.equal(card.inputStatus, 'warn');
+    });
+
     test('a healthy relay leaves the card good, and a relay that is down is ignored', () => {
         const healthy = relayPipeline([okLeg('a'), okLeg('b')]);
         assert.equal(cardsOf([healthy])[0].inputStatus, 'good');

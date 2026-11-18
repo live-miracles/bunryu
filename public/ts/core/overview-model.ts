@@ -6,10 +6,17 @@ import type {
     SystemMetrics,
 } from '../types.js';
 import type { InputStatus, OutStatus } from './status.js';
-import { relayHealth, type RelayHealth } from './relay-status.js';
-import { affectedOutputCount, isOffline, isProblem, matchesName } from './overview-filter.js';
+import type { RelayHealth } from './relay-status.js';
+import { matchesName } from './overview-filter.js';
+import {
+    affectedOutputCount,
+    isOffline,
+    isProblem,
+    pipelineProblems,
+    problemContext,
+    type OutputProblem,
+} from './problems.js';
 import { sharedEncodeLabel } from './renditions.js';
-import { duplicateDestinations, outputMistakes } from './output-advice.js';
 import type { OverviewFilter } from './state.js';
 
 // Everything the Overview draws that is a decision and not markup: which rows each
@@ -195,17 +202,21 @@ const legRateKbps = (leg: SrtBondingLeg): number | null =>
 export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
     const { pipelines, metrics: m, filter } = input;
 
+    const ctx = problemContext(pipelines, input.relayProcessRunning, input.nowMs);
+    const rolled = pipelines.map((pipeline) => pipelineProblems(pipeline, ctx));
+
     const relayPipelines = pipelines.filter(isRelayActive);
     const relay = buildTable(
-        relayPipelines.map((pipeline): Candidate<RelayRow> => {
-            const health = relayHealth(pipeline, input.relayProcessRunning, input.nowMs);
-            return {
-                row: { pipeline, relay: health },
-                problem: isProblem(health.input) || isProblem(health.output),
-                offline: isOffline(health.input) && isOffline(health.output),
-                matches: true,
-            };
-        }),
+        rolled
+            .filter(({ pipeline }) => isRelayActive(pipeline))
+            .map(
+                ({ pipeline, relay: health }): Candidate<RelayRow> => ({
+                    row: { pipeline, relay: health },
+                    problem: isProblem(health.input) || isProblem(health.output),
+                    offline: isOffline(health.input) && isOffline(health.output),
+                    matches: true,
+                }),
+            ),
         filter,
         '',
         {
@@ -247,28 +258,26 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
         },
     );
 
-    // Destination → outputs using it, across all pipelines, for the "same destination" mistake.
-    const dupUrls = duplicateDestinations(pipelines);
-
     // `names` are what the Outputs search box matches besides the pipeline's name.
     const outputCandidate = (
         pipeline: PipelineView,
-        output: OutputView,
+        found: OutputProblem,
         names: string[],
-        mistakes: string[] = [],
-    ): Candidate<OutputRow> => {
-        const status = output.verdict.status;
-        return {
-            row: { pipeline, output, status, mistakes },
-            problem: isProblem(status) || mistakes.length > 0,
-            offline: isOffline(status),
-            matches: matchesName(input.outputSearch, pipeline.name, ...names),
-        };
-    };
+    ): Candidate<OutputRow> => ({
+        row: {
+            pipeline,
+            output: found.output,
+            status: found.status,
+            mistakes: found.mistakes,
+        },
+        problem: found.severity !== null,
+        offline: isOffline(found.status),
+        matches: matchesName(input.outputSearch, pipeline.name, ...names),
+    });
     const outputs = buildTable(
-        pipelines.flatMap((p) =>
-            p.outs.map((o) =>
-                outputCandidate(p, o, [o.name, o.url ?? ''], outputMistakes(o, p.input, dupUrls)),
+        rolled.flatMap((r) =>
+            r.outputs.map((o) =>
+                outputCandidate(r.pipeline, o, [o.output.name, o.output.url ?? '']),
             ),
         ),
         filter,
@@ -284,8 +293,8 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
     // Server-managed FFmpeg processes that several outputs of a pipeline read; they are
     // not outputs (not counted among them) but cost CPU and RAM like one.
     const sharedEncodes = buildTable(
-        pipelines.flatMap((p) =>
-            p.renditions.map((r) => outputCandidate(p, r, [sharedEncodeLabel(r)])),
+        rolled.flatMap((r) =>
+            r.renditions.map((o) => outputCandidate(r.pipeline, o, [sharedEncodeLabel(o.output)])),
         ),
         filter,
         input.outputSearch,

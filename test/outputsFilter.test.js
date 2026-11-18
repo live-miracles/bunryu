@@ -8,8 +8,6 @@ const {
     outputSummaryHtml,
     noMatchingOutputsText,
 } = require('../public/ts/core/outputs-filter');
-const { outputSeverity } = require('../public/ts/features/output-card');
-const { withInputVerdict, withVerdict } = require('./helpers/verdicts');
 
 describe('countOutputs', () => {
     test('running and stopped are every output, whatever is wrong with it; errors and warnings overlap', () => {
@@ -79,65 +77,5 @@ describe('noMatchingOutputsText', () => {
         assert.equal(noMatchingOutputsText(' yt ', false), 'No outputs match “yt”.');
         assert.equal(noMatchingOutputsText('', true), 'No outputs with problems.');
         assert.equal(noMatchingOutputsText('yt', true), 'No outputs with problems match “yt”.');
-    });
-});
-
-describe('outputSeverity', () => {
-    const output = (over) => ({
-        id: '1-1',
-        name: 'o',
-        desiredState: 'running',
-        status: 'running',
-        videoEncoding: 'copy',
-        audioEncoding: 'copy',
-        failures: 0,
-        lastError: null,
-        lastErrorAt: null,
-        warningReason: null,
-        bitrateKbps: 5000,
-        url: 'rtmp://a.example/live/key',
-        ...over,
-    });
-    const rtmpInput = { connected: true, live: true, isSrt: false, audioTracks: [] };
-    const severity = (over, dupUrls = new Map()) =>
-        outputSeverity(withVerdict(output(over), rtmpInput), withInputVerdict(rtmpInput), dupUrls);
-    const stopped = { desiredState: 'stopped', status: 'stopped' };
-
-    test('a healthy output has none', () => {
-        assert.equal(severity({}), null);
-    });
-
-    test('an error status or a current error line is an error', () => {
-        assert.equal(severity({ status: 'failed' }), 'error');
-        assert.equal(severity({ ...stopped, lastError: 'boom', lastErrorAt: 1 }), 'error');
-    });
-
-    test('an old error that is no longer current is not a problem', () => {
-        assert.equal(severity({ ...stopped, lastError: 'boom', lastErrorAt: null }), null);
-    });
-
-    test('a tip is not a problem: it is on the card and counts nowhere', () => {
-        assert.equal(severity({ audioEncoding: '0' }), null);
-        assert.equal(severity({ ...stopped, audioEncoding: '0' }), null);
-    });
-
-    test('every warning and mistake the card shows counts, even on a stopped output', () => {
-        assert.equal(severity({ bitrateKbps: 100 }), 'warning');
-        assert.equal(severity({ warningReason: 'timestamps' }), 'warning');
-        assert.equal(severity({ ...stopped, audioEncoding: '1' }), 'warning');
-        const dup = new Map([
-            [
-                'rtmp://a.example/live/key',
-                [
-                    { pipelineName: 'P', outputName: 'o', outputId: '1-1' },
-                    { pipelineName: 'P', outputName: 'o2', outputId: '1-2' },
-                ],
-            ],
-        ]);
-        assert.equal(severity({}, dup), 'warning');
-    });
-
-    test('an error outranks a warning', () => {
-        assert.equal(severity({ warningReason: 'x', lastError: 'boom', lastErrorAt: 1 }), 'error');
     });
 });

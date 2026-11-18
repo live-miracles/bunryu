@@ -87,21 +87,6 @@ function outputWarnings(
     ];
 }
 
-// What is wrong with the output right now, as the Outputs list's "Problems only"
-// filter and summary count it: an error (a crash being retried, or a stop after
-// repeated failures), a warning of any kind, or nothing.
-export function outputSeverity(
-    output: OutputView,
-    input: InputHealth,
-    dupUrls: Map<string, DupRef[]>,
-): 'error' | 'warning' | null {
-    const status = output.verdict.status;
-    if (status === 'error' || currentErrorLine(output)) return 'error';
-    if (status === 'warn') return 'warning';
-    if (outputWarnings(output, outputAdvice(output, input, dupUrls)).length > 0) return 'warning';
-    return null;
-}
-
 export function renderOutputCard(
     output: OutputView,
     input: InputHealth,

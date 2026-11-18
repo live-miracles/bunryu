@@ -1,8 +1,6 @@
 import type { ActivityEvent, PipelineGroup, PipelineView } from '../types.js';
 import type { InputStatus, OutStatus } from './status.js';
-import { relayHealth, relayIssueList } from './relay-status.js';
-import { isProblem, tallyStatuses, type StatusTally } from './overview-filter.js';
-import { duplicateDestinations, outputMistakes } from './output-advice.js';
+import { isProblem, pipelineProblems, problemContext, type StatusTally } from './problems.js';
 
 // The Status view: one card per pipeline with a dot for every output. Pure functions that
 // turn the dashboard's state into what the view draws, so the DOM code stays thin.
@@ -11,8 +9,8 @@ export interface StatusDot {
     id: string;
     name: string;
     status: OutStatus;
-    // The first thing wrong with it, or '': a problem with its status, else a mistake in how
-    // it is configured (which does not change its colour).
+    // The first thing wrong with it, or '': a problem with its status, else its current
+    // error, else a mistake in how it is configured (which does not change its colour).
     message: string;
 }
 
@@ -28,9 +26,7 @@ export interface StatusCard {
     tally: StatusTally;
     // How many outputs have a mistake in how they are configured (core/output-advice.ts).
     mistakes: number;
-    // The card belongs in the Issues view: its input or an output has a warning or an error
-    // (an offline input counts through its outputs, which then warn that it is not live), or
-    // an output has a mistake.
+    // The card belongs in the Issues view (see PipelineProblems.hasProblem in core/problems.ts).
     hasIssue: boolean;
     severity: 'error' | 'warn' | 'none';
 }
@@ -47,59 +43,29 @@ export interface RelayContext {
     nowMs: number;
 }
 
-const SEVERITY: Record<OutStatus, number> = { off: 0, good: 0, warn: 1, error: 2 };
-
-// The input as the sidebar shows it: the media input and, for an SRT input through the
-// relay, the relay path in front of it (a degraded leg, a lost leg, a stalled forward).
-// An input nobody publishes to stays off.
-function cardInput(p: PipelineView, relay: RelayContext): { status: InputStatus; message: string } {
-    const input = p.input.verdict;
-    const path = relayHealth(p, relay.relayProcessRunning, relay.nowMs);
-    let status = input.status;
-    if (status !== 'off') {
-        for (const half of [path.input, path.output]) {
-            if (SEVERITY[half] > SEVERITY[status]) status = half;
-        }
-    }
-    const issues = [...input.issues, ...relayIssueList(path)];
-    return { status, message: issues[0]?.message ?? '' };
-}
-
 export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext): StatusCard[] {
-    const dupUrls = duplicateDestinations(pipelines);
+    const ctx = problemContext(pipelines, relay.relayProcessRunning, relay.nowMs);
     return pipelines.map((p) => {
-        const input = cardInput(p, relay);
-        let mistakes = 0;
-        const dots = p.outs.map((o): StatusDot => {
-            const health = o.verdict;
-            const found = outputMistakes(o, p.input, dupUrls);
-            if (found.length > 0) mistakes += 1;
-            return {
-                id: o.id,
-                name: o.name,
-                status: health.status,
-                message: health.issues[0]?.message ?? found[0] ?? '',
-            };
-        });
-        const tally = tallyStatuses(dots.map((d) => d.status));
-        const severity =
-            tally.error > 0 || input.status === 'error'
-                ? 'error'
-                : tally.warn > 0 || input.status === 'warn' || mistakes > 0
-                  ? 'warn'
-                  : 'none';
+        const rolled = pipelineProblems(p, ctx);
         return {
             id: p.id,
             name: p.name,
             groupId: p.groupId,
             type: inputTypeLabel(p),
-            inputStatus: input.status,
-            inputMessage: input.message,
-            dots,
-            tally,
-            mistakes,
-            hasIssue: isProblem(input.status) || tally.warn > 0 || tally.error > 0 || mistakes > 0,
-            severity,
+            inputStatus: rolled.input.status,
+            inputMessage: rolled.input.message,
+            dots: rolled.outputs.map(
+                ({ output, status, message }): StatusDot => ({
+                    id: output.id,
+                    name: output.name,
+                    status,
+                    message,
+                }),
+            ),
+            tally: rolled.tally,
+            mistakes: rolled.mistakes,
+            hasIssue: rolled.hasProblem,
+            severity: rolled.severity,
         };
     });
 }

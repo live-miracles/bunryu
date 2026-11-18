@@ -1366,6 +1366,33 @@ live" and the input half went grey.
 **Revisit when:** a second client needs the advice (an API consumer, notifications, a check
 when an output is saved), or tabs left open across upgrades turn out to matter.
 
+### One dashboard module decides what is a Problem and what a pipeline's dot shows
+
+**Decision (November 2026):** `public/ts/core/problems.ts` works out, once per render, each
+pipeline's input half, each output's Problem and the group roll-up, and the sidebar, the Status
+view, the Overview and the Outputs list draw its answer. The input half is the server's input
+verdict raised to the relay's warning or error, so an unstable or lost leg, or a relay that
+cannot reach SRS, shows on the dot even while the input is off; the relay never turns an input
+that is off into a healthy one. **Status** (dot colour, the counts beside it) and **Problem**
+(lists, filters, "has issues") stay separate: a Problem also counts an advice mistake and an
+output stopped after repeated failures, whose status is off.
+
+**Why:** the rules had been written out in four places and had drifted. A verdict of warn with a
+relay error was yellow in the sidebar (it folded the relay in only for a good verdict) and red in
+the Status view; the Status view skipped the relay for an off input, which hid a relay that could
+not reach SRS; the group header ignored the relay; the sidebar's output counts, the Overview and
+the Outputs filter each had their own idea of a Problem, and only the filter counted a stop after
+repeated failures. Six commits had moved or patched this rule before it had one home.
+
+**Not changed:** a relay connected to SRS that SRS has not yet listed as the input stays a
+warning (the gap after a new publisher connects is normal, and an error would flash on every
+connect; `relay-forwarding-stalled` catches one that never starts). The Overview's input rows
+stay on the server's verdict, because the relay has its own table there. The sidebar's output
+badges stay status-only so they match the dots.
+
+**Revisit when:** a second client needs the roll-up, or the server takes over the relay path's
+verdict.
+
 ### The dashboard keeps its own copy of the shared-encode recipe rule
 
 **Decision (October 2026):** `public/ts/core/renditions.ts` stays a hand-kept twin of

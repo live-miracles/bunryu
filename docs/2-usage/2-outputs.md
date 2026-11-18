@@ -238,14 +238,16 @@ outputs are restarted.
 The pulse icon in the navbar opens **Status**: every pipeline on one page, without the
 pipeline list. Each pipeline is a card in the sidebar's groups and order, with a large dot
 for its input and a small dot for each of its outputs: green is running, yellow a warning,
-red with a ring failed, and hollow stopped. Hover a dot for the output's name and what is
+red with a ring failed, and hollow stopped. The input dot also shows the SRT relay's warning
+or error (an unstable or lost leg, or the relay unable to reach SRS), even while no stream
+is live yet. Hover a dot for the output's name and what is
 wrong with it. A card with a warning or an error has a coloured border, and a pipeline with
 many outputs shows them as a block with its warning and failure counts. An output with a
 setup mistake keeps its dot's colour; its hover text names the mistake and the card says "1 to
 fix".
 
 The top line counts inputs and outputs, and the **Issues** tab keeps only the pipelines with
-a warning, an error or an output with a setup mistake (the same rule as the Overview's Issues tab). On the right are the
+a warning, an error, an output with a setup mistake or an output stopped after repeated failures (the same rule as the Overview's Issues tab). On the right are the
 host's CPU, RAM, downlink and uplink for the last 15 minutes, and the latest warnings and
 errors, oldest at the top. Click a card to open the pipeline; Ctrl-click opens it in a new
 tab, so Status can stay on a second screen. About 500 outputs in the shape of 100, 80 and
