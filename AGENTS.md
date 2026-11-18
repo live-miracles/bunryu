@@ -333,6 +333,10 @@ only for a new module.
   its rows, with the secrets masked.
   `core/destination.ts` and `core/srt.ts` are the output form's rules between its fields and the
   stored destination URL, both ways (server presets, the SRT fields), without the DOM.
+  `core/output-form.ts` is the output modal's rules without the DOM (`addOutputForm` and
+  `editOutputForm`: what it opens with, prefilled from the pipeline's last output or a saved
+  one, and locked while the output runs; `submitOutputForm`: the payload Save sends, only the
+  name for a running output, or the fields that are wrong); `features/editor.ts` reads and fills the fields.
   `core/output-payload.ts` reads what the output Copy / Paste buttons put on the clipboard (a
   list for a pipeline, one output or a bare URL for the form) and returns the outputs or the
   message to show; `core/ansi.ts` turns an SRS log line's colour codes into spans for the Logs terminals.

@@ -18,18 +18,24 @@ import { renderSrtPassphraseReset } from './render.js';
 import { noteSharedEncodeRestart } from './shared-encodes.js';
 import { ICON_COPY } from './output-badges.js';
 import type { ActivityEvent, StreamKey, AudioTrackInfo, ServerLogTail } from '../types.js';
-import { parseSrtUrl, srtUrlFromForm } from '../core/srt.js';
+import { parseSrtUrl, type SrtFormValues } from '../core/srt.js';
+import {
+    addOutputForm,
+    destinationOf,
+    editOutputForm,
+    submitOutputForm as buildOutputSubmission,
+    type OutputFormInit,
+    type OutputFormValues,
+} from '../core/output-form.js';
 import { ansiLineToHtml } from '../core/ansi.js';
 import { parseOutputsPayload, parseSingleOutputPayload } from '../core/output-payload.js';
 import {
     SERVERS,
     type ServerId,
     serverById,
-    buildDestinationUrl,
     detectServer,
     isDestinationUrl,
     isRestreamServer,
-    sanitizedDestinationFor,
 } from '../core/destination.js';
 export { showSrtBondingDetails } from './srt-bonding-details.js';
 
@@ -519,9 +525,7 @@ function populateDestination(
     tracks: AudioTrackInfo[],
     destination: { url: string; audioEncoding: string } | null,
 ): void {
-    const { server, key } = destination?.url
-        ? detectServer(destination.url, restreamTargets())
-        : { server: 'custom-rtmp' as const, key: '' };
+    const { server, key } = destinationOf(destination?.url, restreamTargets());
     populateDestinationDetected(tracks, server, key, destination?.audioEncoding ?? 'copy');
 }
 
@@ -575,43 +579,36 @@ function setOutputSettingsLocked(locked: boolean): void {
     pasteBtn.classList.toggle('opacity-40', locked);
 }
 
-export function openAddOutput(pipelineId: string): void {
-    const modal = outModal();
-    const pipeline = state.pipelines.find((p) => p.id === pipelineId);
-    const existingCount = pipeline?.outs.length ?? 0;
+// Fills the output modal from what the model says it opens with, and opens it.
+function showOutputForm(pipelineId: string, outId: string, init: OutputFormInit): void {
     (document.getElementById('out-pipe-id-input') as HTMLInputElement).value = pipelineId;
-    (document.getElementById('out-id-input') as HTMLInputElement).value = '';
+    (document.getElementById('out-id-input') as HTMLInputElement).value = outId;
     const nameEl = document.getElementById('out-name-input') as HTMLInputElement;
-    nameEl.value = `Output ${existingCount + 1}`;
+    nameEl.value = init.name;
     nameEl.classList.remove('input-error');
-
-    // Prefill from the pipeline's most recently added output so repeat destinations
-    // (same server/encoding) don't have to be re-entered from scratch each time.
-    // The per-stream identifier (RTMP stream key / SRT stream ID) is left blank
-    // rather than copied, since that's almost never meant to be reused.
-    const previous = pipeline?.outs[pipeline.outs.length - 1] ?? null;
-
     (document.getElementById('out-video-encoding-input') as HTMLSelectElement).innerHTML =
-        outVideoEncodingOptions(previous?.videoEncoding ?? 'copy');
-    if (previous) {
-        const { server, key } = sanitizedDestinationFor(previous.url, restreamTargets());
-        populateDestinationDetected(
-            pipelineTracks(pipelineId),
-            server,
-            key,
-            previous.audioEncoding,
-        );
-    } else {
-        populateDestinationDetected(pipelineTracks(pipelineId), 'custom-rtmp', '', 'copy');
-    }
-    (document.getElementById('out-modal-title') as HTMLElement).textContent = 'Add Output';
-    setOutputSettingsLocked(false);
+        outVideoEncodingOptions(init.videoEncoding);
+    populateDestinationDetected(
+        pipelineTracks(pipelineId),
+        init.destination.server,
+        init.destination.key,
+        init.audioEncoding,
+    );
+    (document.getElementById('out-modal-title') as HTMLElement).textContent =
+        init.mode === 'add' ? 'Add Output' : 'Edit Output';
+    setOutputSettingsLocked(init.locked);
     (document.getElementById('out-save-btn') as HTMLButtonElement).disabled = false;
     const copyBtn = document.getElementById('out-copy-btn') as HTMLButtonElement;
-    copyBtn.disabled = true;
-    copyBtn.classList.add('btn-disabled', 'opacity-40');
-    copyBtn.title = 'Save the output before copying it';
-    modal.showModal();
+    copyBtn.disabled = !init.canCopy;
+    copyBtn.classList.toggle('btn-disabled', !init.canCopy);
+    copyBtn.classList.toggle('opacity-40', !init.canCopy);
+    copyBtn.title = init.canCopy ? 'Copy output to clipboard' : 'Save the output before copying it';
+    outModal().showModal();
+}
+
+export function openAddOutput(pipelineId: string): void {
+    const pipeline = state.pipelines.find((p) => p.id === pipelineId);
+    showOutputForm(pipelineId, '', addOutputForm(pipeline?.outs ?? [], restreamTargets()));
 }
 
 export function openEditOutput(pipelineId: string, outId: string): void {
@@ -619,33 +616,11 @@ export function openEditOutput(pipelineId: string, outId: string): void {
         (o) => o.id === outId && String(o.pipelineId) === pipelineId,
     );
     if (!output) return;
-    const modal = outModal();
-    (document.getElementById('out-pipe-id-input') as HTMLInputElement).value = pipelineId;
-    (document.getElementById('out-id-input') as HTMLInputElement).value = outId;
-    const nameEl = document.getElementById('out-name-input') as HTMLInputElement;
-    nameEl.value = output.name;
-    nameEl.classList.remove('input-error');
-    (document.getElementById('out-video-encoding-input') as HTMLSelectElement).innerHTML =
-        outVideoEncodingOptions(output.videoEncoding);
-    populateDestination(pipelineTracks(pipelineId), {
-        url: output.url,
-        audioEncoding: output.audioEncoding,
-    });
-    (document.getElementById('out-modal-title') as HTMLElement).textContent = 'Edit Output';
-
-    const isRunning = output.desiredState === 'running';
-    setOutputSettingsLocked(isRunning);
-    (document.getElementById('out-save-btn') as HTMLButtonElement).disabled = false;
-
-    const copyBtn = document.getElementById('out-copy-btn') as HTMLButtonElement;
-    copyBtn.disabled = false;
-    copyBtn.classList.remove('btn-disabled', 'opacity-40');
-    copyBtn.title = 'Copy output to clipboard';
-
-    modal.showModal();
+    showOutputForm(pipelineId, outId, editOutputForm(output, restreamTargets()));
 }
 
-function readSrtSettings(row: Element): { url: string } | { error: true } {
+// The Custom SRT fields of the destination row, or null when one is missing.
+function readSrtFields(row: Element): SrtFormValues | null {
     const field = (cls: string) =>
         row.querySelector(cls) as HTMLInputElement | HTMLSelectElement | null;
     const els = {
@@ -657,9 +632,8 @@ function readSrtSettings(row: Element): { url: string } | { error: true } {
         keyLen: field('.js-srt-keylen'),
         streamId: field('.js-srt-streamid'),
     };
-    if (Object.values(els).some((el) => !el)) return { error: true };
-
-    const result = srtUrlFromForm({
+    if (Object.values(els).some((el) => !el)) return null;
+    return {
         mode: els.mode!.value,
         host: els.host!.value,
         port: els.port!.value,
@@ -667,13 +641,16 @@ function readSrtSettings(row: Element): { url: string } | { error: true } {
         passphrase: els.passphrase!.value,
         keyLen: els.keyLen!.value,
         streamId: els.streamId!.value,
-    });
-    const invalid = 'invalid' in result ? result.invalid : [];
-    for (const name of ['host', 'port', 'latency', 'passphrase', 'keyLen'] as const) {
-        els[name]!.classList.toggle('input-error', invalid.includes(name));
-    }
-    return 'url' in result ? { url: result.url } : { error: true };
+    };
 }
+
+const SRT_FIELD_CLASS = {
+    host: '.js-srt-host',
+    port: '.js-srt-port',
+    latency: '.js-srt-latency',
+    passphrase: '.js-srt-passphrase',
+    keyLen: '.js-srt-keylen',
+} as const;
 
 export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
     const pipelineId = (
@@ -681,70 +658,55 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
     ).value.trim();
     const outId = (document.getElementById('out-id-input') as HTMLInputElement).value.trim();
     const nameEl = document.getElementById('out-name-input') as HTMLInputElement;
-    const name = nameEl.value.trim();
-    nameEl.classList.toggle('input-error', !name);
-
-    // The settings of a running output are locked in the form, so only the name
-    // is sent.
-    const existing = state.config.outputs?.find(
-        (o) => o.id === outId && String(o.pipelineId) === pipelineId,
-    );
-    if (outId && existing?.desiredState === 'running') {
-        if (!name) return;
-        await withBusy(btn, async () => {
-            const result = await api.updateOutput(pipelineId, outId, { name });
-            if (result) {
-                outModal().close();
-                await refreshAfterMutation();
-            }
-        });
-        return;
-    }
-
-    const videoEncoding = (document.getElementById('out-video-encoding-input') as HTMLSelectElement)
-        .value;
-    const audioEncoding = (document.getElementById('out-audio-encoding-input') as HTMLSelectElement)
-        .value;
-    const server = (document.getElementById('out-server-input') as HTMLSelectElement)
-        .value as ServerId;
-
+    const server = (document.getElementById('out-server-input') as HTMLSelectElement | null)
+        ?.value as ServerId;
     const row = document.querySelector('#out-sinks-container .js-sink-row');
-    let url = '';
-    let destinationValid = row !== null;
-    if (row) {
-        const keyEl = row.querySelector('.js-sink-key') as
-            | HTMLInputElement
-            | HTMLSelectElement
-            | null;
-        const key = keyEl?.value.trim() ?? '';
-        if (server === 'custom-srt') {
-            const srt = readSrtSettings(row);
-            if ('error' in srt) {
-                destinationValid = false;
-            } else {
-                url = srt.url;
-            }
-        } else {
-            const built = buildDestinationUrl(server, key, restreamTargets());
-            keyEl?.classList.toggle(
-                isRestreamServer(server) ? 'select-error' : 'input-error',
-                'error' in built,
-            );
-            if ('error' in built) {
-                destinationValid = false;
-            } else {
-                url = built.url;
-            }
-        }
+    const keyEl = row?.querySelector('.js-sink-key') as
+        | HTMLInputElement
+        | HTMLSelectElement
+        | null
+        | undefined;
+    const values: OutputFormValues = {
+        name: nameEl.value,
+        videoEncoding: (document.getElementById('out-video-encoding-input') as HTMLSelectElement)
+            .value,
+        audioEncoding: (document.getElementById('out-audio-encoding-input') as HTMLSelectElement)
+            .value,
+        server,
+        destination: row
+            ? {
+                  key: keyEl?.value ?? '',
+                  srt: server === 'custom-srt' ? readSrtFields(row) : null,
+              }
+            : null,
+    };
+    const saved = outId
+        ? state.config.outputs?.find((o) => o.id === outId && String(o.pipelineId) === pipelineId)
+        : undefined;
+
+    const submission = buildOutputSubmission(values, saved, restreamTargets());
+    const invalid = submission.ok ? null : submission.invalid;
+    nameEl.classList.toggle('input-error', invalid?.name ?? false);
+    keyEl?.classList.toggle(
+        isRestreamServer(server) ? 'select-error' : 'input-error',
+        invalid?.key ?? false,
+    );
+    for (const [name, cls] of Object.entries(SRT_FIELD_CLASS)) {
+        row?.querySelector(cls)?.classList.toggle(
+            'input-error',
+            invalid?.srt.includes(name as keyof typeof SRT_FIELD_CLASS) ?? false,
+        );
     }
+    if (!submission.ok) return;
 
-    if (!name || !destinationValid) return;
-
+    const { body } = submission;
     await withBusy(btn, async () => {
-        const payload = { name, videoEncoding, url, audioEncoding };
+        // A new output is never locked, so what it sends is the whole payload.
         const result = outId
-            ? await api.updateOutput(pipelineId, outId, payload)
-            : await api.createOutput(pipelineId, payload);
+            ? await api.updateOutput(pipelineId, outId, body)
+            : 'url' in body
+              ? await api.createOutput(pipelineId, body)
+              : null;
         if (result) {
             outModal().close();
             await refreshAfterMutation();
