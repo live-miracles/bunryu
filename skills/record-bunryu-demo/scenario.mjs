@@ -124,6 +124,31 @@ async function scenario(d) {
           }
           c.textContent = ${q(text)};
         })()`);
+    // Smooth-scroll the page's main scrollable area to a fraction of its length (0 top, 1 bottom)
+    const scrollMain = (fraction, ms) =>
+        d.js(`(async () => {
+          const cands = [document.scrollingElement, ...document.querySelectorAll('*')].filter(
+            (e) => e && e.scrollHeight > e.clientHeight + 40 &&
+              (e === document.scrollingElement || ['auto', 'scroll'].includes(getComputedStyle(e).overflowY)) &&
+              e.getBoundingClientRect().width > 400,
+          );
+          cands.sort((a, b) => b.scrollHeight - b.clientHeight - (a.scrollHeight - a.clientHeight));
+          const el = cands[0];
+          if (!el) return 'no scrollable area';
+          const from = el.scrollTop;
+          const to = ${fraction} * (el.scrollHeight - el.clientHeight);
+          const t0 = performance.now();
+          await new Promise((done) => {
+            const step = (t) => {
+              const k = Math.min(1, (t - t0) / ${ms});
+              const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+              el.scrollTop = from + (to - from) * e;
+              if (k < 1) requestAnimationFrame(step); else done();
+            };
+            requestAnimationFrame(step);
+          });
+          return el.tagName + '#' + el.id + ' ' + Math.round(el.scrollHeight) + '/' + Math.round(el.clientHeight);
+        })()`);
     // Stills are for the docs: no caption in them
     const shot = async (name) => {
         await d.js(
@@ -163,7 +188,8 @@ async function scenario(d) {
             stdio: 'ignore',
         },
     );
-    await skip(() => until(`document.body.innerText.includes('h264')`, 40000));
+    // The first probe can time out (15 s) on a busy machine and is retried, so allow time
+    await skip(() => until(`document.body.innerText.includes('h264')`, 90000));
     await d.sleep(1500);
     await shot('input-live');
 
@@ -203,18 +229,32 @@ async function scenario(d) {
     );
     await d.sleep(2500);
     await shot('outputs-running');
-    await d.sleep(1000);
-    await d.record.stop();
-
-    // Prove the actions took effect
-    const state = await d.js(
-        `fetch('/api/config').then(r => r.json()).then(j => ({ pipelines: j.pipelines.map(p => p.name), outputs: j.outputs.map(o => o.name) }))`,
-    );
-    d.log('config: ' + JSON.stringify(state));
     d.log(
         'outputs list: ' +
             (await d.js(
                 `document.getElementById('outputs-list').innerText.replace(/\\n+/g, ' | ')`,
             )),
     );
+    await d.sleep(500);
+
+    // 6. The Overview: host charts, then scroll down to every input and output
+    await say('6   Overview: host charts and every input and output at a glance');
+    await d.click('#overview-nav-btn', { wait: 2800 });
+    await shot('overview');
+    d.log('overview scroller: ' + (await scrollMain(1, 2600)));
+    // The caption would cover the last table row at the bottom of the scroll
+    await d.js(`document.getElementById('__demo_caption')?.remove()`);
+    await d.sleep(2200);
+    await shot('overview-tables');
+    await d.sleep(500);
+    await d.record.stop();
+    // Not shown: the Status view lists "Recent problems", and the stack's first seconds leave
+    // one there (SRS unreachable until it is up). Server Logs prints the raw SRS lines,
+    // which contain the stream key.
+
+    // Prove the actions took effect
+    const state = await d.js(
+        `fetch('/api/config').then(r => r.json()).then(j => ({ pipelines: j.pipelines.map(p => p.name), outputs: j.outputs.map(o => o.name) }))`,
+    );
+    d.log('config: ' + JSON.stringify(state));
 }

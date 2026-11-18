@@ -6,8 +6,9 @@ description: Record the README's "how it works" GIF (or fresh dashboard stills) 
 # Record a Bunryu demo
 
 Drives the real dashboard through a scripted storyboard (create a pipeline, publish a film
-to it, preview it, add three destinations, start them), records frames with a fake cursor
-and step captions, and renders a GIF plus stills. The stack is the project's own Docker
+to it, preview it, add three destinations, start them, then open the Overview and scroll
+through its charts and tables), records frames with a fake cursor and step captions, and
+renders a GIF plus stills. The stack is the project's own Docker
 image, so it works where `scripts/test-stack.sh` does not (that one needs Linux, `objs/`
 binaries and Chrome). The outputs are **real FFmpeg processes**: they publish to a local
 SRS receiver container whose Docker-network aliases stand in for the platforms, so no real
@@ -66,7 +67,7 @@ Paths are relative to the repo root. Work in the scratchpad; only the finished G
    ```sh
    export DEMO_FEED=<demo-feed.mp4> DEMO_FFMPEG=<real ffmpeg binary> DEMO_URL=http://localhost:8080
    <electron> ~/.claude/skills/app-demo/scripts/record.mjs --app skills/record-bunryu-demo/open-url.mjs \
-     --scenario skills/record-bunryu-demo/scenario.mjs --out <scratch>/rec --size 1280x800 --timeout 200
+     --scenario skills/record-bunryu-demo/scenario.mjs --out <scratch>/rec --size 1280x800 --timeout 330
    ```
 
    `<scratch>/rec/log.txt` ends with `done: N frames`, or an `ERROR` and its stack. It
@@ -76,16 +77,16 @@ Paths are relative to the repo root. Work in the scratchpad; only the finished G
 3. **Cut dead time, render, review**:
 
    ```sh
-   python skills/record-bunryu-demo/cap_gaps.py <scratch>/rec --speed 1.3
+   python skills/record-bunryu-demo/cap_gaps.py <scratch>/rec --speed 1.35
    python ~/.claude/skills/app-demo/scripts/render.py <scratch>/rec --gif how-it-works.gif --sheet sheet.png --width 960 --end-hold 2.5
    ```
 
    Read `sheet.png` and every still in `<scratch>/rec/shots/` (`pipeline-created`,
-   `input-live`, `preview`, `outputs-added`, `outputs-running`; the stills have no
-   caption). Done when each step's payoff is visible, the last frame shows three running
-   outputs with no warning, there is no banner, error toast or black preview, and the GIF
-   is under 5 MB at 960 px (about 50 s and 3 MB at speed 1.3). Three or four takes are
-   normal.
+   `input-live`, `preview`, `outputs-added`, `outputs-running`, `overview`,
+   `overview-tables`; the stills have no caption). Done when each step's payoff is
+   visible, the outputs show running with no warning, the last frames show the whole
+   outputs table, there is no banner, error toast or black preview, and the GIF is under
+   5 MB at 960 px (about 55 s and 3.9 MB at speed 1.35). Three or four takes are normal.
 
 4. **Clean up**: `docker compose -p bunryu-demo -f compose.yaml -f skills/record-bunryu-demo/compose.demo.yaml down -v`
    and make sure no `ffmpeg` publisher is left (below).
@@ -121,10 +122,21 @@ real destination URL or key, and never commit `log.txt` (it has the unredacted k
 - **Do not drive the dashboard in the built-in browser pane for this.** A hidden pane
   throttles timers, so the Start-all confirmation never ran there. The recorder's own
   visible window is the reliable one.
+- **Which views to show.** The Status view is left out: it lists "Recent problems", and the
+  stack's first seconds leave one there ("SRS unreachable" until SRS is up), which reads as
+  a fault in a reliability pitch. Server Logs is left out: it prints raw SRS lines with the
+  stream key. The Overview's scroll area is `#overview-col`; the scenario finds the largest
+  scrollable element and removes the caption before the end of the scroll, or the caption
+  covers the last table row.
+- **The Overview's "System" CPU** is in cores (100% = one core, as its tooltip says), so on
+  a many-core machine it can read 96% next to a top-bar CPU of 6%. It is correct but easy to
+  misread; note it if a take shows it large.
+- **The first media probe can time out** (15 s) on a busy machine and is retried, which can
+  take well over 40 s, so the scenario waits up to 90 s (unrecorded) for the input details.
 - Frames come at about 5 fps, so a GIF is smooth enough for UI but not for fast motion.
 
 ## Stills for docs
 
-The same run writes the five stills. To take one on its own, start the stack as above
+The same run writes the seven stills listed above. To take one on its own, start the stack as above
 and use the recorder with a short scenario, or use `scripts/test-stack.sh shot` on Linux
 ([run-bunryu](../run-bunryu/SKILL.md)).
