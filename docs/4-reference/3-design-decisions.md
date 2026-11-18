@@ -256,8 +256,18 @@ who needs link stats for an input sends it through the relay port.
 
 **Decision:** the health poll remembers the most legs a bonded input has had since it
 connected (`expectedLegs`). Fewer legs than that is a down leg: a `bonded-leg-down`
-alert, a warning on the input, and "N of M bonded legs down" in the dashboard. The
-count resets when the input goes away.
+alert, a warning on the input, and "N of M bonded legs down" in the dashboard. A leg
+count only raises that figure once it has held for 15 s, and the figure resets when the
+input goes away or the group has no legs left.
+
+**Why the hold and the reset:** on 2026-11-18, restarting a two-leg encoder within one
+poll left the relay listing the old connection's leg beside the two new ones (three legs,
+two from one encoder address) for one poll. The figure became 3 and the alert
+"1 of 3 bonded legs is down" stayed, through a later full disconnect and reconnect,
+because the relay still called the input active and nothing reset it. A stale leg lasted
+about one 5 s poll; a real leg that stays is counted after three. A leg that dies within
+15 s of joining raises no alert (the pipeline log still records it joining and leaving).
+**Revisit when** the relay's status says which connection a leg belongs to.
 
 **Why:** the relay's `/status` documented a `broken` leg state but never sent it. It
 skips broken group members, and with that filter removed a pulled LAN cable still

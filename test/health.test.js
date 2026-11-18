@@ -2126,10 +2126,14 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             };
         };
 
-        t.mock.timers.enable({ apis: ['setInterval'] });
+        t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: Date.now() });
         service.start();
         await sleep(20);
         assert.deepEqual(await legDownAlert(), { alert: undefined, legs: 2, expectedLegs: 2 });
+        // The group's size is trusted once it has held for 15 s.
+        await tickPoll(t);
+        await tickPoll(t);
+        await tickPoll(t);
 
         // The relay lists a failed leg as absent, never as broken.
         relay.setStatus(withLegs('203.0.113.10'));

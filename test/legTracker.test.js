@@ -59,23 +59,69 @@ describe('leg group', () => {
         const one = input([leg('10.0.0.1')]);
 
         let obs = tracker.observe(1, both, true, 1000);
+        assert.deepEqual(codes(obs), []);
+        // The group's size is trusted once it has held for a while.
+        tracker.observe(1, both, true, 6000);
+        tracker.observe(1, both, true, 11_000);
+        obs = tracker.observe(1, both, true, 16_000);
         assert.equal(obs.expectedLegs, 2);
         assert.deepEqual(codes(obs), []);
 
-        obs = tracker.observe(1, one, true, 6000);
+        obs = tracker.observe(1, one, true, 21_000);
         assert.equal(obs.expectedLegs, 2);
         assert.deepEqual(obs.alerts[0], {
             severity: 'warning',
             code: 'bonded-leg-down',
             message: '1 of 2 bonded legs is down.',
-            sinceMs: 6000,
+            sinceMs: 21_000,
         });
 
         // The alert keeps the time the leg went missing.
-        obs = tracker.observe(1, one, true, 11_000);
-        assert.equal(obs.alerts[0].sinceMs, 6000);
+        obs = tracker.observe(1, one, true, 26_000);
+        assert.equal(obs.alerts[0].sinceMs, 21_000);
 
-        obs = tracker.observe(1, both, true, 16_000);
+        obs = tracker.observe(1, both, true, 31_000);
+        assert.deepEqual(codes(obs), []);
+    });
+
+    test('a leg of the old connection that lingers for a poll after an encoder restart is not part of the group', () => {
+        const { tracker } = setup();
+        // Seen on production: the old leg (same encoder address, old port) was listed beside
+        // the two new legs for one poll, then gone; the group was then "1 of 3 down" for good.
+        const two = input([leg('10.0.0.1'), leg('10.0.0.2')]);
+        const three = input([leg('10.0.0.1'), leg('10.0.0.2'), leg('10.0.0.1', { port: 4001 })]);
+        tracker.observe(1, two, true, 1000);
+        let obs = tracker.observe(1, three, true, 6000);
+        assert.deepEqual(codes(obs), []);
+        obs = tracker.observe(1, two, true, 11_000);
+        assert.equal(obs.expectedLegs, 2);
+        assert.deepEqual(codes(obs), []);
+        obs = tracker.observe(1, two, true, 16_000);
+        assert.deepEqual(codes(obs), []);
+    });
+
+    test('a third leg that stays is part of the group, and alerts when it goes', () => {
+        const { tracker } = setup();
+        const two = input([leg('10.0.0.1'), leg('10.0.0.2')]);
+        const three = input([leg('10.0.0.1'), leg('10.0.0.2'), leg('10.0.0.3')]);
+        tracker.observe(1, two, true, 1000);
+        for (const t of [6000, 11_000, 16_000, 21_000]) tracker.observe(1, three, true, t);
+        const obs = tracker.observe(1, two, true, 26_000);
+        assert.equal(obs.expectedLegs, 3);
+        assert.equal(obs.alerts[0].message, '1 of 3 bonded legs is down.');
+    });
+
+    test('a group whose legs are all gone is forgotten, even if the relay still calls the input active', () => {
+        const { tracker } = setup();
+        const two = input([leg('10.0.0.1'), leg('10.0.0.2')]);
+        const one = input([leg('10.0.0.1')]);
+        for (const t of [1000, 6000, 11_000, 16_000]) tracker.observe(1, two, true, t);
+        tracker.observe(1, input([]), true, 21_000);
+        // The encoder came back with a smaller group: it starts from what it has.
+        let obs = tracker.observe(1, one, true, 26_000);
+        assert.deepEqual(codes(obs), []);
+        obs = tracker.observe(1, one, true, 31_000);
+        assert.equal(obs.expectedLegs, 1);
         assert.deepEqual(codes(obs), []);
     });
 

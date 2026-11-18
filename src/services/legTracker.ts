@@ -81,14 +81,24 @@ export interface LegTrackerOptions {
 // A leg with unchanged packet counts for this long has stopped delivering.
 const NO_FLOW_ALERT_MS = 10_000;
 
+// A bigger leg count counts toward the group's size only after it has held this long.
+// After an encoder restart the relay lists the old connection's leg beside the new
+// ones for about one poll (seen on production: two legs from one encoder address, then
+// one gone 5 s later), and counting it left the group "1 of 3 down" for good.
+const GROUP_GROWTH_HOLD_MS = 15_000;
+
 export function createLegTracker(options: LegTrackerOptions) {
     const { historyMaxSamples, pollIntervalMs, healthWindowMs, diagnostics } = options;
     const samples = new Map<number, Map<string, LegSample>>();
     const history = new Map<number, Map<string, LegHistorySeries>>();
     // The relay drops a failed leg from its legs[] instead of reporting it broken,
     // so a lost leg shows only as a smaller count than the group has had. Keyed by
-    // pipeline; reset when the input goes away.
-    const groups = new Map<number, { expected: number; shortSinceMs: number | null }>();
+    // pipeline; reset when the input goes away or the group has no legs left. `count` is the
+    // leg count of the last poll and `countSinceMs` when it last changed.
+    const groups = new Map<
+        number,
+        { expected: number; shortSinceMs: number | null; count: number; countSinceMs: number }
+    >();
     // Which legs (ip:port) a bonded input had at the last poll, for the pipeline log and
     // the diagnostics. Keyed by pipeline; reset when the input goes away. See utils/legLog.ts.
     const logs = new Map<number, LegLogState>();
@@ -179,13 +189,30 @@ export function createLegTracker(options: LegTrackerOptions) {
             const alerts: PipelineAlert[] = [];
             let expectedLegs = input.legs.length;
             if (inputActive && input.bonded) {
-                const group = groups.get(pipelineId) ?? { expected: 0, shortSinceMs: null };
-                group.expected = Math.max(group.expected, input.legs.length);
+                // A group with no legs is gone (the encoder restarted), even while the relay
+                // still calls its input active: the next group starts from what it has.
+                if (input.legs.length === 0) groups.delete(pipelineId);
+                const group = groups.get(pipelineId) ?? {
+                    expected: 0,
+                    shortSinceMs: null,
+                    count: 0,
+                    countSinceMs: now,
+                };
+                if (input.legs.length !== group.count) {
+                    group.count = input.legs.length;
+                    group.countSinceMs = now;
+                }
+                if (
+                    input.legs.length > group.expected &&
+                    now - group.countSinceMs >= GROUP_GROWTH_HOLD_MS
+                ) {
+                    group.expected = input.legs.length;
+                }
                 if (input.legs.length < group.expected) group.shortSinceMs ??= now;
                 else group.shortSinceMs = null;
                 groups.set(pipelineId, group);
                 noteLegChanges(pipelineId, input.legs, now);
-                expectedLegs = group.expected;
+                expectedLegs = Math.max(group.expected, input.legs.length);
                 if (group.shortSinceMs !== null) {
                     const down = group.expected - input.legs.length;
                     alerts.push({
