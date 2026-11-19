@@ -1,4 +1,5 @@
 import { isDestinationUrl } from './destination.js';
+import { isRenditionUrl } from './renditions.js';
 
 // What the Copy / Paste buttons put on the clipboard and read back: a JSON array of outputs
 // for a whole pipeline, or one object (or a bare destination URL) for the open output form.
@@ -18,6 +19,22 @@ export interface OutputPastePayload {
     videoEncoding?: string;
     url: string;
     audioEncoding?: string;
+}
+
+// The outputs Copy puts on the clipboard: the operator's own. A shared encode is a row the
+// server keeps for its outputs (its destination is the reserved internal app) and makes
+// again by itself, so it is not copied.
+export function outputsToCopy<T extends OutputPayloadFields>(
+    outputs: readonly T[],
+): OutputPayloadFields[] {
+    return outputs
+        .filter((o) => !isRenditionUrl(o.url))
+        .map(({ name, videoEncoding, url, audioEncoding }) => ({
+            name,
+            videoEncoding,
+            url,
+            audioEncoding,
+        }));
 }
 
 function parseOutputItem(item: unknown): OutputPayloadFields | { error: string } {
@@ -54,6 +71,9 @@ export function parseOutputsPayload(
     for (const item of parsed) {
         const output = parseOutputItem(item);
         if ('error' in output) return output;
+        // A list copied before Copy left them out may hold shared encodes: they are made
+        // again by themselves, and the server refuses their internal destination.
+        if (isRenditionUrl(output.url.trim())) continue;
         outputs.push(output);
     }
     if (outputs.length === 0) return { error: 'No outputs found in clipboard.' };

@@ -1549,6 +1549,16 @@ function renderOutputsList(pipeline: PipelineView): void {
     if (!listEl) return;
     if (draggingOutputEl) return; // preserve the DOM while a drag is in progress
 
+    // Nothing to copy from a pipeline without outputs.
+    const noOutputs = pipeline.outs.length === 0;
+    const copyBtn = document.getElementById('outputs-copy-btn') as HTMLButtonElement | null;
+    copyBtn?.classList.toggle('btn-disabled', noOutputs);
+    copyBtn?.classList.toggle('opacity-40', noOutputs);
+    if (copyBtn) {
+        copyBtn.disabled = noOutputs;
+        copyBtn.title = noOutputs ? 'No outputs to copy' : 'Copy outputs to clipboard';
+    }
+
     const noStopped =
         pipeline.outs.length === 0 || pipeline.outs.every((o) => o.desiredState !== 'stopped');
     const allStopped =

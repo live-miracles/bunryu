@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
     parseOutputsPayload,
+    outputsToCopy,
     parseSingleOutputPayload,
     pasteResultMessage,
     splitNewOutputs,
@@ -166,5 +167,28 @@ describe('pasteResultMessage', () => {
     test('says so when everything was skipped', () => {
         assert.match(pasteResultMessage(0, 1), /^Nothing pasted: the output has/);
         assert.match(pasteResultMessage(0, 4), /^Nothing pasted: all 4 outputs have/);
+    });
+});
+
+describe('shared encodes in Copy and Paste', () => {
+    const shared = {
+        name: 'T1',
+        videoEncoding: '720p',
+        url: 'rtmp://127.0.0.1:31935/internal/r1_720p_a1',
+        audioEncoding: 'copy',
+    };
+
+    test('Copy leaves the shared encodes out and keeps only the four fields', () => {
+        const rows = [{ ...item, id: '1-1', pipelineId: 1, desiredState: 'running' }, shared];
+        assert.deepEqual(outputsToCopy(rows), [item]);
+    });
+
+    test('Paste ignores a shared encode on a clipboard copied before that', () => {
+        assert.deepEqual(parseOutputsPayload(JSON.stringify([shared, item])), {
+            outputs: [{ ...item, name: 'Main' }],
+        });
+        assert.deepEqual(parseOutputsPayload(JSON.stringify([shared])), {
+            error: 'No outputs found in clipboard.',
+        });
     });
 });

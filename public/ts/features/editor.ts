@@ -32,6 +32,7 @@ import {
 import { ansiLineToHtml } from '../core/ansi.js';
 import {
     parseOutputsPayload,
+    outputsToCopy,
     parseSingleOutputPayload,
     pasteResultMessage,
     splitNewOutputs,
@@ -1198,14 +1199,9 @@ export async function stopAllOutputs(pipelineId: string, btn: HTMLButtonElement)
 }
 
 export async function copyOutputs(pipelineId: string): Promise<void> {
-    const outputs = (state.config.outputs ?? [])
-        .filter((o) => String(o.pipelineId) === pipelineId)
-        .map(({ name, videoEncoding, url, audioEncoding }) => ({
-            name,
-            videoEncoding,
-            url,
-            audioEncoding,
-        }));
+    const outputs = outputsToCopy(
+        (state.config.outputs ?? []).filter((o) => String(o.pipelineId) === pipelineId),
+    );
     await copyText(JSON.stringify(outputs, null, 2));
 }
 
