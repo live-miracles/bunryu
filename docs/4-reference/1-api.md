@@ -4,7 +4,8 @@ All routes below sit behind the session-cookie auth middleware except
 `/api/ready` and `/api/auth/login`. HLS preview files under `/hls` use the same
 session cookie. SRS's `on_publish`/`on_play` hooks are not on this port at all —
 they are served on the loopback-only hook port. An output pushes to a
-single destination: `url` and `audioEncoding`, plus `videoEncoding`. The input is
+single destination: `url` and `audioEncoding`, plus `videoEncoding`, and an optional
+`watchUrl` (an `http(s)` link shown on the card, `""` for none; any other scheme is a `400`). The input is
 pulled back over whatever protocol it was published with (SRT input → SRT pull,
 RTMP input → RTMP pull), so there is no pull-method setting. An error is always
 JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic message
@@ -30,10 +31,10 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | POST | `/api/pipelines/:id/preview/start` | Start an HLS preview `{ audioTrackCount? }` (1–50, default 1); returns `{ hlsUrl }`. Video is copied, audio is AAC, one rendition per track; `404` for an unknown pipeline |
 | POST | `/api/pipelines/:id/preview/keepalive` | Refresh the preview TTL — a preview with no keepalive and no HLS fetch for 20s is stopped automatically; closing the tab also stops it immediately |
 | POST | `/api/pipelines/:id/preview/stop` | Stop the HLS preview |
-| POST | `/api/pipelines/:id/outputs` | Create output `{ name, videoEncoding, url, audioEncoding }` |
-| POST | `/api/pipelines/:id/outputs/bulk` | Bulk create outputs `{ outputs: [{ name, videoEncoding, url, audioEncoding }] }` — validates all before creating any |
+| POST | `/api/pipelines/:id/outputs` | Create output `{ name, videoEncoding, url, audioEncoding, watchUrl? }` |
+| POST | `/api/pipelines/:id/outputs/bulk` | Bulk create outputs `{ outputs: [{ name, videoEncoding, url, audioEncoding, watchUrl? }] }` — validates all before creating any |
 | DELETE | `/api/pipelines/:id/outputs` | Clear all outputs for the pipeline — returns 409 if any of your outputs is still running (shared encodes are stopped and removed with them) |
-| POST | `/api/pipelines/:id/outputs/:outId` | Update output (same body as create; a field left out keeps its stored value). A running output accepts only `{ name }` — any other field gives 409, even with an unchanged value — and a shared encode always gives 409 |
+| POST | `/api/pipelines/:id/outputs/:outId` | Update output (same body as create; a field left out keeps its stored value). A running output accepts only `{ name, watchUrl }` — any other field gives 409, even with an unchanged value — and a shared encode always gives 409 |
 | DELETE | `/api/pipelines/:id/outputs/:outId` | Delete output (stops it first if running) — 409 for a shared encode |
 | POST | `/api/pipelines/:id/outputs/start-all` | Start all outputs (staggered at 200 ms intervals, returns immediately) |
 | POST | `/api/pipelines/:id/outputs/stop-all` | Stop all outputs |

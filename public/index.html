@@ -389,6 +389,17 @@
           </div>
 
           <div id="out-sinks-container" class="space-y-1"></div>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Watch Link (optional)</legend>
+            <input
+              type="url"
+              id="out-watch-url-input"
+              autocomplete="off"
+              class="input w-full"
+              placeholder="https://www.youtube.com/watch?v=..."
+              oninput="this.classList.remove('input-error')" />
+          </fieldset>
         </div>
         <div class="modal-action flex-col items-end gap-2">
           <form method="dialog">

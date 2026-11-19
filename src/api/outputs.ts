@@ -6,7 +6,7 @@ import { wantRunning, wantStopped } from '../services/outputDesiredState.js';
 import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
 import { isRenditionOutput, splitOutputs } from '../utils/renditions.js';
-import { parseName } from '../utils/inputLimits.js';
+import { parseName, parseWatchUrl } from '../utils/inputLimits.js';
 
 // Validate an output's destination from the request body. It needs a valid URL
 // and audio track selection; multiple tracks are only valid for an SRT
@@ -40,6 +40,7 @@ interface OutputConfig {
     videoEncoding: string;
     url: string;
     audioEncoding: string;
+    watchUrl: string;
 }
 
 // An output's settings from a request body, checked in the order the dashboard
@@ -68,7 +69,9 @@ async function parseOutputConfig(body: unknown): Promise<ParsedOutputConfig> {
     }
     const blockedReason = await checkOutputDestination(destination.url);
     if (blockedReason) return { error: blockedReason, kind: 'policy', name };
-    return { config: { name, videoEncoding, ...destination } };
+    const watch = parseWatchUrl(b?.watchUrl);
+    if ('error' in watch) return { error: watch.error, kind: 'field', name };
+    return { config: { name, videoEncoding, ...destination, ...watch } };
 }
 
 export function registerOutputApi(app: Express, db: Db, outputService: OutputService): void {
@@ -182,18 +185,27 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         // A running output keeps the destination and encoding its ffmpeg was started
-        // with, so only its name may change: a body with any other setting is
-        // refused, even a client holding stale config that sends the old values.
+        // with, so only its name and watch link (display-only, ffmpeg never reads
+        // them) may change: a body with any other setting is refused, even a client
+        // holding stale config that sends the old values.
         if (isInUse(output)) {
             const body = (req.body ?? {}) as Record<string, unknown>;
-            if (Object.keys(body).some((key) => key !== 'name')) {
+            if (Object.keys(body).some((key) => key !== 'name' && key !== 'watchUrl')) {
                 return res
                     .status(409)
                     .json({ error: 'Stop the output before changing its settings' });
             }
-            const renamed = parseName(body.name);
+            const renamed = parseName(body.name === undefined ? output.name : body.name);
             if ('error' in renamed) return res.status(400).json({ error: renamed.error });
-            const updated = db.updateOutput(outId, { ...output, name: renamed.name });
+            const watch = parseWatchUrl(
+                body.watchUrl === undefined ? output.watchUrl : body.watchUrl,
+            );
+            if ('error' in watch) return res.status(400).json({ error: watch.error });
+            const updated = db.updateOutput(outId, {
+                ...output,
+                name: renamed.name,
+                watchUrl: watch.watchUrl,
+            });
             console.log(cyan(`[outputs] user rename requested: ${outId} (${renamed.name})`));
             return res.json(updated);
         }
@@ -207,6 +219,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             url: body.url === undefined ? output.url : body.url,
             audioEncoding:
                 body.audioEncoding === undefined ? output.audioEncoding : body.audioEncoding,
+            watchUrl: body.watchUrl === undefined ? output.watchUrl : body.watchUrl,
         });
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
         const { name } = parsed.config;

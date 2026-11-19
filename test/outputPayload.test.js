@@ -17,6 +17,7 @@ const item = {
     videoEncoding: 'copy',
     url: 'rtmp://h/app/k',
     audioEncoding: 'copy',
+    watchUrl: 'https://youtu.be/abc',
 };
 
 describe('parseOutputsPayload', () => {
@@ -48,6 +49,17 @@ describe('parseOutputsPayload', () => {
         }
     });
 
+    test('a list copied before the watch link existed has none', () => {
+        const { watchUrl, ...old } = item;
+        assert.equal(watchUrl, 'https://youtu.be/abc');
+        assert.deepEqual(parseOutputsPayload(JSON.stringify([old])), {
+            outputs: [{ ...old, name: 'Main', watchUrl: '' }],
+        });
+        assert.deepEqual(parseOutputsPayload(JSON.stringify([{ ...item, watchUrl: 5 }])), {
+            error: 'Each output watchUrl must be a string.',
+        });
+    });
+
     test('one bad output refuses the whole list', () => {
         const text = JSON.stringify([item, { ...item, url: '' }]);
         assert.deepEqual(parseOutputsPayload(text), {
@@ -64,6 +76,7 @@ describe('parseSingleOutputPayload', () => {
                 videoEncoding: undefined,
                 url: 'rtmp://h/app/k',
                 audioEncoding: undefined,
+                watchUrl: undefined,
             },
         });
     });
@@ -76,6 +89,7 @@ describe('parseSingleOutputPayload', () => {
                 videoEncoding: undefined,
                 url: 'srt://h:1',
                 audioEncoding: undefined,
+                watchUrl: undefined,
             },
         });
         assert.deepEqual(parseSingleOutputPayload(JSON.stringify(item)).output, {
@@ -83,6 +97,7 @@ describe('parseSingleOutputPayload', () => {
             videoEncoding: 'copy',
             url: 'rtmp://h/app/k',
             audioEncoding: 'copy',
+            watchUrl: 'https://youtu.be/abc',
         });
     });
 
@@ -122,7 +137,13 @@ describe('ansiLineToHtml', () => {
 });
 
 describe('splitNewOutputs', () => {
-    const out = (name, url) => ({ name, videoEncoding: 'copy', url, audioEncoding: 'copy' });
+    const out = (name, url) => ({
+        name,
+        videoEncoding: 'copy',
+        url,
+        audioEncoding: 'copy',
+        watchUrl: '',
+    });
 
     test('keeps the outputs whose destination the pipeline does not use, in order', () => {
         const pasted = [out('A', 'rtmp://h/a'), out('B', 'rtmp://h/b')];
@@ -176,9 +197,10 @@ describe('shared encodes in Copy and Paste', () => {
         videoEncoding: '720p',
         url: 'rtmp://127.0.0.1:31935/internal/r1_720p_a1',
         audioEncoding: 'copy',
+        watchUrl: '',
     };
 
-    test('Copy leaves the shared encodes out and keeps only the four fields', () => {
+    test('Copy leaves the shared encodes out and keeps only the five fields', () => {
         const rows = [{ ...item, id: '1-1', pipelineId: 1, desiredState: 'running' }, shared];
         assert.deepEqual(outputsToCopy(rows), [item]);
     });

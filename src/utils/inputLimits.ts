@@ -32,6 +32,28 @@ export function isCleanUrlText(url: string): boolean {
     return url.length <= MAX_URL_LENGTH && !CONTROL_CHARS.test(url) && !/[\s<>"]/.test(url);
 }
 
+// An output's optional watch link, the page where viewers watch what it sends (a YouTube
+// watch page, say). Stored and shown as a link, never fetched. Only http(s) is accepted so a
+// stored `javascript:` URL can never become a clickable link. Empty means none.
+export function parseWatchUrl(value: unknown): { watchUrl: string } | { error: string } {
+    if (value === undefined || value === null) return { watchUrl: '' };
+    if (typeof value !== 'string') return { error: 'watchUrl must be a string' };
+    const watchUrl = value.trim();
+    if (!watchUrl) return { watchUrl: '' };
+    let protocol = '';
+    try {
+        protocol = new URL(watchUrl).protocol;
+    } catch {
+        /* reported below */
+    }
+    if (!isCleanUrlText(watchUrl) || (protocol !== 'http:' && protocol !== 'https:')) {
+        return {
+            error: `watchUrl must be an http:// or https:// link of at most ${MAX_URL_LENGTH} characters, with no spaces or < > " characters`,
+        };
+    }
+    return { watchUrl };
+}
+
 export function isValidPublicHost(host: string): boolean {
     return host.length <= MAX_PUBLIC_HOST_LENGTH && /^[A-Za-z0-9._:\-[\]]+$/.test(host);
 }

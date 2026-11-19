@@ -10,6 +10,7 @@ export interface OutputPayloadFields {
     videoEncoding: string;
     url: string;
     audioEncoding: string;
+    watchUrl: string;
 }
 
 // A single output pasted into the open form can omit name/videoEncoding/audioEncoding and
@@ -19,6 +20,7 @@ export interface OutputPastePayload {
     videoEncoding?: string;
     url: string;
     audioEncoding?: string;
+    watchUrl?: string;
 }
 
 // The outputs Copy puts on the clipboard: the operator's own. A shared encode is a row the
@@ -29,17 +31,18 @@ export function outputsToCopy<T extends OutputPayloadFields>(
 ): OutputPayloadFields[] {
     return outputs
         .filter((o) => !isRenditionUrl(o.url))
-        .map(({ name, videoEncoding, url, audioEncoding }) => ({
+        .map(({ name, videoEncoding, url, audioEncoding, watchUrl }) => ({
             name,
             videoEncoding,
             url,
             audioEncoding,
+            watchUrl,
         }));
 }
 
 function parseOutputItem(item: unknown): OutputPayloadFields | { error: string } {
     if (!item || typeof item !== 'object') return { error: 'Invalid output format in clipboard.' };
-    const { name, videoEncoding, url, audioEncoding } = item as Record<string, unknown>;
+    const { name, videoEncoding, url, audioEncoding, watchUrl } = item as Record<string, unknown>;
     if (typeof name !== 'string' || !name.trim()) {
         return { error: 'Each output must have a non-empty name.' };
     }
@@ -52,7 +55,11 @@ function parseOutputItem(item: unknown): OutputPayloadFields | { error: string }
     if (typeof audioEncoding !== 'string') {
         return { error: 'Each output must have an audioEncoding.' };
     }
-    return { name: name.trim(), videoEncoding, url, audioEncoding };
+    // A list copied before the watch link existed has none.
+    if (watchUrl !== undefined && typeof watchUrl !== 'string') {
+        return { error: 'Each output watchUrl must be a string.' };
+    }
+    return { name: name.trim(), videoEncoding, url, audioEncoding, watchUrl: watchUrl ?? '' };
 }
 
 // The bulk paste-all-outputs flow: every output being created needs an explicit
@@ -133,7 +140,7 @@ export function parseSingleOutputPayload(
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return { error: 'Expected a single output object, not a list.' };
     }
-    const { name, videoEncoding, url, audioEncoding } = parsed as Record<string, unknown>;
+    const { name, videoEncoding, url, audioEncoding, watchUrl } = parsed as Record<string, unknown>;
     if (typeof url !== 'string' || !url.trim()) {
         return { error: 'Clipboard JSON must include a non-empty url.' };
     }
@@ -145,6 +152,7 @@ export function parseSingleOutputPayload(
             url,
             audioEncoding:
                 typeof audioEncoding === 'string' && audioEncoding ? audioEncoding : undefined,
+            watchUrl: typeof watchUrl === 'string' && watchUrl ? watchUrl : undefined,
         },
     };
 }

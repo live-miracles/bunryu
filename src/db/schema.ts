@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3';
 // migrations: a database stamped with another version, or one that has tables but
 // no stamp, is refused at startup (see DatabaseSchemaError) and has to be
 // recreated. Only an empty database is stamped.
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export class DatabaseSchemaError extends Error {}
 
@@ -69,6 +69,7 @@ export function setupDatabaseSchema(db: Database.Database): void {
             encoding        TEXT NOT NULL DEFAULT 'copy',
             url             TEXT NOT NULL DEFAULT '',
             audio_encoding  TEXT NOT NULL DEFAULT 'copy',
+            watch_url       TEXT NOT NULL DEFAULT '',
             last_error      TEXT,
             FOREIGN KEY(pipeline_id) REFERENCES pipelines(id) ON DELETE CASCADE
         )`,

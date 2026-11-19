@@ -193,6 +193,7 @@ describe('rendition reconciler: rows', () => {
             videoEncoding: 'copy',
             url: o.url,
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         await h.tick();
 
@@ -288,6 +289,7 @@ describe('rendition reconciler: rows', () => {
             videoEncoding: 'copy',
             url: o.url,
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         h.outputService.retire = async (id) => {
             h.outputService.calls.push(['retire', id]);
@@ -297,6 +299,7 @@ describe('rendition reconciler: rows', () => {
                 videoEncoding: '720p',
                 url: o.url,
                 audioEncoding: 'copy',
+                watchUrl: '',
             });
         };
 
@@ -521,6 +524,7 @@ describe('rendition reconciler: robustness', () => {
             videoEncoding: 'copy',
             url: o.url,
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         h.outputService.retire = async () => {
             throw new Error('kill failed');
@@ -543,6 +547,7 @@ describe('rendition reconciler: robustness', () => {
             videoEncoding: 'copy',
             url: o.url,
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         let release;
         let stops = 0;
@@ -679,6 +684,7 @@ describe('rendition reconciler: when to share', () => {
             videoEncoding: 'copy',
             url: b.url,
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         await h.tick();
         h.db.updateOutput(b.id, {
@@ -686,6 +692,7 @@ describe('rendition reconciler: when to share', () => {
             videoEncoding: '720p',
             url: b.url,
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         await h.tick();
         h.db.updateOutput(b.id, {
@@ -693,6 +700,7 @@ describe('rendition reconciler: when to share', () => {
             videoEncoding: 'copy',
             url: b.url,
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         await h.tick();
 

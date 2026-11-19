@@ -423,6 +423,112 @@ describe('Outputs API integration', () => {
         });
     });
 
+    describe('watch link', () => {
+        const url = 'https://www.youtube.com/watch?v=abc';
+
+        test('is saved on create, in bulk and on edit, and stays when an edit leaves it out', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const created = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                name: 'YouTube',
+                url: 'rtmp://a.rtmp.youtube.com/live2/key',
+                watchUrl: ` ${url} `,
+            });
+            assert.equal(created.status, 201);
+            assert.equal(created.body.watchUrl, url);
+
+            const bulk = await harness.request('POST', `/api/pipelines/${p.id}/outputs/bulk`, {
+                outputs: [
+                    { name: 'A', url: 'rtmp://a/live/k', watchUrl: url },
+                    { name: 'B', url: 'rtmp://b/live/k' },
+                ],
+            });
+            assert.equal(bulk.status, 201);
+            assert.deepEqual(
+                bulk.body.map((o) => o.watchUrl),
+                [url, ''],
+            );
+
+            const renamed = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${created.body.id}`,
+                { name: 'Renamed' },
+            );
+            assert.equal(renamed.body.watchUrl, url, 'an edit without it keeps it');
+            const cleared = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${created.body.id}`,
+                { watchUrl: '' },
+            );
+            assert.equal(cleared.status, 200);
+            assert.equal(cleared.body.watchUrl, '');
+        });
+
+        test('refuses a link that is not http(s), on create, in bulk and on edit', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
+            for (const watchUrl of ['javascript:alert(1)', 'rtmp://h/a', 'not a link', 5]) {
+                const label = String(watchUrl);
+                const create = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
+                    name: 'x',
+                    url: 'rtmp://192.168.1.2/live/k',
+                    watchUrl,
+                });
+                assert.equal(create.status, 400, label);
+                const bulk = await harness.request('POST', `/api/pipelines/${p.id}/outputs/bulk`, {
+                    outputs: [{ name: 'x', url: 'rtmp://192.168.1.2/live/k', watchUrl }],
+                });
+                assert.equal(bulk.status, 400, label);
+                const edit = await harness.request(
+                    'POST',
+                    `/api/pipelines/${p.id}/outputs/${o.id}`,
+                    { watchUrl },
+                );
+                assert.equal(edit.status, 400, label);
+            }
+            assert.equal(harness.db.listOutputs().length, 1);
+            assert.equal(harness.db.getOutput(o.id).watchUrl, '');
+        });
+
+        test('a running output can change it without a restart, and its other settings stay locked', async () => {
+            const harness = createHarness();
+            const p = harness.db.createPipeline();
+            const o = harness.db.createOutput({ pipelineId: p.id, name: 'Old', url: 'rtmp://x' });
+            harness.db.setOutputDesiredState(o.id, 'running');
+
+            const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
+                name: 'Old',
+                watchUrl: url,
+            });
+            assert.equal(res.status, 200);
+            const stored = harness.db.getOutput(o.id);
+            assert.equal(stored.watchUrl, url);
+            assert.equal(stored.url, 'rtmp://x');
+            assert.equal(stored.desiredState, 'running');
+            assert.deepEqual(harness.outputService.restarted, []);
+
+            const keepsIt = await harness.request(
+                'POST',
+                `/api/pipelines/${p.id}/outputs/${o.id}`,
+                { name: 'Renamed' },
+            );
+            assert.equal(keepsIt.status, 200);
+            assert.equal(harness.db.getOutput(o.id).watchUrl, url, 'a rename keeps the link');
+
+            const bad = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
+                watchUrl: 'javascript:alert(1)',
+            });
+            assert.equal(bad.status, 400);
+            const locked = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
+                watchUrl: url,
+                url: 'rtmp://new',
+            });
+            assert.equal(locked.status, 409);
+            assert.equal(harness.db.getOutput(o.id).url, 'rtmp://x');
+        });
+    });
+
     describe('input bounds', () => {
         test('rejects over-long, empty, control-character and non-string output names', async () => {
             const harness = createHarness();

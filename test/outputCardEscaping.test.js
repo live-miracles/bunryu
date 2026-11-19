@@ -84,4 +84,30 @@ describe('output card history button', () => {
         assert.ok(button(html).includes('data-action="error-info"'));
         assert.ok(!/text-error/.test(button(html)));
     });
+
+    describe('watch link', () => {
+        const renderWatch = (watchUrl) =>
+            renderOutputCard(
+                withVerdict({ ...output('rtmp://h/live/k'), watchUrl }, input),
+                withInputVerdict(input),
+                new Map(),
+                deps,
+            );
+
+        test('an http(s) link is a new-tab link with the URL shown as text', () => {
+            const html = renderWatch('https://www.youtube.com/watch?v=a&b="x"');
+
+            assert.ok(
+                html.includes('href="https://www.youtube.com/watch?v=a&amp;b=&quot;x&quot;"'),
+            );
+            assert.ok(html.includes('target="_blank"'));
+            assert.ok(html.includes('rel="noopener noreferrer"'));
+        });
+
+        test('no link, or one that is not http(s), shows no link', () => {
+            for (const watchUrl of [undefined, '', 'javascript:alert(1)', 'data:text/html,x']) {
+                assert.ok(!renderWatch(watchUrl).includes('target="_blank"'), String(watchUrl));
+            }
+        });
+    });
 });

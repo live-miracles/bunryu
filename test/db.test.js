@@ -362,6 +362,7 @@ describe('Output CRUD', () => {
             videoEncoding: '720p',
             url: 'rtmp://new',
             audioEncoding: '2',
+            watchUrl: '',
         });
         const got = db.listOutputs().find((out) => out.id === o.id);
         assert.equal(got?.name, 'New');
@@ -384,10 +385,35 @@ describe('Output CRUD', () => {
             videoEncoding: 'copy',
             url: 'rtmp://only',
             audioEncoding: 'copy',
+            watchUrl: '',
         });
         const got = db.listOutputs().find((out) => out.id === o.id);
         assert.equal(got?.url, 'rtmp://only');
         assert.equal(got?.audioEncoding, 'copy');
+    });
+
+    test('an output has no watch link until one is saved, and updateOutput changes it', () => {
+        const db = makeDb();
+        const p = db.createPipeline();
+        const plain = db.createOutput({ pipelineId: p.id, name: 'A', url: 'rtmp://a' });
+        assert.equal(plain.watchUrl, '');
+        const [bulk] = db.createOutputs([
+            { pipelineId: p.id, name: 'B', url: 'rtmp://b', watchUrl: 'https://youtu.be/b' },
+        ]);
+        assert.equal(bulk.watchUrl, 'https://youtu.be/b');
+
+        db.updateOutput(plain.id, {
+            name: 'A',
+            videoEncoding: 'copy',
+            url: 'rtmp://a',
+            audioEncoding: 'copy',
+            watchUrl: 'https://youtu.be/a',
+        });
+        assert.equal(db.getOutput(plain.id)?.watchUrl, 'https://youtu.be/a');
+        assert.equal(
+            db.listOutputs().find((o) => o.id === bulk.id)?.watchUrl,
+            'https://youtu.be/b',
+        );
     });
 
     test('deleteOutput removes the output', () => {

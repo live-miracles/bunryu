@@ -19,11 +19,12 @@ export interface FormOutput {
     videoEncoding: string;
     url: string;
     audioEncoding: string;
+    watchUrl?: string;
     desiredState?: 'running' | 'stopped';
 }
 
 // A running output keeps the destination and encoding its ffmpeg was started with, so only
-// its name can change (the server enforces the same rule).
+// its name and watch link can change (the server enforces the same rule).
 export function outputLocked(saved: Pick<FormOutput, 'desiredState'> | undefined): boolean {
     return saved?.desiredState === 'running';
 }
@@ -34,6 +35,7 @@ export interface OutputFormInit {
     videoEncoding: string;
     destination: DestinationChoice;
     audioEncoding: string;
+    watchUrl: string;
     locked: boolean;
     // Only a saved output can be copied.
     canCopy: boolean;
@@ -56,6 +58,8 @@ export function addOutputForm(
             ? sanitizedDestinationFor(previous.url, targets)
             : { server: 'custom-rtmp', key: '' },
         audioEncoding: previous?.audioEncoding ?? 'copy',
+        // Like the stream key, the watch link belongs to one stream and is not reused.
+        watchUrl: '',
         locked: false,
         canCopy: false,
     };
@@ -68,6 +72,7 @@ export function editOutputForm(saved: FormOutput, targets: RestreamTarget[]): Ou
         videoEncoding: saved.videoEncoding,
         destination: destinationOf(saved.url, targets),
         audioEncoding: saved.audioEncoding,
+        watchUrl: saved.watchUrl ?? '',
         locked: outputLocked(saved),
         canCopy: true,
     };
@@ -84,6 +89,7 @@ export interface OutputFormValues {
     name: string;
     videoEncoding: string;
     audioEncoding: string;
+    watchUrl: string;
     server: ServerId;
     // The destination row; null when the form has none. `srt` holds the Custom SRT fields
     // (null when they are missing from the row).
@@ -94,6 +100,7 @@ export interface OutputFormValues {
 // Restream pipeline), `srt` the Custom SRT fields.
 export interface OutputFormInvalid {
     name: boolean;
+    watchUrl: boolean;
     key: boolean;
     srt: SrtFormField[];
 }
@@ -102,10 +109,29 @@ export type OutputSubmission =
     | {
           ok: true;
           body:
-              | { name: string }
-              | { name: string; videoEncoding: string; url: string; audioEncoding: string };
+              | { name: string; watchUrl: string }
+              | {
+                    name: string;
+                    videoEncoding: string;
+                    url: string;
+                    audioEncoding: string;
+                    watchUrl: string;
+                };
       }
     | { ok: false; invalid: OutputFormInvalid };
+
+// The optional watch link: empty, or an http(s) link (the server checks the same).
+export function isWatchUrl(value: string): boolean {
+    const text = value.trim();
+    if (!text) return true;
+    if (text.length > 2048 || /[\s<>"]/.test(text)) return false;
+    try {
+        const { protocol } = new URL(text);
+        return protocol === 'http:' || protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
 
 // `saved` is the output being edited, undefined for a new one.
 export function submitOutputForm(
@@ -114,11 +140,20 @@ export function submitOutputForm(
     targets: RestreamTarget[],
 ): OutputSubmission {
     const name = values.name.trim();
-    const invalid: OutputFormInvalid = { name: !name, key: false, srt: [] };
+    const watchUrl = values.watchUrl.trim();
+    const invalid: OutputFormInvalid = {
+        name: !name,
+        watchUrl: !isWatchUrl(watchUrl),
+        key: false,
+        srt: [],
+    };
 
-    // The settings of a running output are locked in the form: only the name is sent.
+    // The settings of a running output are locked in the form: only the name and watch link
+    // are sent.
     if (outputLocked(saved)) {
-        return name ? { ok: true, body: { name } } : { ok: false, invalid };
+        return name && !invalid.watchUrl
+            ? { ok: true, body: { name, watchUrl } }
+            : { ok: false, invalid };
     }
 
     const row = values.destination;
@@ -137,7 +172,7 @@ export function submitOutputForm(
         }
     }
 
-    if (!name || url === null) return { ok: false, invalid };
+    if (!name || url === null || invalid.watchUrl) return { ok: false, invalid };
     return {
         ok: true,
         body: {
@@ -145,6 +180,7 @@ export function submitOutputForm(
             videoEncoding: values.videoEncoding,
             url,
             audioEncoding: values.audioEncoding,
+            watchUrl,
         },
     };
 }

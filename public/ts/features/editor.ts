@@ -599,6 +599,9 @@ function showOutputForm(pipelineId: string, outId: string, init: OutputFormInit)
     const nameEl = document.getElementById('out-name-input') as HTMLInputElement;
     nameEl.value = init.name;
     nameEl.classList.remove('input-error');
+    const watchEl = document.getElementById('out-watch-url-input') as HTMLInputElement;
+    watchEl.value = init.watchUrl;
+    watchEl.classList.remove('input-error');
     (document.getElementById('out-video-encoding-input') as HTMLSelectElement).innerHTML =
         outVideoEncodingOptions(init.videoEncoding);
     populateDestinationDetected(
@@ -679,8 +682,10 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
         | HTMLSelectElement
         | null
         | undefined;
+    const watchEl = document.getElementById('out-watch-url-input') as HTMLInputElement;
     const values: OutputFormValues = {
         name: nameEl.value,
+        watchUrl: watchEl.value,
         videoEncoding: (document.getElementById('out-video-encoding-input') as HTMLSelectElement)
             .value,
         audioEncoding: (document.getElementById('out-audio-encoding-input') as HTMLSelectElement)
@@ -700,6 +705,7 @@ export async function submitOutputForm(btn?: HTMLButtonElement): Promise<void> {
     const submission = buildOutputSubmission(values, saved, restreamTargets());
     const invalid = submission.ok ? null : submission.invalid;
     nameEl.classList.toggle('input-error', invalid?.name ?? false);
+    watchEl.classList.toggle('input-error', invalid?.watchUrl ?? false);
     keyEl?.classList.toggle(
         isRestreamServer(server) ? 'select-error' : 'input-error',
         invalid?.key ?? false,
@@ -1130,8 +1136,8 @@ export async function copyOutput(): Promise<void> {
         api.showError('Save the output before copying it.');
         return;
     }
-    const { name, videoEncoding, url, audioEncoding } = output;
-    await copyText(JSON.stringify({ name, videoEncoding, url, audioEncoding }, null, 2));
+    const { name, videoEncoding, url, audioEncoding, watchUrl } = output;
+    await copyText(JSON.stringify({ name, videoEncoding, url, audioEncoding, watchUrl }, null, 2));
 }
 
 export async function pasteOutputIntoForm(): Promise<void> {
@@ -1158,6 +1164,11 @@ export async function pasteOutputIntoForm(): Promise<void> {
         const nameEl = document.getElementById('out-name-input') as HTMLInputElement;
         nameEl.value = payload.name;
         nameEl.classList.remove('input-error');
+    }
+    if (payload.watchUrl) {
+        const watchEl = document.getElementById('out-watch-url-input') as HTMLInputElement;
+        watchEl.value = payload.watchUrl;
+        watchEl.classList.remove('input-error');
     }
     if (payload.videoEncoding) {
         (document.getElementById('out-video-encoding-input') as HTMLSelectElement).innerHTML =

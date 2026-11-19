@@ -23,6 +23,16 @@ input, and when the pipeline it feeds leads back to it through other restreams
 (A to B and B to A). Pipelines that share a key read the same stream, so the same
 holds for them. The same rule applies when you move a pipeline to another stream key.
 
+## Watch link
+
+An output can carry an optional **watch link**: the page where viewers watch what it
+sends, such as a YouTube watch page. The destination URL holds a stream key and cannot
+be opened, so the link is kept next to it. Fill in **Watch Link** in the output editor
+(an `http://` or `https://` URL) and the card shows a link icon beside the output's
+name that opens it in a new tab. Bunryu only stores and shows the link. It never opens
+it or checks that it works, and the link is not sent to Key Vault. It can be changed
+while the output runs, and Copy and Paste carry it with the output.
+
 ## Video encoding
 
 | Encoding | What it does | CPU cost |
@@ -119,7 +129,7 @@ affected. See [Reliability](../3-operations/4-reliability.md#shared-encodes).
 **Changing the configuration while outputs are running.** An output decides how it
 runs when it *starts* and never switches while running. For that reason the
 editor of a running output disables the destination and encodings and lets you
-change only its name; stop the output to change the rest.
+change only its name and watch link; stop the output to change the rest.
 - If an output was already running alone and you add a second output with the same
   recipe, the shared encode starts at once, but the first output keeps encoding on
   its own until it is next started or restarted; the new output reads the shared

@@ -4,11 +4,43 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
     parseName,
+    parseWatchUrl,
     isCleanUrlText,
     isValidPublicHost,
     MAX_AUDIO_TRACKS,
 } = require('../src/utils/inputLimits');
 const { validateOutputUrl, validateAudioEncoding } = require('../src/utils/ffmpeg');
+
+describe('parseWatchUrl', () => {
+    test('none is an empty link, and a link is trimmed', () => {
+        for (const none of [undefined, null, '', '   ']) {
+            assert.deepEqual(parseWatchUrl(none), { watchUrl: '' });
+        }
+        assert.deepEqual(parseWatchUrl(' https://www.youtube.com/watch?v=abc '), {
+            watchUrl: 'https://www.youtube.com/watch?v=abc',
+        });
+        assert.deepEqual(parseWatchUrl('http://example.com/live'), {
+            watchUrl: 'http://example.com/live',
+        });
+    });
+
+    test('only a clean http(s) link is accepted', () => {
+        const bad = [
+            'javascript:alert(1)',
+            'data:text/html,x',
+            'rtmp://a/b',
+            'youtube.com/watch',
+            'https://a b',
+            'https://a/"x',
+            'https://a/<b>',
+            'https://a/\nb',
+            `https://example.com/${'x'.repeat(2100)}`,
+            42,
+            {},
+        ];
+        for (const value of bad) assert.ok('error' in parseWatchUrl(value), String(value));
+    });
+});
 
 describe('parseName', () => {
     test('trims and accepts an ordinary name', () => {

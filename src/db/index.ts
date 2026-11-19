@@ -299,6 +299,7 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             videoEncoding: (row.encoding as string) || 'copy',
             url: row.url as string,
             audioEncoding: (row.audio_encoding as string) || 'copy',
+            watchUrl: (row.watch_url as string) || '',
             ...deriveOutputErrorFields(errorHistory, row.desired_state as string),
         };
     }
@@ -351,12 +352,14 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
         videoEncoding = 'copy',
         url,
         audioEncoding = 'copy',
+        watchUrl = '',
     }: {
         pipelineId: number;
         name: string;
         videoEncoding?: string;
         url: string;
         audioEncoding?: string;
+        watchUrl?: string;
     }): string {
         const seqRow = sqlite
             .prepare(
@@ -367,9 +370,9 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
         const id = `${pipelineId}-${seq}`;
         sqlite
             .prepare(
-                'INSERT INTO outputs (id, pipeline_id, seq, name, desired_state, encoding, url, audio_encoding) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO outputs (id, pipeline_id, seq, name, desired_state, encoding, url, audio_encoding, watch_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             )
-            .run(id, pipelineId, seq, name, 'stopped', videoEncoding, url, audioEncoding);
+            .run(id, pipelineId, seq, name, 'stopped', videoEncoding, url, audioEncoding, watchUrl);
         return id;
     }
 
@@ -543,13 +546,16 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             return getOutputsByPipeline(pipelineId);
         },
 
-        updateOutput(id: string, { name, videoEncoding, url, audioEncoding }): Output | null {
+        updateOutput(
+            id: string,
+            { name, videoEncoding, url, audioEncoding, watchUrl },
+        ): Output | null {
             if (!getOutputById(id)) return null;
             sqlite
                 .prepare(
-                    'UPDATE outputs SET name = ?, encoding = ?, url = ?, audio_encoding = ? WHERE id = ?',
+                    'UPDATE outputs SET name = ?, encoding = ?, url = ?, audio_encoding = ?, watch_url = ? WHERE id = ?',
                 )
-                .run(name, videoEncoding, url, audioEncoding, id);
+                .run(name, videoEncoding, url, audioEncoding, watchUrl, id);
             bumpConfigRev();
             return getOutputById(id);
         },

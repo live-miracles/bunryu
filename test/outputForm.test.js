@@ -32,6 +32,7 @@ const values = (over = {}) => ({
     name: 'Main',
     videoEncoding: 'copy',
     audioEncoding: 'copy',
+    watchUrl: '',
     server: 'youtube',
     destination: { key: 'abcd-efgh', srt: null },
     ...over,
@@ -56,6 +57,7 @@ describe('addOutputForm', () => {
             videoEncoding: 'copy',
             destination: { server: 'custom-rtmp', key: '' },
             audioEncoding: 'copy',
+            watchUrl: '',
             locked: false,
             canCopy: false,
         });
@@ -108,6 +110,62 @@ describe('editOutputForm', () => {
     });
 });
 
+describe('the watch link', () => {
+    test('a new output starts without one, even when the last output has one', () => {
+        const form = addOutputForm([saved({ watchUrl: 'https://youtu.be/abc' })], targets);
+        assert.equal(form.watchUrl, '');
+    });
+
+    test('a saved output shows its link, and an old one without a link shows none', () => {
+        assert.equal(
+            editOutputForm(saved({ watchUrl: 'https://youtu.be/abc' }), targets).watchUrl,
+            'https://youtu.be/abc',
+        );
+        assert.equal(editOutputForm(saved(), targets).watchUrl, '');
+    });
+
+    test('is sent trimmed with a new output', () => {
+        const result = submitOutputForm(
+            values({ watchUrl: '  https://youtu.be/abc ' }),
+            undefined,
+            targets,
+        );
+        assert.equal(result.body.watchUrl, 'https://youtu.be/abc');
+    });
+
+    test('a running output can still change it, and the rest stays locked', () => {
+        const result = submitOutputForm(
+            values({ watchUrl: 'https://youtu.be/abc' }),
+            { desiredState: 'running' },
+            targets,
+        );
+        assert.deepEqual(result, {
+            ok: true,
+            body: { name: 'Main', watchUrl: 'https://youtu.be/abc' },
+        });
+    });
+
+    test('only an http(s) link is accepted, and it is flagged otherwise', () => {
+        for (const bad of [
+            'javascript:alert(1)',
+            'youtube.com/watch',
+            'ftp://x/y',
+            'https://a b',
+        ]) {
+            const result = submitOutputForm(values({ watchUrl: bad }), undefined, targets);
+            assert.equal(result.ok, false, bad);
+            assert.equal(result.invalid.watchUrl, true, bad);
+            assert.equal(result.invalid.key, false, bad);
+        }
+        const running = submitOutputForm(
+            values({ watchUrl: 'javascript:alert(1)' }),
+            { desiredState: 'running' },
+            targets,
+        );
+        assert.equal(running.ok, false);
+    });
+});
+
 describe('outputLocked and destinationOf', () => {
     test('only an output that should be running is locked', () => {
         assert.equal(outputLocked({ desiredState: 'running' }), true);
@@ -131,6 +189,7 @@ describe('submitOutputForm', () => {
                 videoEncoding: 'copy',
                 url: 'rtmp://a.rtmp.youtube.com/live2/abcd-efgh',
                 audioEncoding: 'copy',
+                watchUrl: '',
             },
         });
     });
@@ -145,13 +204,13 @@ describe('submitOutputForm', () => {
         assert.equal(result.body.url, 'rtmp://a.rtmp.youtube.com/live2/abcd-efgh');
     });
 
-    test('a running output sends only its name, whatever else the form holds', () => {
+    test('a running output sends only its name and watch link, whatever else the form holds', () => {
         const result = submitOutputForm(
             values({ name: 'Renamed', destination: null }),
             { desiredState: 'running' },
             targets,
         );
-        assert.deepEqual(result, { ok: true, body: { name: 'Renamed' } });
+        assert.deepEqual(result, { ok: true, body: { name: 'Renamed', watchUrl: '' } });
     });
 
     test('a running output with an empty name flags only the name', () => {
@@ -160,7 +219,10 @@ describe('submitOutputForm', () => {
             { desiredState: 'running' },
             targets,
         );
-        assert.deepEqual(result, { ok: false, invalid: { name: true, key: false, srt: [] } });
+        assert.deepEqual(result, {
+            ok: false,
+            invalid: { name: true, watchUrl: false, key: false, srt: [] },
+        });
     });
 
     test('an empty name is flagged along with a bad destination, so both show', () => {
@@ -169,7 +231,10 @@ describe('submitOutputForm', () => {
             undefined,
             targets,
         );
-        assert.deepEqual(result, { ok: false, invalid: { name: true, key: true, srt: [] } });
+        assert.deepEqual(result, {
+            ok: false,
+            invalid: { name: true, watchUrl: false, key: true, srt: [] },
+        });
     });
 
     test('an empty key is flagged', () => {
@@ -178,7 +243,7 @@ describe('submitOutputForm', () => {
             undefined,
             targets,
         );
-        assert.deepEqual(result.invalid, { name: false, key: true, srt: [] });
+        assert.deepEqual(result.invalid, { name: false, watchUrl: false, key: true, srt: [] });
     });
 
     test('a Custom RTMP value that is not an rtmp URL is flagged', () => {
@@ -231,12 +296,20 @@ describe('submitOutputForm', () => {
             undefined,
             targets,
         );
-        assert.deepEqual(result.invalid, { name: false, key: false, srt: ['host', 'port'] });
+        assert.deepEqual(result.invalid, {
+            name: false,
+            watchUrl: false,
+            key: false,
+            srt: ['host', 'port'],
+        });
     });
 
     test('a form without its destination row cannot be saved, and flags nothing', () => {
         const result = submitOutputForm(values({ destination: null }), undefined, targets);
-        assert.deepEqual(result, { ok: false, invalid: { name: false, key: false, srt: [] } });
+        assert.deepEqual(result, {
+            ok: false,
+            invalid: { name: false, watchUrl: false, key: false, srt: [] },
+        });
     });
 
     test('Custom SRT with its fields missing from the row cannot be saved', () => {

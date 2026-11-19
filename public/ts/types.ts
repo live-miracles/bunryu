@@ -36,6 +36,8 @@ export interface Output {
     videoEncoding: string;
     url: string;
     audioEncoding: string;
+    // Where viewers watch what the output sends; '' when none.
+    watchUrl: string;
     lastError: string | null;
     hasErrorHistory: boolean;
 }
@@ -54,6 +56,7 @@ export interface OutputPayload {
     videoEncoding: string;
     url: string;
     audioEncoding: string;
+    watchUrl: string;
 }
 
 export interface VideoInfo {

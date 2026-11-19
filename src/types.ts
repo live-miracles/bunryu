@@ -67,6 +67,8 @@ export interface Output {
     videoEncoding: string;
     url: string;
     audioEncoding: string;
+    // Where viewers watch what this output sends; shown as a link, '' when none.
+    watchUrl: string;
     lastError: string | null;
     hasErrorHistory: boolean;
 }
@@ -107,6 +109,7 @@ export interface Db {
         videoEncoding?: string;
         url: string;
         audioEncoding?: string;
+        watchUrl?: string;
     }): Output;
     // All-or-nothing batch create (single transaction, single configRev bump).
     createOutputs(
@@ -116,6 +119,7 @@ export interface Db {
             videoEncoding?: string;
             url: string;
             audioEncoding?: string;
+            watchUrl?: string;
         }[],
     ): Output[];
     getOutput(id: string): Output | null;
@@ -134,6 +138,7 @@ export interface Db {
             videoEncoding: string;
             url: string;
             audioEncoding: string;
+            watchUrl: string;
         },
     ): Output | null;
     setOutputDesiredState(id: string, desiredState: 'running' | 'stopped'): Output | null;
