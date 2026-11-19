@@ -1,4 +1,4 @@
-// Tiny Chrome DevTools driver (no playwright/chromium-cli needed; Node 22 global WebSocket).
+// Tiny Chrome DevTools driver (no playwright/chromium-cli needed; Node 26 global WebSocket).
 // node scripts/test-stack-cdp.mjs <out.png> [js-to-eval-before-shot] [waitMs]   env: MOVE=x,y to hover before the shot, VIEWPORT=WxH to resize, SCALE=2 for a sharper (README) shot
 import fs from 'node:fs';
 const [out, pre = '', waitMs = '3000'] = process.argv.slice(2);

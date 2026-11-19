@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot native setup for a Linux server.
-# Installs Node.js 22, FFmpeg 7.1, SRS 6.0, goryu, builds the app,
+# Installs Node.js 26, FFmpeg 7.1, SRS 6.0, goryu, builds the app,
 # and registers systemd services that start on boot.
 #
 # Usage:
@@ -117,11 +117,11 @@ SELF_SUM="$(sha256sum "$(readlink -f "$0")" 2> /dev/null | awk '{print $1}' || t
     fi
 }
 
-step "2/9 Node.js 22"
-if node --version 2> /dev/null | grep -q '^v22'; then
-    echo "Node.js 22 already installed: $(node --version)"
+step "2/9 Node.js 26"
+if node --version 2> /dev/null | grep -q '^v26'; then
+    echo "Node.js 26 already installed: $(node --version)"
 else
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_26.x | bash -
     apt-get install -y nodejs
     echo "Installed: $(node --version)"
 fi

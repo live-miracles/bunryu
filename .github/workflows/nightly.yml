@@ -2,7 +2,7 @@ name: Nightly tests
 
 # CI only runs when someone pushes, so this is what notices a flaky test, a
 # runner or Node update that breaks the suite, or a change that landed while
-# nobody was looking at the repository. Both jobs run daily on the latest Node 22
+# nobody was looking at the repository. Both jobs run daily on the latest Node 26
 # and on the runner image that matches production (Ubuntu 22.04). The label is
 # pinned: `ubuntu-latest` is moving to Ubuntu 26.04. Move it when production does.
 on:
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
       - run: npm ci
       - run: node --version
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
       - run: npm ci
       # The pinned objs/srs, objs/ffmpeg and objs/ffprobe the isolated test stack runs.

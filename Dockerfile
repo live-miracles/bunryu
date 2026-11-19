@@ -5,7 +5,7 @@
 # Pinned media binaries match scripts/server-install.sh; bump both together.
 # x86_64 only, like the native installer.
 
-FROM node:22-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 WORKDIR /app
 RUN apt-get update -q \
     && apt-get install -y -q --no-install-recommends python3 make g++ \
@@ -45,7 +45,7 @@ RUN set -eux; \
     install -m 755 "$(find relay -type f -name goryu -perm -111 | head -1)" /out/bin/goryu; \
     if [ -d relay/lib ]; then install -m 755 relay/lib/* /out/lib/; fi
 
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 # tini reaps orphaned ffmpeg processes and forwards signals; iproute2 provides
 # `ss` for the output socket watchdog; curl is the SRS readiness gate.
 RUN apt-get update -q \

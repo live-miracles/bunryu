@@ -1,6 +1,6 @@
 # Development
 
-Prerequisites: Node.js 22+ plus `curl`, `unzip`, `tar`, and `xz-utils`.
+Prerequisites: Node.js 26+ plus `curl`, `unzip`, `tar`, and `xz-utils`.
 
 **1. Install dependencies and local media binaries:**
 ```bash

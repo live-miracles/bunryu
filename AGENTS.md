@@ -458,7 +458,7 @@ been broken. Substantial changes should run it during implementation as well.
 
 ## Development expectations
 
-The backend uses Node.js 22+ and TypeScript. Before completing a change,
+The backend uses Node.js 26+ and TypeScript. Before completing a change,
 run the narrowest relevant tests and type/build checks, then expand validation
 for changes that affect process management, media handling, persistence, or
 the API. New features should be covered by meaningful tests that exercise
