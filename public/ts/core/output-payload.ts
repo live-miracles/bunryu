@@ -60,6 +60,41 @@ export function parseOutputsPayload(
     return { outputs };
 }
 
+// Pasting appends to the pipeline's outputs. An output whose destination one of them already
+// has is left out, and so is a later pasted output with the same destination as an earlier
+// one, so a paste never creates a duplicate.
+export function splitNewOutputs(
+    existingUrls: Iterable<string>,
+    pasted: OutputPayloadFields[],
+): { fresh: OutputPayloadFields[]; skipped: OutputPayloadFields[] } {
+    const seen = new Set([...existingUrls].map((url) => url.trim()));
+    const fresh: OutputPayloadFields[] = [];
+    const skipped: OutputPayloadFields[] = [];
+    for (const output of pasted) {
+        const url = output.url.trim();
+        if (seen.has(url)) {
+            skipped.push(output);
+        } else {
+            seen.add(url);
+            fresh.push(output);
+        }
+    }
+    return { fresh, skipped };
+}
+
+// What the operator is told once a paste is done.
+export function pasteResultMessage(added: number, skipped: number): string {
+    const outputs = (n: number) => `${n} output${n === 1 ? '' : 's'}`;
+    if (added === 0) {
+        return skipped === 1
+            ? 'Nothing pasted: the output has a destination this pipeline already uses.'
+            : `Nothing pasted: all ${skipped} outputs have a destination this pipeline already uses.`;
+    }
+    return skipped === 0
+        ? `Pasted ${outputs(added)}.`
+        : `Pasted ${outputs(added)}, skipped ${skipped} with a destination this pipeline already uses.`;
+}
+
 // A bare RTMP/RTMPS/SRT URL on the clipboard is shorthand for {"url": "..."}.
 export function parseSingleOutputPayload(
     text: string,

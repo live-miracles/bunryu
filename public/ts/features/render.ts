@@ -1549,21 +1549,10 @@ function renderOutputsList(pipeline: PipelineView): void {
     if (!listEl) return;
     if (draggingOutputEl) return; // preserve the DOM while a drag is in progress
 
-    const hasActive = pipeline.outs.some((o) => o.desiredState !== 'stopped');
     const noStopped =
         pipeline.outs.length === 0 || pipeline.outs.every((o) => o.desiredState !== 'stopped');
     const allStopped =
         pipeline.outs.length === 0 || pipeline.outs.every((o) => o.desiredState === 'stopped');
-
-    const pasteBtn = document.getElementById('outputs-paste-btn') as HTMLButtonElement | null;
-    pasteBtn?.classList.toggle('btn-disabled', hasActive);
-    pasteBtn?.classList.toggle('opacity-40', hasActive);
-    if (pasteBtn) {
-        pasteBtn.disabled = hasActive;
-        pasteBtn.title = hasActive
-            ? 'Stop all outputs before pasting'
-            : 'Paste outputs from clipboard';
-    }
 
     const startAllBtn = document.getElementById(
         'outputs-start-all-btn',

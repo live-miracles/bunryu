@@ -149,6 +149,12 @@ starts them staggered at 200 ms intervals. An output's desired state is saved,
 so outputs that were running are started again automatically when the input
 comes back or the server restarts.
 
+**Copy** puts the pipeline's outputs on the clipboard, and **Paste** adds the outputs on the
+clipboard to the end of a pipeline's list, in this or another pipeline. The pasted outputs
+start stopped and the running ones are not touched, so it works at any time. An output
+whose destination URL the pipeline already uses is skipped, and a message says how many
+were added and how many skipped.
+
 With many outputs, use the bar above the list: the filter box matches an output's name
 or destination as you type, and **Problems** keeps only outputs with an error or a
 warning (the same ones the card colors red or yellow). The badges count the pipeline's

@@ -235,8 +235,8 @@
       id="copied-notification"
       popover="manual"
       role="alert"
-      class="alert alert-primary fixed inset-auto bottom-3 left-1/2 z-50 m-0 hidden w-fit -translate-x-1/2">
-      <span>Copied</span>
+      class="alert alert-primary fixed inset-auto bottom-3 left-1/2 z-50 m-0 hidden w-fit max-w-[90vw] -translate-x-1/2">
+      <span id="copied-notification-text">Copied</span>
     </div>
 
     <!-- Pipeline modal -->
@@ -794,8 +794,8 @@
                   id="outputs-paste-btn"
                   class="btn btn-xs btn-ghost"
                   onclick="outputsPasteBtn()"
-                  title="Paste outputs from clipboard"
-                  aria-label="Paste outputs from clipboard">
+                  title="Add the outputs on the clipboard to this pipeline"
+                  aria-label="Add the outputs on the clipboard to this pipeline">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="14"

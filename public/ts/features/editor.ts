@@ -7,6 +7,7 @@ import {
     maskStreamKey,
     withBusy,
     copyText,
+    showNotice,
     escapeHtml,
     confirmDialog,
     flashSaveSuccess,
@@ -29,7 +30,12 @@ import {
     type OutputFormValues,
 } from '../core/output-form.js';
 import { ansiLineToHtml } from '../core/ansi.js';
-import { parseOutputsPayload, parseSingleOutputPayload } from '../core/output-payload.js';
+import {
+    parseOutputsPayload,
+    parseSingleOutputPayload,
+    pasteResultMessage,
+    splitNewOutputs,
+} from '../core/output-payload.js';
 import {
     SERVERS,
     type ServerId,
@@ -1203,16 +1209,10 @@ export async function copyOutputs(pipelineId: string): Promise<void> {
     await copyText(JSON.stringify(outputs, null, 2));
 }
 
+// Adds the clipboard's outputs to the end of the pipeline's list, as new (stopped) outputs.
+// Nothing that exists is touched, so it works while outputs run; one whose destination the
+// pipeline already has is skipped.
 export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): Promise<void> {
-    const confirmed = await confirmDialog({
-        title: 'Replace all outputs?',
-        message:
-            'All outputs for this pipeline will be replaced with the clipboard contents. This cannot be undone.',
-        confirmLabel: 'Replace',
-        danger: true,
-    });
-    if (!confirmed) return;
-
     let text: string;
     try {
         text = await navigator.clipboard.readText();
@@ -1226,15 +1226,20 @@ export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): 
         api.showError(parsed.error);
         return;
     }
-    const { outputs } = parsed;
+
+    const existingUrls = (state.config.outputs ?? [])
+        .filter((o) => String(o.pipelineId) === pipelineId)
+        .map((o) => o.url);
+    const { fresh, skipped } = splitNewOutputs(existingUrls, parsed.outputs);
+    if (fresh.length === 0) {
+        showNotice(pasteResultMessage(0, skipped.length));
+        return;
+    }
 
     await withBusy(btn, async () => {
-        const cleared = await api.clearOutputs(pipelineId);
-        if (!cleared) return;
-
-        const created = await api.createOutputsBulk(pipelineId, outputs);
+        const created = await api.createOutputsBulk(pipelineId, fresh);
         if (!created) return;
-
         await refreshAfterMutation();
+        showNotice(pasteResultMessage(fresh.length, skipped.length));
     });
 }
