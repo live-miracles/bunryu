@@ -144,6 +144,56 @@ describe('Pipelines API integration', () => {
         });
     });
 
+    describe('POST /api/pipelines with a body', () => {
+        test('creates the pipeline with the name and group asked for', async () => {
+            const harness = createHarness();
+            const [group] = harness.db.replacePipelineGroups([{ name: 'Morning' }]);
+            const res = await harness.request('POST', '/api/pipelines', {
+                name: ' Main Stage ',
+                groupId: group.id,
+            });
+            assert.equal(res.status, 201);
+            assert.equal(res.body.name, 'Main Stage');
+            assert.equal(res.body.groupId, group.id);
+        });
+
+        test('can share the key of another pipeline when every key is assigned', async () => {
+            const harness = createHarness();
+            const keys = harness.db.listStreamKeys();
+            for (const _key of keys) harness.db.createPipeline();
+            const last = keys[keys.length - 1];
+            const res = await harness.request('POST', '/api/pipelines', {
+                name: 'Extra',
+                streamKeyId: last.id,
+            });
+            assert.equal(res.status, 201);
+            assert.equal(res.body.streamKeyId, last.id);
+        });
+
+        test('409s for a name another pipeline has, in any case', async () => {
+            const harness = createHarness();
+            harness.db.createPipeline({ name: 'Main Stage' });
+            const res = await harness.request('POST', '/api/pipelines', { name: 'main stage' });
+            assert.equal(res.status, 409);
+            assert.match(res.body.error, /already exists/);
+            assert.equal(harness.db.listPipelines().length, 1);
+        });
+
+        test('400s for a bad name, key or group, creating nothing', async () => {
+            const harness = createHarness();
+            for (const body of [
+                { name: '   ' },
+                { name: 5 },
+                { streamKeyId: 99999 },
+                { groupId: 99999 },
+            ]) {
+                const res = await harness.request('POST', '/api/pipelines', body);
+                assert.equal(res.status, 400, JSON.stringify(body));
+            }
+            assert.equal(harness.db.listPipelines().length, 0);
+        });
+    });
+
     describe('GET /api/pipelines/:id', () => {
         test('400s for a non-numeric id', async () => {
             const harness = createHarness();
@@ -205,6 +255,29 @@ describe('Pipelines API integration', () => {
             const p = harness.db.createPipeline();
             const res = await harness.request('POST', `/api/pipelines/${p.id}`, { name: '   ' });
             assert.equal(res.status, 400);
+        });
+
+        test("409s when the new name is another pipeline's, in any case, and changes nothing", async () => {
+            const harness = createHarness();
+            harness.db.createPipeline({ name: 'Main Stage' });
+            const p = harness.db.createPipeline();
+            const res = await harness.request('POST', `/api/pipelines/${p.id}`, {
+                name: 'MAIN STAGE',
+            });
+            assert.equal(res.status, 409);
+            assert.match(res.body.error, /already exists/);
+            assert.equal(harness.db.getPipeline(p.id).name, p.name);
+        });
+
+        test('keeps the name when saved again with a key change', async () => {
+            const harness = createHarness();
+            const p1 = harness.db.createPipeline({ name: 'A' });
+            const p2 = harness.db.createPipeline({ name: 'B' });
+            const res = await harness.request('POST', `/api/pipelines/${p1.id}`, {
+                name: 'A',
+                streamKeyId: p2.streamKeyId,
+            });
+            assert.equal(res.status, 200);
         });
 
         test('renames without touching the stream key when streamKeyId is omitted', async () => {

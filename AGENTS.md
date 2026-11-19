@@ -331,6 +331,10 @@ only for a new module.
   `features/shared-encodes.ts` renders the Shared encodes card.
   `features/pipeline-groups.ts` has the sidebar's add, rename and delete for pipeline groups
   (each saved at once through the bulk groups endpoint; reordering is drag-and-drop in `render.ts`).
+  `core/config-payload.ts` and `features/config-copy.ts` are the sidebar's Copy / Paste configuration
+  (every group, pipeline and output to another instance): the clipboard format, the plan (match by
+  name, an existing pipeline keeps its group, new ones take free keys and then share the last) and
+  the calls that apply it.
   `core/publish-modes.ts` has the Publish card's modes (which one the live input is on) and
   its rows, with the secrets masked.
   `core/destination.ts` and `core/srt.ts` are the output form's rules between its fields and the

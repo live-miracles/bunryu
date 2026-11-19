@@ -108,6 +108,58 @@ describe('Pipeline CRUD', () => {
         assert.equal(db.getPipeline(p.id)?.name, 'Renamed');
     });
 
+    test('createPipeline takes a name, a group and a key that another pipeline already has', () => {
+        const db = makeDb();
+        const [group] = db.replacePipelineGroups([{ name: 'Morning' }]);
+        const first = db.createPipeline();
+        const second = db.createPipeline({
+            name: 'Camera 2',
+            streamKeyId: first.streamKeyId,
+            groupId: group.id,
+        });
+        assert.equal(second.name, 'Camera 2');
+        assert.equal(second.streamKeyId, first.streamKeyId);
+        assert.equal(second.groupId, group.id);
+    });
+
+    test('pipeline names are unique ignoring case and surrounding space', () => {
+        const db = makeDb();
+        const a = db.createPipeline({ name: 'Main Stage' });
+        const b = db.createPipeline();
+        assert.ok(db.isPipelineNameTaken(' main stage '));
+        assert.equal(db.isPipelineNameTaken('Main Stage', a.id), false);
+        assert.throws(() => db.createPipeline({ name: 'MAIN STAGE' }), /already exists/);
+        assert.throws(() => db.updatePipeline(b.id, 'main stage'), /already exists/);
+        assert.equal(db.listPipelines().length, 2);
+        assert.notEqual(db.getPipeline(b.id).name, 'main stage');
+        // Its own name, in another case, is fine.
+        assert.equal(db.updatePipeline(a.id, 'MAIN STAGE').name, 'MAIN STAGE');
+    });
+
+    test('a default name skips one an operator already gave another pipeline', () => {
+        const db = makeDb();
+        db.createPipeline({ name: 'Pipeline 2' });
+        const p = db.createPipeline();
+        assert.equal(p.id, 2);
+        assert.equal(p.name, 'Pipeline 2 (2)');
+    });
+
+    test('a pipeline that already shares a name can be saved again unchanged', () => {
+        withDbFile((file) => {
+            const first = createDb(file);
+            const a = first.createPipeline({ name: 'One' });
+            const b = first.createPipeline({ name: 'Two' });
+            // A database from before names were unique may hold two with one name.
+            const raw = new BetterSqlite3(file);
+            raw.prepare('UPDATE pipelines SET name = ? WHERE id = ?').run('Same', b.id);
+            raw.prepare('UPDATE pipelines SET name = ? WHERE id = ?').run('Same', a.id);
+            raw.close();
+            const db = createDb(file);
+            assert.equal(db.updatePipeline(a.id, 'Same').name, 'Same');
+            assert.throws(() => db.updatePipeline(a.id, 'same'), /already exists/);
+        });
+    });
+
     test('two pipelines receive different stream keys', () => {
         const db = makeDb();
         const p1 = db.createPipeline();

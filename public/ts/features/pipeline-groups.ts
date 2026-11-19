@@ -2,12 +2,12 @@ import * as api from '../core/api.js';
 import { state } from '../core/state.js';
 import { withBusy, confirmDialog } from '../core/utils.js';
 import { refreshAfterMutation } from './dashboard.js';
+import { MAX_NAME_LENGTH, MAX_PIPELINE_GROUPS } from '../core/config-payload.js';
 import type { PipelineGroup } from '../types.js';
 
 // The sidebar's group controls: add, rename and delete. Reordering groups and moving
 // pipelines between them is drag-and-drop in render.ts.
-const MAX_PIPELINE_GROUP_NAME_LENGTH = 80;
-const MAX_PIPELINE_GROUPS = 50;
+const MAX_PIPELINE_GROUP_NAME_LENGTH = MAX_NAME_LENGTH;
 
 type GroupDraft = { id?: number; name: string };
 

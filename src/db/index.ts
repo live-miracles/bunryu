@@ -5,6 +5,7 @@ import { DEFAULT_STREAM_KEY_COUNT, readAppConfig } from '../utils/appConfig.js';
 import type {
     Pipeline,
     PipelineGroup,
+    CreatePipelineOptions,
     Output,
     PipelineLog,
     StreamKey,
@@ -344,6 +345,23 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
         return id;
     }
 
+    // Pipeline names are unique, compared without regard to case and surrounding space, so a
+    // pasted configuration can match its pipelines by name. `exceptId` is the pipeline being
+    // renamed, which may keep its own name.
+    function pipelineNameTaken(name: string, exceptId?: number): boolean {
+        const wanted = name.trim().toLowerCase();
+        return loadAllPipelines().some(
+            (p) => p.id !== exceptId && p.name.trim().toLowerCase() === wanted,
+        );
+    }
+
+    // "Pipeline <id>", unless an operator already renamed another pipeline to that.
+    function defaultPipelineName(id: number): string {
+        let name = `Pipeline ${id}`;
+        for (let n = 2; pipelineNameTaken(name); n++) name = `Pipeline ${id} (${n})`;
+        return name;
+    }
+
     // Insert one output row without bumping the config revision — callers bump
     // once per logical write (single create or a whole bulk batch).
     function insertOutput({
@@ -440,22 +458,36 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             return (stmtListStreamKeys.all() as Record<string, unknown>[]).map(rowToStreamKey);
         },
 
-        createPipeline(): Pipeline {
+        createPipeline(opts: CreatePipelineOptions = {}): Pipeline {
             const id = nextPipelineId();
-            const keyRow = sqlite
-                .prepare(
-                    `SELECT sk.id FROM stream_keys sk
-                     WHERE sk.slot IS NOT NULL AND sk.slot <= ?
-                     AND sk.id NOT IN (SELECT stream_key_id FROM pipelines WHERE stream_key_id IS NOT NULL)
-                     ORDER BY sk.slot LIMIT 1`,
-                )
-                .get(streamKeyCount) as { id: number } | undefined;
-            if (!keyRow) throw new Error('No unassigned stream keys available');
+            const name = opts.name ?? defaultPipelineName(id);
+            if (opts.name !== undefined && pipelineNameTaken(name)) {
+                throw new Error(`A pipeline named "${name}" already exists`);
+            }
+            let streamKeyId = opts.streamKeyId;
+            if (streamKeyId === undefined) {
+                const keyRow = sqlite
+                    .prepare(
+                        `SELECT sk.id FROM stream_keys sk
+                         WHERE sk.slot IS NOT NULL AND sk.slot <= ?
+                         AND sk.id NOT IN (SELECT stream_key_id FROM pipelines WHERE stream_key_id IS NOT NULL)
+                         ORDER BY sk.slot LIMIT 1`,
+                    )
+                    .get(streamKeyCount) as { id: number } | undefined;
+                if (!keyRow) throw new Error('No unassigned stream keys available');
+                streamKeyId = keyRow.id;
+            }
             sqlite
-                .prepare('INSERT INTO pipelines (id, name, stream_key_id) VALUES (?, ?, ?)')
-                .run(id, `Pipeline ${id}`, keyRow.id);
+                .prepare(
+                    'INSERT INTO pipelines (id, name, stream_key_id, group_id) VALUES (?, ?, ?, ?)',
+                )
+                .run(id, name, streamKeyId, opts.groupId ?? null);
             bumpConfigRev();
             return rowToPipeline(stmtGetPipeline.get(id) as Record<string, unknown>);
+        },
+
+        isPipelineNameTaken(name: string, exceptId?: number): boolean {
+            return pipelineNameTaken(name, exceptId);
         },
 
         getPipeline(id: number): Pipeline | undefined {
@@ -473,6 +505,12 @@ export function createDb(dbPath?: string, streamKeyCount = DEFAULT_STREAM_KEY_CO
             streamKeyId?: number,
             groupId?: number | null,
         ): Pipeline | null {
+            // A pipeline that already has this exact name (one saved before names were unique)
+            // can be saved again, so a key or group change is not blocked by it.
+            const current = stmtGetPipeline.get(id) as Record<string, unknown> | undefined;
+            if (current && current.name !== name && pipelineNameTaken(name, id)) {
+                throw new Error(`A pipeline named "${name}" already exists`);
+            }
             const columns = ['name = ?'];
             const values: (string | number | null)[] = [name];
             if (streamKeyId !== undefined) {

@@ -166,7 +166,24 @@ export const updatePipelineGroups = (groups: { id?: number; name: string }[]) =>
         body: { groups },
     });
 
-export const createPipeline = () => apiRequest('/api/pipelines', { method: 'POST' });
+// With no options the server picks the name and the next free stream key.
+export const createPipeline = (opts?: {
+    name: string;
+    streamKeyId: number | null;
+    groupId: number | null;
+}) =>
+    apiRequest<{ id: string }>('/api/pipelines', {
+        method: 'POST',
+        ...(opts
+            ? {
+                  body: {
+                      name: opts.name,
+                      ...(opts.streamKeyId !== null ? { streamKeyId: opts.streamKeyId } : {}),
+                      ...(opts.groupId !== null ? { groupId: opts.groupId } : {}),
+                  },
+              }
+            : {}),
+    });
 
 export const updatePipeline = (
     id: string,

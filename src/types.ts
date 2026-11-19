@@ -12,6 +12,12 @@ export interface Pipeline {
     groupId: number | null;
 }
 
+export interface CreatePipelineOptions {
+    name?: string;
+    streamKeyId?: number;
+    groupId?: number | null;
+}
+
 export interface PipelineGroup {
     id: number;
     name: string;
@@ -90,11 +96,16 @@ export interface Db {
     // (member pipelines fall back to ungrouped via ON DELETE SET NULL).
     replacePipelineGroups(groups: { id?: number; name: string }[]): PipelineGroup[];
 
-    createPipeline(): Pipeline;
+    // With no options: the next free key and the name "Pipeline <id>". `streamKeyId` may be a
+    // key another pipeline already has (a shared key is allowed, the dashboard warns about it).
+    // Throws when the name is taken or, with no `streamKeyId`, every key is assigned.
+    createPipeline(opts?: CreatePipelineOptions): Pipeline;
+    // Pipeline names are unique, ignoring case; `exceptId` is a pipeline being renamed.
+    isPipelineNameTaken(name: string, exceptId?: number): boolean;
     getPipeline(id: number): Pipeline | undefined;
     listPipelines(): Pipeline[];
     // groupId is tri-state: omitted leaves the pipeline's group untouched,
-    // null clears it, a number reassigns it.
+    // null clears it, a number reassigns it. Throws when another pipeline has the new name.
     updatePipeline(
         id: number,
         name: string,

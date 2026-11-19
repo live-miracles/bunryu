@@ -108,6 +108,28 @@ and each change is saved at once:
   dialog.
 - **Collapse:** the arrow folds a group; the choice is kept per browser.
 
+## Copy a configuration to another server
+
+The two clipboard buttons under the group button copy every group, pipeline and output of
+this server and add them to another one, to set up a second Bunryu without retyping:
+
+- **Copy configuration** puts the groups, each pipeline with its group, and its outputs on
+  the clipboard. Stream keys are not copied: every server has its own.
+- **Paste configuration** adds what the clipboard has and this server lacks. Groups and
+  pipelines are matched by name, ignoring case. A pipeline that exists gets the pasted
+  outputs it does not have yet (an output whose destination it already uses is skipped, as
+  when pasting outputs) and, only if it is in no group, the pasted group; one that is in a
+  group stays there. A pipeline that does not exist is created, in its group (which is created
+  too if missing), with the next free stream key. When the keys run out, the remaining new
+  pipelines take the last key, and the message says so: they then share a key, which the
+  dashboard flags, so give each its own. The pasted outputs start stopped, and nothing
+  running is touched.
+
+Point each encoder at the new server's pipeline key and URL after pasting.
+
+Pipeline names are unique, ignoring case: creating or renaming a pipeline to a name another
+one has is refused.
+
 ## Test commands
 
 These `ffmpeg` commands publish a test stream. Replace `localhost` with the

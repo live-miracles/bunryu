@@ -62,6 +62,22 @@ function parseOutputItem(item: unknown): OutputPayloadFields | { error: string }
     return { name: name.trim(), videoEncoding, url, audioEncoding, watchUrl: watchUrl ?? '' };
 }
 
+// Validates a list of outputs from the clipboard. A list copied before Copy left them out may
+// hold shared encodes: they are made again by themselves, and the server refuses their
+// internal destination, so they are dropped. May return an empty list.
+export function parseOutputItems(
+    items: unknown[],
+): { outputs: OutputPayloadFields[] } | { error: string } {
+    const outputs: OutputPayloadFields[] = [];
+    for (const item of items) {
+        const output = parseOutputItem(item);
+        if ('error' in output) return output;
+        if (isRenditionUrl(output.url.trim())) continue;
+        outputs.push(output);
+    }
+    return { outputs };
+}
+
 // The bulk paste-all-outputs flow: every output being created needs an explicit
 // name and encoding.
 export function parseOutputsPayload(
@@ -74,17 +90,10 @@ export function parseOutputsPayload(
         return { error: 'Clipboard content is not valid JSON.' };
     }
     if (!Array.isArray(parsed)) return { error: 'Expected a JSON array of outputs.' };
-    const outputs: OutputPayloadFields[] = [];
-    for (const item of parsed) {
-        const output = parseOutputItem(item);
-        if ('error' in output) return output;
-        // A list copied before Copy left them out may hold shared encodes: they are made
-        // again by themselves, and the server refuses their internal destination.
-        if (isRenditionUrl(output.url.trim())) continue;
-        outputs.push(output);
-    }
-    if (outputs.length === 0) return { error: 'No outputs found in clipboard.' };
-    return { outputs };
+    const result = parseOutputItems(parsed);
+    if ('error' in result) return result;
+    if (result.outputs.length === 0) return { error: 'No outputs found in clipboard.' };
+    return result;
 }
 
 // Pasting appends to the pipeline's outputs. An output whose destination one of them already

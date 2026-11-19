@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 import { parseName } from '../utils/inputLimits.js';
-import type { Db } from '../types.js';
+import type { CreatePipelineOptions, Db } from '../types.js';
 import type { OutputService } from '../services/outputs.js';
 import type { PreviewService } from '../services/preview.js';
 import type { SrtRelayService } from '../services/srtRelay.js';
@@ -14,11 +14,33 @@ export function registerPipelineApi(
     previewService: PreviewService,
     srtRelayService: SrtRelayService,
 ): void {
-    app.post('/api/pipelines', (_req, res) => {
+    // With no body the pipeline gets the next free key and "Pipeline <id>". The dashboard's
+    // configuration paste sends a name, a group and, once the free keys are used up, the key
+    // of another pipeline (a shared key is allowed: the dashboard warns about it).
+    app.post('/api/pipelines', (req, res) => {
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        const opts: CreatePipelineOptions = {};
+        if (body.name !== undefined) {
+            const parsedName = parseName(body.name);
+            if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
+            opts.name = parsedName.name;
+        }
+        if (body.streamKeyId !== undefined) {
+            if (!db.listStreamKeys().some((key) => key.id === body.streamKeyId)) {
+                return res.status(400).json({ error: 'invalid streamKeyId' });
+            }
+            opts.streamKeyId = body.streamKeyId as number;
+        }
+        if (body.groupId !== undefined && body.groupId !== null) {
+            if (!db.listPipelineGroups().some((g) => g.id === body.groupId)) {
+                return res.status(400).json({ error: 'invalid groupId' });
+            }
+            opts.groupId = body.groupId as number;
+        }
         try {
-            return res.status(201).json(db.createPipeline());
+            return res.status(201).json(db.createPipeline(opts));
         } catch (error) {
-            // Expected when every stream key is taken, so not a server error.
+            // Expected when every stream key is taken or the name is, so not a server error.
             const message = error instanceof Error ? error.message : 'could not create pipeline';
             return res.status(409).json({ error: message });
         }
@@ -46,6 +68,11 @@ export function registerPipelineApi(
         const parsedName = parseName(req.body?.name);
         if ('error' in parsedName) return res.status(400).json({ error: parsedName.error });
         const name = parsedName.name;
+        // Checked here, before the key-change side effects below; saving the name a pipeline
+        // already has is always fine.
+        if (name !== existing.name && db.isPipelineNameTaken(name, id)) {
+            return res.status(409).json({ error: `A pipeline named "${name}" already exists` });
+        }
         // The streamKeyId and groupId checks come before the key-change side effects below:
         // a bad one would otherwise stop the shared encodes and the preview and then
         // fail to save.
@@ -111,8 +138,13 @@ export function registerPipelineApi(
             previewService.stop(id);
         }
 
-        const updated = db.updatePipeline(id, name, streamKeyId, groupId);
-        return res.json(updated);
+        try {
+            return res.json(db.updatePipeline(id, name, streamKeyId, groupId));
+        } catch (error) {
+            // Another rename took the name while this request waited for outputs to stop.
+            const message = error instanceof Error ? error.message : 'could not save pipeline';
+            return res.status(409).json({ error: message });
+        }
     });
 
     app.delete('/api/pipelines/:id', async (req, res) => {

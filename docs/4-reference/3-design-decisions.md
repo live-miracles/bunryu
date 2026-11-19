@@ -2037,6 +2037,35 @@ and would then never start); refusing the publish (an interlaced input is valid 
 **Revisit when:** an interlaced input is found that plays fine on YouTube, which would
 make the alert noise, or the cause of the dropped video is pinned down in FFmpeg.
 
+### Copying a configuration to another server matches by pipeline name, so names are unique
+
+**Decision (November 2026):** the sidebar's Copy / Paste configuration puts the groups,
+the pipelines with their group and their outputs on the clipboard, and a paste adds to
+another server what it lacks. Groups and pipelines are matched by name, ignoring case,
+which is why pipeline names are now unique (creating or renaming to a taken name is a
+409; a database from before may still hold two with one name and keeps working, as
+saving a pipeline's own name is never refused). An existing pipeline keeps its group, or
+gets the pasted one when it has none; its outputs are added by the same rule as pasting
+outputs (a destination it already uses is skipped). Stream keys are not copied: every
+server has its own, and a new pipeline takes the next free one.
+
+**Why the last key when the keys run out:** skipping the pipelines would drop outputs
+silently, and refusing the whole paste leaves the operator with nothing. A new pipeline
+on a key another pipeline already has is allowed on purpose (see the stream key rule in
+the pipeline API) and the dashboard flags the two pipelines, so the operator sees it and
+decides; the paste's message says how many pipelines were affected.
+
+**Why the dashboard applies it:** every step is an existing call (save groups, create a
+pipeline, bulk-create outputs), so the server has no new endpoint beyond an optional body
+on `POST /api/pipelines`. It validates the whole clipboard first (names, outputs, the group
+limit) and then applies it pipeline by pipeline; a step the server refuses is counted and
+shown and the rest go on, because a database transaction across pipelines would need a new
+endpoint for a rare case. The clipboard holds destination URLs and passphrases, like the
+copy of one pipeline's outputs.
+
+**Revisit when:** a paste should also carry the pipelines' order, or a failure partway
+through shows up in practice.
+
 ## Ingest protection
 
 ### Don't ban abusive ingest clients with fail2ban

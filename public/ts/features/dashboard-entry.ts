@@ -33,6 +33,7 @@ import {
     removePipelineGroup,
     submitPipelineGroupForm,
 } from './pipeline-groups.js';
+import { copyConfig, pasteConfig } from './config-copy.js';
 
 declare global {
     interface Window {
@@ -41,6 +42,8 @@ declare global {
         openSettingsBtn: () => Promise<void>;
         openStatusBtn: () => Promise<void>;
         addPipelineGroupBtn: () => void;
+        copyConfigBtn: () => Promise<void>;
+        pasteConfigBtn: (btn: HTMLButtonElement) => Promise<void>;
         editPipelineGroupBtn: (id: number) => void;
         removePipelineGroupBtn: (id: number) => Promise<void>;
         settingsGeneralFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
@@ -121,6 +124,8 @@ window.openSettingsBtn = async () => {
     showContentPanel();
 };
 window.addPipelineGroupBtn = () => addPipelineGroup();
+window.copyConfigBtn = () => copyConfig();
+window.pasteConfigBtn = (btn) => pasteConfig(btn);
 window.editPipelineGroupBtn = (id) => editPipelineGroup(id);
 window.removePipelineGroupBtn = (id) => removePipelineGroup(id);
 window.settingsGeneralFormBtn = (btn) => submitGeneralSettingsForm(btn);
