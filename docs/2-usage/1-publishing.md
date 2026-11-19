@@ -110,7 +110,7 @@ and each change is saved at once:
 
 ## Copy a configuration to another server
 
-The two clipboard buttons under the group button copy every group, pipeline and output of
+**Settings → Configuration** has two buttons that copy every group, pipeline and output of
 this server and add them to another one, to set up a second Bunryu without retyping:
 
 - **Copy configuration** puts the groups, each pipeline with its group, and its outputs on

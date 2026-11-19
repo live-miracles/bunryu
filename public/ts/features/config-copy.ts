@@ -11,7 +11,7 @@ import {
 } from '../core/config-payload.js';
 import { refreshAfterMutation } from './dashboard.js';
 
-// The sidebar's Copy / Paste configuration: every group, pipeline and output on this instance
+// Settings' Copy / Paste configuration: every group, pipeline and output on this instance
 // to the clipboard, and from the clipboard into this one (see core/config-payload.ts).
 
 function groupsInOrder() {

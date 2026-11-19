@@ -2039,7 +2039,7 @@ make the alert noise, or the cause of the dropped video is pinned down in FFmpeg
 
 ### Copying a configuration to another server matches by pipeline name, so names are unique
 
-**Decision (November 2026):** the sidebar's Copy / Paste configuration puts the groups,
+**Decision (November 2026):** Settings' Copy / Paste configuration puts the groups,
 the pipelines with their group and their outputs on the clipboard, and a paste adds to
 another server what it lacks. Groups and pipelines are matched by name, ignoring case,
 which is why pipeline names are now unique (creating or renaming to a taken name is a
