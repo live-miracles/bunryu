@@ -154,7 +154,7 @@ or destination as you type, and **Problems** keeps only outputs with an error or
 warning (the same ones the card colors red or yellow). The badges count the pipeline's
 outputs: running and stopped are every output (so they add up to the total), while errors
 and warnings count the outputs with one, stopped or not. "8 of 44" shows how many the
-filter leaves. The filter is per browser, starts empty
+filter leaves. Drag a card anywhere to reorder the outputs. The filter is per browser, starts empty
 for each pipeline you select, and only changes what is listed: **Start all**, **Stop all**
 and Copy still act on every output of the pipeline. While it hides outputs the cards can't be
 dragged, because the saved order covers all of them.

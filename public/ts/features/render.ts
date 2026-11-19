@@ -45,7 +45,7 @@ import {
 } from '../core/api.js';
 import { dupTooltip, formatOutputName, renderOutputCard } from './output-card.js';
 import { sharedStreamKeys } from '../core/output-advice.js';
-import { ICON_PENCIL, ICON_TRASH } from './output-badges.js';
+import { ICON_HISTORY, ICON_PENCIL, ICON_TRASH } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeUsage } from './shared-encodes.js';
 import { sharedEncodeLabel } from '../core/renditions.js';
 import { buildOverviewModel, type OverviewTable, type UsageRow } from '../core/overview-model.js';
@@ -520,8 +520,20 @@ function renderPipelineList(): void {
             ? `<span class="js-tooltip text-warning shrink-0 inline-flex" tabindex="0">${ICON_WARN}<div class="js-tooltip-content hidden">${dupTooltip('Duplicate stream key — also used by:', dupKeyRefs)}</div></span>`
             : '';
 
-        return `<li data-pipeline-id="${p.id}" data-group-key="${groupKey}">
-            <div class="flex items-center gap-2 ${selected} cursor-pointer js-select-pipeline" data-id="${p.id}">
+        // History, edit and delete show while the row is hovered or has keyboard focus (like
+        // a group's); a touch screen has no hover and is for looking, so it never shows them.
+        // Delete is greyed out while an output runs, as the pipeline panel's button was.
+        const hasActiveOutputs = p.outs.some((o) => o.desiredState !== 'stopped');
+        const name = escapeHtml(p.name);
+        const tools = `<div class="hidden shrink-0 items-center gap-0.5 ml-auto -my-1 group-hover/pipe:flex group-focus-within/pipe:flex [@media(hover:none)]:!hidden">
+                    <button class="btn btn-xs btn-square btn-ghost js-pipeline-history" title="Pipeline history" aria-label="History of pipeline ${name}">${ICON_HISTORY}</button>
+                    <button class="btn btn-xs btn-square btn-ghost js-edit-pipeline" title="Edit pipeline" aria-label="Edit pipeline ${name}">${ICON_PENCIL}</button>
+                    <button class="btn btn-xs btn-square btn-ghost text-error js-delete-pipeline ${hasActiveOutputs ? 'btn-disabled opacity-40' : ''}" title="${hasActiveOutputs ? 'Stop all outputs before deleting' : 'Delete pipeline'}" aria-label="Delete pipeline ${name}">${ICON_TRASH}</button>
+                </div>`;
+
+        // The whole row drags; the buttons and the name inside it still click.
+        return `<li data-pipeline-id="${p.id}" data-group-key="${groupKey}" draggable="true" class="cursor-grab" title="Drag to reorder">
+            <div class="group/pipe flex items-center gap-2 ${selected} cursor-pointer js-select-pipeline" data-id="${p.id}">
                 <div class="js-tooltip shrink-0">
                     <div class="rounded-box h-5 w-5" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
                     <div class="js-tooltip-content hidden">${statusTooltip}</div>
@@ -530,10 +542,11 @@ function renderPipelineList(): void {
                 ${statusBadge(outWarn, 'badge-warning')}
                 ${statusBadge(outFailed, 'badge-error')}
                 ${statusBadge(outOff, 'badge-ghost')}
-                <a class="js-pipeline-drag-handle cursor-grab ${nameClass}" draggable="true" title="Drag to reorder">${escapeHtml(p.name)}</a>
+                <span class="${nameClass}">${name}</span>
                 ${dupKeyWarn}
                 ${uptimeSpan}
                 ${inputTypeBadge}
+                ${tools}
             </div>
         </li>`;
     };
@@ -593,6 +606,22 @@ function renderPipelineList(): void {
             else void window.removePipelineGroupBtn(groupId);
             return;
         }
+        const pipelineAction = (e.target as Element).closest(
+            '.js-pipeline-history, .js-edit-pipeline, .js-delete-pipeline',
+        ) as HTMLElement | null;
+        const pipelineId =
+            pipelineAction?.closest<HTMLElement>('li[data-pipeline-id]')?.dataset.pipelineId;
+        if (pipelineAction && pipelineId) {
+            if (pipelineAction.classList.contains('btn-disabled')) return;
+            void import('../features/editor.js').then((ed) => {
+                if (pipelineAction.classList.contains('js-pipeline-history'))
+                    void ed.showPipelineLogs(pipelineId);
+                else if (pipelineAction.classList.contains('js-edit-pipeline'))
+                    ed.openEditPipeline(pipelineId);
+                else void ed.confirmDeletePipeline(pipelineId);
+            });
+            return;
+        }
         const toggle = (e.target as Element).closest('.js-toggle-group') as HTMLElement | null;
         if (toggle?.dataset.groupId) {
             const groupId = Number(toggle.dataset.groupId);
@@ -609,7 +638,7 @@ function renderPipelineList(): void {
     listEl.ondragstart = (e) => {
         const target = e.target as Element;
         const pipelineLi = target.closest('li[data-pipeline-id]') as HTMLElement | null;
-        if (target.closest('.js-pipeline-drag-handle') && pipelineLi) {
+        if (pipelineLi) {
             draggingPipelineEl = pipelineLi;
             currentDropGroupKey = null;
             pipelineLi.classList.add('opacity-40');
@@ -619,7 +648,7 @@ function renderPipelineList(): void {
             return;
         }
         const groupLi = target.closest('li[data-group-id]') as HTMLElement | null;
-        if (target.closest('.js-group-drag-handle') && groupLi) {
+        if (groupLi) {
             draggingGroupEl = groupLi;
             groupLi.classList.add('opacity-40');
             e.dataTransfer!.effectAllowed = 'move';
@@ -749,11 +778,11 @@ function renderGroupHeader(
         'btn btn-xs btn-square btn-ghost opacity-0 focus-visible:opacity-100 group-hover/group:opacity-100 [@media(hover:none)]:hidden';
     const name = escapeHtml(group.name);
 
-    return `<li data-group-id="${group.id}">
+    return `<li data-group-id="${group.id}" draggable="true" class="cursor-grab" title="Drag to reorder">
         <div class="group/group flex items-center gap-2 cursor-pointer js-toggle-group font-semibold opacity-90" data-group-id="${group.id}">
             ${collapsed ? ICON_CHEVRON_RIGHT : ICON_CHEVRON_DOWN}
             ${summary}
-            <span class="js-group-drag-handle cursor-grab truncate min-w-0" draggable="true" title="Drag to reorder">${name}</span>
+            <span class="truncate min-w-0">${name}</span>
             <div class="flex items-center gap-1 ml-auto shrink-0">
                 <button class="${actionClass} js-edit-group" data-group-id="${group.id}" title="Rename group" aria-label="Rename group ${name}">${ICON_PENCIL}</button>
                 <button class="${actionClass} hover:text-error js-delete-group" data-group-id="${group.id}" title="Delete group" aria-label="Delete group ${name}">${ICON_TRASH}</button>
@@ -1305,12 +1334,6 @@ function renderPipelineInfo(selectedId: string | null): void {
         readersBadge.textContent = `${pipeline.input.readers} reader${pipeline.input.readers === 1 ? '' : 's'}`;
         readersBadge.classList.toggle('hidden', !pipeline.input.connected);
     }
-    const hasActiveOutputs = pipeline.outs.some((o) => o.desiredState !== 'stopped');
-    const deleteBtn = document.getElementById('pipe-delete-btn');
-    deleteBtn?.classList.toggle('btn-disabled', hasActiveOutputs);
-    deleteBtn?.classList.toggle('opacity-40', hasActiveOutputs);
-    if (deleteBtn) deleteBtn.title = hasActiveOutputs ? 'Stop all outputs before deleting' : '';
-
     const statsContainer = document.getElementById('input-stats-container');
     const statsEl = document.getElementById('input-stats');
     const inputHtml = renderInputStats(pipeline.input, {
@@ -1648,7 +1671,7 @@ function renderOutputsList(pipeline: PipelineView): void {
     listEl.ondragstart = (e) => {
         const target = e.target as Element;
         const card = target.closest('[data-output-card]') as HTMLElement | null;
-        if (outputsListFiltered || !target.closest('.js-output-drag-handle') || !card) {
+        if (outputsListFiltered || !card) {
             e.preventDefault();
             return;
         }

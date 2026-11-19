@@ -3,6 +3,7 @@ import { state } from '../core/state.js';
 import { eventsForDisplay, summarizeEventMessage } from '../core/events.js';
 import {
     setUrlParam,
+    getUrlParam,
     maskStreamKey,
     withBusy,
     copyText,
@@ -323,7 +324,7 @@ export async function confirmDeletePipeline(id: string, btn?: HTMLButtonElement)
     await withBusy(btn, async () => {
         const ok = await api.deletePipeline(id);
         if (ok) {
-            setUrlParam('p', null);
+            if (getUrlParam('p') === String(id)) setUrlParam('p', null);
             await refreshAfterMutation();
         }
     });

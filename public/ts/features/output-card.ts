@@ -216,7 +216,7 @@ export function renderOutputCard(
     const isPending = deps.pendingOutputs.has(output.id);
 
     return `
-    <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0" data-output-card="${output.id}" ${cardTint}>
+    <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0 cursor-grab" draggable="true" data-output-card="${output.id}" ${cardTint}>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">
                 ${statusDotHtml}
@@ -225,7 +225,7 @@ export function renderOutputCard(
                     title="${isStopped ? 'Start' : 'Stop'}" aria-label="${isStopped ? 'Start' : 'Stop'}"${isPending ? ' disabled' : ''}>
                     ${isStopped ? ICON_PLAY : ICON_STOP}
                 </button>
-                <span class="js-output-drag-handle cursor-grab min-w-0 truncate" draggable="true" title="${escapeHtml(output.name)}">${escapeHtml(formatOutputName(output.name))}</span>
+                <span class="min-w-0 truncate" title="${escapeHtml(output.name)}">${escapeHtml(formatOutputName(output.name))}</span>
             </div>
             ${badges.join('')}
             ${inlineSink}

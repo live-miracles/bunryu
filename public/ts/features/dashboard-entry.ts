@@ -13,10 +13,7 @@ import {
     regenerateStreamKeysBtn,
     resetSrtPassphraseBtn,
     createPipeline,
-    openEditPipeline,
     submitPipelineForm,
-    confirmDeletePipeline,
-    showPipelineLogs,
     showSrsLogs,
     openAddOutput,
     submitOutputForm,
@@ -56,9 +53,6 @@ declare global {
         selectPipeline: (id: string | null) => void;
         addPipeBtn: (btn?: HTMLButtonElement) => Promise<void>;
         pipeFormBtn: (btn?: HTMLButtonElement) => Promise<void>;
-        editPipeBtn: () => void;
-        deletePipeBtn: (btn?: HTMLButtonElement) => Promise<void>;
-        pipeHistoryBtn: () => Promise<void>;
         addOutBtn: () => void;
         outputsCopyBtn: () => Promise<void>;
         outputsPasteBtn: () => Promise<void>;
@@ -146,23 +140,6 @@ window.selectPipeline = (id) => {
 
 window.addPipeBtn = (btn) => createPipeline(btn);
 window.pipeFormBtn = (btn) => submitPipelineForm(btn);
-
-window.editPipeBtn = () => {
-    if (document.getElementById('pipe-edit-btn')?.classList.contains('btn-disabled')) return;
-    const id = getUrlParam('p');
-    if (id) openEditPipeline(id);
-};
-
-window.deletePipeBtn = async (btn) => {
-    if (document.getElementById('pipe-delete-btn')?.classList.contains('btn-disabled')) return;
-    const id = getUrlParam('p');
-    if (id) await confirmDeletePipeline(id, btn);
-};
-
-window.pipeHistoryBtn = async () => {
-    const id = getUrlParam('p');
-    if (id) await showPipelineLogs(id);
-};
 
 window.addOutBtn = () => {
     const id = getUrlParam('p');

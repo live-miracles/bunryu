@@ -262,7 +262,9 @@ describe('card layout and controls', () => {
 describe('narrow screens', () => {
     test('a long output name truncates inside the card instead of overflowing it', () => {
         const html = render({ name: 'Long_Name_For_A_Very_Long_Destination_Output' });
-        assert.match(html, /class="js-output-drag-handle[^"]*\bmin-w-0\b[^"]*\btruncate\b/);
+        assert.match(html, /<span class="min-w-0 truncate" title="Long_Name/);
+        // The whole card drags, not just its name.
+        assert.match(html, /draggable="true" data-output-card="/);
         assert.match(
             html,
             /<div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">/,

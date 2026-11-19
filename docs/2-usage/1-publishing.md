@@ -88,6 +88,12 @@ the leg has stayed healthy for 30 s. A plain SRT input is logged the same way as
 at most 4 such lines a minute are kept per pipeline; the number hidden is added to the
 next line, and every change is in the diagnostics.
 
+## Pipeline buttons
+
+Hover a pipeline in the sidebar to show its **History**, **Edit** (name, stream key, group)
+and **Delete** buttons. Delete is greyed out while any of its outputs is running. A touch
+screen does not show them.
+
 ## Pipeline groups
 
 Groups fold related pipelines together in the sidebar. Everything is done in the sidebar,
@@ -97,8 +103,9 @@ and each change is saved at once:
 - **Rename or delete:** the pencil and bin on a group's header (shown on hover; a touch
   screen does not show them). Deleting asks first and does not delete the pipelines in it:
   they move out of any group.
-- **Reorder:** drag a group by its name; drag a pipeline onto a group to move it in.
-  A pipeline's group can also be set in its edit dialog.
+- **Reorder:** drag a group's header or a pipeline's row (anywhere on it, not only the name);
+  drop a pipeline on a group to move it in. A pipeline's group can also be set in its edit
+  dialog.
 - **Collapse:** the arrow folds a group; the choice is kept per browser.
 
 ## Test commands
