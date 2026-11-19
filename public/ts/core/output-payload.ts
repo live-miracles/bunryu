@@ -102,17 +102,25 @@ export function splitNewOutputs(
     return { fresh, skipped };
 }
 
-// What the operator is told once a paste is done.
-export function pasteResultMessage(added: number, skipped: number): string {
+// What the operator is told once a paste is done. `looping` is how many of the added
+// outputs publish back into the pipeline's own input: they are saved with that as their
+// error and cannot start until their destination is changed.
+export function pasteResultMessage(added: number, skipped: number, looping = 0): string {
     const outputs = (n: number) => `${n} output${n === 1 ? '' : 's'}`;
     if (added === 0) {
         return skipped === 1
             ? 'Nothing pasted: the output has a destination this pipeline already uses.'
             : `Nothing pasted: all ${skipped} outputs have a destination this pipeline already uses.`;
     }
-    return skipped === 0
-        ? `Pasted ${outputs(added)}.`
-        : `Pasted ${outputs(added)}, skipped ${skipped} with a destination this pipeline already uses.`;
+    const parts = [`Pasted ${outputs(added)}`];
+    if (skipped > 0) {
+        parts.push(`skipped ${skipped} with a destination this pipeline already uses`);
+    }
+    let message = `${parts.join(', ')}.`;
+    if (looping > 0) {
+        message += ` ${looping === 1 ? '1 loops' : `${looping} loop`} back into this pipeline's input and cannot start until its destination is changed.`;
+    }
+    return message;
 }
 
 // A bare RTMP/RTMPS/SRT URL on the clipboard is shorthand for {"url": "..."}.

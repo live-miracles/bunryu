@@ -282,8 +282,10 @@ only for a new module.
   and journal log tails; `auth.ts` login/sessions.
 - `src/utils/destination.ts` is the output destination policy (blocked and loopback hosts,
   the reserved `internal` app, `ownIngestKey`: the stream key a destination publishes into on
-  this server); `restreamLoop.ts` uses it to refuse an output that feeds its own pipeline's
-  input, directly or through other pipelines (outputs API, key reassignment, startup re-check).
+  this server); `restreamLoop.ts` uses it to find an output that feeds its own pipeline's
+  input, directly or through other pipelines. Such an output is saved stopped with the loop as
+  its error and refused at Start and Start all (outputs API); key reassignment refuses the
+  move and the startup re-check stops it.
 - `src/utils/ffmpeg.ts` builds FFmpeg arguments and the minimal environment every
   FFmpeg/ffprobe child gets (`ffmpegEnv`); `ffmpegCheck.ts` is the startup check of the
   build's protocols, encoders and filters; `appConfig.ts` reads

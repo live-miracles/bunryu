@@ -153,7 +153,9 @@ comes back or the server restarts.
 clipboard to the end of a pipeline's list, in this or another pipeline. The pasted outputs
 start stopped and the running ones are not touched, so it works at any time. An output
 whose destination URL the pipeline already uses is skipped, and a message says how many
-were added and how many skipped.
+were added and how many skipped. An output that would publish back into the pipeline's own
+input (or into another pipeline that leads back to it) is added too, but stays stopped with
+that as its error, and cannot be started until you change its destination.
 
 With many outputs, use the bar above the list: the filter box matches an output's name
 or destination as you type, and **Problems** keeps only outputs with an error or a

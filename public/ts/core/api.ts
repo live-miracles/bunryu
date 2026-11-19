@@ -199,11 +199,19 @@ export const updateOutput = (
 export const deleteOutput = (pipelineId: string, outId: string) =>
     apiRequest(`/api/pipelines/${pipelineId}/outputs/${outId}`, { method: 'DELETE' });
 
+// An output whose destination loops back into its own pipeline is saved with the loop as
+// its `lastError` and cannot start.
 export const createOutputsBulk = (pipelineId: string, outputs: OutputPayload[]) =>
-    apiRequest(`/api/pipelines/${pipelineId}/outputs/bulk`, { method: 'POST', body: { outputs } });
+    apiRequest<{ lastError: string | null }[]>(`/api/pipelines/${pipelineId}/outputs/bulk`, {
+        method: 'POST',
+        body: { outputs },
+    });
 
 export const startAllOutputs = (pipelineId: string) =>
-    apiRequest(`/api/pipelines/${pipelineId}/outputs/start-all`, { method: 'POST' });
+    apiRequest<{ blocked: { id: string; name: string; reason: string }[] }>(
+        `/api/pipelines/${pipelineId}/outputs/start-all`,
+        { method: 'POST' },
+    );
 
 export const stopAllOutputs = (pipelineId: string) =>
     apiRequest(`/api/pipelines/${pipelineId}/outputs/stop-all`, { method: 'POST' });

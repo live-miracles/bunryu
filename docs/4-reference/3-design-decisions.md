@@ -864,15 +864,39 @@ migrated with `git show 79d20ce:scripts/migrate-db-2-to-3.mjs`.
 
 **Revisit when:** a real event needs interpreter audio mixed into the program.
 
-### An output may not publish into its own pipeline, directly or through other pipelines
+### An output that publishes into its own pipeline, directly or through other pipelines, is saved but cannot start
 
-**Decision (October 2026):** creating or editing an output, and moving a pipeline to
-another stream key, is refused when the destination is this server's own
-`live/<key>` and that key is the pipeline's own input or the chain of such outputs
-leads back to it. The rows saved before the rule are stopped at startup, with the
-reason in their History. It is decided by stream key, not pipeline id: pipelines may
-share a key (the dashboard warns but allows it), and then they read the
+**Decision (November 2026, replacing an October 2026 rule that refused to save it):** an
+output whose destination is this server's own `live/<key>`, where that key is the
+pipeline's own input or the chain of such outputs leads back to it, can be created,
+pasted and edited. It is saved stopped, with the loop as its error ("Output stopped:
+destination loops back into this pipeline's input through pipeline "X" (a restream
+loop)") in the card and its History, and it cannot be started: Start is refused with
+that error, and Start all starts the other outputs, leaves it stopped and names it.
+Editing the destination to one that does not loop clears the error. Moving a pipeline
+to another stream key is still refused when one of its outputs would then loop. The
+check reads the saved outputs, not which of them run, so it gives the same answer
+when saving, starting and at startup, when an output that loops is stopped (as any
+row saved before a rule existed is). It is decided by stream key, not pipeline id:
+pipelines may share a key (the dashboard warns but allows it), and then they read the
 same stream, so an output of either one publishing into that key still feeds itself.
+
+**Why saved, not refused:** pasting a pipeline's outputs into another pipeline failed
+as a whole ("Output 2: destination loops back into this pipeline's input through
+pipeline "Pipeline 3""), with no way to see which output it was or to fix it
+afterwards: the operator had to edit the clipboard by hand. A saved output with the
+error on its card can be corrected in the edit dialog. It still cannot run, so the
+rule keeps its purpose.
+
+**Why it still cannot start:** the evidence is under **Why** below. It never reaches FFmpeg, so no state is added to
+the output's process management: the refusal is before `wantRunning`, and the output
+stays desired-stopped with the error in its History.
+
+**Known effect:** when an output closes a loop with outputs saved earlier (A feeds B,
+then B is given an output feeding A), both are flagged. The earlier one keeps running
+until something stops it, because nothing is started that would complete the loop, but
+it cannot be started again and is stopped at the next startup, with the reason in its
+History.
 
 **Why:** the destination rules allowed loopback on the server's own ports so pipelines
 can restream into each other, and nothing stopped an operator pasting the pipeline's
@@ -880,8 +904,8 @@ own publish URL. **Observed** on the test stack (2026-10-31, SRS 6.0-r2, FFmpeg
 7.1.4): a copy output pulling a live pipeline and pushing to the same key is refused
 by SRS (`Error opening output ... Input/output error`) while the input keeps running,
 so the stream is not corrupted, but the output could never work, and it would sit in
-the retry loop for as long as the event runs. Refusing it when it is typed tells the
-operator at once.
+the retry loop for as long as the event runs. Refusing it to start tells the operator
+at once, and keeps it out of the retry loop.
 
 **Limits:** only outputs on this server's own ingest are followed. A destination
 that reaches the server through a NAT-ed public address that is not on one of its

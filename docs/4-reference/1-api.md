@@ -35,7 +35,7 @@ JSON, `{ "error": "…" }`; an unexpected failure is a 500 with a generic messag
 | DELETE | `/api/pipelines/:id/outputs` | Clear all outputs for the pipeline — returns 409 if any of your outputs is still running (shared encodes are stopped and removed with them) |
 | POST | `/api/pipelines/:id/outputs/:outId` | Update output (same body as create; a field left out keeps its stored value). A running output accepts only `{ name }` — any other field gives 409, even with an unchanged value — and a shared encode always gives 409 |
 | DELETE | `/api/pipelines/:id/outputs/:outId` | Delete output (stops it first if running) — 409 for a shared encode |
-| POST | `/api/pipelines/:id/outputs/start-all` | Start all outputs (staggered at 200 ms intervals, returns immediately) |
+| POST | `/api/pipelines/:id/outputs/start-all` | Start all outputs (staggered at 200 ms intervals, returns immediately): `{ ok, scheduled, blocked: [{ id, name, reason }] }`, where `blocked` lists the outputs left stopped because they loop back into this pipeline |
 | POST | `/api/pipelines/:id/outputs/stop-all` | Stop all outputs |
 | POST | `/api/pipelines/:id/outputs/:outId/start` | Start output |
 | POST | `/api/pipelines/:id/outputs/:outId/stop` | Stop output |
@@ -95,11 +95,15 @@ ordinary output row owned by the server, so the API exposes it as one:
 - **You cannot create outputs in the `internal` app.** Create, bulk create and
   update refuse a destination that resolves to this host with a path under
   `/internal/` (`400`, "the internal app is reserved for shared encodes").
-- **You cannot create a restream loop.** Create, bulk create and update refuse a
+- **A restream loop is saved but cannot start.** Create, bulk create and update accept a
   destination that publishes into this server's own `live/<key>` when that key is the
-  pipeline's own input or the chain of restreams leads back to it (`400`). Moving a
+  pipeline's own input or the chain of restreams leads back to it. The returned output
+  is stopped and its `lastError` is the loop (`Output stopped: destination loops back
+  into this pipeline's input … (a restream loop)`). `POST …/outputs/:outId/start`
+  refuses it with `400` and the same reason, and start-all leaves it stopped and lists
+  it in `blocked`. An edit that fixes the destination clears the error. Moving a
   pipeline to another stream key (`POST /api/pipelines/:id` with `streamKeyId`) is
-  refused with `409` when one of its outputs would then loop back.
+  still refused with `409` when one of its outputs would then loop back.
 - **Output stats carry extra fields** (`GET /api/health`, per output): `role`
   (`"rendition"` for a shared encode, else `"output"`), `renditionId` (the shared
   encode a running shared output is pulling, else `null`), and, for a shared

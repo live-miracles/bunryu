@@ -1177,9 +1177,16 @@ export async function startAllOutputs(pipelineId: string, btn: HTMLButtonElement
     });
     if (!confirmed) return;
     await withBusy(btn, async () => {
-        const ok = await api.startAllOutputs(pipelineId);
-        if (!ok) return;
+        const started = await api.startAllOutputs(pipelineId);
+        if (!started) return;
         await refreshAfterMutation();
+        // An output that loops back into this pipeline's input stays stopped.
+        const { blocked } = started;
+        if (blocked.length > 0) {
+            api.showError(
+                `Not started, because the destination loops back into this pipeline: ${blocked.map((o) => o.name).join(', ')}.`,
+            );
+        }
     });
 }
 
@@ -1236,6 +1243,7 @@ export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): 
         const created = await api.createOutputsBulk(pipelineId, fresh);
         if (!created) return;
         await refreshAfterMutation();
-        showNotice(pasteResultMessage(fresh.length, skipped.length));
+        const looping = created.filter((o) => o.lastError !== null).length;
+        showNotice(pasteResultMessage(fresh.length, skipped.length, looping));
     });
 }
