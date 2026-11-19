@@ -70,7 +70,12 @@ import {
     type OutStatus,
     type StatusIssue,
 } from '../core/status.js';
-import { issueLinesHtml, renderStatusTooltip, splitDotGradient } from './status-tooltip.js';
+import {
+    issueLinesHtml,
+    mistakesTooltipHtml,
+    renderStatusTooltip,
+    splitDotGradient,
+} from './status-tooltip.js';
 import {
     countOutputs,
     matchesOutputFilter,
@@ -520,6 +525,14 @@ function renderPipelineList(): void {
             ? `<span class="js-tooltip text-warning shrink-0 inline-flex" tabindex="0">${ICON_WARN}<div class="js-tooltip-content hidden">${dupTooltip('Duplicate stream key — also used by:', dupKeyRefs)}</div></span>`
             : '';
 
+        // A mistake in how an output is set up (same destination, a track the input lacks)
+        // never changes the dot, so the row carries its own marker, the same as the Status
+        // view's "to fix" badge.
+        const mistakeWarn =
+            problems.mistakeLines.length > 0
+                ? `<span class="js-tooltip text-warning shrink-0 inline-flex" tabindex="0">${ICON_WARN}<div class="js-tooltip-content hidden">${mistakesTooltipHtml(problems.mistakeLines)}</div></span>`
+                : '';
+
         // History, edit and delete show while the row is hovered or has keyboard focus (like
         // a group's); a touch screen has no hover and is for looking, so it never shows them.
         // Delete is greyed out while an output runs, as the pipeline panel's button was.
@@ -543,7 +556,7 @@ function renderPipelineList(): void {
                 ${statusBadge(outFailed, 'badge-error')}
                 ${statusBadge(outOff, 'badge-ghost')}
                 <span class="${nameClass}">${name}</span>
-                ${dupKeyWarn}
+                ${dupKeyWarn}${mistakeWarn}
                 ${uptimeSpan}
                 ${inputTypeBadge}
                 ${tools}

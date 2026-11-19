@@ -26,6 +26,8 @@ export interface StatusCard {
     tally: StatusTally;
     // How many outputs have a mistake in how they are configured (core/output-advice.ts).
     mistakes: number;
+    // Each mistake as "Output name: mistake", for the badge's tooltip.
+    mistakeLines: string[];
     // The card belongs in the Issues view (see PipelineProblems.hasProblem in core/problems.ts).
     hasIssue: boolean;
     severity: 'error' | 'warn' | 'none';
@@ -64,6 +66,7 @@ export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext)
             ),
             tally: rolled.tally,
             mistakes: rolled.mistakes,
+            mistakeLines: rolled.mistakeLines,
             hasIssue: rolled.hasProblem,
             severity: rolled.severity,
         };

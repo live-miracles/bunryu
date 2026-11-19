@@ -137,8 +137,9 @@ export interface PipelineProblems {
     renditions: OutputProblem[];
     // The outputs' statuses.
     tally: StatusTally;
-    // How many outputs have a mistake.
+    // How many outputs have a mistake, and each one as "Output name: mistake" for a tooltip.
     mistakes: number;
+    mistakeLines: string[];
     // The Status view's card colour.
     severity: 'error' | 'warn' | 'none';
     // The pipeline belongs in the Issues view: its input is a warning or an error, or an
@@ -176,6 +177,7 @@ export function pipelineProblems(pipeline: PipelineView, ctx: ProblemContext): P
         renditions,
         tally: tallyStatuses(outputs.map((o) => o.status)),
         mistakes,
+        mistakeLines: outputs.flatMap((o) => o.mistakes.map((m) => `${o.output.name}: ${m}`)),
         severity,
         hasProblem: isProblem(status) || outputs.some((o) => o.severity !== null),
     };

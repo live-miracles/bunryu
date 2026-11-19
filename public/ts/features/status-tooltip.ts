@@ -54,3 +54,12 @@ export function renderStatusTooltip(left: StatusHalf, right: StatusHalf, idle?: 
     if (idle) return `<div class="text-xs leading-snug opacity-70">${escapeHtml(idle)}</div>`;
     return `${halfHtml(left)}<div class="mt-1">${halfHtml(right)}</div>`;
 }
+
+// The hover text of a "to fix" marker (the pipeline list's warning icon and the Status view's
+// badge): one line per output set up wrongly.
+export function mistakesTooltipHtml(lines: string[]): string {
+    const rows = lines
+        .map((l) => `<div class="text-xs leading-snug text-warning">${escapeHtml(l)}</div>`)
+        .join('');
+    return `<div class="text-xs leading-snug font-semibold text-warning mb-0.5">To fix:</div>${rows}`;
+}

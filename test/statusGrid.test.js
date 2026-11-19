@@ -394,6 +394,7 @@ describe('mistakes in how an output is configured', () => {
     test('the card is an issue, with the mistake as the dot text, and the dot keeps its colour', () => {
         const [first, second] = cardsOf(pipelines());
         assert.equal(first.mistakes, 1);
+        assert.deepEqual(first.mistakeLines, ['Out a: Same destination as Pipeline 2 → Out d']);
         assert.equal(first.hasIssue, true);
         assert.equal(first.severity, 'warn');
         assert.deepEqual(

@@ -18,6 +18,7 @@ import {
 } from '../core/status-grid.js';
 import type { ActivityEvent } from '../types.js';
 import { CHART_WINDOW_MS, drawChart } from './dashboard-charts.js';
+import { mistakesTooltipHtml } from './status-tooltip.js';
 
 // The Status view: every pipeline as a card with a dot per output, the host graphs and the
 // recent problems, on one page. It is drawn on every dashboard poll from the same state as
@@ -45,26 +46,38 @@ const STATUS_WORD: Record<StatusDot['status'], string> = {
     off: 'stopped',
 };
 
-function dotHtml(status: StatusDot['status'], title: string, sizeClass: string): string {
-    return `<span class="${sizeClass} inline-block shrink-0 rounded-full" style="${DOT_STYLE[status]}" title="${escapeHtml(title)}"></span>`;
+// The hover text is the dashboard's own tooltip (see initHoverTooltips in render.ts), the same
+// as the pipeline list's, not the browser's title text.
+function tooltipHtml(heading: string, detail: string): string {
+    const line = detail
+        ? `<div class="text-warning text-xs leading-snug">${escapeHtml(detail)}</div>`
+        : '';
+    return `<div class="text-xs leading-snug font-semibold">${escapeHtml(heading)}</div>${line}`;
 }
 
-function badge(count: number, cls: string, label: string): string {
-    return count > 0 ? `<span class="badge badge-sm ${cls}">${count} ${label}</span>` : '';
+function dotHtml(
+    status: StatusDot['status'],
+    heading: string,
+    detail: string,
+    sizeClass: string,
+): string {
+    return `<span class="js-tooltip inline-flex shrink-0" tabindex="0"><span class="${sizeClass} inline-block rounded-full" style="${DOT_STYLE[status]}"></span><div class="js-tooltip-content hidden">${tooltipHtml(heading, detail)}</div></span>`;
+}
+
+function badge(count: number, cls: string, label: string, tooltip = ''): string {
+    if (count === 0) return '';
+    if (!tooltip) return `<span class="badge badge-sm ${cls}">${count} ${label}</span>`;
+    return `<span class="js-tooltip badge badge-sm ${cls}" tabindex="0">${count} ${label}<div class="js-tooltip-content hidden">${tooltip}</div></span>`;
 }
 
 function cardHtml(c: StatusCard): string {
     const edge =
         c.severity === 'error' ? 'var(--dot-bad)' : c.severity === 'warn' ? 'var(--dot-warn)' : '';
     const style = edge ? ` style="border-color:color-mix(in oklab,${edge} 70%,transparent)"` : '';
-    const inputTitle = `Input: ${c.inputStatus === 'good' ? 'live' : c.inputStatus === 'off' ? 'offline' : c.inputMessage || c.inputStatus}`;
+    const inputState = c.inputStatus === 'good' ? 'live' : c.inputStatus === 'off' ? 'offline' : '';
     const dots = c.dots
         .map((d) =>
-            dotHtml(
-                d.status,
-                `${d.name}: ${STATUS_WORD[d.status]}${d.message ? ` (${d.message})` : ''}`,
-                'h-2.5 w-2.5',
-            ),
+            dotHtml(d.status, `${d.name}: ${STATUS_WORD[d.status]}`, d.message, 'h-2.5 w-2.5'),
         )
         .join('');
     // A few outputs sit on the name's line; many wrap into a block under it.
@@ -77,13 +90,13 @@ function cardHtml(c: StatusCard): string {
         : '';
     // Outputs set up wrongly (same destination, a track the input lacks): their dots keep the
     // colour of what is happening, so the card says there is something to fix.
-    const fix = badge(c.mistakes, 'badge-warning', 'to fix');
+    const fix = badge(c.mistakes, 'badge-warning', 'to fix', mistakesTooltipHtml(c.mistakeLines));
     const body = inline
         ? `<span class="ml-auto flex shrink-0 flex-wrap items-center gap-1">${dots || '<span class="text-muted text-xs">no outputs</span>'}</span>`
         : '';
     return `<a href="/?p=${encodeURIComponent(c.id)}" data-pipeline-id="${escapeHtml(c.id)}" class="border-base-content/10 bg-base-100/50 hover:border-primary mb-2 block break-inside-avoid rounded-xl border px-3 py-2"${style}>
         <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            ${dotHtml(c.inputStatus, inputTitle, 'h-3.5 w-3.5')}
+            ${dotHtml(c.inputStatus, `Input: ${inputState || c.inputStatus}`, inputState ? '' : c.inputMessage, 'h-3.5 w-3.5')}
             <span class="min-w-0 truncate font-semibold">${escapeHtml(c.name)}</span>
             ${summary}${inline ? typeBadge : ''}${fix}${body}
         </span>
