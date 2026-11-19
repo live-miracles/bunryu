@@ -1739,11 +1739,6 @@ export function renderMetrics(): void {
 export function renderPipelines(): void {
     const selectedId = getUrlParam('p');
     const view = getUrlParam('view');
-    const overviewBtn = document.getElementById('overview-nav-btn');
-    overviewBtn?.classList.toggle(
-        'btn-active',
-        !view && !state.pipelines.some((p) => p.id === selectedId),
-    );
     const statusBtn = document.getElementById('status-nav-btn');
     statusBtn?.classList.toggle('btn-active', view === 'status');
     const logsBtn = document.getElementById('srs-logs-nav-btn');
