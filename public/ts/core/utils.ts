@@ -210,11 +210,17 @@ export function flashSaveSuccess(id: string): void {
 // A modal dialog is in the browser's top layer, above any z-index. The notice is a
 // popover, which joins the top layer later and so shows above an open dialog.
 let copiedNoticeTimer: number | undefined;
-function showCopiedNotice(message = 'Copied', durationMs = 1500): void {
+function showCopiedNotice(
+    message = 'Copied',
+    durationMs = 1500,
+    tone: 'success' | 'warning' = 'success',
+): void {
     const el = document.getElementById('copied-notification');
     if (!el) return;
     const text = document.getElementById('copied-notification-text');
     if (text) text.textContent = message;
+    el.classList.toggle('alert-success', tone === 'success');
+    el.classList.toggle('alert-warning', tone === 'warning');
     el.classList.remove('hidden');
     try {
         el.showPopover?.();
@@ -233,9 +239,9 @@ function showCopiedNotice(message = 'Copied', durationMs = 1500): void {
 }
 
 // A short message at the bottom of the screen (a paste's result), longer than "Copied" so
-// it can be read.
-export function showNotice(message: string): void {
-    showCopiedNotice(message, 5000);
+// it can be read. Green by default, yellow for a warning.
+export function showNotice(message: string, tone: 'success' | 'warning' = 'success'): void {
+    showCopiedNotice(message, 5000, tone);
 }
 
 export async function copyText(text: string): Promise<void> {

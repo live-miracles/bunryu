@@ -1233,7 +1233,7 @@ export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): 
         .map((o) => o.url);
     const { fresh, skipped } = splitNewOutputs(existingUrls, parsed.outputs);
     if (fresh.length === 0) {
-        showNotice(pasteResultMessage(0, skipped.length));
+        showNotice(pasteResultMessage(0, skipped.length), 'warning');
         return;
     }
 
@@ -1241,6 +1241,9 @@ export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): 
         const created = await api.createOutputsBulk(pipelineId, fresh);
         if (!created) return;
         await refreshAfterMutation();
-        showNotice(pasteResultMessage(fresh.length, skipped.length));
+        showNotice(
+            pasteResultMessage(fresh.length, skipped.length),
+            skipped.length > 0 ? 'warning' : 'success',
+        );
     });
 }

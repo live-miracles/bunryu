@@ -730,9 +730,22 @@
         color: var(--on-status);
     }
 
-    .alert-primary {
-        background: var(--ink);
-        color: var(--page);
+    /* The bottom toast: a half-transparent tint of the status colour, blurred behind like the
+       navbar, so it reads over the content under it. Green for success, yellow for a warning. */
+    .alert-success,
+    .alert-warning {
+        background: color-mix(in oklab, var(--c) 22%, transparent);
+        border: 1px solid color-mix(in oklab, var(--c) 40%, transparent);
+        color: var(--ink);
+        backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    .alert-success {
+        --c: var(--dot-ok);
+    }
+
+    .alert-warning {
+        --c: var(--dot-warn);
     }
 
     .status {
