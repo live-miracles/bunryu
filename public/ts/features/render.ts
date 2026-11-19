@@ -1543,7 +1543,7 @@ function renderPublishCard(
                 return `<div class="flex min-w-0 items-center gap-2">
                     <span class="w-28 shrink-0 text-xs text-muted">${r.label}</span>
                     <code class="min-w-0 flex-1 truncate text-xs"${title}>${escapeHtml(text)}</code>${eye}
-                    <button type="button" data-copy-idx="${i}" class="btn btn-xs btn-square ${r.primary ? 'btn-accent' : 'btn-ghost'} btn-outline shrink-0" title="Copy ${r.label.toLowerCase()}" aria-label="Copy ${r.label.toLowerCase()}">${ICON_COPY}</button>
+                    <button type="button" data-copy-idx="${i}" class="btn btn-xs btn-square ${r.primary ? 'btn-accent btn-soft' : 'btn-ghost btn-outline'} shrink-0" title="Copy ${r.label.toLowerCase()}" aria-label="Copy ${r.label.toLowerCase()}">${ICON_COPY}</button>
                 </div>`;
             })
             .join(''),
@@ -1626,7 +1626,8 @@ function renderOutputsList(pipeline: PipelineView): void {
     const searchBox = document.getElementById('outputs-search') as HTMLInputElement | null;
     if (searchBox && searchBox.value !== query) searchBox.value = query;
     const problemsBtn = document.getElementById('outputs-problems-btn');
-    problemsBtn?.classList.toggle('btn-primary', problemsOnly);
+    problemsBtn?.classList.toggle('btn-accent', problemsOnly);
+    problemsBtn?.classList.toggle('btn-soft', problemsOnly);
     problemsBtn?.classList.toggle('btn-outline', !problemsOnly);
     problemsBtn?.setAttribute('aria-pressed', String(problemsOnly));
     const summary = document.getElementById('outputs-summary');

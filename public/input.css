@@ -189,7 +189,7 @@
         background: color-mix(in oklab, var(--ink) 12%, transparent);
     }
 
-    /* An output's Stop button: hollow and neutral while the output runs (the filled Start button
+    /* An output's Stop button: hollow and neutral while the output runs (the tinted Start button
        marks a stopped one), red only under the pointer, where the click would stop a live feed. */
     .btn-stop:hover,
     .btn-stop:focus-visible {

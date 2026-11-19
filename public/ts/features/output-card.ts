@@ -230,7 +230,7 @@ export function renderOutputCard(
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">
                 ${statusDotHtml}
-                <button class="btn btn-xs btn-square shrink-0 ${isStopped ? 'btn-primary' : 'btn-outline btn-stop'}"
+                <button class="btn btn-xs btn-square shrink-0 ${isStopped ? 'btn-accent btn-soft' : 'btn-outline btn-stop'}"
                     data-action="${isStopped ? 'start' : 'stop'}" data-out-id="${output.id}"
                     title="${isStopped ? 'Start' : 'Stop'}" aria-label="${isStopped ? 'Start' : 'Stop'}"${isPending ? ' disabled' : ''}>
                     ${isStopped ? ICON_PLAY : ICON_STOP}
