@@ -10,6 +10,7 @@ const {
     outputAdvice,
     outputMistakes,
     refLabel,
+    restreamLoops,
     sharedStreamKeys,
 } = require('../public/ts/core/output-advice');
 
@@ -207,5 +208,99 @@ describe('outputMistakes', () => {
             outputMistakes(out('1-1', 'YT', url, { audioEncoding: '0' }), rtmpInput, dups),
             ['Same destination as Hindi → FB'],
         );
+    });
+});
+
+describe('restreamLoops', () => {
+    // A pipeline with the publish URLs the dashboard knows for its key.
+    const withKey = (id, name, key, outs) => ({
+        ...pipeline(id, name, outs),
+        streamKey: key,
+        rtmpPublishUrl: `rtmp://live.example.com/live/${key}`,
+        srtPublishUrl: `srt://live.example.com:10080?streamid=#!::r=live/${key},m=publish`,
+        rtmpPublishUrlLocal: `rtmp://127.0.0.1:1935/live/${key}`,
+        srtPublishUrlLocal: `srt://127.0.0.1:10080?streamid=#!::r=live/${key},m=publish`,
+    });
+    const toKey = (key) => `rtmp://127.0.0.1:1935/live/${key}`;
+
+    test('an output that publishes into its own pipeline loops, however the URL is spelled', () => {
+        for (const url of [
+            toKey('kA'),
+            'rtmp://live.example.com/live/kA',
+            'srt://127.0.0.1:10080?streamid=#!::r=live/kA,m=publish',
+            'srt://live.example.com:10080?streamid=#!::r=live/kA,m=publish',
+        ]) {
+            const a = withKey(1, 'A', 'kA', [out('1-1', 'Loop', url)]);
+            const loops = restreamLoops([a]);
+            assert.match(loops.get('1-1'), /^Loops back into this pipeline's own input/, url);
+        }
+    });
+
+    test('localhost and 127.0.0.1 are the same address, and SRT options after the stream id do not matter', () => {
+        for (const url of [
+            'rtmp://localhost:1935/live/kA',
+            'rtmp://127.0.0.1:1935/live/kA',
+            'rtmps://live.example.com/live/kA',
+            'srt://localhost:10080?streamid=#!::r=live/kA,m=publish&passphrase=x&pbkeylen=16',
+            'srt://127.0.0.1:10080?latency=200&streamid=#!::r=live/kA,m=publish',
+        ]) {
+            const a = withKey(1, 'A', 'kA', [out('1-1', 'Loop', url)]);
+            assert.equal(restreamLoops([a]).size, 1, url);
+        }
+    });
+
+    test('a destination on another host or port, or another key, is not this server', () => {
+        for (const url of [
+            'rtmp://other.example.com:1935/live/kA',
+            'rtmp://127.0.0.1:9999/live/kA',
+            'rtmp://127.0.0.1:1935/live/not-a-pipeline-key',
+            'srt://127.0.0.1:10080?streamid=#!::r=live/kA,m=request',
+            'srt://other.example.com:10080?streamid=#!::r=live/kA,m=publish',
+        ]) {
+            const a = withKey(1, 'A', 'kA', [out('1-1', 'Out', url)]);
+            assert.equal(restreamLoops([a]).size, 0, url);
+        }
+    });
+
+    test('an output of another pipeline restreaming into this one does not', () => {
+        const a = withKey(1, 'A', 'kA', [out('1-1', 'A to B', toKey('kB'))]);
+        const b = withKey(2, 'B', 'kB', []);
+        assert.equal(restreamLoops([a, b]).size, 0);
+    });
+
+    test('a loop through another pipeline marks both outputs of the circle, naming the other pipeline', () => {
+        const a = withKey(1, 'A', 'kA', [out('1-1', 'A to B', toKey('kB'))]);
+        const b = withKey(2, 'B', 'kB', [out('2-1', 'B to A', toKey('kA'))]);
+        const loops = restreamLoops([a, b]);
+        assert.equal(
+            loops.get('1-1'),
+            'Loops back into this pipeline\'s input through "B", so it cannot work',
+        );
+        assert.equal(
+            loops.get('2-1'),
+            'Loops back into this pipeline\'s input through "A", so it cannot work',
+        );
+    });
+
+    test('follows a longer chain, and ignores outputs that go elsewhere', () => {
+        const a = withKey(1, 'A', 'kA', [
+            out('1-1', 'A to B', toKey('kB')),
+            out('1-2', 'YT', 'rtmp://a.rtmp.youtube.com/live2/k'),
+        ]);
+        const b = withKey(2, 'B', 'kB', [out('2-1', 'B to C', toKey('kC'))]);
+        const c = withKey(3, 'C', 'kC', [out('3-1', 'C to A', toKey('kA'))]);
+        const loops = restreamLoops([a, b, c]);
+        assert.deepEqual([...loops.keys()].sort(), ['1-1', '2-1', '3-1']);
+    });
+
+    test('a loop is a mistake on the output, and nothing is said without one', () => {
+        const a = withKey(1, 'A', 'kA', [out('1-1', 'Loop', toKey('kA'))]);
+        const loops = restreamLoops([a]);
+        const o = a.outs[0];
+        assert.deepEqual(outputAdvice(o, rtmpInput, new Map(), loops), [
+            { level: 'mistake', message: loops.get('1-1') },
+        ]);
+        assert.equal(outputMistakes(o, rtmpInput, new Map(), loops).length, 1);
+        assert.deepEqual(outputAdvice(o, rtmpInput, new Map()), []);
     });
 });

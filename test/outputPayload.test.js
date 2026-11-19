@@ -164,17 +164,6 @@ describe('pasteResultMessage', () => {
         );
     });
 
-    test('says how many of the added outputs loop back into the pipeline', () => {
-        assert.equal(
-            pasteResultMessage(3, 0, 1),
-            "Pasted 3 outputs. 1 loops back into this pipeline's input and cannot start until its destination is changed.",
-        );
-        assert.equal(
-            pasteResultMessage(3, 1, 2),
-            "Pasted 3 outputs, skipped 1 with a destination this pipeline already uses. 2 loop back into this pipeline's input and cannot start until its destination is changed.",
-        );
-    });
-
     test('says so when everything was skipped', () => {
         assert.match(pasteResultMessage(0, 1), /^Nothing pasted: the output has/);
         assert.match(pasteResultMessage(0, 4), /^Nothing pasted: all 4 outputs have/);

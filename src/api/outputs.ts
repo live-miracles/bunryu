@@ -7,7 +7,6 @@ import { cyan } from '../utils/ansiColor.js';
 import { checkOutputDestination, isInternalAppDestination } from '../utils/destination.js';
 import { isRenditionOutput, splitOutputs } from '../utils/renditions.js';
 import { parseName } from '../utils/inputLimits.js';
-import { createRestreamLoopChecker, isRestreamLoopReason } from '../utils/restreamLoop.js';
 
 // Validate an output's destination from the request body. It needs a valid URL
 // and audio track selection; multiple tracks are only valid for an SRT
@@ -44,8 +43,7 @@ interface OutputConfig {
 }
 
 // An output's settings from a request body, checked in the order the dashboard
-// reports them. A destination that loops back into the pipeline's own input is not refused
-// here: it is saved and flagged (see `noteLoop` below). `kind` says which check failed, for the bulk route's messages:
+// reports them. `kind` says which check failed, for the bulk route's messages:
 // 'policy' errors (reserved app, blocked destination) are about the destination
 // an operator pasted, so a bulk request names the output they belong to.
 type ParsedOutputConfig =
@@ -79,36 +77,6 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
     const isInUse = (output: Output): boolean =>
         output.desiredState !== 'stopped' || outputService.getStats(output.id).status === 'running';
 
-    // An output whose destination loops back into its own pipeline's input (directly or
-    // through other pipelines' saved outputs) is saved, so the operator can see it and
-    // change the destination, but it stays stopped with the loop as its error and cannot
-    // be started. The check reads the saved outputs, not which of them run, so the rule
-    // is the same at save, at Start and at startup (enforceDestinationPolicy).
-    const loopOf = async (output: Output): Promise<string | null> => {
-        try {
-            return await createRestreamLoopChecker(db)(output.pipelineId, output.url, {
-                skipOutputId: output.id,
-            });
-        } catch (error) {
-            // Not a reason to refuse the request: the startup check looks at it again.
-            console.error(`[outputs] ${output.id} restream loop check failed:`, error);
-            return null;
-        }
-    };
-    const noteLoop = (output: Output, reason: string): void => {
-        db.setOutputLastError(output.id, `Output stopped: ${reason}`, 'crash');
-        console.warn(`[outputs] ${output.id} (${output.name}) cannot start: ${reason}`);
-    };
-    // Records the loop on a just-saved output and returns the row with it, or the row as
-    // it is. A fixed destination clears an earlier loop error and nothing else.
-    const flagLoop = async (output: Output): Promise<Output> => {
-        const reason = await loopOf(output);
-        if (reason) noteLoop(output, reason);
-        else if (isRestreamLoopReason(output.lastError)) db.markOutputRecovered(output.id);
-        else return output;
-        return db.getOutput(output.id) ?? output;
-    };
-
     app.post('/api/pipelines/:pipelineId/outputs', async (req, res) => {
         const pipelineId = parseInt(req.params.pipelineId);
         if (isNaN(pipelineId)) return res.status(400).json({ error: 'invalid pipelineId' });
@@ -128,7 +96,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             });
         }
         console.log(cyan(`[outputs] user add requested: ${output.id} (${output.name})`));
-        return res.status(201).json(await flagLoop(output));
+        return res.status(201).json(output);
     });
 
     app.post('/api/pipelines/:pipelineId/outputs/bulk', async (req, res) => {
@@ -170,48 +138,23 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
                 `[outputs] user add-bulk requested: pipeline=${pipelineId} count=${created.length}`,
             ),
         );
-        return res.status(201).json(await Promise.all(created.map(flagLoop)));
+        return res.status(201).json(created);
     });
 
-    app.post('/api/pipelines/:pipelineId/outputs/start-all', async (req, res) => {
+    app.post('/api/pipelines/:pipelineId/outputs/start-all', (req, res) => {
         const pipelineId = parseInt(req.params.pipelineId);
         if (isNaN(pipelineId)) return res.status(400).json({ error: 'invalid pipelineId' });
         if (!db.getPipeline(pipelineId))
             return res.status(404).json({ error: 'Pipeline not found' });
 
-        // An output that would loop is left stopped and reported; the others start. One
-        // that is already wanted running or still running is not looked at: Start all
-        // changes nothing for it.
-        const { outputs } = splitOutputs(db.listOutputsForPipeline(pipelineId));
-        const looping = (
-            await Promise.all(
-                outputs.map(async (output) => ({
-                    output,
-                    reason: isInUse(output) ? null : await loopOf(output),
-                })),
-            )
-        ).filter((o): o is { output: Output; reason: string } => o.reason !== null);
-
         db.setDesiredStateForPipeline(pipelineId, 'running');
-        for (const { output, reason } of looping) {
-            db.setOutputDesiredState(output.id, 'stopped');
-            noteLoop(output, reason);
-        }
         const scheduled = outputService.restartPipelineOutputs(pipelineId, 0);
         console.log(
             cyan(
-                `[outputs] user start-all requested: pipeline=${pipelineId} scheduled=${scheduled} blocked=${looping.length}`,
+                `[outputs] user start-all requested: pipeline=${pipelineId} scheduled=${scheduled}`,
             ),
         );
-        return res.json({
-            ok: true,
-            scheduled,
-            blocked: looping.map(({ output, reason }) => ({
-                id: output.id,
-                name: output.name,
-                reason,
-            })),
-        });
+        return res.json({ ok: true, scheduled });
     });
 
     app.post('/api/pipelines/:pipelineId/outputs/stop-all', (req, res) => {
@@ -278,7 +221,7 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
             });
         }
         console.log(cyan(`[outputs] user update requested: ${outId} (${name})`));
-        return res.json(updated ? await flagLoop(updated) : updated);
+        return res.json(updated);
     });
 
     app.delete('/api/pipelines/:pipelineId/outputs', async (req, res) => {
@@ -337,13 +280,6 @@ export function registerOutputApi(app: Express, db: Db, outputService: OutputSer
         if (isRenditionOutput(output)) return res.status(409).json(MANAGED_ERROR);
 
         console.log(cyan(`[outputs] user start requested: ${outId} (${output.name})`));
-        // One that is already wanted running or still running is not looked at: starting
-        // it changes nothing.
-        const loop = isInUse(output) ? null : await loopOf(output);
-        if (loop) {
-            noteLoop(output, loop);
-            return res.status(400).json({ error: loop });
-        }
         try {
             await wantRunning(db, outputService, outId, { byUser: true });
             const stats = outputService.getStats(outId);

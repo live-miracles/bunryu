@@ -1635,7 +1635,10 @@ function renderOutputsList(pipeline: PipelineView): void {
             ? `<p class="text-sm text-muted">${escapeHtml(noMatchingOutputsText(query, problemsOnly))}</p>`
             : visible
                   .map(({ output }) =>
-                      renderOutputCard(output, pipeline.input, dupUrls, { pendingOutputs }),
+                      renderOutputCard(output, pipeline.input, dupUrls, {
+                          pendingOutputs,
+                          loops: ctx.loops,
+                      }),
                   )
                   .join('');
 

@@ -486,6 +486,8 @@ export interface PipelineView {
     srtBonding: SrtBondingStatus;
     rtmpPublishUrl: string;
     srtPublishUrl: string;
+    rtmpPublishUrlLocal: string;
+    srtPublishUrlLocal: string;
     input: InputHealth & { live: boolean; verdict: StatusVerdict };
     alerts: PipelineAlert[];
     // Your outputs. Shared-encode rows are kept apart in `renditions` so every

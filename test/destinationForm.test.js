@@ -7,6 +7,7 @@ const {
     buildDestinationUrl,
     detectServer,
     isDestinationUrl,
+    restreamChoices,
     sanitizedDestinationFor,
 } = require('../public/ts/core/destination');
 
@@ -87,5 +88,27 @@ describe('isDestinationUrl', () => {
         assert.equal(isDestinationUrl('srt://h:1'), true);
         assert.equal(isDestinationUrl('https://h'), false);
         assert.equal(isDestinationUrl('abcd-efgh'), false);
+    });
+});
+
+describe('restreamChoices', () => {
+    const p = (id, streamKeyId) => ({ id: String(id), name: `P${id}`, streamKeyId });
+
+    test('leaves out the pipeline itself', () => {
+        assert.deepEqual(
+            restreamChoices([p(1, 1), p(2, 2), p(3, 3)], '2').map((x) => x.id),
+            ['1', '3'],
+        );
+    });
+
+    test('leaves out a pipeline on the same stream key, which is the same stream', () => {
+        assert.deepEqual(
+            restreamChoices([p(1, 1), p(2, 1), p(3, 3)], '1').map((x) => x.id),
+            ['3'],
+        );
+    });
+
+    test('lists every pipeline when the form has none of its own yet', () => {
+        assert.equal(restreamChoices([p(1, 1), p(2, 2)], '').length, 2);
     });
 });

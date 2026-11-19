@@ -154,8 +154,8 @@ clipboard to the end of a pipeline's list, in this or another pipeline. The past
 start stopped and the running ones are not touched, so it works at any time. An output
 whose destination URL the pipeline already uses is skipped, and a message says how many
 were added and how many skipped. An output that would publish back into the pipeline's own
-input (or into another pipeline that leads back to it) is added too, but stays stopped with
-that as its error, and cannot be started until you change its destination.
+input (or into another pipeline that leads back to it) is added too, with a yellow line on
+its card.
 
 With many outputs, use the bar above the list: the filter box matches an output's name
 or destination as you type, and **Problems** keeps only outputs with an error or a
@@ -169,7 +169,7 @@ dragged, because the saved order covers all of them.
 
 A card can also carry **advice** about how the output is set up, separate from what is
 happening to the stream. A *mistake* is a setup that will not do what you mean: the same
-destination as another output, a track selection the input cannot supply (an RTMP input has
+destination as another output, a destination that publishes back into this pipeline's own input (a loop; it cannot work), a track selection the input cannot supply (an RTMP input has
 one audio track; an SRT input may have fewer than you chose). It shows as a yellow line and
 counts as a warning in **Problems**, the badges, the Overview's and the Status view's Issues
 tabs, but the dot keeps the colour of what is happening. A *tip* is a better way to do

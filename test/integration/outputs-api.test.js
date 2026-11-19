@@ -363,9 +363,10 @@ describe('Outputs API integration', () => {
         const own = (key) => `rtmp://127.0.0.1:21935/live/${key}`;
         const ownSrt = (key) => `srt://127.0.0.1:10080?streamid=#!::r=live/${key},m=publish`;
 
-        // A loop is saved, so the operator can see it and change the destination, but the
-        // output stays stopped with the loop as its error and cannot be started.
-        test('saves an output that publishes into its own pipeline, stopped, with the loop as its error', async () => {
+        // The server does not refuse a destination that loops back into its own pipeline:
+        // the dashboard marks it on the card (output-advice.ts), and the startup re-check
+        // still stops one that is running.
+        test('saves an output that publishes into its own pipeline, on create, bulk and edit', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
             const create = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
@@ -373,18 +374,12 @@ describe('Outputs API integration', () => {
                 url: own(p.streamKey),
             });
             assert.equal(create.status, 201);
-            assert.equal(create.body.desiredState, 'stopped');
-            assert.match(
-                create.body.lastError,
-                /Output stopped: destination publishes into this pipeline's own input/,
-            );
 
             const srt = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
                 name: 'Loop SRT',
                 url: ownSrt(p.streamKey),
             });
             assert.equal(srt.status, 201);
-            assert.match(srt.body.lastError, /own input/);
 
             const bulk = await harness.request('POST', `/api/pipelines/${p.id}/outputs/bulk`, {
                 outputs: [
@@ -393,9 +388,7 @@ describe('Outputs API integration', () => {
                 ],
             });
             assert.equal(bulk.status, 201);
-            assert.equal(bulk.body.length, 2);
-            assert.equal(bulk.body[0].lastError, null);
-            assert.match(bulk.body[1].lastError, /own input/);
+            assert.equal(harness.db.listOutputsForPipeline(p.id).length, 4);
 
             const o = harness.db.createOutput({
                 pipelineId: p.id,
@@ -408,174 +401,25 @@ describe('Outputs API integration', () => {
             });
             assert.equal(upd.status, 200);
             assert.equal(harness.db.getOutput(o.id).url, own(p.streamKey));
-            assert.match(upd.body.lastError, /own input/);
-            assert.equal(harness.db.getOutput(o.id).desiredState, 'stopped');
         });
 
-        test('saves a loop through another pipeline with its error, and a one-way restream without', async () => {
+        test('saves a loop through another pipeline, and a pipeline sharing the key', async () => {
             const harness = createHarness();
             const a = harness.db.createPipeline();
             const b = harness.db.createPipeline();
-            const ok = await harness.request('POST', `/api/pipelines/${a.id}/outputs`, {
-                name: 'A to B',
-                url: own(b.streamKey),
-            });
-            assert.equal(ok.status, 201);
-            assert.equal(ok.body.lastError, null);
-            const loop = await harness.request('POST', `/api/pipelines/${b.id}/outputs`, {
-                name: 'B to A',
-                url: own(a.streamKey),
-            });
-            assert.equal(loop.status, 201);
-            assert.match(loop.body.lastError, /restream loop/);
-            // Editing the other output of the pair leaves its own settings valid.
-            const edit = await harness.request(
-                'POST',
-                `/api/pipelines/${a.id}/outputs/${ok.body.id}`,
-                { name: 'A to B 2' },
-            );
-            assert.equal(edit.status, 200);
-        });
-
-        test('a pipeline sharing the key loops into it too', async () => {
-            const harness = createHarness();
-            const a = harness.db.createPipeline();
-            const b = harness.db.createPipeline();
-            harness.db.updatePipeline(b.id, 'B', a.streamKeyId);
-            const res = await harness.request('POST', `/api/pipelines/${b.id}/outputs`, {
-                name: 'Loop',
-                url: own(a.streamKey),
-            });
-            assert.equal(res.status, 201);
-            assert.match(res.body.lastError, /own input/);
-        });
-
-        test('Start refuses an output that loops and keeps it stopped', async () => {
-            const harness = createHarness();
-            const p = harness.db.createPipeline();
-            const loop = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
-                name: 'Loop',
-                url: own(p.streamKey),
-            });
-            const start = await harness.request(
-                'POST',
-                `/api/pipelines/${p.id}/outputs/${loop.body.id}/start`,
-            );
-            assert.equal(start.status, 400);
-            assert.match(start.body.error, /own input/);
-            assert.equal(harness.db.getOutput(loop.body.id).desiredState, 'stopped');
-            assert.equal(harness.outputService.getStats(loop.body.id).status, 'stopped');
-            assert.match(harness.db.getOutput(loop.body.id).lastError, /own input/);
-        });
-
-        test('Start also refuses the first output of a loop that exists only through the saved outputs', async () => {
-            const harness = createHarness();
-            const a = harness.db.createPipeline();
-            const b = harness.db.createPipeline();
-            const aToB = harness.db.createOutput({
-                pipelineId: a.id,
-                name: 'A to B',
-                url: own(b.streamKey),
-            });
-            await harness.request('POST', `/api/pipelines/${b.id}/outputs`, {
-                name: 'B to A',
-                url: own(a.streamKey),
-            });
-            const start = await harness.request(
-                'POST',
-                `/api/pipelines/${a.id}/outputs/${aToB.id}/start`,
-            );
-            assert.equal(start.status, 400);
-            assert.match(start.body.error, /restream loop/);
-            assert.equal(harness.db.getOutput(aToB.id).desiredState, 'stopped');
-        });
-
-        test('Start all starts the other outputs and reports the looping one', async () => {
-            const harness = createHarness();
-            const p = harness.db.createPipeline();
-            const fine = harness.db.createOutput({
-                pipelineId: p.id,
-                name: 'Fine',
-                url: 'rtmp://192.168.1.10/live/k',
-            });
-            const loop = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
-                name: 'Loop',
-                url: own(p.streamKey),
-            });
-            const res = await harness.request(
-                'POST',
-                `/api/pipelines/${p.id}/outputs/start-all`,
-                {},
-            );
-            assert.equal(res.status, 200);
-            assert.equal(harness.db.getOutput(fine.id).desiredState, 'running');
-            assert.equal(harness.db.getOutput(loop.body.id).desiredState, 'stopped');
-            assert.equal(res.body.blocked.length, 1);
-            assert.equal(res.body.blocked[0].id, loop.body.id);
-            assert.equal(res.body.blocked[0].name, 'Loop');
-            assert.match(res.body.blocked[0].reason, /own input/);
-        });
-
-        test('Start all leaves an output that is already running alone', async () => {
-            const harness = createHarness();
-            const a = harness.db.createPipeline();
-            const b = harness.db.createPipeline();
-            const aToB = harness.db.createOutput({
-                pipelineId: a.id,
-                name: 'A to B',
-                url: own(b.streamKey),
-            });
-            harness.db.setOutputDesiredState(aToB.id, 'running');
-            // B to A is saved later and cannot start; A to B keeps running.
-            await harness.request('POST', `/api/pipelines/${b.id}/outputs`, {
-                name: 'B to A',
-                url: own(a.streamKey),
-            });
-            const res = await harness.request(
-                'POST',
-                `/api/pipelines/${a.id}/outputs/start-all`,
-                {},
-            );
-            assert.equal(res.status, 200);
-            assert.deepEqual(res.body.blocked, []);
-            assert.equal(harness.db.getOutput(aToB.id).desiredState, 'running');
-        });
-
-        test('editing a looping output to a destination that does not loop clears its error', async () => {
-            const harness = createHarness();
-            const p = harness.db.createPipeline();
-            const loop = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, {
-                name: 'Loop',
-                url: own(p.streamKey),
-            });
-            const fixed = await harness.request(
-                'POST',
-                `/api/pipelines/${p.id}/outputs/${loop.body.id}`,
-                { url: 'rtmp://192.168.1.10/live/k' },
-            );
-            assert.equal(fixed.status, 200);
-            assert.equal(fixed.body.lastError, null);
-            const start = await harness.request(
-                'POST',
-                `/api/pipelines/${p.id}/outputs/${loop.body.id}/start`,
-            );
-            assert.equal(start.status, 200);
-        });
-
-        test('editing an output keeps an earlier crash error that was not a loop', async () => {
-            const harness = createHarness();
-            const p = harness.db.createPipeline();
-            const o = harness.db.createOutput({
-                pipelineId: p.id,
-                name: 'O',
-                url: 'rtmp://h.example/x',
-            });
-            harness.db.setOutputLastError(o.id, 'Connection refused', 'crash');
-            const res = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
-                url: 'rtmp://h.example/y',
-            });
-            assert.equal(res.status, 200);
-            assert.match(res.body.lastError, /Connection refused/);
+            const c = harness.db.createPipeline();
+            harness.db.updatePipeline(c.id, 'C', a.streamKeyId);
+            for (const [pipeline, url] of [
+                [a, own(b.streamKey)],
+                [b, own(a.streamKey)],
+                [c, own(a.streamKey)],
+            ]) {
+                const res = await harness.request('POST', `/api/pipelines/${pipeline.id}/outputs`, {
+                    name: 'Restream',
+                    url,
+                });
+                assert.equal(res.status, 201, url);
+            }
         });
     });
 

@@ -81,6 +81,20 @@ export interface DestinationChoice {
     key: string;
 }
 
+// The pipelines an output of `ownPipelineId` can restream into, as the form's Pipeline
+// dropdown lists them: not the pipeline itself, nor one on its stream key (the same stream),
+// since either would loop. The form does not stop a custom URL or a pasted output from
+// looping: that is saved and flagged by the server.
+export function restreamChoices<T extends { id: string | number; streamKeyId: number }>(
+    pipelines: readonly T[],
+    ownPipelineId: string,
+): T[] {
+    const own = pipelines.find((p) => String(p.id) === ownPipelineId);
+    return pipelines.filter(
+        (p) => String(p.id) !== ownPipelineId && (!own || p.streamKeyId !== own.streamKeyId),
+    );
+}
+
 export function isRestreamServer(server: ServerId): boolean {
     return server === 'restream-rtmp' || server === 'restream-srt';
 }

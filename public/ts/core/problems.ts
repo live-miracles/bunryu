@@ -1,5 +1,10 @@
 import type { OutputView, PipelineView } from '../types.js';
-import { duplicateDestinations, outputMistakes, type DupRef } from './output-advice.js';
+import {
+    duplicateDestinations,
+    outputMistakes,
+    restreamLoops,
+    type DupRef,
+} from './output-advice.js';
 import { relayHealth, relayIssueList, type RelayHealth } from './relay-status.js';
 import {
     lastErrorLine,
@@ -95,11 +100,13 @@ export function outputProblem(output: OutputView, mistakes: string[]): OutputPro
 }
 
 // What a render needs to judge pipelines, built once per render: whether the relay runs,
-// the time, and the destinations more than one output uses.
+// the time, the destinations more than one output uses, and the outputs that loop back
+// into their own pipeline.
 export interface ProblemContext {
     relayProcessRunning: boolean;
     nowMs: number;
     dupUrls: Map<string, DupRef[]>;
+    loops: Map<string, string>;
 }
 
 export function problemContext(
@@ -107,7 +114,12 @@ export function problemContext(
     relayProcessRunning: boolean,
     nowMs: number,
 ): ProblemContext {
-    return { relayProcessRunning, nowMs, dupUrls: duplicateDestinations(pipelines) };
+    return {
+        relayProcessRunning,
+        nowMs,
+        dupUrls: duplicateDestinations(pipelines),
+        loops: restreamLoops(pipelines),
+    };
 }
 
 export interface PipelineProblems {
@@ -146,7 +158,7 @@ export function pipelineProblems(pipeline: PipelineView, ctx: ProblemContext): P
     const message = (issues.find((i) => i.severity === wanted) ?? issues[0])?.message ?? '';
 
     const outputs = pipeline.outs.map((o) =>
-        outputProblem(o, outputMistakes(o, pipeline.input, ctx.dupUrls)),
+        outputProblem(o, outputMistakes(o, pipeline.input, ctx.dupUrls, ctx.loops)),
     );
     const renditions = pipeline.renditions.map((r) => outputProblem(r, []));
     const mistakes = outputs.filter((o) => o.mistakes.length > 0).length;

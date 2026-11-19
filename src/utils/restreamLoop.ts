@@ -12,17 +12,6 @@ export interface RestreamLoopOptions {
     streamKey?: string;
 }
 
-const SELF_LOOP =
-    "destination publishes into this pipeline's own input, which would loop the stream back into itself";
-const THROUGH_LOOP = (pipelineName: string): string =>
-    `destination loops back into this pipeline's input through pipeline "${pipelineName}" (a restream loop)`;
-
-// Whether a recorded error is one of the two loop reasons above, so that fixing the
-// destination can clear it without touching an unrelated crash.
-export function isRestreamLoopReason(message: string | null | undefined): boolean {
-    return !!message && (message.includes(SELF_LOOP) || message.includes('(a restream loop)'));
-}
-
 export type RestreamLoopChecker = (
     pipelineId: number,
     url: string,
@@ -50,7 +39,7 @@ export function createRestreamLoopChecker(
         const first = await targetKey(url);
         if (first === null) return null;
         if (first === inputKey) {
-            return SELF_LOOP;
+            return "destination publishes into this pipeline's own input, which would loop the stream back into itself";
         }
 
         // Outputs of the other pipelines, grouped by the key their pipeline reads. This
@@ -73,7 +62,7 @@ export function createRestreamLoopChecker(
                 const nextKey = await targetKey(next.url);
                 if (nextKey === null) continue;
                 if (nextKey === inputKey) {
-                    return THROUGH_LOOP(next.pipelineName);
+                    return `destination loops back into this pipeline's input through pipeline "${next.pipelineName}" (a restream loop)`;
                 }
                 if (!seen.has(nextKey)) {
                     seen.add(nextKey);

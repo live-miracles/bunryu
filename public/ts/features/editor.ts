@@ -44,6 +44,7 @@ import {
     detectServer,
     isDestinationUrl,
     isRestreamServer,
+    restreamChoices,
 } from '../core/destination.js';
 export { showSrtBondingDetails } from './srt-bonding-details.js';
 
@@ -358,9 +359,13 @@ export function syncSrtHostVisibility(): void {
 }
 
 function restreamPipelineOpts(selectedId: string): string {
-    const pipelines = state.config.pipelines ?? [];
-    if (!pipelines.length) return '<option value="" disabled>No pipelines</option>';
-    const header = `<option value="" disabled${selectedId ? '' : ' selected'}>Pipeline</option>`;
+    const ownPipelineId = (document.getElementById('out-pipe-id-input') as HTMLInputElement).value;
+    const pipelines = restreamChoices(state.config.pipelines ?? [], ownPipelineId);
+    if (!pipelines.length) return '<option value="" disabled>No other pipelines</option>';
+    // The placeholder stays selected when the saved destination is a pipeline that is not
+    // offered (a loop saved earlier), so the form does not show another pipeline instead.
+    const known = pipelines.some((p) => String(p.id) === selectedId);
+    const header = `<option value="" disabled${known ? '' : ' selected'}>Pipeline</option>`;
     return (
         header +
         pipelines
@@ -1177,16 +1182,9 @@ export async function startAllOutputs(pipelineId: string, btn: HTMLButtonElement
     });
     if (!confirmed) return;
     await withBusy(btn, async () => {
-        const started = await api.startAllOutputs(pipelineId);
-        if (!started) return;
+        const ok = await api.startAllOutputs(pipelineId);
+        if (!ok) return;
         await refreshAfterMutation();
-        // An output that loops back into this pipeline's input stays stopped.
-        const { blocked } = started;
-        if (blocked.length > 0) {
-            api.showError(
-                `Not started, because the destination loops back into this pipeline: ${blocked.map((o) => o.name).join(', ')}.`,
-            );
-        }
     });
 }
 
@@ -1243,7 +1241,6 @@ export async function pasteOutputs(pipelineId: string, btn: HTMLButtonElement): 
         const created = await api.createOutputsBulk(pipelineId, fresh);
         if (!created) return;
         await refreshAfterMutation();
-        const looping = created.filter((o) => o.lastError !== null).length;
-        showNotice(pasteResultMessage(fresh.length, skipped.length, looping));
+        showNotice(pasteResultMessage(fresh.length, skipped.length));
     });
 }

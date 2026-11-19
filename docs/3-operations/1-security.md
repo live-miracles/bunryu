@@ -44,13 +44,15 @@ Hardening that is on by default:
   deliberately allowed. Outputs saved before the check existed are re-checked at
   startup and stopped, with the reason shown in the dashboard. DNS that changes between the check and FFmpeg's own lookup
   cannot be ruled out.
-- **Restream loops cannot start.** An output that publishes into `live/<key>` on this
-  server's own RTMP/SRT port (loopback or one of the machine's own addresses) is saved
-  but stopped, with the reason as its error, when the key is its own pipeline's input
-  or the chain of such outputs leads back to it; Start refuses it, Start all skips it,
-  and it is stopped at startup if it was running. Changing its destination clears the
-  error. A public address that is NAT-ed to this machine and is not on one of its
-  interfaces looks like a remote host and is not recognised.
+- **Restream loops are marked, not refused.** An output that publishes into `live/<key>` on
+  this server's own RTMP/SRT port (loopback or one of the machine's own addresses) when
+  the key is its own pipeline's input, or the chain of such outputs leads back to it, is
+  saved and shows a warning on its card. SRS refuses a second publisher on a live key
+  (observed for an output into its own pipeline's key), so such an output fails and
+  retries without touching the input. Outputs of that kind that are running
+  are stopped at startup with the reason shown. A public address that is NAT-ed to this
+  machine and is not on one of its interfaces looks like a remote host and is not
+  recognised.
 - **The `internal` RTMP app is reserved for shared encodes.** Outputs cannot
   target it (any host spelling that resolves to this machine, with a path under
   `/internal/`), and SRS's publish hook accepts that app only over RTMP from

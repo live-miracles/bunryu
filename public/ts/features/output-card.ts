@@ -18,6 +18,8 @@ import { issueLinesHtml } from './status-tooltip.js';
 
 type OutputCardDeps = {
     pendingOutputs: PendingOutputs;
+    // The outputs that loop back into their own pipeline (restreamLoops).
+    loops?: ReadonlyMap<string, string>;
 };
 
 const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
@@ -166,7 +168,7 @@ export function renderOutputCard(
     const historyBtn = output.hasErrorHistory
         ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
-    const advice = outputAdvice(output, input, dupUrls);
+    const advice = outputAdvice(output, input, dupUrls, deps.loops);
     const warnings = outputWarnings(output, advice);
     const tips = advice.filter((a) => a.level === 'tip');
     // The dot's hover text: the same problems as the lines below, so it never shows
