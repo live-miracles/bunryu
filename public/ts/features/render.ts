@@ -772,10 +772,8 @@ function renderGroupHeader(
            ${statusBadge(outs.off, 'badge-ghost')}`
         : '';
 
-    // Rename and delete show on hover or keyboard focus. A touch screen has no hover and
-    // is for looking, not configuring, so it never shows them.
-    const actionClass =
-        'btn btn-xs btn-square btn-ghost opacity-0 focus-visible:opacity-100 group-hover/group:opacity-100 [@media(hover:none)]:hidden';
+    // Rename and delete show on hover or keyboard focus, and take no room until then. A touch
+    // screen has no hover and is for looking, not configuring, so it never shows them.
     const name = escapeHtml(group.name);
 
     return `<li data-group-id="${group.id}" draggable="true" class="cursor-grab" title="Drag to reorder">
@@ -783,9 +781,9 @@ function renderGroupHeader(
             ${collapsed ? ICON_CHEVRON_RIGHT : ICON_CHEVRON_DOWN}
             ${summary}
             <span class="truncate min-w-0">${name}</span>
-            <div class="flex items-center gap-1 ml-auto shrink-0">
-                <button class="${actionClass} js-edit-group" data-group-id="${group.id}" title="Rename group" aria-label="Rename group ${name}">${ICON_PENCIL}</button>
-                <button class="${actionClass} hover:text-error js-delete-group" data-group-id="${group.id}" title="Delete group" aria-label="Delete group ${name}">${ICON_TRASH}</button>
+            <div class="hidden items-center gap-0.5 ml-auto -my-1 shrink-0 group-hover/group:flex group-focus-within/group:flex [@media(hover:none)]:!hidden">
+                <button class="btn btn-xs btn-square btn-ghost js-edit-group" data-group-id="${group.id}" title="Rename group" aria-label="Rename group ${name}">${ICON_PENCIL}</button>
+                <button class="btn btn-xs btn-square btn-ghost text-error js-delete-group" data-group-id="${group.id}" title="Delete group" aria-label="Delete group ${name}">${ICON_TRASH}</button>
             </div>
         </div>
     </li>`;

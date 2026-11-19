@@ -259,6 +259,21 @@ describe('card layout and controls', () => {
     });
 });
 
+describe('card buttons', () => {
+    test('History, Edit and Delete take no room until the card is hovered or focused, but stay on a touch screen', () => {
+        const html = render({});
+        const tools =
+            /<div class="([^"]*)">\s*(?:<button[^>]*error-info[^>]*>[^]*?<\/button>\s*)?<button[^>]*data-action="edit"/.exec(
+                html,
+            );
+        assert.ok(tools, 'the tools container is found');
+        assert.match(tools[1], /\[@media\(hover:hover\)\]:hidden/);
+        assert.match(tools[1], /group-hover\/out:flex/);
+        assert.match(tools[1], /group-focus-within\/out:flex/);
+        assert.match(html, /class="[^"]*\bgroup\/out\b[^"]*" draggable="true" data-output-card=/);
+    });
+});
+
 describe('narrow screens', () => {
     test('a long output name truncates inside the card instead of overflowing it', () => {
         const html = render({ name: 'Long_Name_For_A_Very_Long_Destination_Output' });

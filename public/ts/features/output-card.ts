@@ -216,7 +216,7 @@ export function renderOutputCard(
     const isPending = deps.pendingOutputs.has(output.id);
 
     return `
-    <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0 cursor-grab" draggable="true" data-output-card="${output.id}" ${cardTint}>
+    <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0 cursor-grab group/out" draggable="true" data-output-card="${output.id}" ${cardTint}>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 min-w-0 max-w-full font-semibold">
                 ${statusDotHtml}
@@ -229,7 +229,7 @@ export function renderOutputCard(
             </div>
             ${badges.join('')}
             ${inlineSink}
-            <div class="flex items-center gap-1 ml-auto shrink-0">
+            <div class="flex items-center gap-1 ml-auto shrink-0 [@media(hover:hover)]:hidden group-hover/out:flex group-focus-within/out:flex">
                 ${historyBtn}
                 <button class="btn btn-xs btn-square btn-ghost" data-action="edit" data-out-id="${output.id}" title="Edit output" aria-label="Edit output">${ICON_PENCIL}</button>
                 <button class="btn btn-xs btn-square btn-ghost text-error ${isStopped ? '' : 'btn-disabled opacity-40'}" data-action="delete" data-out-id="${output.id}" title="Delete output" aria-label="Delete output">${ICON_TRASH}</button>
