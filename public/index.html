@@ -1032,8 +1032,10 @@
               </div>
             </div>
 
-            <!-- Key Vault: where the status of every output is reported once a minute -->
-            <div class="border-base-content/10 space-y-2 border-t pt-3">
+            <!-- Key Vault: where the status of every output is reported once a minute. Its own form, so
+                 Chrome does not pair the secret (a password field) with the form-less text inputs elsewhere
+                 on the page, such as the outputs filter, and offer saved passwords there. -->
+            <form class="border-base-content/10 space-y-2 border-t pt-3" autocomplete="off" onsubmit="return false;">
               <div>
                 <p class="text-sm font-medium">Key Vault</p>
                 <p class="text-xs opacity-70">
@@ -1120,7 +1122,7 @@
                 </span>
                 <button type="button" class="btn btn-sm btn-accent" onclick="settingsKeyVaultFormBtn(this)">Save</button>
               </div>
-            </div>
+            </form>
 
             <!-- Change Password: its own form, so the browser pairs these password fields with the
                  username below and not with the other text inputs on the page. -->
