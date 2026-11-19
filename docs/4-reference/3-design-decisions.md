@@ -1449,10 +1449,10 @@ banners) on top of Tailwind's utilities. daisyUI is removed. The look follows Li
 near-black canvas with charcoal panels (white on white by day), hairline borders instead
 of shadows, 8px controls and 12px panels, one lavender accent, dense 14px type. Colour is
 for status: green, amber and red mean status and nothing else, and warnings and
-destructive buttons are tinted, not solid. The Japanese motifs stay, quietly and only where
-no data is read: seigaiha waves along the navbar and the wave crest on the login page,
-both SVG masks filled with the accent, static (no animation cost on a dashboard open for
-hours), so one file serves both themes. The panels and tables are flat. Each token is a
+destructive buttons are tinted, not solid. The Japanese motif stays, quietly and only where
+no data is read: the wave crest on the login page, an SVG mask filled with the accent,
+static (no animation cost on a dashboard open for hours), so one file serves both themes.
+The navbar carries the Bunryu logo instead of a wave pattern. The panels and tables are flat. Each token is a
 `light-dark()` pair, so there is no second copy of the palette. The dashboard opens dark the
 first time, whatever the system prefers; the
 navbar's sun/moon toggle pins the other theme per browser (`features/theme.ts`).

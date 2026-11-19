@@ -13,8 +13,6 @@
     --muted: light-dark(#62666d, #8a8f98);
     --line: light-dark(rgb(0 0 0 / 0.09), #23252a);
     --chip: light-dark(rgb(0 0 0 / 0.05), rgb(255 255 255 / 0.06));
-    /* The navbar's wave lines: a fainter lavender on white, a lighter one on the near-black. */
-    --pattern: light-dark(rgb(94 106 210 / 0.3), rgb(150 160 255 / 0.55));
     --accent: light-dark(#5e6ad2, #6a76e8);
     --on-accent: #ffffff;
     --ok: light-dark(#1a7f37, #4cb782);
@@ -663,9 +661,6 @@
         color: var(--ink);
     }
 
-    /* Seigaiha waves along the navbar: only the pattern's lines, in the accent, strongest
-       at the left, gone before the figures on the right. A mask (white lines on black, read by
-       luminance), so one file serves both themes; static, no animation cost. */
     .navbar {
         position: relative;
         isolation: isolate;
@@ -675,18 +670,6 @@
         padding: 0.25rem 1rem;
         border-image: none;
         border-color: var(--line);
-    }
-
-    .navbar::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        pointer-events: none;
-        background: var(--pattern);
-        mask-image: linear-gradient(to right, #fff 0%, #000 45%), url('patterns/seigaiha.svg');
-        mask-mode: luminance;
-        mask-composite: intersect;
     }
 
     /* Below lg the navbar sticks to the top, so it needs a body to read over. */

@@ -30,29 +30,13 @@
     <!-- Navbar -->
     <div class="navbar shrink-0 border-b max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:flex-wrap">
       <div class="flex flex-1 items-center gap-3">
-        <button class="btn btn-ghost brand-text px-2 text-lg font-semibold tracking-tight" id="server-name-display" onclick="selectPipeline(null)">
-          Bunryu
-        </button>
         <button
           id="overview-nav-btn"
-          class="btn btn-square btn-sm btn-ghost opacity-70"
-          onclick="selectPipeline(null)"
+          class="btn btn-ghost brand-text gap-2 px-2 text-lg font-semibold tracking-tight"
           title="Overview"
-          aria-label="Overview">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round">
-            <rect width="7" height="9" x="3" y="3" rx="1" />
-            <rect width="7" height="5" x="14" y="3" rx="1" />
-            <rect width="7" height="9" x="14" y="12" rx="1" />
-            <rect width="7" height="5" x="3" y="16" rx="1" />
-          </svg>
+          onclick="selectPipeline(null)">
+          <img src="logo.png" class="h-8 w-8" alt="" />
+          <span id="server-name-display">Bunryu</span>
         </button>
         <button
           id="status-nav-btn"
