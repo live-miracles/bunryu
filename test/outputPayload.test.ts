@@ -10,6 +10,10 @@ import {
 } from '../public/ts/core/output-payload';
 import { ansiLineToHtml } from '../public/ts/core/ansi';
 
+// The pasted output, or undefined when the paste was refused.
+const outputOf = (parsed: ReturnType<typeof parseSingleOutputPayload>) =>
+    'output' in parsed ? parsed.output : undefined;
+
 const item = {
     name: ' Main ',
     videoEncoding: 'copy',
@@ -90,7 +94,7 @@ describe('parseSingleOutputPayload', () => {
                 watchUrl: undefined,
             },
         });
-        assert.deepEqual(parseSingleOutputPayload(JSON.stringify(item)).output, {
+        assert.deepEqual(outputOf(parseSingleOutputPayload(JSON.stringify(item))), {
             name: 'Main',
             videoEncoding: 'copy',
             url: 'rtmp://h/app/k',
@@ -135,7 +139,7 @@ describe('ansiLineToHtml', () => {
 });
 
 describe('splitNewOutputs', () => {
-    const out = (name, url) => ({
+    const out = (name: string, url: string) => ({
         name,
         videoEncoding: 'copy',
         url,

@@ -15,11 +15,27 @@ import {
 } from '../public/ts/core/problems';
 import { buildStatusCards } from '../public/ts/core/status-grid';
 import { buildOverviewModel } from '../public/ts/core/overview-model';
+import type { InputStatus, OutStatus } from '../public/ts/core/status';
+import type {
+    AudioTrackInfo,
+    InputHealth,
+    OutputView,
+    PipelineView,
+    SrtBondingStatus,
+} from '../public/ts/types';
 import { withVerdict, withVerdicts } from './helpers/verdicts';
+
+type Status = OutStatus | InputStatus;
+type OverviewInput = Parameters<typeof buildOverviewModel>[0];
+
+// The fixtures below set only the fields a test checks and the rules read nothing else,
+// so they meet the real view types at these two casts.
+const asOutputView = (view: object) => view as unknown as OutputView;
+const asPipelineView = (pipeline: object) => pipeline as unknown as PipelineView;
 
 const NOW = 1_000_000;
 
-const rtmpInput = (over = {}) => ({
+const rtmpInput = (over: Partial<InputHealth> = {}): Partial<InputHealth> => ({
     connected: true,
     live: true,
     isSrt: false,
@@ -36,12 +52,12 @@ const rtmpInput = (over = {}) => ({
     publisherType: null,
     video: null,
     audio: null,
-    audioTracks: [{}],
+    audioTracks: [{} as AudioTrackInfo],
     ...over,
 });
 const offInput = () => rtmpInput({ connected: false, live: false, mediaOk: null });
 
-const output = (id, over = {}) => ({
+const output = (id: string, over: Partial<OutputView> = {}): Partial<OutputView> => ({
     id,
     pipelineId: '1',
     seq: 1,
@@ -65,43 +81,57 @@ const output = (id, over = {}) => ({
     url: `rtmp://a.example/live/${id}`,
     ...over,
 });
-const stopped = { desiredState: 'stopped', status: 'stopped', pid: null };
+const stopped: Partial<OutputView> = { desiredState: 'stopped', status: 'stopped', pid: null };
 
 // A relay input: legs as given, SRS accepting it and the relay forwarding, unless overridden.
-const okLeg = (ip) => ({ ip, state: 'running', health: 'ok', healthReason: null });
-const relayBonding = (legs, over = {}) => ({
-    inputActive: true,
-    outputConnected: true,
-    acceptedBySrs: true,
-    publishConflict: false,
-    localSrtPublisherConflict: false,
-    retryFailures: 0,
-    forwardedPackets: 500,
-    lastPacketAt: NOW - 1000,
-    lastInputPacketAt: NOW - 1000,
-    lastError: null,
-    input: { bonded: true, expectedLegs: legs.length, legs },
-    ...over,
-});
+interface Leg {
+    ip: string;
+    state: string;
+    health: string;
+    healthReason: string | null;
+}
+const okLeg = (ip: string): Leg => ({ ip, state: 'running', health: 'ok', healthReason: null });
+const relayBonding = (legs: Leg[], over: Record<string, unknown> = {}) =>
+    ({
+        inputActive: true,
+        outputConnected: true,
+        acceptedBySrs: true,
+        publishConflict: false,
+        localSrtPublisherConflict: false,
+        retryFailures: 0,
+        forwardedPackets: 500,
+        lastPacketAt: NOW - 1000,
+        lastInputPacketAt: NOW - 1000,
+        lastError: null,
+        input: { bonded: true, expectedLegs: legs.length, legs },
+        ...over,
+    }) as unknown as SrtBondingStatus;
 
-const pipeline = (id, input, outs, extra = {}) =>
-    withVerdicts({
-        id: String(id),
-        name: `Pipeline ${id}`,
-        groupId: null,
-        alerts: [],
-        srtBonding: { acceptedBySrs: false, input: { bonded: false } },
-        input,
-        outs,
-        renditions: [],
-        streamKey: `key0${id}_x`,
-        rtmpPublishUrl: '',
-        srtPublishUrl: '',
-        ...extra,
-    });
+const pipeline = (
+    id: number,
+    input: Partial<InputHealth>,
+    outs: Partial<OutputView>[],
+    extra: Record<string, unknown> = {},
+): PipelineView =>
+    asPipelineView(
+        withVerdicts({
+            id: String(id),
+            name: `Pipeline ${id}`,
+            groupId: null,
+            alerts: [],
+            srtBonding: { acceptedBySrs: false, input: { bonded: false } },
+            input,
+            outs,
+            renditions: [],
+            streamKey: `key0${id}_x`,
+            rtmpPublishUrl: '',
+            srtPublishUrl: '',
+            ...extra,
+        }),
+    );
 
 const RELAY_UP = { relayProcessRunning: true, nowMs: NOW };
-const problemsOf = (p, relay = RELAY_UP) =>
+const problemsOf = (p: PipelineView, relay = RELAY_UP) =>
     pipelineProblems(p, problemContext([p], relay.relayProcessRunning, relay.nowMs));
 
 describe('status helpers', () => {
@@ -127,13 +157,13 @@ describe('status helpers', () => {
     });
 
     test('only a warning or an error is a problem, only off is offline', () => {
-        assert.deepEqual(['good', 'warn', 'error', 'off'].map(isProblem), [
+        assert.deepEqual((['good', 'warn', 'error', 'off'] as Status[]).map(isProblem), [
             false,
             true,
             true,
             false,
         ]);
-        assert.deepEqual(['good', 'warn', 'error', 'off'].map(isOffline), [
+        assert.deepEqual((['good', 'warn', 'error', 'off'] as Status[]).map(isOffline), [
             false,
             false,
             false,
@@ -150,8 +180,8 @@ describe('status helpers', () => {
 });
 
 describe('outputProblem', () => {
-    const problem = (over, mistakes = []) =>
-        outputProblem(withVerdict(output('a', over), rtmpInput()), mistakes);
+    const problem = (over: Partial<OutputView>, mistakes: string[] = []) =>
+        outputProblem(asOutputView(withVerdict(output('a', over), rtmpInput())), mistakes);
 
     test('a healthy output is not a problem', () => {
         const p = problem({});
@@ -197,8 +227,11 @@ describe('outputProblem', () => {
 
 describe('pipelineProblems: the input half', () => {
     const legs = [okLeg('a'), okLeg('b')];
-    const relayed = (input, bonding, outs = [output('a')]) =>
-        pipeline(1, input, outs, { srtBonding: relayBonding(legs, bonding) });
+    const relayed = (
+        input: Partial<InputHealth>,
+        bonding: Record<string, unknown>,
+        outs: Partial<OutputView>[] = [output('a')],
+    ) => pipeline(1, input, outs, { srtBonding: relayBonding(legs, bonding) });
 
     test('without a relay the input half is the verdict', () => {
         assert.equal(problemsOf(pipeline(1, rtmpInput(), [])).input.status, 'good');
@@ -325,10 +358,10 @@ describe('one answer for every view', () => {
     const slowRelay = pipeline(1, rtmpInput({ isSrt: true, recvBitrateKbps: 50 }), [output('a')], {
         srtBonding: relayBonding([okLeg('a'), okLeg('b')], { outputConnected: false }),
     });
-    const view = {
+    const view: OverviewInput = {
         pipelines: [slowRelay],
         metrics: {},
-        filter: 'issues',
+        filter: 'problems',
         inputSearch: '',
         outputSearch: '',
         relayProcessRunning: true,

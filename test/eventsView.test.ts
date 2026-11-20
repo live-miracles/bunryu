@@ -6,6 +6,7 @@ import {
     eventsForDisplay,
     summarizeEventMessage,
 } from '../public/ts/core/events';
+import type { ActivityEvent } from '../public/ts/types';
 
 describe('summarizeEventMessage', () => {
     test('a short single line is shown as it is', () => {
@@ -52,7 +53,11 @@ describe('summarizeEventMessage', () => {
 });
 
 describe('eventsForDisplay', () => {
-    const ev = (ts, source, pipelineId) => ({
+    const ev = (
+        ts: number,
+        source: ActivityEvent['source'],
+        pipelineId: number | null,
+    ): ActivityEvent => ({
         ts,
         source,
         severity: 'info',

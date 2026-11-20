@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { videoSpec, audioSpecLines, keyframeSpec } from '../public/ts/core/media-spec';
 import { renderInputStats } from '../public/ts/features/input-stats-view';
 import { withInputVerdict } from './helpers/verdicts';
+import type { AudioTrackInfo, KeyframeStats, PipelineView } from '../public/ts/types';
 
 const video = {
     codec: 'h264',
@@ -13,7 +14,7 @@ const video = {
     profile: 'High',
     level: '4.2',
 };
-const track = (over) => ({
+const track = (over: Partial<AudioTrackInfo>): AudioTrackInfo => ({
     index: 0,
     codec: 'aac',
     sampleRate: 48000,
@@ -44,7 +45,7 @@ describe('videoSpec', () => {
 });
 
 describe('keyframeSpec', () => {
-    const kf = (over) => ({
+    const kf = (over: Partial<KeyframeStats>) => ({
         windowSec: 12,
         spanSec: 11.96,
         keyframes: 6,
@@ -108,7 +109,7 @@ describe('audioSpecLines', () => {
 });
 
 describe('renderInputStats', () => {
-    const input = (over) =>
+    const input = (over: Partial<PipelineView['input']>) =>
         withInputVerdict({
             connected: true,
             live: true,
@@ -121,7 +122,7 @@ describe('renderInputStats', () => {
             audio: null,
             audioTracks: [track({})],
             ...over,
-        });
+        }) as PipelineView['input']; // a fixture with only the fields the view reads
 
     test('shows source, video and audio as labelled lines with the probe time', () => {
         const html = renderInputStats(input({}), {});
@@ -157,6 +158,7 @@ describe('renderInputStats', () => {
                         severity: 'warning',
                         code: 'input-keyframe-interval',
                         message: 'Keyframes too far apart.',
+                        sinceMs: Date.now(),
                     },
                 ],
             }),
@@ -209,7 +211,7 @@ describe('renderInputStats', () => {
 
     test('an input still being probed shows its notice once, not also as an issue', () => {
         const html = renderInputStats(input({ mediaOk: null, live: true }), {});
-        assert.equal(html.match(/Waiting for ffprobe/g).length, 1);
+        assert.equal(html.match(/Waiting for ffprobe/g)?.length, 1);
     });
 
     test('prefers the relay-reported source IP', () => {

@@ -1,4 +1,5 @@
 import { after, describe, test, beforeEach, afterEach } from 'node:test';
+import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
@@ -6,6 +7,10 @@ import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+import type { Db } from '../src/types';
+import type { InputState } from '../src/services/inputState';
+import type { PreviewService } from '../src/services/preview';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-preview-'));
 const originalCwd = process.cwd();
@@ -16,14 +21,18 @@ after(() => {
 });
 
 class FakeFfmpeg extends EventEmitter {
-    constructor(pid = 4321) {
+    pid: number | undefined;
+    stderr: PassThrough;
+    killSignals: (NodeJS.Signals | number | undefined)[];
+
+    constructor(pid: number | undefined = 4321) {
         super();
         this.pid = pid;
         this.stderr = new PassThrough();
         this.killSignals = [];
     }
 
-    kill(signal) {
+    kill(signal?: NodeJS.Signals | number) {
         this.killSignals.push(signal);
         queueMicrotask(() => {
             this.emit('exit', null, signal);
@@ -33,32 +42,43 @@ class FakeFfmpeg extends EventEmitter {
     }
 }
 
-function sleep(ms) {
+function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function makeDb() {
-    return {
-        getPipeline(id) {
-            return id === 1
-                ? { id: 1, name: 'Live', streamKey: 'stream-key', streamKeyId: 1 }
-                : undefined;
-        },
-    };
+interface PipelineRow {
+    id: number;
+    name: string;
+    streamKey: string;
+    streamKeyId: number;
 }
 
-function makeInputState() {
+// The preview service only reads pipelines, so the fake database has only getPipeline.
+const dbWith = (getPipeline: (id: number) => PipelineRow | undefined): Db =>
+    ({ getPipeline }) as unknown as Db;
+
+function makeDb() {
+    return dbWith((id) =>
+        id === 1 ? { id: 1, name: 'Live', streamKey: 'stream-key', streamKeyId: 1 } : undefined,
+    );
+}
+
+// The preview service reads only the protocol and the pull URL.
+function makeInputState(): InputState {
     return {
         getProtocol() {
             return 'rtmp';
         },
-        pullUrl(_pipelineId, streamKey) {
+        pullUrl(_pipelineId: number, streamKey: string) {
             return `rtmp://127.0.0.1:1935/live/${streamKey}`;
         },
-    };
+    } as unknown as InputState;
 }
 
-function loadPreviewService(t, spawnImpl) {
+function loadPreviewService(
+    t: TestContext,
+    spawnImpl: (command: string, args: string[]) => FakeFfmpeg,
+) {
     fs.writeFileSync(
         path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
@@ -75,7 +95,7 @@ function loadPreviewService(t, spawnImpl) {
         'utf8',
     );
 
-    t.mock.method(childProcess, 'spawn', spawnImpl);
+    t.mock.method(childProcess, 'spawn', spawnImpl as unknown as typeof childProcess.spawn);
     delete require.cache[require.resolve('../src/services/preview')];
     return (require('../src/services/preview') as typeof import('../src/services/preview'))
         .createPreviewService;
@@ -83,7 +103,11 @@ function loadPreviewService(t, spawnImpl) {
 
 // start() resolves only once the playlist exists with a segment reference, so
 // write it shortly after the (mocked) ffmpeg is spawned.
-async function startWithPlaylist(service, pipelineId, audioTrackCount) {
+async function startWithPlaylist(
+    service: PreviewService,
+    pipelineId: number,
+    audioTrackCount: number,
+) {
     const startPromise = service.start(pipelineId, audioTrackCount);
     const playlist =
         audioTrackCount > 1
@@ -110,7 +134,7 @@ describe('preview lifecycle', () => {
 
     test('passes -rw_timeout to the preview ffmpeg input', async (t) => {
         const proc = new FakeFfmpeg();
-        let spawnArgs = null;
+        let spawnArgs = null as string[] | null;
         const createPreviewService = loadPreviewService(t, (_cmd, args) => {
             spawnArgs = args;
             return proc;
@@ -120,6 +144,7 @@ describe('preview lifecycle', () => {
         const { hlsUrl } = await startWithPlaylist(service, 1, 1);
 
         assert.equal(hlsUrl, '/hls/1/index.m3u8');
+        assert.ok(spawnArgs);
         const rwIdx = spawnArgs.indexOf('-rw_timeout');
         const inIdx = spawnArgs.indexOf('-i');
         assert.notEqual(rwIdx, -1, 'ffmpeg args should include -rw_timeout');
@@ -132,7 +157,7 @@ describe('preview lifecycle', () => {
     // which saturates a 2 vCPU server. Video is copied; only audio is encoded.
     test('copies video and encodes only audio', async (t) => {
         const proc = new FakeFfmpeg();
-        let spawnArgs = null;
+        let spawnArgs = null as string[] | null;
         const createPreviewService = loadPreviewService(t, (_cmd, args) => {
             spawnArgs = args;
             return proc;
@@ -141,6 +166,7 @@ describe('preview lifecycle', () => {
 
         await startWithPlaylist(service, 1, 1);
 
+        assert.ok(spawnArgs);
         const cv = spawnArgs.indexOf('-c:v');
         assert.notEqual(cv, -1, 'ffmpeg args should set -c:v');
         assert.equal(spawnArgs[cv + 1], 'copy');
@@ -154,7 +180,7 @@ describe('preview lifecycle', () => {
 
     test('copies video for a multi-track preview too', async (t) => {
         const proc = new FakeFfmpeg();
-        let spawnArgs = null;
+        let spawnArgs = null as string[] | null;
         const createPreviewService = loadPreviewService(t, (_cmd, args) => {
             spawnArgs = args;
             return proc;
@@ -164,6 +190,7 @@ describe('preview lifecycle', () => {
         const { hlsUrl } = await startWithPlaylist(service, 1, 2);
 
         assert.equal(hlsUrl, '/hls/1/master.m3u8');
+        assert.ok(spawnArgs);
         assert.equal(spawnArgs[spawnArgs.indexOf('-c:v') + 1], 'copy');
         assert.ok(!spawnArgs.includes('libx264'), 'video must not be re-encoded');
         assert.deepEqual(
@@ -286,19 +313,17 @@ describe('preview lifecycle', () => {
     });
 
     test('starting a second pipeline after one crashes does not disturb the first outDir cleanup', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const createPreviewService = loadPreviewService(t, () => {
             const p = new FakeFfmpeg(9000 + procs.length);
             procs.push(p);
             return p;
         });
-        const db = {
-            getPipeline(id) {
-                if (id === 1) return { id: 1, name: 'A', streamKey: 'key1', streamKeyId: 1 };
-                if (id === 2) return { id: 2, name: 'B', streamKey: 'key2', streamKeyId: 2 };
-                return undefined;
-            },
-        };
+        const db = dbWith((id) => {
+            if (id === 1) return { id: 1, name: 'A', streamKey: 'key1', streamKeyId: 1 };
+            if (id === 2) return { id: 2, name: 'B', streamKey: 'key2', streamKeyId: 2 };
+            return undefined;
+        });
         const service = createPreviewService(db, makeInputState());
 
         await startWithPlaylist(service, 1, 1);
@@ -330,7 +355,7 @@ describe('preview spawn failure', () => {
     });
 
     // A failed spawn (ENOENT, EAGAIN) emits 'error' and 'close' but never 'exit'.
-    function failingSpawn(spawned) {
+    function failingSpawn(spawned: FakeFfmpeg[]) {
         return () => {
             const proc = new FakeFfmpeg();
             proc.pid = undefined;
@@ -344,7 +369,7 @@ describe('preview spawn failure', () => {
     }
 
     test('a failed spawn rejects start promptly and leaves no stuck preview', async (t) => {
-        const spawned = [];
+        const spawned: FakeFfmpeg[] = [];
         const createPreviewService = loadPreviewService(t, failingSpawn(spawned));
         const service = createPreviewService(makeDb(), makeInputState());
 

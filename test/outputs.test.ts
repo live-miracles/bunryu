@@ -1,16 +1,22 @@
-import { after, describe, test, beforeEach, afterEach } from 'node:test';
+import { after, describe, test, beforeEach, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import childProcess from 'node:child_process';
+import childProcess, { type SpawnOptions } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { Db, Output } from '../src/types';
+import type { OutputService } from '../src/services/outputs';
+import type { InputState } from '../src/services/inputState';
+import type { DiagnosticsLogger } from '../src/utils/diagnostics';
+import type { SrsClient, SrsStream } from '../src/utils/srs';
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-outputs-'));
 const originalCwd = process.cwd();
 // The options of the most recent spawn() through loadOutputService's mock.
-let lastSpawnOptions = null;
+let lastSpawnOptions: SpawnOptions | null = null;
 
 after(() => {
     process.chdir(originalCwd);
@@ -18,6 +24,11 @@ after(() => {
 });
 
 class FakeFfmpeg extends EventEmitter {
+    pid: number;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    killSignals: Array<NodeJS.Signals | undefined>;
+
     constructor(pid = 1234) {
         super();
         this.pid = pid;
@@ -26,7 +37,7 @@ class FakeFfmpeg extends EventEmitter {
         this.killSignals = [];
     }
 
-    kill(signal) {
+    kill(signal?: NodeJS.Signals) {
         this.killSignals.push(signal);
         queueMicrotask(() => {
             this.emit('exit', null, signal);
@@ -40,6 +51,11 @@ class FakeFfmpeg extends EventEmitter {
 // the process actually exits, so it can interleave calls into the window
 // between SIGTERM and the real process exit.
 class ManualExitFfmpeg extends EventEmitter {
+    pid: number;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    killSignals: Array<NodeJS.Signals | undefined>;
+
     constructor(pid = 1234) {
         super();
         this.pid = pid;
@@ -48,23 +64,45 @@ class ManualExitFfmpeg extends EventEmitter {
         this.killSignals = [];
     }
 
-    kill(signal) {
+    kill(signal?: NodeJS.Signals) {
         this.killSignals.push(signal);
         return true;
     }
 
-    exit(signal = 'SIGTERM') {
+    exit(signal: NodeJS.Signals = 'SIGTERM') {
         this.emit('exit', null, signal);
         this.emit('close', null, signal);
     }
 }
 
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+// The unmocked fs functions take many overloads; the pass-through only forwards its arguments.
+const passthrough = (fn: unknown) => fn as (...args: unknown[]) => unknown;
+
+// A row or entry the test needs: a missing one fails here, with a message, not with a TypeError.
+function rowOf(db: Db, id: string): Output {
+    const row = db.getOutput(id);
+    assert.ok(row, `no output ${id}`);
+    return row;
+}
+
+function lastOf<T>(items: T[]): T {
+    const item = items.at(-1);
+    assert.ok(item, 'expected at least one entry');
+    return item;
+}
+
+function sleep(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+interface ErrorRecord {
+    message: string;
+    kind?: string | null;
+    failedAttempts?: number;
 }
 
 function makeDb() {
-    const output = {
+    const output: Partial<Output> = {
         id: 'out1',
         pipelineId: 1,
         seq: 1,
@@ -75,19 +113,19 @@ function makeDb() {
         audioEncoding: 'copy',
         lastError: null,
     };
-    return {
-        lastError: null,
-        lastErrorKind: null,
+    const db = {
+        lastError: null as string | null,
+        lastErrorKind: null as string | null | undefined,
         // Output warnings must stay out of the pipeline History (input issues only).
         appendPipelineLog() {
             throw new Error('outputs must not write to the pipeline History');
         },
-        getPipeline(id) {
+        getPipeline(id: number) {
             return id === 1
                 ? { id: 1, name: 'Live', streamKey: 'stream-key', streamKeyId: 1 }
                 : null;
         },
-        getOutput(id) {
+        getOutput(id: string) {
             return id === output.id ? output : null;
         },
         listOutputsForPipeline() {
@@ -96,22 +134,53 @@ function makeDb() {
         listOutputs() {
             return [output];
         },
-        setOutputDesiredState(id, desiredState) {
+        setOutputDesiredState(id: string, desiredState: Output['desiredState']) {
             if (id !== output.id) return null;
             output.desiredState = desiredState;
             return output;
         },
-        errorRecords: [],
-        setOutputLastError(_id, message, kind, failedAttempts) {
-            this.errorRecords.push({ message, kind, failedAttempts });
+        errorRecords: [] as ErrorRecord[],
+        setOutputLastError(
+            _id: string,
+            message: string,
+            kind?: string | null,
+            failedAttempts?: number,
+        ) {
+            db.errorRecords.push({ message, kind, failedAttempts });
             if (kind === 'warning') return;
-            this.lastError = `${Date.now()}\n${message}`;
-            this.lastErrorKind = kind;
+            db.lastError = `${Date.now()}\n${message}`;
+            db.lastErrorKind = kind;
         },
     };
+    return db as unknown as Db & Pick<typeof db, 'lastError' | 'lastErrorKind' | 'errorRecords'>;
 }
 
-function loadOutputService(t, fakeProc, options = {}) {
+type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
+
+interface FakeProcess {
+    pid: number;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    kill(signal?: NodeJS.Signals): boolean;
+}
+
+interface LoadOptions {
+    progressStallMs?: number;
+    socketWarmupMs?: number;
+    socketGraceMs?: number;
+    memoryLimitMb?: number;
+    random?: number;
+    ssError?: Error;
+    ssOutput?: string;
+    fetchStreams?: () => Promise<SrsStream[]>;
+    fetchClients?: () => Promise<SrsClient[]>;
+}
+
+function loadOutputService(
+    t: TestContext,
+    fakeProc: FakeProcess | ((args: string[]) => FakeProcess),
+    options: LoadOptions = {},
+) {
     fs.writeFileSync(
         path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
@@ -143,20 +212,32 @@ function loadOutputService(t, fakeProc, options = {}) {
         'utf8',
     );
 
-    t.mock.method(childProcess, 'spawn', (_cmd, args, spawnOptions) => {
-        lastSpawnOptions = spawnOptions;
-        return typeof fakeProc === 'function' ? fakeProc(args) : fakeProc;
-    });
+    t.mock.method(
+        childProcess,
+        'spawn',
+        (_cmd: string, args: string[], spawnOptions: SpawnOptions) => {
+            lastSpawnOptions = spawnOptions;
+            return typeof fakeProc === 'function' ? fakeProc(args) : fakeProc;
+        },
+    );
     // No retry jitter unless a test asks for it, so back-off steps are exact.
     t.mock.method(Math, 'random', () => options.random ?? 0);
     if (options.ssError) {
-        t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
-            queueMicrotask(() => cb(options.ssError, '', ''));
-        });
+        t.mock.method(
+            childProcess,
+            'execFile',
+            (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+                queueMicrotask(() => cb(options.ssError ?? null, '', ''));
+            },
+        );
     } else if (options.ssOutput !== undefined) {
-        t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
-            queueMicrotask(() => cb(null, options.ssOutput, ''));
-        });
+        t.mock.method(
+            childProcess,
+            'execFile',
+            (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+                queueMicrotask(() => cb(null, options.ssOutput ?? '', ''));
+            },
+        );
     }
     delete require.cache[require.resolve('../src/services/outputs')];
     const { createOutputService } =
@@ -164,7 +245,13 @@ function loadOutputService(t, fakeProc, options = {}) {
     // The watchdog describes the input's SRS stream before it restarts an output;
     // a test supplies the streams, or SRS is unreachable.
     const unreachable = () => Promise.reject(new Error('SRS API unreachable'));
-    return (db, inputState, diagnostics, fetchStreams, fetchClients) =>
+    return (
+        db: Db,
+        inputState: InputState,
+        diagnostics?: DiagnosticsLogger,
+        fetchStreams?: () => Promise<SrsStream[]>,
+        fetchClients?: () => Promise<SrsClient[]>,
+    ): OutputService =>
         createOutputService(
             db,
             inputState,
@@ -174,7 +261,7 @@ function loadOutputService(t, fakeProc, options = {}) {
         );
 }
 
-function makeReadyInputState(options = {}) {
+function makeReadyInputState(options: { highRes?: boolean; srt?: boolean } = {}): InputState {
     return {
         isReady() {
             return true;
@@ -182,11 +269,11 @@ function makeReadyInputState(options = {}) {
         isHighRes() {
             return options.highRes ?? false;
         },
-        pullUrl(_pipelineId, streamKey) {
+        pullUrl(_pipelineId: number, streamKey: string) {
             if (options.srt) return `srt://127.0.0.1:10080?streamid=${streamKey}`;
             return `rtmp://127.0.0.1:1935/live/${streamKey}`;
         },
-    };
+    } as unknown as InputState;
 }
 
 describe('output watchdog', () => {
@@ -234,12 +321,12 @@ describe('output watchdog', () => {
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
         assert.equal(service.getStats('out1').status, 'failed');
         assert.equal(service.getStats('out1').failures, 1);
-        assert.match(db.lastError, /watchdog: ffmpeg output stalled; restarting process/);
-        assert.match(db.lastError, /last_total_size=4096/);
-        assert.match(db.lastError, /last_out_time_us=1000000/);
-        assert.match(db.lastError, /last_bitrate_kbps=3200/);
-        assert.match(db.lastError, /Connection reset by peer/);
-        assert.match(db.lastError, /Restarting output: no ffmpeg output progress for \d+s/);
+        assert.match(String(db.lastError), /watchdog: ffmpeg output stalled; restarting process/);
+        assert.match(String(db.lastError), /last_total_size=4096/);
+        assert.match(String(db.lastError), /last_out_time_us=1000000/);
+        assert.match(String(db.lastError), /last_bitrate_kbps=3200/);
+        assert.match(String(db.lastError), /Connection reset by peer/);
+        assert.match(String(db.lastError), /Restarting output: no ffmpeg output progress for \d+s/);
 
         service.shutdown();
     });
@@ -295,11 +382,11 @@ describe('output watchdog', () => {
             memoryLimitMb: 200,
         });
         const originalReadFileSync = fs.readFileSync;
-        t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
+        t.mock.method(fs, 'readFileSync', (filePath: unknown, ...rest: unknown[]) => {
             if (String(filePath) === `/proc/${proc.pid}/status`) {
                 return 'VmRSS:  150000 kB\n'; // ~146MB, 73% of the 200MB limit
             }
-            return originalReadFileSync(filePath, ...rest);
+            return passthrough(originalReadFileSync)(filePath, ...rest);
         });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -324,11 +411,11 @@ describe('output watchdog', () => {
         });
         let rssKb = 150000; // ~73% of the 200MB limit
         const originalReadFileSync = fs.readFileSync;
-        t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
+        t.mock.method(fs, 'readFileSync', (filePath: unknown, ...rest: unknown[]) => {
             if (String(filePath) === `/proc/${proc.pid}/status`) {
                 return `VmRSS:  ${rssKb} kB\n`;
             }
-            return originalReadFileSync(filePath, ...rest);
+            return passthrough(originalReadFileSync)(filePath, ...rest);
         });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -353,11 +440,11 @@ describe('output watchdog', () => {
             memoryLimitMb: 200,
         });
         const originalReadFileSync = fs.readFileSync;
-        t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
+        t.mock.method(fs, 'readFileSync', (filePath: unknown, ...rest: unknown[]) => {
             if (String(filePath) === `/proc/${proc.pid}/status`) {
                 return 'VmRSS:  300000 kB\n'; // ~293MB: over the 200MB base limit, under the doubled 400MB limit
             }
-            return originalReadFileSync(filePath, ...rest);
+            return passthrough(originalReadFileSync)(filePath, ...rest);
         });
         const service = createOutputService(db, makeReadyInputState({ highRes: true }));
 
@@ -436,7 +523,7 @@ describe('output watchdog', () => {
         await sleep(80);
 
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
-        assert.match(db.lastError, /watchdog: ffmpeg output stalled; restarting process/);
+        assert.match(String(db.lastError), /watchdog: ffmpeg output stalled; restarting process/);
 
         service.shutdown();
     });
@@ -461,17 +548,17 @@ describe('output watchdog', () => {
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
         assert.equal(service.getStats('out1').status, 'failed');
         assert.equal(service.getStats('out1').failures, 1);
-        assert.match(db.lastError, /destination socket unhealthy/);
-        assert.match(db.lastError, /CLOSE-WAIT/);
+        assert.match(String(db.lastError), /destination socket unhealthy/);
+        assert.match(String(db.lastError), /CLOSE-WAIT/);
         assert.match(
-            db.lastError,
+            String(db.lastError),
             /socket_warning=RTMP socket CLOSE-WAIT on destination port 1935/,
         );
-        assert.match(db.lastError, /socket_snapshot:/);
-        assert.match(db.lastError, /CLOSE-WAIT peer=192\.178\.174\.134:1935/);
-        assert.match(db.lastError, /last_bitrate_kbps=3200/);
+        assert.match(String(db.lastError), /socket_snapshot:/);
+        assert.match(String(db.lastError), /CLOSE-WAIT peer=192\.178\.174\.134:1935/);
+        assert.match(String(db.lastError), /last_bitrate_kbps=3200/);
         assert.match(
-            db.lastError,
+            String(db.lastError),
             /Restarting output: RTMP socket CLOSE-WAIT on destination port 1935/,
         );
 
@@ -515,27 +602,35 @@ describe('output watchdog', () => {
         await sleep(100);
 
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
-        assert.match(db.lastError, /watchdog: ffmpeg received no input data; restarting process/);
-        assert.doesNotMatch(db.lastError, /destination socket unhealthy/);
-        assert.match(db.lastError, /socket_warning=No input data: ffmpeg has written nothing/);
-        assert.match(db.lastError, /ESTAB peer=127\.0\.0\.1:21935/);
-        assert.match(db.lastError, /input_source: live\/stream-key/);
         assert.match(
-            db.lastError,
+            String(db.lastError),
+            /watchdog: ffmpeg received no input data; restarting process/,
+        );
+        assert.doesNotMatch(String(db.lastError), /destination socket unhealthy/);
+        assert.match(
+            String(db.lastError),
+            /socket_warning=No input data: ffmpeg has written nothing/,
+        );
+        assert.match(String(db.lastError), /ESTAB peer=127\.0\.0\.1:21935/);
+        assert.match(String(db.lastError), /input_source: live\/stream-key/);
+        assert.match(
+            String(db.lastError),
             /srs_stream: publish=active clients=3 recv_30s=2638kbps send_30s=5259kbps frames=292442 video=H264 1280x720 audio=AAC/,
         );
         const restart = diagnostics.events.find((e) => e.event === 'ffmpeg-restart');
+        assert.ok(restart);
         assert.match(restart.reason, /^No input data: /);
         assert.equal(restart.inputSource.stream, 'live/stream-key');
         assert.equal(restart.inputSource.srs.publishing, true);
         assert.equal(restart.inputSource.srs.recvKbps, 2638);
         const warning = diagnostics.events.find((e) => e.event === 'ffmpeg-warning-started');
+        assert.ok(warning);
         assert.match(warning.message, /^No input data: /);
 
         service.shutdown();
     });
 
-    const readerOf = (over) => ({
+    const readerOf = (over: Record<string, unknown>) => ({
         id: 'c1',
         ip: '127.0.0.1',
         name: 'stream-key',
@@ -579,11 +674,12 @@ describe('output watchdog', () => {
         await sleep(100);
 
         assert.match(
-            db.lastError,
+            String(db.lastError),
             /srs_readers: 2 playing\n {2}reader alive=47s sent=0B send_30s=0kbps/,
         );
-        assert.match(db.lastError, / {2}reader alive=300s sent=18\.0MB send_30s=3100kbps/);
+        assert.match(String(db.lastError), / {2}reader alive=300s sent=18\.0MB send_30s=3100kbps/);
         const restart = diagnostics.events.find((e) => e.event === 'ffmpeg-restart');
+        assert.ok(restart);
         assert.deepEqual(restart.inputSource.readers, {
             count: 2,
             list: [
@@ -615,11 +711,11 @@ describe('output watchdog', () => {
         await service.start('out1');
         await sleep(100);
 
-        assert.match(db.lastError, /srs_readers: 13 playing/);
-        assert.equal(db.lastError.match(/ {2}reader alive=/g).length, 10);
-        assert.match(db.lastError, / {2}\.\.\. and 3 more/);
-        assert.match(db.lastError, /reader alive=112s sent=1000B/);
-        assert.doesNotMatch(db.lastError, /reader alive=100s/);
+        assert.match(String(db.lastError), /srs_readers: 13 playing/);
+        assert.equal(db.lastError?.match(/ {2}reader alive=/g)?.length, 10);
+        assert.match(String(db.lastError), / {2}\.\.\. and 3 more/);
+        assert.match(String(db.lastError), /reader alive=112s sent=1000B/);
+        assert.doesNotMatch(String(db.lastError), /reader alive=100s/);
 
         service.shutdown();
     });
@@ -640,8 +736,8 @@ describe('output watchdog', () => {
         await sleep(100);
 
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
-        assert.match(db.lastError, /srs_stream: publish=active/);
-        assert.match(db.lastError, /srs_readers: unavailable \(SRS API unreachable\)/);
+        assert.match(String(db.lastError), /srs_stream: publish=active/);
+        assert.match(String(db.lastError), /srs_readers: unavailable \(SRS API unreachable\)/);
 
         service.shutdown();
     });
@@ -650,9 +746,9 @@ describe('output watchdog', () => {
         const procs = [new FakeFfmpeg(1234), new FakeFfmpeg(1235)];
         let spawned = 0;
         const db = makeDb();
-        const first = db.getOutput('out1');
+        const first = rowOf(db, 'out1');
         const second = { ...first, id: 'out2', seq: 2, name: 'Facebook' };
-        db.getOutput = (id) => (id === 'out1' ? first : id === 'out2' ? second : null);
+        db.getOutput = (id: string) => (id === 'out1' ? first : id === 'out2' ? second : null);
         db.listOutputsForPipeline = () => [first, second];
         db.listOutputs = () => [first, second];
         let streamCalls = 0;
@@ -702,9 +798,12 @@ describe('output watchdog', () => {
         await sleep(100);
 
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
-        assert.match(db.lastError, /destination socket unhealthy; restarting process/);
-        assert.match(db.lastError, /RTMP socket missing \(destination port 1935 not established\)/);
-        assert.doesNotMatch(db.lastError, /No input data/);
+        assert.match(String(db.lastError), /destination socket unhealthy; restarting process/);
+        assert.match(
+            String(db.lastError),
+            /RTMP socket missing \(destination port 1935 not established\)/,
+        );
+        assert.doesNotMatch(String(db.lastError), /No input data/);
 
         service.shutdown();
     });
@@ -728,9 +827,9 @@ describe('output watchdog', () => {
 
         await sleep(2100);
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
-        assert.match(db.lastError, /srs_stream: unavailable \(no answer in 2000 ms\)/);
+        assert.match(String(db.lastError), /srs_stream: unavailable \(no answer in 2000 ms\)/);
         assert.equal(
-            diagnostics.events.find((e) => e.event === 'ffmpeg-restart').inputSource.srs.error,
+            diagnostics.events.find((e) => e.event === 'ffmpeg-restart')?.inputSource.srs.error,
             'no answer in 2000 ms',
         );
 
@@ -751,7 +850,7 @@ describe('output watchdog', () => {
 
         await service.start('out1');
         await sleep(80);
-        db.getOutput('out1').desiredState = 'stopped';
+        rowOf(db, 'out1').desiredState = 'stopped';
         await service.stopAndWait('out1');
         const signals = [...proc.killSignals];
         await sleep(250);
@@ -775,9 +874,9 @@ describe('output watchdog', () => {
         await sleep(80);
 
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
-        assert.match(db.lastError, /watchdog: ffmpeg output stalled; restarting process/);
-        assert.match(db.lastError, /input_source: live\/stream-key/);
-        assert.match(db.lastError, /srs_stream: publish=active/);
+        assert.match(String(db.lastError), /watchdog: ffmpeg output stalled; restarting process/);
+        assert.match(String(db.lastError), /input_source: live\/stream-key/);
+        assert.match(String(db.lastError), /srs_stream: publish=active/);
 
         service.shutdown();
     });
@@ -785,7 +884,7 @@ describe('output watchdog', () => {
     test('ignores local RTMP outputs in socket watchdog', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
-        db.getOutput('out1').url = 'rtmp://localhost/live/downstream';
+        rowOf(db, 'out1').url = 'rtmp://localhost/live/downstream';
         const ssOutput =
             'CLOSE-WAIT 0 0 127.0.0.1:50100 127.0.0.1:1935 users:(("ffmpeg",pid=1234,fd=5))\n';
         const createOutputService = loadOutputService(t, proc, {
@@ -810,7 +909,7 @@ describe('output watchdog', () => {
     test('ignores IPv6 localhost RTMP outputs in socket watchdog', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
-        db.getOutput('out1').url = 'rtmp://[::1]:1935/live/downstream';
+        rowOf(db, 'out1').url = 'rtmp://[::1]:1935/live/downstream';
         const ssOutput = 'CLOSE-WAIT 0 0 [::1]:50100 [::1]:1935 users:(("ffmpeg",pid=1234,fd=5))\n';
         const createOutputService = loadOutputService(t, proc, {
             progressStallMs: 500,
@@ -900,7 +999,7 @@ describe('output stop/start race', () => {
     });
 
     test('restarts an output when start arrives while a stop kill is in flight', async (t) => {
-        const procs = [];
+        const procs: ManualExitFfmpeg[] = [];
         const spawnNext = () => {
             const proc = new ManualExitFfmpeg(1000 + procs.length);
             procs.push(proc);
@@ -908,6 +1007,7 @@ describe('output stop/start race', () => {
         };
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(t, spawnNext, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -941,7 +1041,7 @@ describe('output stop/start race', () => {
     });
 
     test('does not restart when the output stays stopped', async (t) => {
-        const procs = [];
+        const procs: ManualExitFfmpeg[] = [];
         const spawnNext = () => {
             const proc = new ManualExitFfmpeg(1000 + procs.length);
             procs.push(proc);
@@ -949,6 +1049,7 @@ describe('output stop/start race', () => {
         };
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(t, spawnNext, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -968,6 +1069,7 @@ describe('output stop/start race', () => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -991,7 +1093,7 @@ describe('output stop/start race', () => {
 
         assert.equal(service.getStats('out1').status, 'stopped');
         assert.equal(db.lastErrorKind, 'stopped');
-        assert.match(db.lastError, /\n$/);
+        assert.match(String(db.lastError), /\n$/);
 
         service.shutdown();
     });
@@ -1000,6 +1102,7 @@ describe('output stop/start race', () => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -1016,7 +1119,8 @@ describe('output stop/start race', () => {
         output.desiredState = 'stopped';
         service.stop('out1');
 
-        const stop = db.errorRecords.at(-1);
+        const stop = lastOf(db.errorRecords);
+        assert.ok(stop);
         assert.equal(stop.kind, 'stopped');
         assert.equal(stop.failedAttempts, 5);
         assert.equal(
@@ -1031,6 +1135,7 @@ describe('output stop/start race', () => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -1042,7 +1147,8 @@ describe('output stop/start race', () => {
         output.desiredState = 'stopped';
         service.stop('out1');
 
-        const stop = db.errorRecords.at(-1);
+        const stop = lastOf(db.errorRecords);
+        assert.ok(stop);
         assert.equal(stop.kind, 'stopped');
         assert.equal(stop.failedAttempts, undefined);
         assert.equal(stop.message, '');
@@ -1051,9 +1157,10 @@ describe('output stop/start race', () => {
     });
 
     test('a run that stays up for a minute breaks the streak of failed attempts', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(
             t,
             () => {
@@ -1069,7 +1176,7 @@ describe('output stop/start race', () => {
 
         await service.start('out1');
         for (const delayMs of [1000, 2000, 4000, 8000]) {
-            procs.at(-1).emit('close', 1, null);
+            lastOf(procs).emit('close', 1, null);
             t.mock.timers.tick(delayMs);
             await settle();
         }
@@ -1077,23 +1184,23 @@ describe('output stop/start race', () => {
         // The fifth attempt runs for over a minute before it dies, then one more
         // quick failure: the streak restarts, so 4 + 1 does not reach 5.
         t.mock.timers.tick(61_000);
-        procs.at(-1).emit('close', 1, null);
+        lastOf(procs).emit('close', 1, null);
         t.mock.timers.tick(1000);
         await settle();
-        procs.at(-1).emit('close', 1, null);
+        lastOf(procs).emit('close', 1, null);
 
         output.desiredState = 'stopped';
         service.stop('out1');
         await settle();
 
-        assert.equal(db.errorRecords.at(-1).kind, 'stopped');
-        assert.equal(db.errorRecords.at(-1).failedAttempts, undefined);
+        assert.equal(lastOf(db.errorRecords).kind, 'stopped');
+        assert.equal(lastOf(db.errorRecords).failedAttempts, undefined);
 
         service.shutdown();
     });
 
     test('getStats reports when the next retry is due, and nothing once it ran or was stopped', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const createOutputService = loadOutputService(
             t,
             () => {
@@ -1111,7 +1218,7 @@ describe('output stop/start race', () => {
         await service.start('out1');
         assert.equal(service.getStats('out1').nextRetryAtMs, null);
 
-        procs.at(-1).emit('close', 1, null);
+        lastOf(procs).emit('close', 1, null);
         assert.equal(service.getStats('out1').nextRetryAtMs, 1_000_000 + 1000);
 
         t.mock.timers.tick(1000);
@@ -1119,9 +1226,9 @@ describe('output stop/start race', () => {
         assert.equal(procs.length, 2, 'the retry spawned');
         assert.equal(service.getStats('out1').nextRetryAtMs, null);
 
-        procs.at(-1).emit('close', 1, null);
+        lastOf(procs).emit('close', 1, null);
         assert.equal(service.getStats('out1').nextRetryAtMs, 1_001_000 + 2000);
-        db.getOutput('out1').desiredState = 'stopped';
+        rowOf(db, 'out1').desiredState = 'stopped';
         service.stop('out1');
         assert.equal(service.getStats('out1').nextRetryAtMs, null);
 
@@ -1129,7 +1236,7 @@ describe('output stop/start race', () => {
     });
 
     test('the retry delay starts over after a run that stayed up', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const diagnostics = makeDiagnosticsSpy();
         const createOutputService = loadOutputService(
             t,
@@ -1147,13 +1254,13 @@ describe('output stop/start race', () => {
         await service.start('out1');
         // Five quick failures walk the back-off up to its 16 s cap...
         for (const delayMs of [1000, 2000, 4000, 8000, 16000]) {
-            procs.at(-1).emit('close', 1, null);
+            lastOf(procs).emit('close', 1, null);
             t.mock.timers.tick(delayMs);
             await settle();
         }
         // ...then a run that stays up for two minutes before dropping.
         t.mock.timers.tick(120_000);
-        procs.at(-1).emit('close', 1, null);
+        lastOf(procs).emit('close', 1, null);
         await settle();
 
         const retries = diagnostics.events.filter((e) => e.event === 'ffmpeg-retry-scheduled');
@@ -1181,13 +1288,14 @@ describe('output stop/start race', () => {
         proc.emit('close', 1, null);
 
         const retry = diagnostics.events.find((e) => e.event === 'ffmpeg-retry-scheduled');
+        assert.ok(retry);
         assert.equal(retry.delayMs, 750);
 
         service.shutdown();
     });
 
     test('an output left with nothing driving it is started again by the backstop', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const db = makeDb();
         const diagnostics = makeDiagnosticsSpy();
         const createOutputService = loadOutputService(
@@ -1220,7 +1328,7 @@ describe('output stop/start race', () => {
     });
 
     test('a start that fails before spawning leaves one History record per episode', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const db = makeDb();
         const createOutputService = loadOutputService(
             t,
@@ -1267,9 +1375,10 @@ describe('output stop/start race', () => {
     });
 
     test('stopping a live attempt after repeated failed attempts records the count and the last failure', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(
             t,
             () => {
@@ -1287,16 +1396,16 @@ describe('output stop/start race', () => {
 
         await service.start('out1');
         for (const delayMs of [1000, 2000, 4000, 8000]) {
-            procs.at(-1).stderr.write('Connection refused\n');
+            lastOf(procs).stderr.write('Connection refused\n');
             await settle();
-            procs.at(-1).emit('close', 1, null);
+            lastOf(procs).emit('close', 1, null);
             t.mock.timers.tick(delayMs);
             await settle();
         }
         // The fifth attempt fails too and the sixth is running when Stop is pressed.
-        procs.at(-1).stderr.write('Connection refused\n');
+        lastOf(procs).stderr.write('Connection refused\n');
         await settle();
-        procs.at(-1).emit('close', 1, null);
+        lastOf(procs).emit('close', 1, null);
         t.mock.timers.tick(16_000);
         await settle();
         assert.equal(procs.length, 6);
@@ -1307,8 +1416,9 @@ describe('output stop/start race', () => {
         service.stop('out1');
         await settle();
 
-        assert.deepEqual(procs.at(-1).killSignals, ['SIGTERM']);
-        const stop = db.errorRecords.at(-1);
+        assert.deepEqual(lastOf(procs).killSignals, ['SIGTERM']);
+        const stop = lastOf(db.errorRecords);
+        assert.ok(stop);
         assert.equal(stop.kind, 'stopped');
         assert.equal(stop.failedAttempts, 5);
         assert.equal(
@@ -1321,9 +1431,10 @@ describe('output stop/start race', () => {
     });
 
     test('stopping an output that recovered and has stayed up for a minute is a plain stop', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(
             t,
             () => {
@@ -1339,7 +1450,7 @@ describe('output stop/start race', () => {
 
         await service.start('out1');
         for (const delayMs of [1000, 2000, 4000, 8000, 16_000]) {
-            procs.at(-1).emit('close', 1, null);
+            lastOf(procs).emit('close', 1, null);
             t.mock.timers.tick(delayMs);
             await settle();
         }
@@ -1353,8 +1464,8 @@ describe('output stop/start race', () => {
         service.stop('out1');
         await settle();
 
-        assert.equal(db.errorRecords.at(-1).kind, 'stopped');
-        assert.equal(db.errorRecords.at(-1).failedAttempts, undefined);
+        assert.equal(lastOf(db.errorRecords).kind, 'stopped');
+        assert.equal(lastOf(db.errorRecords).failedAttempts, undefined);
 
         service.shutdown();
     });
@@ -1363,6 +1474,7 @@ describe('output stop/start race', () => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -1376,7 +1488,7 @@ describe('output stop/start race', () => {
 
         assert.equal(service.getStats('out1').status, 'stopped');
         assert.equal(db.lastErrorKind, 'stopped');
-        assert.match(db.lastError, /Connection stuck, retrying handshake/);
+        assert.match(String(db.lastError), /Connection stuck, retrying handshake/);
 
         service.shutdown();
     });
@@ -1385,6 +1497,7 @@ describe('output stop/start race', () => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -1400,7 +1513,7 @@ describe('output stop/start race', () => {
         // instead of leaving a stale crash as the "current" error.
         assert.equal(service.getStats('out1').status, 'stopped');
         assert.equal(db.lastErrorKind, 'stopped');
-        assert.match(db.lastError, /\n$/);
+        assert.match(String(db.lastError), /\n$/);
 
         service.shutdown();
     });
@@ -1437,6 +1550,7 @@ describe('output service control surface', () => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         const diagnostics = makeDiagnosticsSpy();
         const createOutputService = loadOutputService(t, proc, {
             progressStallMs: 60_000,
@@ -1444,11 +1558,11 @@ describe('output service control surface', () => {
         });
         let rssKb = 150000; // ~73% of the 200MB limit
         const originalReadFileSync = fs.readFileSync;
-        t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
+        t.mock.method(fs, 'readFileSync', (filePath: unknown, ...rest: unknown[]) => {
             if (String(filePath) === `/proc/${proc.pid}/status`) {
                 return `VmRSS:  ${rssKb} kB\n`;
             }
-            return originalReadFileSync(filePath, ...rest);
+            return passthrough(originalReadFileSync)(filePath, ...rest);
         });
         const service = createOutputService(db, makeReadyInputState(), diagnostics);
 
@@ -1483,7 +1597,7 @@ describe('output service control surface', () => {
         await sleep(15);
         assert.equal(db.errorRecords.filter((r) => r.kind === 'warning').length, 1);
         const ended = diagnostics.events.filter((e) => e.event === 'ffmpeg-warning-ended');
-        assert.equal(ended.at(-1).reason, 'ended with ffmpeg exit');
+        assert.equal(lastOf(ended).reason, 'ended with ffmpeg exit');
 
         service.shutdown();
     });
@@ -1503,11 +1617,12 @@ describe('output service control surface', () => {
 
         await service.start('out1');
         await sleep(80);
-        assert.match(service.getStats('out1').warningReason, /CLOSE-WAIT/);
+        assert.match(String(service.getStats('out1').warningReason), /CLOSE-WAIT/);
         assert.equal(db.errorRecords.length, 0);
 
         await service.stopAndWait('out1');
         const warning = db.errorRecords.find((r) => r.kind === 'warning');
+        assert.ok(warning);
         assert.match(warning.message, /Destination socket unhealthy: .*CLOSE-WAIT.*lasted/);
         assert.ok(diagnostics.events.some((e) => e.event === 'ffmpeg-warning-started'));
         assert.ok(diagnostics.events.some((e) => e.event === 'ffmpeg-warning-ended'));
@@ -1526,7 +1641,7 @@ describe('output service control surface', () => {
 
         await service.start('out1');
         let outTimeUs = 1_000_000;
-        const progress = async (wallMs, mediaUs) => {
+        const progress = async (wallMs: number, mediaUs: number) => {
             clock.now += wallMs;
             outTimeUs += mediaUs;
             proc.stdout.write(`out_time_ms=${outTimeUs}\n`);
@@ -1534,7 +1649,7 @@ describe('output service control surface', () => {
         };
         await progress(0, 0);
         for (let i = 0; i < 12; i++) await progress(1000, 2_000_000);
-        assert.match(service.getStats('out1').warningReason, /running fast/);
+        assert.match(String(service.getStats('out1').warningReason), /running fast/);
         assert.equal(db.errorRecords.length, 0);
 
         await progress(1000, 1_000_000);
@@ -1554,7 +1669,7 @@ describe('output service control surface', () => {
         const service = createOutputService(makeDb(), makeReadyInputState({ srt: true }));
 
         await service.start('out1');
-        const bitrate = async (value) => {
+        const bitrate = async (value: number | string) => {
             proc.stdout.write(`bitrate=${value}\n`);
             await sleep(10);
             return service.getStats('out1').bitrateKbps;
@@ -1581,8 +1696,8 @@ describe('output service control surface', () => {
         await sleep(80);
 
         assert.deepEqual(proc.killSignals, ['SIGTERM']);
-        assert.match(db.lastError, /last_total_size=8192/);
-        assert.match(db.lastError, /last_out_time_us=1000000/);
+        assert.match(String(db.lastError), /last_total_size=8192/);
+        assert.match(String(db.lastError), /last_out_time_us=1000000/);
 
         service.shutdown();
     });
@@ -1609,7 +1724,7 @@ describe('output service control surface', () => {
         assert.equal(service.getStats('out1').warningReason, null);
         clock.now += 2_000;
         assert.match(
-            service.getStats('out1').warningReason,
+            String(service.getStats('out1').warningReason),
             /FFmpeg media progress has stalled for 16s\./,
         );
         proc.stdout.write('out_time_ms=2000000\n');
@@ -1635,10 +1750,10 @@ describe('output service control surface', () => {
         };
         let rssKb = 10_000;
         const originalReadFileSync = fs.readFileSync;
-        t.mock.method(fs, 'readFileSync', (filePath, ...rest) =>
+        t.mock.method(fs, 'readFileSync', (filePath: unknown, ...rest: unknown[]) =>
             String(filePath) === `/proc/${proc.pid}/status`
                 ? `VmRSS:  ${rssKb} kB\n`
-                : originalReadFileSync(filePath, ...rest),
+                : passthrough(originalReadFileSync)(filePath, ...rest),
         );
         const createOutputService = loadOutputService(t, proc, options);
         const service = createOutputService(makeDb(), makeReadyInputState({ srt: true }));
@@ -1647,7 +1762,7 @@ describe('output service control surface', () => {
         await service.start('out1');
         proc.stdout.write('total_size=4096\n');
         let outTimeUs = 1_000_000;
-        const progress = async (wallMs, mediaUs) => {
+        const progress = async (wallMs: number, mediaUs: number) => {
             clock.now += wallMs;
             outTimeUs += mediaUs;
             proc.stdout.write(`out_time_ms=${outTimeUs}\n`);
@@ -1658,29 +1773,29 @@ describe('output service control surface', () => {
 
         // Running at half speed for a minute and a bit: falling behind.
         for (let i = 0; i < 70; i++) await progress(1000, 500_000);
-        assert.match(reason(), /falling behind/);
+        assert.match(String(reason()), /falling behind/);
 
         // Progress stops for 16 s: the stall shows instead.
         clock.now += 16_000;
-        assert.match(reason(), /FFmpeg media progress has stalled for 16s/);
+        assert.match(String(reason()), /FFmpeg media progress has stalled for 16s/);
 
         // High memory outranks the stall.
         rssKb = 150_000;
         await sleep(40);
-        assert.match(reason(), /High memory usage/);
+        assert.match(String(reason()), /High memory usage/);
 
         // A closing destination socket outranks everything.
         options.ssOutput = closingSocket;
         await sleep(40);
-        assert.match(reason(), /CLOSE-WAIT/);
+        assert.match(String(reason()), /CLOSE-WAIT/);
 
         // And each one gives way to the next as it clears.
         options.ssOutput = healthySocket;
         await sleep(40);
-        assert.match(reason(), /High memory usage/);
+        assert.match(String(reason()), /High memory usage/);
         rssKb = 10_000;
         await sleep(40);
-        assert.match(reason(), /FFmpeg media progress has stalled/);
+        assert.match(String(reason()), /FFmpeg media progress has stalled/);
 
         service.shutdown();
     });
@@ -1688,7 +1803,7 @@ describe('output service control surface', () => {
     describe('falling behind realtime', () => {
         // Feeds -progress lines on a fake clock: `wallMs` of wall time passes and
         // the output's media clock advances by `mediaUs`.
-        async function setup(t) {
+        async function setup(t: TestContext) {
             const clock = { now: Date.now() };
             t.mock.method(Date, 'now', () => clock.now);
             const proc = new FakeFfmpeg();
@@ -1701,7 +1816,7 @@ describe('output service control surface', () => {
             const service = createOutputService(db, makeReadyInputState(), diagnostics);
             await service.start('out1');
             let outTimeUs = 1_000_000;
-            const progress = async (wallMs, mediaUs) => {
+            const progress = async (wallMs: number, mediaUs: number) => {
                 clock.now += wallMs;
                 outTimeUs += mediaUs;
                 proc.stdout.write(`out_time_ms=${outTimeUs}\n`);
@@ -1715,7 +1830,10 @@ describe('output service control surface', () => {
             const { service, db, diagnostics, progress } = await setup(t);
 
             for (let i = 0; i < 70; i++) await progress(1000, 500_000);
-            assert.match(service.getStats('out1').warningReason, /0\.50x realtime.*falling behind/);
+            assert.match(
+                String(service.getStats('out1').warningReason),
+                /0\.50x realtime.*falling behind/,
+            );
             assert.ok(
                 diagnostics.events.some(
                     (e) => e.event === 'ffmpeg-warning-started' && e.kind === 'falling-behind',
@@ -1801,7 +1919,7 @@ describe('output service control surface', () => {
             const { service, progress } = await setup(t);
 
             for (let i = 0; i < 70; i++) await progress(1000, 500_000);
-            assert.match(service.getStats('out1').warningReason, /falling behind/);
+            assert.match(String(service.getStats('out1').warningReason), /falling behind/);
 
             // Nothing advances for a minute (input down, stall watchdog's case),
             // then media flows again: the old slow windows no longer apply.
@@ -1826,7 +1944,7 @@ describe('output service control surface', () => {
     test('start() throws for an invalid destination URL and never spawns', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
-        db.getOutput('out1').url = 'not-a-url';
+        rowOf(db, 'out1').url = 'not-a-url';
         const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
         const service = createOutputService(db, makeReadyInputState());
 
@@ -1844,7 +1962,7 @@ describe('output service control surface', () => {
             isReady: () => false,
             isHighRes: () => false,
             pullUrl: () => 'rtmp://x',
-        };
+        } as unknown as InputState;
         const service = createOutputService(db, notReady);
 
         await service.start('out1');
@@ -1945,6 +2063,7 @@ describe('output service control surface', () => {
         const proc = new ManualExitFfmpeg();
         const db = makeDb();
         const output = db.getOutput('out1');
+        assert.ok(output);
         let spawns = 0;
         const createOutputService = loadOutputService(
             t,
@@ -1956,7 +2075,7 @@ describe('output service control surface', () => {
         );
         const service = createOutputService(db, makeReadyInputState());
         await service.start('out1');
-        const desiredAtKill = [];
+        const desiredAtKill: string[] = [];
         const realKill = proc.kill.bind(proc);
         proc.kill = (signal) => {
             desiredAtKill.push(output.desiredState);
@@ -1996,7 +2115,7 @@ describe('output service control surface', () => {
 
         assert.equal(service.getStats('out1').nextRetryAtMs, null);
         assert.equal(service.getStats('out1').status, 'stopped');
-        assert.equal(db.getOutput('out1').desiredState, 'stopped');
+        assert.equal(rowOf(db, 'out1').desiredState, 'stopped');
 
         service.shutdown();
     });
@@ -2010,7 +2129,7 @@ describe('output service control surface', () => {
         await service.retire('out1');
 
         assert.equal(service.getStats('out1').status, 'stopped');
-        assert.equal(db.getOutput('out1').desiredState, 'stopped');
+        assert.equal(rowOf(db, 'out1').desiredState, 'stopped');
 
         service.shutdown();
     });
@@ -2027,30 +2146,31 @@ describe('restartPipelineOutputs', () => {
         delete require.cache[require.resolve('../src/utils/appConfig')];
     });
 
-    function makeMultiDb(outputs) {
+    function makeMultiDb(outputs: Output[]) {
         const byId = new Map(outputs.map((o) => [o.id, o]));
-        return {
-            lastError: null,
-            lastErrorKind: null,
-            getPipeline(id) {
+        const db = {
+            lastError: null as string | null,
+            lastErrorKind: null as string | null | undefined,
+            getPipeline(id: number) {
                 return id === 1
                     ? { id: 1, name: 'Live', streamKey: 'stream-key', streamKeyId: 1 }
                     : null;
             },
-            getOutput(id) {
+            getOutput(id: string) {
                 return byId.get(id) ?? null;
             },
-            listOutputsForPipeline(pipelineId) {
+            listOutputsForPipeline(pipelineId: number) {
                 return outputs.filter((o) => o.pipelineId === pipelineId);
             },
-            setOutputLastError(_id, message, kind) {
-                this.lastError = `${Date.now()}\n${message}`;
-                this.lastErrorKind = kind;
+            setOutputLastError(_id: string, message: string, kind?: string | null) {
+                db.lastError = `${Date.now()}\n${message}`;
+                db.lastErrorKind = kind;
             },
         };
+        return db as unknown as Db & Pick<typeof db, 'lastError' | 'lastErrorKind'>;
     }
 
-    function makeOutput(id, overrides = {}) {
+    function makeOutput(id: string, overrides: Partial<Output> = {}): Output {
         return {
             id,
             pipelineId: 1,
@@ -2062,11 +2182,11 @@ describe('restartPipelineOutputs', () => {
             audioEncoding: 'copy',
             lastError: null,
             ...overrides,
-        };
+        } as Output;
     }
 
     test('only schedules outputs whose desiredState is running, and returns that count', async (t) => {
-        const spawned = [];
+        const spawned: FakeFfmpeg[] = [];
         const createOutputService = loadOutputService(
             t,
             () => {
@@ -2095,7 +2215,7 @@ describe('restartPipelineOutputs', () => {
     });
 
     test('skips outputs already actively running instead of double-spawning', async (t) => {
-        const spawned = [];
+        const spawned: FakeFfmpeg[] = [];
         const createOutputService = loadOutputService(
             t,
             () => {
@@ -2125,7 +2245,7 @@ describe('restartPipelineOutputs', () => {
     });
 
     test('staggers restarts and resets each failure counter to 0', async (t) => {
-        const spawned = [];
+        const spawned: FakeFfmpeg[] = [];
         const createOutputService = loadOutputService(
             t,
             () => {
@@ -2178,15 +2298,20 @@ describe('restartPipelineOutputs', () => {
     });
 });
 
+// A diagnostics event has whatever fields the code under test logged, and the tests read
+// them by name.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DiagEvent = { event: string; [field: string]: any };
+
 function makeDiagnosticsSpy() {
-    const events = [];
+    const events: DiagEvent[] = [];
     return {
         events,
-        event(event, fields = {}) {
+        event(event: string, fields: Record<string, unknown> = {}) {
             events.push({ event, ...fields });
         },
         close() {},
-    };
+    } as unknown as DiagnosticsLogger & { events: DiagEvent[] };
 }
 
 describe('output diagnostics events', () => {
@@ -2277,6 +2402,7 @@ describe('output diagnostics events', () => {
             assert.equal(e.pid, proc.pid, `${e.event} lacks pid`);
         }
         const exited = runEvents.find((e) => e.event === 'ffmpeg-exited');
+        assert.ok(exited);
         assert.equal(typeof exited.ranMs, 'number');
 
         service.shutdown();
@@ -2302,7 +2428,7 @@ describe('output diagnostics events', () => {
     });
 
     test('an exit with the same stderr tail as the previous exit does not repeat it', async (t) => {
-        const procs = [];
+        const procs: FakeFfmpeg[] = [];
         const diagnostics = makeDiagnosticsSpy();
         const createOutputService = loadOutputService(
             t,
@@ -2318,14 +2444,14 @@ describe('output diagnostics events', () => {
         const service = createOutputService(makeDb(), makeReadyInputState(), diagnostics);
 
         await service.start('out1');
-        for (const [delayMs, line] of [
+        for (const [delayMs, line] of <Array<[number, string]>>[
             [1000, 'Connection refused'],
             [2000, 'Connection refused'],
             [4000, 'Broken pipe'],
         ]) {
-            procs.at(-1).stderr.write(`${line}\n`);
+            lastOf(procs).stderr.write(`${line}\n`);
             await settle();
-            procs.at(-1).emit('close', 1, null);
+            lastOf(procs).emit('close', 1, null);
             t.mock.timers.tick(delayMs);
             await settle();
         }
@@ -2384,18 +2510,18 @@ describe('output diagnostics events', () => {
         service.shutdown();
     });
     describe('timestamp warning bursts', () => {
-        const audioLine = (n) =>
+        const audioLine = (n: number) =>
             `[aist#0:0/aac @ 0x5c4063a05240] timestamp discontinuity (stream id=256): -14980000, new offset= -${5160000 + n}\n`;
-        const videoLine = (n) =>
+        const videoLine = (n: number) =>
             `[vist#0:1/h264 @ 0x62c407ef8200] timestamp discontinuity (stream id=257): 14980000, new offset= -${20140000 + n}\n`;
-        const flood = (pairs) =>
+        const flood = (pairs: number) =>
             Array.from({ length: pairs }, (_, i) => audioLine(i) + videoLine(i)).join('');
-        const eventsNamed = (diagnostics, name) =>
+        const eventsNamed = (diagnostics: { events: DiagEvent[] }, name: string) =>
             diagnostics.events.filter((e) => e.event === name);
 
         // Real timers drive the watchdog tick and stream delivery; only Date.now
         // is controlled, so minutes of burst history can be simulated instantly.
-        function startWithClock(t) {
+        function startWithClock(t: TestContext) {
             const clock = { now: Date.now() };
             t.mock.method(Date, 'now', () => clock.now);
             return clock;
@@ -2438,12 +2564,12 @@ describe('output diagnostics events', () => {
             assert.ok(summaries.length >= 1, 'a summary follows 30 s of suppressed lines');
             for (const summary of summaries) {
                 assert.equal(
-                    Object.values(summary.kinds).reduce((a, b) => a + b, 0),
+                    Object.values<number>(summary.kinds).reduce((a, b) => a + b, 0),
                     summary.count,
                 );
             }
             assert.match(
-                service.getStats('out1').warningReason,
+                String(service.getStats('out1').warningReason),
                 /^FFmpeg reported: .*timestamp discontinuity/,
             );
 
@@ -2455,7 +2581,7 @@ describe('output diagnostics events', () => {
             assert.equal(recovered[0].count, 502);
             assert.equal(
                 eventsNamed(diagnostics, 'ffmpeg-timestamp-warning-summary').reduce(
-                    (total, summary) => total + summary.count,
+                    (total: number, summary: DiagEvent) => total + summary.count,
                     0,
                 ),
                 500,
@@ -2493,7 +2619,10 @@ describe('output diagnostics events', () => {
             clock.now += 11_000;
             proc.stderr.write('[h264 @ 0x580060534940] decode_slice_header error\n');
             await sleep(25);
-            assert.match(service.getStats('out1').warningReason, /decode_slice_header error/);
+            assert.match(
+                String(service.getStats('out1').warningReason),
+                /decode_slice_header error/,
+            );
 
             // The finished burst is recorded in the output's own History.
             clock.now += 31_000;
@@ -2667,11 +2796,23 @@ describe('shared renditions', () => {
         delete require.cache[require.resolve('../src/utils/appConfig')];
     });
 
+    interface FleetErrorRecord {
+        id: string;
+        message: string;
+        kind?: string | null;
+    }
+
+    interface FleetSpawn {
+        args: string[];
+        proc: FakeFfmpeg;
+        dest: string;
+    }
+
     // A pipeline with a 720p/track-1 rendition (1-1) and two outputs sharing it
     // (1-2, 1-3). Rows can be replaced to build other shapes.
-    function makeFleetDb(rows) {
-        const outputs = new Map();
-        const add = (o) =>
+    function makeFleetDb(rows?: Array<Partial<Output> & { id: string }>) {
+        const outputs = new Map<string, Output>();
+        const add = (o: Partial<Output> & { id: string }) =>
             outputs.set(o.id, {
                 pipelineId: 1,
                 seq: 1,
@@ -2680,7 +2821,7 @@ describe('shared renditions', () => {
                 audioEncoding: 'copy',
                 lastError: null,
                 ...o,
-            });
+            } as Output);
         for (const row of rows ?? [
             {
                 id: '1-1',
@@ -2694,30 +2835,31 @@ describe('shared renditions', () => {
         ]) {
             add(row);
         }
-        return {
+        const db = {
             outputs,
-            errorRecords: [],
+            errorRecords: [] as FleetErrorRecord[],
             appendPipelineLog() {
                 throw new Error('outputs must not write to the pipeline History');
             },
-            getPipeline: (id) =>
+            getPipeline: (id: number) =>
                 id === 1 ? { id: 1, name: 'Live', streamKey: 'stream-key', streamKeyId: 1 } : null,
-            getOutput: (id) => outputs.get(id) ?? null,
+            getOutput: (id: string) => outputs.get(id) ?? null,
             listOutputsForPipeline: () => [...outputs.values()],
-            setOutputLastError(id, message, kind) {
-                this.errorRecords.push({ id, message, kind });
+            setOutputLastError(id: string, message: string, kind?: string | null) {
+                db.errorRecords.push({ id, message, kind });
             },
-            recordsFor(id, kind) {
-                return this.errorRecords.filter((r) => r.id === id && (!kind || r.kind === kind));
+            recordsFor(id: string, kind?: string) {
+                return db.errorRecords.filter((r) => r.id === id && (!kind || r.kind === kind));
             },
         };
+        return db as unknown as Db & Pick<typeof db, 'outputs' | 'errorRecords' | 'recordsFor'>;
     }
 
     // Every spawn is recorded; each process exits when killed, like a real one.
-    function makeFleet(t, options = {}) {
-        const spawned = [];
+    function makeFleet(t: TestContext, options: LoadOptions = {}) {
+        const spawned: FleetSpawn[] = [];
         let pid = 100;
-        const factory = (args) => {
+        const factory = (args: string[]) => {
             const proc = new FakeFfmpeg(pid++);
             spawned.push({ args, proc, dest: args[args.length - 1] });
             return proc;
@@ -2730,14 +2872,20 @@ describe('shared renditions', () => {
         return {
             spawned,
             createOutputService,
-            procFor: (dest) => spawned.findLast((s) => s.dest === dest)?.proc,
-            spawnsTo: (dest) => spawned.filter((s) => s.dest === dest),
+            procFor: (dest: string) => {
+                const proc = spawned.findLast((s) => s.dest === dest)?.proc;
+                assert.ok(proc, `no ffmpeg was spawned for ${dest}`);
+                return proc;
+            },
+            spawnsTo: (dest: string) => spawned.filter((s) => s.dest === dest),
         };
     }
 
-    const flush = () => new Promise((resolve) => setImmediate(resolve));
-    const markReady = (proc) => proc.stdout.write('total_size=4096\nout_time_ms=1000000\n');
-    const crashRecords = (db, id) => db.recordsFor(id, 'crash');
+    const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+    const markReady = (proc: FakeFfmpeg) =>
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\n');
+    const crashRecords = (db: ReturnType<typeof makeFleetDb>, id: string) =>
+        db.recordsFor(id, 'crash');
 
     describe('arguments', () => {
         test('outputs that are not shared spawn with byte-identical arguments', async (t) => {
@@ -2993,7 +3141,7 @@ describe('shared renditions', () => {
     });
 
     describe('rendition failure', () => {
-        async function runningFleet(t, options) {
+        async function runningFleet(t: TestContext, options?: LoadOptions) {
             const fleet = makeFleet(t, options);
             const db = makeFleetDb([
                 {
@@ -3093,6 +3241,7 @@ describe('shared renditions', () => {
             const event = diagnostics.events.find(
                 (e) => e.event === 'rendition-dependents-restarted',
             );
+            assert.ok(event);
             assert.deepEqual(event.outputIds.sort(), ['1-2', '1-3']);
             assert.equal(event.renditionId, '1-1');
             assert.match(event.reason, /exit=1/);
@@ -3102,7 +3251,7 @@ describe('shared renditions', () => {
         test('a dependent that was only waiting to start also gets the record', async (t) => {
             const { fleet, db, service } = await runningFleet(t);
             await service.stopAndWait('1-3');
-            db.outputs.get('1-3').desiredState = 'running'; // desired running, not running
+            rowOf(db, '1-3').desiredState = 'running'; // desired running, not running
             db.errorRecords.length = 0;
             const rendition = fleet.procFor(RENDITION_URL);
 
@@ -3122,7 +3271,7 @@ describe('shared renditions', () => {
         test('a dependent whose desired state is stopped gets nothing', async (t) => {
             const { fleet, db, service } = await runningFleet(t);
             await service.stopAndWait('1-3');
-            db.outputs.get('1-3').desiredState = 'stopped';
+            rowOf(db, '1-3').desiredState = 'stopped';
             db.errorRecords.length = 0;
 
             const rendition = fleet.procFor(RENDITION_URL);
@@ -3189,7 +3338,7 @@ describe('shared renditions', () => {
             fleet.procFor(YOUTUBE).stdout.write('total_size=10\n');
             // Rendition goes away deliberately: not ready from now on.
             await service.stopAndWait('1-1');
-            db.outputs.get('1-1').desiredState = 'stopped';
+            rowOf(db, '1-1').desiredState = 'stopped';
 
             await sleep(120);
 
@@ -3249,9 +3398,9 @@ describe('shared renditions', () => {
             const fleet = makeFleet(t, { memoryLimitMb: 200 });
             const db = makeFleetDb();
             const originalReadFileSync = fs.readFileSync;
-            t.mock.method(fs, 'readFileSync', (filePath, ...rest) => {
+            t.mock.method(fs, 'readFileSync', (filePath: unknown, ...rest: unknown[]) => {
                 if (/^\/proc\/\d+\/status$/.test(String(filePath))) return 'VmRSS:  100000 kB\n';
-                return originalReadFileSync(filePath, ...rest);
+                return passthrough(originalReadFileSync)(filePath, ...rest);
             });
             const service = fleet.createOutputService(db, makeReadyInputState());
             await service.start('1-1');
@@ -3263,7 +3412,7 @@ describe('shared renditions', () => {
 
             assert.equal(service.getStats('1-2').memoryLimitBytes, 200 * 1024 * 1024);
             assert.ok(
-                service.getStats('1-1').memoryLimitBytes > 200 * 1024 * 1024,
+                (service.getStats('1-1').memoryLimitBytes ?? 0) > 200 * 1024 * 1024,
                 'the 720p preset limit applies to the encode',
             );
             service.shutdown();
@@ -3313,7 +3462,7 @@ describe('shared renditions', () => {
             await flush();
             await service.start('1-2');
             await service.start('1-3');
-            const order = [];
+            const order: string[] = [];
             for (const [id, dest] of [
                 ['1-1', RENDITION_URL],
                 ['1-2', YOUTUBE],
@@ -3488,12 +3637,14 @@ describe('shared renditions', () => {
                 ],
             );
             const restart = diagnostics.events.find((e) => e.event === 'ffmpeg-restart');
+            assert.ok(restart);
             assert.equal(restart.outputId, '1-2');
             assert.equal(restart.role, 'output');
             assert.equal(restart.renditionId, '1-1');
             const exited = diagnostics.events.find(
                 (e) => e.event === 'ffmpeg-exited' && e.outputId === '1-2',
             );
+            assert.ok(exited);
             assert.equal(exited.role, 'output');
             assert.equal(exited.renditionId, '1-1');
             service.shutdown();
@@ -3547,14 +3698,14 @@ describe('shared renditions', () => {
 
             // Second output with the same recipe, and the encode the reconciler adds.
             db.outputs.set('1-3', {
-                ...db.outputs.get('1-2'),
+                ...rowOf(db, '1-2'),
                 id: '1-3',
                 name: 'Twitch',
                 url: TWITCH,
                 desiredState: 'stopped',
             });
             db.outputs.set('1-4', {
-                ...db.outputs.get('1-2'),
+                ...rowOf(db, '1-2'),
                 id: '1-4',
                 name: 'Shared encode 720p · track 1',
                 url: RENDITION_URL,
@@ -3562,7 +3713,7 @@ describe('shared renditions', () => {
             await service.start('1-4');
             markReady(fleet.procFor(RENDITION_URL));
             await flush();
-            db.outputs.get('1-3').desiredState = 'running';
+            rowOf(db, '1-3').desiredState = 'running';
             await service.start('1-3');
 
             assert.deepEqual(direct.killSignals, [], 'the first output was not touched');
@@ -3620,7 +3771,7 @@ describe('shared renditions', () => {
         test('a rendition failure restarts the output reading it, never one that runs direct', async (t) => {
             const fleet = makeFleet(t);
             const db = makeFleetDb(); // 1-1 encode, 1-2 and 1-3 share it
-            const twitch = db.outputs.get('1-3');
+            const twitch = rowOf(db, '1-3');
             const service = fleet.createOutputService(db, makeReadyInputState());
             // 1-2 starts while it is the only output with the recipe, so it runs direct.
             db.outputs.delete('1-3');
@@ -3698,6 +3849,7 @@ describe('manual start', () => {
             { message: 'Started manually', kind: 'started', failedAttempts: undefined },
         ]);
         const event = diagnostics.events.find((e) => e.event === 'output-user-start');
+        assert.ok(event);
         assert.deepEqual(
             { outputId: event.outputId, role: event.role, sourceReady: event.sourceReady },
             { outputId: 'out1', role: 'output', sourceReady: true },
@@ -3769,12 +3921,12 @@ describe('recovery from a crash', () => {
     });
 
     // The current error is what the output row says (as the real db derives it).
-    function crashedDb(crashedAtMs) {
-        const db = makeDb();
+    function crashedDb(crashedAtMs: number) {
+        const db = Object.assign(makeDb(), { recovered: [] as string[] });
         const output = db.getOutput('out1');
+        assert.ok(output);
         output.lastError = `${crashedAtMs}\nboom`;
-        db.recovered = [];
-        db.markOutputRecovered = (id) => {
+        db.markOutputRecovered = (id: string) => {
             db.recovered.push(id);
             output.lastError = null;
             return 3;
@@ -3782,7 +3934,7 @@ describe('recovery from a crash', () => {
         return db;
     }
 
-    function writeData(proc) {
+    function writeData(proc: FakeFfmpeg) {
         proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
     }
 
@@ -3816,6 +3968,7 @@ describe('recovery from a crash', () => {
         assert.deepEqual(db.recovered, ['out1']);
         assert.equal(service.getStats('out1').failures, 0);
         const event = diagnostics.events.find((e) => e.event === 'output-recovered');
+        assert.ok(event);
         assert.deepEqual(
             { crashes: event.crashes, failures: event.failures },
             { crashes: 3, failures: 1 },

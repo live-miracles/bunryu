@@ -7,9 +7,14 @@ import {
     linkGrowth,
     percentOfReceived,
     srtIntervalAlerts,
+    type LegHealth,
+    type PipelineAlert,
+    type RelayInputSample,
 } from '../src/utils/srtLinkAlerts';
 
-const sample = (over = {}) => ({
+type LegWindow = Parameters<typeof legQualityHealth>[0];
+
+const sample = (over: Partial<RelayInputSample> = {}): RelayInputSample => ({
     recvLossTotal: 0,
     recvDropTotal: 0,
     recvUniquePacketsTotal: 10_000,
@@ -21,7 +26,10 @@ const sample = (over = {}) => ({
     ...over,
 });
 // One interval: 1000 packets received and forwarded, unless the test says otherwise.
-const interval = (current = {}, previous = {}) =>
+const interval = (
+    current: Partial<RelayInputSample> = {},
+    previous: Partial<RelayInputSample> = {},
+) =>
     srtIntervalAlerts(
         sample(previous),
         sample({
@@ -31,7 +39,7 @@ const interval = (current = {}, previous = {}) =>
         }),
         5000,
     );
-const codes = (alerts) => alerts.map((a) => a.code);
+const codes = (alerts: PipelineAlert[]) => alerts.map((a) => a.code);
 
 describe('counterDelta', () => {
     test('grows normally, restarts from zero with the relay stream, and needs both ends', () => {
@@ -224,20 +232,24 @@ describe('srtIntervalAlerts after the relay stream restarted', () => {
 });
 
 describe('legQualityHealth', () => {
-    const OK = { health: 'ok', reason: null };
-    const window = (over = {}) => ({
+    const OK: LegHealth = { health: 'ok', reason: null };
+    const window = (over: Partial<LegWindow> = {}): LegWindow => ({
         receivedPackets: 1000,
         lossPackets: 0,
         dropPackets: 0,
         retransmittedPackets: 0,
         ...over,
     });
-    const verdict = (over, latencyMs = 200, state = OK, noun = 'Leg') =>
-        legQualityHealth(window(over), latencyMs, noun, state);
+    const verdict = (
+        over: Partial<LegWindow>,
+        latencyMs: number | null = 200,
+        state: LegHealth = OK,
+        noun = 'Leg',
+    ) => legQualityHealth(window(over), latencyMs, noun, state);
 
     test('a clean minute leaves the state as it was', () => {
         assert.deepEqual(verdict({}), OK);
-        const waiting = { health: 'warn', reason: 'Leg is pending.' };
+        const waiting: LegHealth = { health: 'warn', reason: 'Leg is pending.' };
         assert.deepEqual(verdict({}, 200, waiting), waiting);
     });
 
@@ -281,7 +293,7 @@ describe('legQualityHealth', () => {
     });
 
     test('an error is never downgraded to a warning', () => {
-        const down = { health: 'error', reason: 'Leg state is unknown.' };
+        const down: LegHealth = { health: 'error', reason: 'Leg state is unknown.' };
         assert.equal(verdict({ lossPackets: 20 }, 200, down).health, 'error');
         assert.equal(verdict({}, 2000, down).health, 'error');
     });

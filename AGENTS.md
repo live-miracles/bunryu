@@ -364,10 +364,10 @@ only for a new module.
   status dot (pipeline list, relay card, shared encode row).
   `core/hints.ts` maps known FFmpeg errors, warnings and alert codes to the
   one-line "Hint:" advice under them.
-- `test/*.test.js` unit tests and `test/integration/` API tests (`npm test`). They are
-  JavaScript, type-checked by `tsconfig.test.json` (`npm run typecheck`) except the files in
-  its `exclude` list, which is the to-do list: fix a file's type errors and remove it from
-  the list; a new test file must type-check. Rename a test to `.ts` only when editing it anyway.
+- `test/*.test.ts` unit tests and `test/integration/` API tests (`npm test`). They are
+  TypeScript, type-checked with `strict` by `tsconfig.test.json` (`npm run typecheck`), so a fake
+  that stops matching its real interface fails there. `test/helpers/http.ts` is the shared
+  request/response double for the API tests; `helpers/verdicts.ts` adds verdicts to fixtures.
 - `Dockerfile`, `compose.yaml`, `docker/entrypoint.sh` - single-container image
   for evaluation; the entrypoint supervises the app, SRS and the relay with the
   same readiness ordering as the systemd units. Media binary pins mirror

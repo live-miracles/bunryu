@@ -1,8 +1,24 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-function fakeElement(value = '') {
-    const classes = new Set();
+// The parts of a DOM element the dashboard code touches; a test adds the others it needs.
+interface FakeElement {
+    value: string;
+    textContent: string;
+    classList: {
+        add(c: string): unknown;
+        remove(c: string): unknown;
+        toggle(c: string, force?: boolean): unknown;
+        contains(c: string): boolean;
+    };
+    close?: () => void;
+    showModal?: () => unknown;
+    focus?: () => void;
+    select?: () => void;
+}
+
+function fakeElement(value = ''): FakeElement {
+    const classes = new Set<string>();
     return {
         value,
         textContent: '',
@@ -15,15 +31,19 @@ function fakeElement(value = '') {
     };
 }
 
-const hasError = (el) => el.classList.contains('input-error');
+// The globals the test replaces: the page's document and window and fetch are fakes, so
+// they are set through this untyped view of globalThis.
+const globals = globalThis as unknown as Record<string, unknown>;
+
+const hasError = (el: FakeElement) => el.classList.contains('input-error');
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 describe('pipeline groups save as soon as they change', () => {
-    let elements;
-    let groupSaves;
-    const realDocument = global.document;
-    const realFetch = global.fetch;
-    const realWindow = global.window;
+    let elements: Record<string, FakeElement>;
+    let groupSaves: unknown[];
+    const realDocument = globals.document;
+    const realFetch = globals.fetch;
+    const realWindow = globals.window;
 
     const toast = () => elements['error-msg'].textContent;
 
@@ -31,30 +51,30 @@ describe('pipeline groups save as soon as they change', () => {
         elements = {
             'pipe-group-name-input': fakeElement(''),
             'pipe-group-id-input': fakeElement(''),
-            'pipe-group-modal': { close() {}, showModal() {} },
+            'pipe-group-modal': Object.assign(fakeElement(), { close() {}, showModal() {} }),
             'pipe-group-modal-title': fakeElement(),
             'error-msg': fakeElement(),
             'error-alert': fakeElement(),
         };
         elements['error-alert'].classList.add('hidden');
-        global.document = {
-            getElementById: (id) => elements[id] ?? null,
+        globals.document = {
+            getElementById: (id: string) => elements[id] ?? null,
             querySelectorAll: () => [],
             querySelector: () => null,
             addEventListener() {},
             title: '',
         };
         // Importing the module pulls in the dashboard, which starts a refresh on load.
-        global.window = { location: { search: '', href: '' }, addEventListener() {} };
+        globals.window = { location: { search: '', href: '' }, addEventListener() {} };
         groupSaves = [];
         // Only the groups save is answered; the refresh after it never settles.
-        global.fetch = (url, opts) => {
+        globals.fetch = (url: unknown, opts: { body: string }) => {
             if (!String(url).endsWith('/api/settings/pipeline-groups')) {
                 return new Promise(() => {});
             }
             const body = JSON.parse(opts.body);
             groupSaves.push(body);
-            const groups = body.groups.map((g, i) => ({
+            const groups = body.groups.map((g: { id?: number; name: string }, i: number) => ({
                 id: g.id ?? 99,
                 name: g.name,
                 position: i,
@@ -71,9 +91,9 @@ describe('pipeline groups save as soon as they change', () => {
     });
 
     afterEach(() => {
-        global.document = realDocument;
-        global.fetch = realFetch;
-        global.window = realWindow;
+        globals.document = realDocument;
+        globals.fetch = realFetch;
+        globals.window = realWindow;
     });
 
     test('an empty group name is marked, explained and not sent', async () => {
@@ -120,7 +140,7 @@ describe('pipeline groups save as soon as they change', () => {
         const { state } =
             require('../public/ts/core/state') as typeof import('../public/ts/core/state');
         assert.deepEqual(
-            state.config.groups.map((g) => g.name),
+            state.config.groups?.map((g) => g.name),
             ['Main', 'Spare'],
         );
     });

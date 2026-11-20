@@ -9,14 +9,22 @@ import {
     relayErrorSignature,
     relayErrorText,
 } from '../src/utils/relayErrorLog';
+import type { RelayErrorRecord } from '../src/utils/relayErrorLog';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const T0 = 10_000_000;
 
-const publish = (retryMs, reject = 'Connection setup failure') =>
+// The record a poll produced, which a test that reads its fields expects to exist.
+function recorded(record: RelayErrorRecord | null): RelayErrorRecord {
+    assert.ok(record, 'expected the poll to produce a record');
+    return record;
+}
+
+const publish = (retryMs: number, reject = 'Connection setup failure') =>
     `Failed to publish to downstream output: srt_connect target=127.0.0.1:10080 streamid=#!::r=live/key01_secret,m=publish: ${reject}; retrying in ${retryMs} ms`;
-const inputError = (port) => `Input error from peer 203.0.113.9:${port}: Connection was broken`;
+const inputError = (port: number) =>
+    `Input error from peer 203.0.113.9:${port}: Connection was broken`;
 
 describe('relay error text', () => {
     test('drops the retry delay and the stream id, which holds the key', () => {
@@ -45,7 +53,7 @@ describe('relay error text', () => {
 describe('relay error log', () => {
     test('records an error once and merges its retries into that line', () => {
         const log = createRelayErrorLog();
-        const first = log.observe(1, T0, publish(1000), T0);
+        const first = recorded(log.observe(1, T0, publish(1000), T0));
         assert.equal(first.kind, 'new');
         assert.equal(first.message.includes('retrying'), false);
         log.setLogId(1, 42);
@@ -53,13 +61,13 @@ describe('relay error log', () => {
         // The same poll again: nothing new.
         assert.equal(log.observe(1, T0 + 5 * SECOND, publish(1000), T0), null);
 
-        const second = log.observe(1, T0 + 10 * SECOND, publish(2000), T0 + 3 * SECOND);
+        const second = recorded(log.observe(1, T0 + 10 * SECOND, publish(2000), T0 + 3 * SECOND));
         assert.equal(second.kind, 'repeat');
         assert.equal(second.logId, 42);
         assert.equal(second.count, 2);
         assert.match(second.message, /\(seen 2 times over 3 s\)$/);
 
-        const later = log.observe(1, T0 + 5 * MINUTE, publish(16000), T0 + 5 * MINUTE);
+        const later = recorded(log.observe(1, T0 + 5 * MINUTE, publish(16000), T0 + 5 * MINUTE));
         assert.equal(later.count, 3);
         assert.match(later.message, /\(seen 3 times over 5 min\)$/);
     });
@@ -68,22 +76,27 @@ describe('relay error log', () => {
         const log = createRelayErrorLog();
         log.observe(1, T0, publish(1000), T0);
         log.setLogId(1, 1);
-        const other = log.observe(1, T0 + 5 * SECOND, inputError(40123), T0 + 4 * SECOND);
+        const other = recorded(log.observe(1, T0 + 5 * SECOND, inputError(40123), T0 + 4 * SECOND));
         assert.equal(other.kind, 'new');
         log.setLogId(1, 2);
         // The publish error returns: the open episode is the input error, so a new line.
-        assert.equal(log.observe(1, T0 + 10 * SECOND, publish(1000), T0 + 8 * SECOND).kind, 'new');
+        assert.equal(
+            recorded(log.observe(1, T0 + 10 * SECOND, publish(1000), T0 + 8 * SECOND)).kind,
+            'new',
+        );
     });
 
     test('an error that returns after the merge window is a new line', () => {
         const log = createRelayErrorLog();
         log.observe(1, T0, publish(1000), T0);
         log.setLogId(1, 1);
-        const again = log.observe(
-            1,
-            T0 + RELAY_ERROR_MERGE_WINDOW_MS + MINUTE,
-            publish(1000),
-            T0 + RELAY_ERROR_MERGE_WINDOW_MS + MINUTE,
+        const again = recorded(
+            log.observe(
+                1,
+                T0 + RELAY_ERROR_MERGE_WINDOW_MS + MINUTE,
+                publish(1000),
+                T0 + RELAY_ERROR_MERGE_WINDOW_MS + MINUTE,
+            ),
         );
         assert.equal(again.kind, 'new');
     });
@@ -93,7 +106,9 @@ describe('relay error log', () => {
         log.observe(1, T0, inputError(40123), T0);
         log.setLogId(1, 7);
         assert.equal(log.observe(1, T0 + 5 * SECOND, null, null), null);
-        const again = log.observe(1, T0 + 30 * SECOND, inputError(40999), T0 + 25 * SECOND);
+        const again = recorded(
+            log.observe(1, T0 + 30 * SECOND, inputError(40999), T0 + 25 * SECOND),
+        );
         assert.equal(again.kind, 'repeat');
         assert.equal(again.logId, 7);
     });
@@ -108,21 +123,24 @@ describe('relay error log', () => {
             'and not on later polls',
         );
         // A fresh one right after is recorded.
-        assert.equal(log.observe(1, T0 + 10 * SECOND, publish(2000), T0 + 8 * SECOND).kind, 'new');
+        assert.equal(
+            recorded(log.observe(1, T0 + 10 * SECOND, publish(2000), T0 + 8 * SECOND)).kind,
+            'new',
+        );
         // A fresh error on the first poll is recorded.
         assert.equal(
-            createRelayErrorLog().observe(2, T0, publish(1000), T0 - 2 * SECOND).kind,
+            recorded(createRelayErrorLog().observe(2, T0, publish(1000), T0 - 2 * SECOND)).kind,
             'new',
         );
     });
 
     test('diagnostics get the first occurrence and then one repeat a minute at most', () => {
         const log = createRelayErrorLog();
-        assert.equal(log.observe(1, T0, publish(1000), T0).diagnostics, true);
+        assert.equal(recorded(log.observe(1, T0, publish(1000), T0)).diagnostics, true);
         log.setLogId(1, 1);
         let count = 0;
         for (let t = 16 * SECOND; t <= 3 * MINUTE; t += 16 * SECOND) {
-            if (log.observe(1, T0 + t, publish(16000), T0 + t).diagnostics) count++;
+            if (recorded(log.observe(1, T0 + t, publish(16000), T0 + t)).diagnostics) count++;
         }
         // About 11 repeats a minute... only about one a minute reaches diagnostics.
         assert.ok(count >= 2 && count <= 4, `got ${count}`);
@@ -132,7 +150,7 @@ describe('relay error log', () => {
     test('pipelines are independent and deleted ones are forgotten', () => {
         const log = createRelayErrorLog();
         log.observe(1, T0, publish(1000), T0);
-        assert.equal(log.observe(2, T0, publish(1000), T0).kind, 'new');
+        assert.equal(recorded(log.observe(2, T0, publish(1000), T0)).kind, 'new');
         log.keepOnly(new Set([2]));
         // Pipeline 1 starts afresh: an old error is not logged as new.
         assert.equal(log.observe(1, T0 + MINUTE, publish(1000), T0), null);

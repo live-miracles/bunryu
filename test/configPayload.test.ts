@@ -8,8 +8,9 @@ import {
     planHasWork,
     configPasteMessage,
 } from '../public/ts/core/config-payload';
+import type { ConfigPastePlan } from '../public/ts/core/config-payload';
 
-const out = (url, name = 'Out') => ({
+const out = (url: string, name = 'Out') => ({
     name,
     videoEncoding: 'copy',
     url,
@@ -17,10 +18,20 @@ const out = (url, name = 'Out') => ({
     watchUrl: '',
 });
 
-const keys = (n, taken = []) =>
+const keys = (n: number, taken: number[] = []) =>
     Array.from({ length: n }, (_, i) => ({ id: i + 1, taken: taken.includes(i + 1) }));
 
 const none = { groups: [], pipelines: [], streamKeys: keys(3) };
+
+// planConfigPaste and parseConfigPayload answer with a value or { error }. A test that
+// expects the value gets it narrowed here, and one that expects the refusal reads its text.
+const planOf = (...args: Parameters<typeof planConfigPaste>): ConfigPastePlan => {
+    const plan = planConfigPaste(...args);
+    assert.ok(!('error' in plan), 'the paste was refused');
+    return plan;
+};
+const errorOf = (result: object): string =>
+    'error' in result && typeof result.error === 'string' ? result.error : '';
 
 describe('configToCopy', () => {
     test('lists the groups in order and each pipeline with its group name and outputs', () => {
@@ -71,6 +82,7 @@ describe('parseConfigPayload', () => {
         const parsed = parseConfigPayload(
             JSON.stringify({ pipelines: [{ name: 'A', group: ' Morning ', outputs: [] }] }),
         );
+        assert.ok('config' in parsed);
         assert.deepEqual(parsed.config.groups, ['Morning']);
     });
 
@@ -81,10 +93,13 @@ describe('parseConfigPayload', () => {
     });
 
     test('refuses a name that is empty, too long or twice in the clipboard', () => {
-        const pipelines = (list) => JSON.stringify({ pipelines: list });
+        const pipelines = (list: unknown[]) => JSON.stringify({ pipelines: list });
         assert.ok('error' in parseConfigPayload(pipelines([{ name: ' ' }])));
         assert.ok('error' in parseConfigPayload(pipelines([{ name: 'x'.repeat(81) }])));
-        assert.match(parseConfigPayload(pipelines([{ name: 'A' }, { name: 'a' }])).error, /twice/);
+        assert.match(
+            errorOf(parseConfigPayload(pipelines([{ name: 'A' }, { name: 'a' }]))),
+            /twice/,
+        );
     });
 
     test('refuses a bad output, naming nothing partially', () => {
@@ -104,7 +119,7 @@ describe('planConfigPaste', () => {
     };
 
     test('creates the groups and pipelines an empty instance lacks, on free keys', () => {
-        const plan = planConfigPaste(config, none);
+        const plan = planOf(config, none);
         assert.deepEqual(plan.newGroups, ['Morning', 'Evening']);
         assert.deepEqual(
             plan.pipelines.map((p) => [
@@ -123,7 +138,7 @@ describe('planConfigPaste', () => {
     });
 
     test('matches groups and pipelines by name ignoring case and creates only the rest', () => {
-        const plan = planConfigPaste(config, {
+        const plan = planOf(config, {
             groups: [{ id: 7, name: 'morning' }],
             pipelines: [{ id: 'p1', name: 'MAIN', groupId: 7, urls: [] }],
             streamKeys: keys(3, [1]),
@@ -138,7 +153,7 @@ describe('planConfigPaste', () => {
     });
 
     test('an existing pipeline keeps its group, or gets the pasted one when it has none', () => {
-        const plan = planConfigPaste(config, {
+        const plan = planOf(config, {
             groups: [
                 { id: 1, name: 'Other' },
                 { id: 2, name: 'Evening' },
@@ -154,7 +169,7 @@ describe('planConfigPaste', () => {
     });
 
     test('adds only outputs with a destination the existing pipeline lacks, counting the rest', () => {
-        const plan = planConfigPaste(config, {
+        const plan = planOf(config, {
             groups: [],
             pipelines: [{ id: 'p1', name: 'Main', groupId: null, urls: ['rtmp://h/1'] }],
             streamKeys: keys(3, [1]),
@@ -167,7 +182,7 @@ describe('planConfigPaste', () => {
     });
 
     test('gives new pipelines the last key, shared, once the free keys run out', () => {
-        const plan = planConfigPaste(config, {
+        const plan = planOf(config, {
             groups: [],
             pipelines: [],
             streamKeys: keys(3, [1, 2]),
@@ -184,13 +199,13 @@ describe('planConfigPaste', () => {
 
     test('refuses a paste that would pass the group limit, before changing anything', () => {
         const many = { groups: Array.from({ length: 51 }, (_, i) => `G${i}`), pipelines: [] };
-        assert.match(planConfigPaste(many, none).error, /at most 50/);
+        assert.match(errorOf(planConfigPaste(many, none)), /at most 50/);
     });
 });
 
 describe('planHasWork and configPasteMessage', () => {
     test('a paste of what is already here has no work', () => {
-        const plan = planConfigPaste(
+        const plan = planOf(
             { groups: ['G'], pipelines: [{ name: 'A', group: 'G', outputs: [out('rtmp://h/1')] }] },
             {
                 groups: [{ id: 1, name: 'G' }],

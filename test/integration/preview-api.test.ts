@@ -1,20 +1,22 @@
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import type { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
 import express from 'express';
 import { registerPreviewApi } from '../../src/api/preview';
 import { PipelineNotFoundError } from '../../src/utils/pipelineNotFoundError';
 
 describe('preview start API', () => {
-    let server;
-    let base;
-    const started = [];
+    let server: Server;
+    let base: string;
+    const started: [number, number | undefined][] = [];
 
     before(async () => {
         const app = express();
         app.use(express.json());
         registerPreviewApi(app, {
             baseDir: '/nonexistent',
-            start: async (id, count) => {
+            start: async (id: number, count?: number) => {
                 if (id === 404) throw new PipelineNotFoundError();
                 if (id === 500) throw new Error('ffmpeg exploded');
                 started.push([id, count]);
@@ -22,16 +24,17 @@ describe('preview start API', () => {
             },
             keepalive: () => true,
             stop: () => {},
+            shutdown: () => {},
         });
         await new Promise((resolve) => {
-            server = app.listen(0, '127.0.0.1', resolve);
+            server = app.listen(0, '127.0.0.1', () => resolve(undefined));
         });
-        base = `http://127.0.0.1:${server.address().port}`;
+        base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     });
 
     after(() => server.close());
 
-    const start = (body) =>
+    const start = (body: unknown) =>
         fetch(`${base}/api/pipelines/1/preview/start`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -69,7 +72,7 @@ describe('preview start API', () => {
     });
 
     test('an unknown pipeline is a 404, any other failure a 500 with its message', async () => {
-        const post = (id) =>
+        const post = (id: number) =>
             fetch(`${base}/api/pipelines/${id}/preview/start`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },

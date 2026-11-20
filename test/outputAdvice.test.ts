@@ -1,5 +1,5 @@
 // Advice about how an output or pipeline is configured (public/ts/core/output-advice.ts).
-// The card tests (outputCardWarnings.test.js) check how it is shown; these check what it says.
+// The card tests (outputCardWarnings.test.ts) check how it is shown; these check what it says.
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,30 +10,36 @@ import {
     refLabel,
     restreamLoops,
     sharedStreamKeys,
+    type Advice,
 } from '../public/ts/core/output-advice';
+import type { InputHealth, OutputView, PipelineView } from '../public/ts/types';
 
-const out = (id, name, url, over = {}) => ({
-    id,
-    name,
-    url,
-    desiredState: 'running',
-    videoEncoding: 'copy',
-    audioEncoding: 'copy',
-    ...over,
-});
-const pipeline = (id, name, outs, streamKeyId = id) => ({
-    id: String(id),
-    name,
-    streamKeyId,
-    outs,
-});
+// The fixtures carry only the fields the advice rules read, so each factory casts once.
+const out = (id: string, name: string, url: string, over: Partial<OutputView> = {}) =>
+    ({
+        id,
+        name,
+        url,
+        desiredState: 'running',
+        videoEncoding: 'copy',
+        audioEncoding: 'copy',
+        ...over,
+    }) as OutputView;
+const pipeline = (id: number, name: string, outs: OutputView[], streamKeyId = id) =>
+    ({
+        id: String(id),
+        name,
+        streamKeyId,
+        outs,
+    }) as PipelineView;
 
-const rtmpInput = { connected: true, isSrt: false, audioTracks: [{}] };
-const srtInput = (tracks = 2) => ({
-    connected: true,
-    isSrt: true,
-    audioTracks: Array.from({ length: tracks }, () => ({})),
-});
+const rtmpInput = { connected: true, isSrt: false, audioTracks: [{}] } as InputHealth;
+const srtInput = (tracks = 2) =>
+    ({
+        connected: true,
+        isSrt: true,
+        audioTracks: Array.from({ length: tracks }, () => ({})),
+    }) as InputHealth;
 
 describe('refLabel', () => {
     test('names the output after its pipeline, or just the pipeline', () => {
@@ -81,9 +87,9 @@ describe('sharedStreamKeys', () => {
 });
 
 describe('outputAdvice', () => {
-    const none = new Map();
-    const messages = (advice) => advice.map((a) => a.message);
-    const levels = (advice) => advice.map((a) => a.level);
+    const none: ReturnType<typeof duplicateDestinations> = new Map();
+    const messages = (advice: Advice[]) => advice.map((a) => a.message);
+    const levels = (advice: Advice[]) => advice.map((a) => a.level);
 
     test('a plain copy output on a matching input has none', () => {
         assert.deepEqual(outputAdvice(out('1-1', 'YT', 'rtmp://a/x'), rtmpInput, none), []);
@@ -165,7 +171,7 @@ describe('outputAdvice', () => {
     });
 
     test('nothing about the audio until an input is connected, or for an output with no URL', () => {
-        const off = { connected: false, isSrt: false, audioTracks: [] };
+        const off = { connected: false, isSrt: false, audioTracks: [] } as unknown as InputHealth;
         assert.deepEqual(
             outputAdvice(out('1-1', 'YT', 'rtmp://a/x', { audioEncoding: '1' }), off, none),
             [],
@@ -211,7 +217,7 @@ describe('outputMistakes', () => {
 
 describe('restreamLoops', () => {
     // A pipeline with the publish URLs the dashboard knows for its key.
-    const withKey = (id, name, key, outs) => ({
+    const withKey = (id: number, name: string, key: string, outs: OutputView[]): PipelineView => ({
         ...pipeline(id, name, outs),
         streamKey: key,
         rtmpPublishUrl: `rtmp://live.example.com/live/${key}`,
@@ -219,7 +225,7 @@ describe('restreamLoops', () => {
         rtmpPublishUrlLocal: `rtmp://127.0.0.1:1935/live/${key}`,
         srtPublishUrlLocal: `srt://127.0.0.1:10080?streamid=#!::r=live/${key},m=publish`,
     });
-    const toKey = (key) => `rtmp://127.0.0.1:1935/live/${key}`;
+    const toKey = (key: string) => `rtmp://127.0.0.1:1935/live/${key}`;
 
     test('an output that publishes into its own pipeline loops, however the URL is spelled', () => {
         for (const url of [
@@ -230,7 +236,7 @@ describe('restreamLoops', () => {
         ]) {
             const a = withKey(1, 'A', 'kA', [out('1-1', 'Loop', url)]);
             const loops = restreamLoops([a]);
-            assert.match(loops.get('1-1'), /^Loops back into this pipeline's own input/, url);
+            assert.match(loops.get('1-1') ?? '', /^Loops back into this pipeline's own input/, url);
         }
     });
 

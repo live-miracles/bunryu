@@ -1,11 +1,14 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { srtPassphraseResetBlock } from '../public/ts/core/pipeline';
+import type { PipelineHealth } from '../public/ts/types';
 
-const pipeline = (live, outputStatuses) => ({
-    input: { live },
-    outputs: Object.fromEntries(outputStatuses.map((status, i) => [`o${i}`, { status }])),
-});
+// Only the fields the rule reads; the cast is here once, not at every use.
+const pipeline = (live: boolean, outputStatuses: string[]): PipelineHealth =>
+    ({
+        input: { live },
+        outputs: Object.fromEntries(outputStatuses.map((status, i) => [`o${i}`, { status }])),
+    }) as unknown as PipelineHealth;
 
 describe('srtPassphraseResetBlock', () => {
     test('allows a reset before health has loaded, with no pipelines, or with everything idle', () => {

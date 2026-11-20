@@ -4,18 +4,27 @@ import express from 'express';
 
 import { createDb } from '../../src/db/index';
 import { registerOutputApi } from '../../src/api/outputs';
+import type { OutputService } from '../../src/services/outputs';
+import type { Db, Output, Pipeline } from '../../src/types';
 import { dispatch } from '../helpers/http';
+
+// An output the test expects to be stored; the assertion narrows getOutput's null.
+function storedOutput(db: Db, id: string): Output {
+    const output = db.getOutput(id);
+    assert.ok(output, `output ${id} is not stored`);
+    return output;
+}
 
 // A fake process-management layer: fast, synchronous-ish, and lets tests
 // force start() to fail to exercise the API's rollback-to-stopped path.
 function makeFakeOutputService() {
-    const statuses = new Map();
+    const statuses = new Map<string, 'running' | 'stopped'>();
     let failNextStart = false;
     return {
         failNextStart(value = true) {
             failNextStart = value;
         },
-        getStats(id) {
+        getStats(id: string) {
             return {
                 status: statuses.get(id) ?? 'stopped',
                 pid: null,
@@ -28,26 +37,26 @@ function makeFakeOutputService() {
                 cpuPercent: null,
             };
         },
-        async start(id) {
+        async start(id: string) {
             if (failNextStart) {
                 failNextStart = false;
                 throw new Error('boom: could not start');
             }
             statuses.set(id, 'running');
         },
-        stop(id) {
+        stop(id: string) {
             statuses.set(id, 'stopped');
         },
-        async stopAndWait(id) {
+        async stopAndWait(id: string) {
             statuses.set(id, 'stopped');
         },
-        retired: [],
-        async retire(id) {
+        retired: [] as string[],
+        async retire(id: string) {
             this.retired.push(id);
             statuses.set(id, 'stopped');
         },
-        restarted: [],
-        restart(id) {
+        restarted: [] as string[],
+        restart(id: string) {
             if ((statuses.get(id) ?? 'stopped') !== 'running') return false;
             this.restarted.push(id);
             return true;
@@ -59,15 +68,19 @@ function makeFakeOutputService() {
     };
 }
 
+type Harness = ReturnType<typeof createHarness>;
+
 function createHarness() {
     const app = express();
     const db = createDb(':memory:');
     const outputService = makeFakeOutputService();
-    registerOutputApi(app, db, outputService);
+    // The fake implements only what the output API calls, so it is cast once, here.
+    registerOutputApi(app, db, outputService as unknown as OutputService);
     return {
         db,
         outputService,
-        request: (method, route, body) => dispatch(app, method, route, body),
+        request: (method: string, route: string, body?: unknown) =>
+            dispatch(app, method, route, body),
     };
 }
 
@@ -229,7 +242,7 @@ describe('Outputs API integration', () => {
     });
 
     describe('destination policy', () => {
-        const post = (harness, p, url) =>
+        const post = (harness: Harness, p: Pipeline, url: string) =>
             harness.request('POST', `/api/pipelines/${p.id}/outputs`, { name: 'X', url });
 
         test('rejects cloud-metadata, wrong-port loopback and numeric loopback spellings', async () => {
@@ -282,13 +295,14 @@ describe('Outputs API integration', () => {
                 url: 'rtmp://127.0.0.1:1985/live/k',
             });
             assert.equal(upd.status, 400);
-            assert.equal(harness.db.getOutput(o.id).url, 'rtmp://h.example/x');
+            assert.equal(storedOutput(harness.db, o.id).url, 'rtmp://h.example/x');
         });
     });
 
     describe('restream loops', () => {
-        const own = (key) => `rtmp://127.0.0.1:21935/live/${key}`;
-        const ownSrt = (key) => `srt://127.0.0.1:10080?streamid=#!::r=live/${key},m=publish`;
+        const own = (key: string) => `rtmp://127.0.0.1:21935/live/${key}`;
+        const ownSrt = (key: string) =>
+            `srt://127.0.0.1:10080?streamid=#!::r=live/${key},m=publish`;
 
         // The server does not refuse a destination that loops back into its own pipeline:
         // the dashboard marks it on the card (output-advice.ts), and the startup re-check
@@ -327,7 +341,7 @@ describe('Outputs API integration', () => {
                 url: own(p.streamKey),
             });
             assert.equal(upd.status, 200);
-            assert.equal(harness.db.getOutput(o.id).url, own(p.streamKey));
+            assert.equal(storedOutput(harness.db, o.id).url, own(p.streamKey));
         });
 
         test('saves a loop through another pipeline, and a pipeline sharing the key', async () => {
@@ -336,11 +350,12 @@ describe('Outputs API integration', () => {
             const b = harness.db.createPipeline();
             const c = harness.db.createPipeline();
             harness.db.updatePipeline(c.id, 'C', a.streamKeyId);
-            for (const [pipeline, url] of [
+            const links: [Pipeline, string][] = [
                 [a, own(b.streamKey)],
                 [b, own(a.streamKey)],
                 [c, own(a.streamKey)],
-            ]) {
+            ];
+            for (const [pipeline, url] of links) {
                 const res = await harness.request('POST', `/api/pipelines/${pipeline.id}/outputs`, {
                     name: 'Restream',
                     url,
@@ -372,7 +387,7 @@ describe('Outputs API integration', () => {
             });
             assert.equal(bulk.status, 201);
             assert.deepEqual(
-                bulk.body.map((o) => o.watchUrl),
+                bulk.body.map((o: Output) => o.watchUrl),
                 [url, ''],
             );
 
@@ -415,7 +430,7 @@ describe('Outputs API integration', () => {
                 assert.equal(edit.status, 400, label);
             }
             assert.equal(harness.db.listOutputs().length, 1);
-            assert.equal(harness.db.getOutput(o.id).watchUrl, '');
+            assert.equal(storedOutput(harness.db, o.id).watchUrl, '');
         });
 
         test('a running output can change it without a restart, and its other settings stay locked', async () => {
@@ -429,7 +444,7 @@ describe('Outputs API integration', () => {
                 watchUrl: url,
             });
             assert.equal(res.status, 200);
-            const stored = harness.db.getOutput(o.id);
+            const stored = storedOutput(harness.db, o.id);
             assert.equal(stored.watchUrl, url);
             assert.equal(stored.url, 'rtmp://x');
             assert.equal(stored.desiredState, 'running');
@@ -441,7 +456,7 @@ describe('Outputs API integration', () => {
                 { name: 'Renamed' },
             );
             assert.equal(keepsIt.status, 200);
-            assert.equal(harness.db.getOutput(o.id).watchUrl, url, 'a rename keeps the link');
+            assert.equal(storedOutput(harness.db, o.id).watchUrl, url, 'a rename keeps the link');
 
             const bad = await harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}`, {
                 watchUrl: 'javascript:alert(1)',
@@ -452,7 +467,7 @@ describe('Outputs API integration', () => {
                 url: 'rtmp://new',
             });
             assert.equal(locked.status, 409);
-            assert.equal(harness.db.getOutput(o.id).url, 'rtmp://x');
+            assert.equal(storedOutput(harness.db, o.id).url, 'rtmp://x');
         });
     });
 
@@ -498,7 +513,7 @@ describe('Outputs API integration', () => {
 
     describe('shared encodes (renditions)', () => {
         const RENDITION_URL = 'rtmp://127.0.0.1:21935/internal/r1_720p_a0';
-        const makeRendition = (harness, p, url = RENDITION_URL) =>
+        const makeRendition = (harness: Harness, p: Pipeline, url = RENDITION_URL) =>
             harness.db.createOutput({
                 pipelineId: p.id,
                 name: 'Shared encode 720p · track 0',
@@ -562,7 +577,7 @@ describe('Outputs API integration', () => {
                 url: RENDITION_URL,
             });
             assert.equal(upd.status, 400);
-            assert.equal(harness.db.getOutput(o.id).url, 'rtmp://h/x');
+            assert.equal(storedOutput(harness.db, o.id).url, 'rtmp://h/x');
         });
 
         test('update, delete, start and stop of a rendition are refused with 409', async () => {
@@ -582,7 +597,7 @@ describe('Outputs API integration', () => {
                 assert.deepEqual(res.body, expected);
             }
             assert.ok(harness.db.getOutput(r.id), 'row survives');
-            assert.equal(harness.db.getOutput(r.id).desiredState, 'stopped');
+            assert.equal(storedOutput(harness.db, r.id).desiredState, 'stopped');
             assert.equal(harness.outputService.getStats(r.id).status, 'stopped');
         });
 
@@ -697,8 +712,8 @@ describe('Outputs API integration', () => {
                 {},
             );
             assert.equal(res.status, 200);
-            assert.equal(harness.db.getOutput(a.id).desiredState, 'running');
-            assert.equal(harness.db.getOutput(b.id).desiredState, 'running');
+            assert.equal(storedOutput(harness.db, a.id).desiredState, 'running');
+            assert.equal(storedOutput(harness.db, b.id).desiredState, 'running');
         });
 
         test('stop-all flips desired state to stopped and calls stop on every output', async () => {
@@ -713,7 +728,7 @@ describe('Outputs API integration', () => {
                 {},
             );
             assert.equal(res.status, 200);
-            assert.equal(harness.db.getOutput(a.id).desiredState, 'stopped');
+            assert.equal(storedOutput(harness.db, a.id).desiredState, 'stopped');
         });
 
         test('start-all 404s for a nonexistent pipeline', async () => {
@@ -819,7 +834,7 @@ describe('Outputs API integration', () => {
 
                 assert.equal(res.status, 200);
                 assert.equal(res.body.name, 'Renamed');
-                const stored = harness.db.getOutput(o.id);
+                const stored = storedOutput(harness.db, o.id);
                 assert.equal(stored.name, 'Renamed');
                 assert.equal(stored.url, 'rtmp://x');
                 assert.equal(stored.audioEncoding, '0');
@@ -839,14 +854,15 @@ describe('Outputs API integration', () => {
                 );
 
                 assert.equal(res.status, 400);
-                assert.equal(harness.db.getOutput(o.id).name, 'Old');
+                assert.equal(storedOutput(harness.db, o.id).name, 'Old');
             });
 
-            for (const [label, extra] of [
+            const carried: [string, Record<string, string>][] = [
                 ['url', { url: 'rtmp://new' }],
                 ['videoEncoding', { videoEncoding: '720p' }],
                 ['audioEncoding', { audioEncoding: 'copy' }],
-            ]) {
+            ];
+            for (const [label, extra] of carried) {
                 test(`an edit that carries ${label} is still refused with 409, even with the same value`, async () => {
                     const { harness, p, o } = runningOutput();
 
@@ -857,7 +873,7 @@ describe('Outputs API integration', () => {
                     );
 
                     assert.equal(res.status, 409);
-                    assert.equal(harness.db.getOutput(o.id).name, 'Old');
+                    assert.equal(storedOutput(harness.db, o.id).name, 'Old');
                 });
             }
 
@@ -876,7 +892,7 @@ describe('Outputs API integration', () => {
                 );
 
                 assert.equal(res.status, 200);
-                assert.equal(harness.db.getOutput(o.id).name, 'Renamed');
+                assert.equal(storedOutput(harness.db, o.id).name, 'Renamed');
             });
         });
 
@@ -996,7 +1012,7 @@ describe('Outputs API integration', () => {
             );
             assert.equal(res.status, 200);
             assert.equal(res.body.status.status, 'running');
-            assert.equal(harness.db.getOutput(o.id).desiredState, 'running');
+            assert.equal(storedOutput(harness.db, o.id).desiredState, 'running');
         });
 
         test('rolls desiredState back to stopped when the process layer fails to start', async () => {
@@ -1011,7 +1027,7 @@ describe('Outputs API integration', () => {
             );
             assert.equal(res.status, 400);
             assert.match(res.body.error, /boom/);
-            assert.equal(harness.db.getOutput(o.id).desiredState, 'stopped');
+            assert.equal(storedOutput(harness.db, o.id).desiredState, 'stopped');
         });
 
         test('404s for an unknown output', async () => {
@@ -1043,7 +1059,7 @@ describe('Outputs API integration', () => {
             assert.equal(res.status, 200);
             assert.deepEqual(res.body, { ok: true });
             assert.deepEqual(harness.outputService.restarted, [o.id]);
-            assert.equal(harness.db.getOutput(o.id).desiredState, 'running');
+            assert.equal(storedOutput(harness.db, o.id).desiredState, 'running');
         });
 
         test('works for a rendition, which has no start or stop of its own', async () => {
@@ -1112,7 +1128,7 @@ describe('Outputs API integration', () => {
             const b = harness.db.createOutput({ pipelineId: p.id, name: 'B', url: 'rtmp://b' });
             await harness.outputService.start(a.id);
             await harness.outputService.start(b.id);
-            const restart = (o) =>
+            const restart = (o: Output) =>
                 harness.request('POST', `/api/pipelines/${p.id}/outputs/${o.id}/restart`);
 
             assert.equal((await restart(a)).status, 200);
@@ -1159,7 +1175,7 @@ describe('Outputs API integration', () => {
                 `/api/pipelines/${p.id}/outputs/${o.id}/stop`,
             );
             assert.equal(res.status, 200);
-            assert.equal(harness.db.getOutput(o.id).desiredState, 'stopped');
+            assert.equal(storedOutput(harness.db, o.id).desiredState, 'stopped');
             assert.equal(harness.outputService.getStats(o.id).status, 'stopped');
         });
     });

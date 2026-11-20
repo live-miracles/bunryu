@@ -1,5 +1,5 @@
 // What the dashboard does with a status: it takes the server's verdict (see
-// healthVerdicts.test.js for how that is worked out) and adds the hints.
+// healthVerdicts.test.ts for how that is worked out) and adds the hints.
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,11 +11,17 @@ import {
 } from '../public/ts/core/status';
 import { alertHint } from '../public/ts/core/hints';
 import { parsePipelines } from '../public/ts/core/pipeline';
+import type { ConfigData, OutputView } from '../public/ts/types';
+
+// lastErrorLine reads only lastError, so the rest of an OutputView is left out.
+function outputWith(lastError: string | null): OutputView {
+    return { lastError } as unknown as OutputView;
+}
 
 describe('the error helpers', () => {
     test('lastErrorLine is the last non-empty line', () => {
-        assert.equal(lastErrorLine({ lastError: 'a\nb\n\n' }), 'b');
-        assert.equal(lastErrorLine({ lastError: null }), '');
+        assert.equal(lastErrorLine(outputWith('a\nb\n\n')), 'b');
+        assert.equal(lastErrorLine(outputWith(null)), '');
     });
 
     test('summarizeOutputError keeps one line, at most 160 characters', () => {
@@ -83,8 +89,20 @@ describe('toStatusVerdict', () => {
 });
 
 describe('parsePipelines attaches the server verdicts', () => {
-    const config = {
-        pipelines: [{ id: '1', name: 'Hindi', streamKey: 'k', streamKeyId: 1 }],
+    const config: Partial<ConfigData> = {
+        pipelines: [
+            {
+                id: '1',
+                name: 'Hindi',
+                streamKey: 'k',
+                streamKeyId: 1,
+                groupId: null,
+                rtmpPublishUrl: '',
+                srtPublishUrl: '',
+                rtmpPublishUrlLocal: '',
+                srtPublishUrlLocal: '',
+            },
+        ],
         outputs: [
             {
                 id: '1-1',
@@ -95,6 +113,7 @@ describe('parsePipelines attaches the server verdicts', () => {
                 videoEncoding: 'copy',
                 url: 'rtmp://a.example/live/k',
                 audioEncoding: 'copy',
+                watchUrl: '',
                 lastError: null,
                 hasErrorHistory: false,
             },

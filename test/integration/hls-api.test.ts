@@ -4,25 +4,34 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { Db } from '../../src/types';
+import type { PreviewService } from '../../src/services/preview';
 
-function makeDb() {
-    const settings = new Map();
-    const sessions = new Map();
+// Only the settings and sessions the auth routes use.
+function makeDb(): Db {
+    const settings = new Map<string, string>();
+    const sessions = new Map<string, number>();
     return {
-        getSetting: (k) => settings.get(k) ?? null,
-        setSetting: (k, v) => settings.set(k, v),
-        createSession: (t) => sessions.set(t, Date.now()),
-        deleteSession: (t) => sessions.delete(t),
+        getSetting: (k: string) => settings.get(k) ?? null,
+        setSetting: (k: string, v: string) => {
+            settings.set(k, v);
+        },
+        createSession: (t: string) => {
+            sessions.set(t, Date.now());
+        },
+        deleteSession: (t: string) => sessions.delete(t),
         listSessions: () => [...sessions.keys()],
         pruneExpiredSessions: () => {},
-    };
+    } as unknown as Db;
 }
 
 describe('HLS preview route', () => {
-    let server;
-    let base;
-    let dir;
-    const touched = [];
+    let server: Server;
+    let base: string;
+    let dir: string;
+    const touched: number[] = [];
 
     before(async () => {
         dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-hls-'));
@@ -35,17 +44,22 @@ describe('HLS preview route', () => {
         const app = express();
         app.use(express.json());
         registerAuthApi(app, db);
-        registerHlsRoute(app, {
+        // Only the base directory and the viewer count are read by the route.
+        const previewService = {
             baseDir: path.join(dir, 'hls-root'),
-            keepalive: (id) => touched.push(id),
-        });
+            keepalive: (id: number) => {
+                touched.push(id);
+                return true;
+            },
+        } as unknown as PreviewService;
+        registerHlsRoute(app, previewService);
         fs.mkdirSync(path.join(dir, 'hls-root', '7'), { recursive: true });
         fs.writeFileSync(path.join(dir, 'hls-root', '7', 'index.m3u8'), '#EXTM3U\nlive\n');
         fs.writeFileSync(path.join(dir, 'db.sqlite'), 'not for the web');
-        await new Promise((resolve) => {
-            server = app.listen(0, '127.0.0.1', resolve);
+        await new Promise<void>((resolve) => {
+            server = app.listen(0, '127.0.0.1', () => resolve());
         });
-        base = `http://127.0.0.1:${server.address().port}`;
+        base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     });
 
     after(() => {
@@ -59,7 +73,7 @@ describe('HLS preview route', () => {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ password: 'pw-for-test' }),
         });
-        return res.headers.get('set-cookie').split(';')[0];
+        return res.headers.get('set-cookie')!.split(';')[0]!;
     }
 
     test('rejects an unauthenticated playlist fetch and does not count it as a viewer', async () => {
@@ -78,7 +92,7 @@ describe('HLS preview route', () => {
 
         assert.equal(res.status, 200);
         assert.match(await res.text(), /#EXTM3U/);
-        assert.match(res.headers.get('cache-control'), /no-store/);
+        assert.match(res.headers.get('cache-control')!, /no-store/);
         assert.ok(touched.includes(7));
     });
 

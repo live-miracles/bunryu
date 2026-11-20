@@ -1,4 +1,4 @@
-import { describe, test, before, after, beforeEach } from 'node:test';
+import { describe, test, before, after, beforeEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import fs from 'node:fs';
@@ -9,7 +9,7 @@ import { dispatch } from '../helpers/http';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-version-'));
 const originalCwd = process.cwd();
-const pkgVersion = (require('../../package.json') as typeof import('../../package.json')).version;
+const pkgVersion = (require('../../package.json') as { version: string }).version;
 
 before(() => {
     fs.writeFileSync(
@@ -39,14 +39,22 @@ after(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function jsonResponse(body) {
+function jsonResponse(body: unknown) {
     return { ok: true, status: 200, json: async () => body };
 }
 
 // version.ts caches its result forever at module scope, and pulls the SRS API
 // port through appConfig/srsConfig (also module-cached) — every test needs a
 // fully fresh require chain plus its own fixture.
-function loadHarness(t, { execImpl, fetchImpl, existsSyncImpl } = {}) {
+type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
+
+interface Fakes {
+    execImpl?: (cmd: string, args: string[], opts: unknown, cb: ExecCallback) => void;
+    fetchImpl?: () => Promise<unknown>;
+    existsSyncImpl?: (candidate: unknown) => boolean;
+}
+
+function loadHarness(t: TestContext, { execImpl, fetchImpl, existsSyncImpl }: Fakes = {}) {
     process.chdir(tempDir);
     for (const mod of [
         '../../src/api/version',
@@ -59,7 +67,7 @@ function loadHarness(t, { execImpl, fetchImpl, existsSyncImpl } = {}) {
         childProcess,
         'execFile',
         execImpl ??
-            ((_cmd, _args, _opts, cb) => {
+            ((_cmd: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
                 queueMicrotask(() => cb(null, '', ''));
             }),
     );
@@ -258,12 +266,15 @@ describe('Version API integration', () => {
     });
 
     test('reports the kernel UDP buffer caps, read again on every request', async (t) => {
-        const caps = { rmem_max: '16777216\n', wmem_max: '212992\n' };
+        const caps: Record<string, string | null> = {
+            rmem_max: '16777216\n',
+            wmem_max: '212992\n',
+        };
         const realReadFileSync = fs.readFileSync;
-        t.mock.method(fs, 'readFileSync', (file, ...rest) => {
+        t.mock.method(fs, 'readFileSync', (file: unknown, ...rest: unknown[]) => {
             const name = String(file).replace('/proc/sys/net/core/', '');
             if (!String(file).startsWith('/proc/sys/net/core/')) {
-                return realReadFileSync(file, ...rest);
+                return (realReadFileSync as (...args: unknown[]) => unknown)(file, ...rest);
             }
             if (caps[name] == null) throw new Error('ENOENT');
             return caps[name];

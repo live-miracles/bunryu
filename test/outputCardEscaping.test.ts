@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import { renderOutputCard } from '../public/ts/features/output-card';
 import { state } from '../public/ts/core/state';
 import { withInputVerdict, withVerdict } from './helpers/verdicts';
+import type { InputHealth, OutputView, Pipeline } from '../public/ts/types';
 
-const output = (url) => ({
+type OutputFixture = Partial<OutputView> & { url: string };
+
+const output = (url: string): OutputFixture => ({
     id: '1-1',
     name: 'o',
     desiredState: 'running',
@@ -19,10 +22,23 @@ const output = (url) => ({
     startedAtMs: null,
     url,
 });
-const input = { connected: false, isSrt: false, audioTracks: [] };
-const deps = { pendingOutputs: new Set() };
-const render = (url) =>
-    renderOutputCard(withVerdict(output(url), input), withInputVerdict(input), new Map(), deps);
+const input: { connected: boolean; isSrt: boolean; audioTracks: never[]; live?: boolean } = {
+    connected: false,
+    isSrt: false,
+    audioTracks: [],
+};
+const deps = { pendingOutputs: new Set<string>() };
+// The card reads many more fields than these fixtures set, so the partial view and input
+// are cast to the real types here, once.
+const inputView = () => withInputVerdict(input) as unknown as InputHealth;
+const card = (view: OutputFixture) =>
+    renderOutputCard(
+        withVerdict(view, input) as unknown as OutputView,
+        inputView(),
+        new Map(),
+        deps,
+    );
+const render = (url: string) => card(output(url));
 
 describe('output card escaping', () => {
     test('a destination URL containing markup is shown as text', () => {
@@ -39,7 +55,7 @@ describe('output card escaping', () => {
                     name: '<img src=x onerror=alert(1)>',
                     rtmpPublishUrlLocal: 'rtmp://localhost:21935/live/key01_x',
                     srtPublishUrlLocal: 'srt://localhost:10080?x',
-                },
+                } as Pipeline,
             ],
         };
 
@@ -51,26 +67,25 @@ describe('output card escaping', () => {
     });
 
     test('an output name containing markup is shown as text', () => {
-        const html = renderOutputCard(
-            withVerdict({ ...output('rtmp://h/live/k'), name: '"><script>x()</script>' }, input),
-            withInputVerdict(input),
-            new Map(),
-            deps,
-        );
+        const html = card({
+            ...output('rtmp://h/live/k'),
+            name: '"><script>x()</script>',
+        });
 
         assert.ok(!html.includes('<script>'), html);
     });
 });
 
 describe('output card history button', () => {
-    const history = (over) =>
-        renderOutputCard(
-            withVerdict({ ...output('rtmp://x/y'), hasErrorHistory: true, ...over }, input),
-            withInputVerdict(input),
-            new Map(),
-            deps,
-        );
-    const button = (html) => html.match(/<button[^>]*data-action="error-info"[^>]*>/)[0];
+    const history = (over: Partial<OutputView>) =>
+        card({ ...output('rtmp://x/y'), hasErrorHistory: true, ...over } as Partial<OutputView> & {
+            url: string;
+        });
+    const button = (html: string) => {
+        const found = html.match(/<button[^>]*data-action="error-info"[^>]*>/);
+        assert.ok(found, 'no error-info button');
+        return found[0];
+    };
 
     test('is red while the latest record is a crash', () => {
         const html = history({ lastError: `${Date.now()}\nexit=1`, lastErrorAt: Date.now() });
@@ -84,13 +99,10 @@ describe('output card history button', () => {
     });
 
     describe('watch link', () => {
-        const renderWatch = (watchUrl) =>
-            renderOutputCard(
-                withVerdict({ ...output('rtmp://h/live/k'), watchUrl }, input),
-                withInputVerdict(input),
-                new Map(),
-                deps,
-            );
+        const renderWatch = (watchUrl: string | undefined) =>
+            card({ ...output('rtmp://h/live/k'), watchUrl } as Partial<OutputView> & {
+                url: string;
+            });
 
         test('an http(s) link is a new-tab link with the URL shown as text', () => {
             const html = renderWatch('https://www.youtube.com/watch?v=a&b="x"');

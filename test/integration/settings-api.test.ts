@@ -4,6 +4,11 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { Db } from '../../src/types';
+import type { InputState } from '../../src/services/inputState';
+import type { OutputService } from '../../src/services/outputs';
+import type { DiagnosticsLogger } from '../../src/utils/diagnostics';
+import type { KeyVaultStatus } from '../../src/utils/keyVaultStatus';
 import { dispatch } from '../helpers/http';
 
 // The reset route rewrites srs.conf and goryu.json, so point the app config at a
@@ -33,30 +38,48 @@ const { deriveKeyVaultSecrets } =
 
 after(() => fs.rmSync(confDir, { recursive: true, force: true }));
 
+// The settings routes use one method of the input state and one of the output service, so
+// the fakes carry only those; these factories hold the cast to the real interfaces.
+const fakeInputState = (liveInputs: Set<number>) =>
+    ({ isLive: (id: number) => liveInputs.has(id) }) as unknown as InputState;
+const fakeOutputService = (outputStatus: Map<string, string>) =>
+    ({
+        getStats: (id: string) => ({ status: outputStatus.get(id) ?? 'stopped' }),
+    }) as unknown as OutputService;
+
+// A stored JSON setting, which the tests that read one have just saved.
+const storedJson = (db: Db, key: string): unknown => JSON.parse(db.getSetting(key) as string);
+
 function createHarness() {
     const app = express();
 
     const db = createDb(':memory:');
-    const liveInputs = new Set();
-    const outputStatus = new Map();
-    const events = [];
+    const liveInputs = new Set<number>();
+    const outputStatus = new Map<string, string>();
+    const events: Record<string, unknown>[] = [];
     const keyVault = {
         reconfigured: 0,
         reconfigure() {
             this.reconfigured += 1;
         },
         // What the reporter says about its connection; a test sets it.
-        current: null,
+        current: null as KeyVaultStatus | null,
         status() {
             return this.current;
         },
     };
+    const diagnostics: DiagnosticsLogger = {
+        event: (type, fields) => {
+            events.push({ type, ...fields });
+        },
+        close: async () => {},
+    };
     registerSettingsApi(
         app,
         db,
-        { isLive: (id) => liveInputs.has(id) },
-        { getStats: (id) => ({ status: outputStatus.get(id) ?? 'stopped' }) },
-        { event: (type, fields) => events.push({ type, ...fields }) },
+        fakeInputState(liveInputs),
+        fakeOutputService(outputStatus),
+        diagnostics,
         keyVault,
     );
     fs.writeFileSync(SRS_CONF_PATH, SRS_CONF);
@@ -68,7 +91,8 @@ function createHarness() {
         outputStatus,
         events,
         keyVault,
-        request: (method, route, body) => dispatch(app, method, route, body),
+        request: (method: string, route: string, body?: unknown) =>
+            dispatch(app, method, route, body),
     };
 }
 
@@ -158,7 +182,10 @@ describe('Settings API integration', () => {
 
             assert.equal(res.status, 200);
             assert.deepEqual(
-                res.body.groups.map((g) => [g.name, g.position]),
+                res.body.groups.map((g: { name: string; position: number }) => [
+                    g.name,
+                    g.position,
+                ]),
                 [
                     ['Main', 0],
                     ['Backup', 1],
@@ -198,7 +225,7 @@ describe('Settings API integration', () => {
 
             assert.equal(res.status, 200);
             assert.deepEqual(harness.db.listPipelineGroups(), []);
-            assert.equal(harness.db.getPipeline(pipeline.id).groupId, null);
+            assert.equal(harness.db.getPipeline(pipeline.id)?.groupId, null);
         });
 
         test('rejects a missing name', async () => {
@@ -279,7 +306,7 @@ describe('Settings API integration', () => {
 
             assert.equal(res.status, 200);
             assert.deepEqual(res.body, { layoutOrder: order });
-            assert.deepEqual(JSON.parse(harness.db.getSetting('layoutOrder')), order);
+            assert.deepEqual(storedJson(harness.db, 'layoutOrder'), order);
         });
 
         test('rejects invalid layout order', async () => {
@@ -291,9 +318,7 @@ describe('Settings API integration', () => {
             });
 
             assert.equal(res.status, 400);
-            assert.deepEqual(JSON.parse(harness.db.getSetting('layoutOrder')), [
-                { id: 1, outs: ['1-1'] },
-            ]);
+            assert.deepEqual(storedJson(harness.db, 'layoutOrder'), [{ id: 1, outs: ['1-1'] }]);
         });
 
         test('rejects a missing order field entirely', async () => {
@@ -326,7 +351,7 @@ describe('Settings API integration', () => {
             const res = await harness.request('POST', '/api/settings/layout-order', { order: [] });
 
             assert.equal(res.status, 200);
-            assert.deepEqual(JSON.parse(harness.db.getSetting('layoutOrder')), []);
+            assert.deepEqual(storedJson(harness.db, 'layoutOrder'), []);
         });
 
         test('accepts an entry with an empty outs array', async () => {
@@ -468,7 +493,7 @@ describe('Key Vault settings API', () => {
             assert.ok(!res.text.includes(value));
         }
         // Only the derived values are stored, never the secret itself.
-        const stored = harness.db.getSetting('keyVault');
+        const stored = harness.db.getSetting('keyVault') as string;
         assert.deepEqual(JSON.parse(stored), { url: LINK.url, ...DERIVED });
         assert.ok(!stored.includes(LINK.secret));
         assert.equal(harness.keyVault.reconfigured, 1);
@@ -483,7 +508,7 @@ describe('Key Vault settings API', () => {
             secret: '',
         });
         assert.equal(kept.status, 200);
-        assert.deepEqual(JSON.parse(harness.db.getSetting('keyVault')), {
+        assert.deepEqual(storedJson(harness.db, 'keyVault'), {
             url: 'https://203.0.113.6/ingest',
             ...DERIVED,
         });
@@ -493,7 +518,7 @@ describe('Key Vault settings API', () => {
             ...LINK,
             secret: ` ${replacement} `,
         });
-        assert.deepEqual(JSON.parse(harness.db.getSetting('keyVault')), {
+        assert.deepEqual(storedJson(harness.db, 'keyVault'), {
             url: LINK.url,
             ...deriveKeyVaultSecrets(replacement),
         });
@@ -505,7 +530,7 @@ describe('Key Vault settings API', () => {
         const before = harness.db.getSetting('keyVault');
         const applied = harness.keyVault.reconfigured;
 
-        for (const [body, message] of [
+        const refusals: [unknown, RegExp][] = [
             [{ ...LINK, url: 'ftp://203.0.113.5/x' }, /https/],
             [{ ...LINK, url: 'http://203.0.113.5/x' }, /https/],
             [{ ...LINK, url: 'not a url' }, /valid URL/],
@@ -514,7 +539,8 @@ describe('Key Vault settings API', () => {
             [{ ...LINK, secret: 'has a space' }, /printable ASCII/],
             [{ ...LINK, secret: 'short' }, /at least 32/],
             [{ ...LINK, secret: 12345 }, /string/],
-        ]) {
+        ];
+        for (const [body, message] of refusals) {
             const res = await harness.request('POST', '/api/settings/key-vault', body);
             assert.equal(res.status, 400, JSON.stringify(body));
             assert.match(res.body.error, message);

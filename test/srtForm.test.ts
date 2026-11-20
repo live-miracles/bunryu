@@ -8,6 +8,7 @@ import {
     srtUrlFromForm,
     stripSrtStreamId,
 } from '../public/ts/core/srt';
+import type { SrtOutputSettings } from '../public/ts/core/srt';
 
 describe('SRT output form rules', () => {
     test('listener mode allows an empty host and binds the default interfaces', () => {
@@ -34,7 +35,7 @@ describe('SRT output form rules', () => {
 // What a saved URL shows in the edit form and what saving it again stores must
 // agree, or editing an output would silently change its passphrase or stream ID.
 describe('SRT settings round trip', () => {
-    const settings = (over = {}) => ({
+    const settings = (over: Partial<SrtOutputSettings> = {}): SrtOutputSettings => ({
         mode: 'caller',
         host: 'srt.example.net',
         port: 9000,
@@ -46,7 +47,7 @@ describe('SRT settings round trip', () => {
     });
 
     test('a URL read into the form and built again is the same URL', () => {
-        for (const over of [
+        const cases: Partial<SrtOutputSettings>[] = [
             {},
             { mode: 'listener', host: '' },
             { passphrase: 'correct horse battery', pbKeyLen: 24 },
@@ -54,7 +55,8 @@ describe('SRT settings round trip', () => {
             { streamId: '#!::r=live/key01,m=publish' },
             { streamId: 'a+b%41' },
             { latencyMs: null },
-        ]) {
+        ];
+        for (const over of cases) {
             const url = buildSrtOutputUrl(settings(over));
             const parsed = parseSrtUrl(url);
             assert.deepEqual(parsed, settings({ pbKeyLen: null, ...over }), url);

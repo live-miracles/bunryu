@@ -1,29 +1,49 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createLegTracker } from '../src/services/legTracker';
+import type { LegObservation } from '../src/services/legTracker';
+import type {
+    SrtRelayInputStatus,
+    SrtRelayLegState,
+    SrtRelayLegStatus,
+} from '../src/services/srtRelay';
+
+type Tracker = ReturnType<typeof createLegTracker>;
+interface LogLine {
+    pipelineId: number;
+    event: string;
+    message: string;
+}
+// `reason` is the one field a test reads as text.
+type DiagnosticsEvent = { name: string; reason?: string } & Record<string, unknown>;
 
 const POLL = 5000;
 
 function setup() {
-    const logs = [];
-    const events = [];
+    const logs: LogLine[] = [];
+    const events: DiagnosticsEvent[] = [];
     const tracker = createLegTracker({
         historyMaxSamples: 4,
         pollIntervalMs: POLL,
         healthWindowMs: 60_000,
         appendPipelineLog: (pipelineId, event, message) =>
             logs.push({ pipelineId, event, message }),
-        diagnostics: { event: (name, fields) => events.push({ name, ...fields }) },
+        diagnostics: {
+            event: (name, fields) => {
+                events.push({ name, ...fields });
+            },
+            close: async () => {},
+        },
     });
     return { tracker: withFlow(tracker), logs, events };
 }
 
 // Unless a test pins a leg's packet count, packets keep arriving: the count is the
 // time of the poll.
-function withFlow(tracker) {
+function withFlow(tracker: Tracker): Tracker {
     return {
         ...tracker,
-        observe: (pipelineId, inp, active, now) =>
+        observe: (pipelineId: number, inp: SrtRelayInputStatus, active: boolean, now: number) =>
             tracker.observe(
                 pipelineId,
                 { ...inp, legs: inp.legs.map((l) => ({ ...l, recvPacketsTotal: now })) },
@@ -33,22 +53,49 @@ function withFlow(tracker) {
     };
 }
 
-const leg = (ip, over = {}) => ({
+// A leg as the relay lists it. The counters a test does not set are null, like a value the
+// relay did not report.
+const leg = (ip: string, over: Partial<SrtRelayLegStatus> = {}): SrtRelayLegStatus => ({
     ip,
     port: 4000,
     state: 'running',
+    recvPacketsTotal: null,
+    recvUniquePacketsTotal: null,
     recvLossTotal: 0,
     recvDropTotal: 0,
     retransTotal: 0,
     belatedTotal: 0,
+    belatedAvgMs: null,
+    bandwidthMbps: null,
+    undecryptTotal: null,
+    reorderDistance: null,
+    rcvBufMs: null,
     recvRateMbps: 5,
     rttMs: 30,
     latencyMs: 120,
     ...over,
 });
 
-const input = (legs, bonded = true) => ({ bonded, legs });
-const codes = (obs) => obs.alerts.map((a) => a.code);
+const input = (legs: SrtRelayLegStatus[], bonded = true): SrtRelayInputStatus => ({
+    bonded,
+    peer: null,
+    recvPacketsTotal: null,
+    recvUniquePacketsTotal: 0,
+    recvLossTotal: null,
+    recvDropTotal: null,
+    retransTotal: null,
+    rttMs: null,
+    latencyMs: null,
+    bandwidthMbps: null,
+    recvRateMbps: null,
+    belatedTotal: null,
+    belatedAvgMs: null,
+    undecryptTotal: null,
+    reorderDistance: null,
+    rcvBufMs: null,
+    legs,
+});
+const codes = (obs: LegObservation) => obs.alerts.map((a) => a.code);
 
 describe('leg group', () => {
     test('a bonded group that lost a leg alerts with how many are down, until it is whole again', () => {
@@ -181,7 +228,11 @@ describe('leg changes in the pipeline log and diagnostics', () => {
 });
 
 describe('leg health', () => {
-    const health = (obs, key) => obs.legHealth.get(key);
+    const health = (obs: LegObservation, key: string) => {
+        const found = obs.legHealth.get(key);
+        assert.ok(found, `no health for ${key}`);
+        return found;
+    };
 
     test('a leg that is not carrying packets is told apart from a standby', () => {
         const { tracker } = setup();
@@ -224,7 +275,7 @@ describe('leg health', () => {
 
     test('a connected leg whose packet count stops for 10 s alerts, and clears when packets flow', () => {
         const { tracker } = setup();
-        const at = (packets, now) =>
+        const at = (packets: number, now: number) =>
             tracker.observe(
                 1,
                 input([leg('10.0.0.1', { recvUniquePacketsTotal: packets })]),
@@ -236,6 +287,7 @@ describe('leg health', () => {
         assert.deepEqual(codes(at(100, 11_000)), [], 'quiet for 5 s is not yet 10 s');
         const stalled = at(100, 16_000);
         const noFlow = stalled.alerts.find((a) => a.code === 'bonded-leg-no-flow');
+        assert.ok(noFlow);
         assert.equal(noFlow.sinceMs, 6000);
         assert.equal(
             noFlow.message,
@@ -249,18 +301,19 @@ describe('leg health', () => {
     test('a plain input names itself in the no-flow alert', () => {
         const { tracker } = setup();
         const plain = () => input([leg('203.0.113.9', { recvUniquePacketsTotal: 5 })], false);
-        let obs;
+        let obs: LegObservation | undefined;
         for (const now of [1000, 6000, 11_000, 16_000])
             obs = tracker.observe(1, plain(), true, now);
+        assert.ok(obs);
         assert.equal(
-            obs.alerts.find((a) => a.code === 'bonded-leg-no-flow').message,
+            obs.alerts.find((a) => a.code === 'bonded-leg-no-flow')?.message,
             'SRT input from 203.0.113.9:4000 is connected but has stopped delivering packets.',
         );
     });
 
     test('heavy loss over the last minute is a quality alert on that leg only', () => {
         const { tracker } = setup();
-        const at = (received, lost, now) =>
+        const at = (received: number, lost: number, now: number) =>
             tracker.observe(
                 1,
                 input([
@@ -286,7 +339,17 @@ describe('leg health', () => {
 describe('leg health in the pipeline log and diagnostics', () => {
     // Leg 10.0.0.1 receives `received` packets in total, of which `lost` were lost and
     // `dropped` dropped; the other leg is clean.
-    const at = (tracker, received, lost, now, { dropped = 0, bonded = true, state } = {}) =>
+    const at = (
+        tracker: Tracker,
+        received: number,
+        lost: number,
+        now: number,
+        {
+            dropped = 0,
+            bonded = true,
+            state,
+        }: { dropped?: number; bonded?: boolean; state?: SrtRelayLegState } = {},
+    ) =>
         tracker.observe(
             1,
             input(
@@ -304,8 +367,9 @@ describe('leg health in the pipeline log and diagnostics', () => {
             true,
             now,
         );
-    const healthLines = (logs) => logs.filter((l) => /^leg_/.test(l.event));
-    const healthEvents = (events) => events.filter((e) => e.name === 'bonded-leg-health');
+    const healthLines = (logs: LogLine[]) => logs.filter((l) => /^leg_/.test(l.event));
+    const healthEvents = (events: DiagnosticsEvent[]) =>
+        events.filter((e) => e.name === 'bonded-leg-health');
 
     test('a leg turning degraded is one line naming the leg and the reason, once', () => {
         const { tracker, logs, events } = setup();
@@ -333,7 +397,7 @@ describe('leg health in the pipeline log and diagnostics', () => {
                 reason: healthEvents(events)[0].reason,
             },
         );
-        assert.match(healthEvents(events)[0].reason, /packet quality is degraded/);
+        assert.match(healthEvents(events)[0].reason ?? '', /packet quality is degraded/);
     });
 
     test('a warning that turns into an error is logged at once, as a failure', () => {
@@ -380,7 +444,7 @@ describe('leg health in the pipeline log and diagnostics', () => {
         let received = 0;
         let lost = 0;
         let now = 1000;
-        const poll = (extraLoss) => {
+        const poll = (extraLoss: number) => {
             received += 1000;
             lost += extraLoss;
             at(tracker, received, lost, now);
@@ -432,7 +496,7 @@ describe('leg health in the pipeline log and diagnostics', () => {
 
     test('a burst of transitions keeps 4 lines a minute, counts the rest and says so afterwards', () => {
         const { tracker, logs, events } = setup();
-        const legs = (lost) =>
+        const legs = (lost: number) =>
             input(
                 ['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.4', '10.0.0.5', '10.0.0.6'].map((ip) =>
                     leg(ip, { recvUniquePacketsTotal: lost === 0 ? 0 : 1000, recvLossTotal: lost }),
@@ -461,7 +525,7 @@ describe('leg health in the pipeline log and diagnostics', () => {
                 throw new Error('database is locked');
             },
         });
-        const legAt = (received, lost) =>
+        const legAt = (received: number, lost: number) =>
             input([leg('10.0.0.1', { recvUniquePacketsTotal: received, recvLossTotal: lost })]);
         tracker.observe(1, legAt(0, 0), true, 1000);
         assert.doesNotThrow(() => tracker.observe(1, legAt(1000, 50), true, 6000));
@@ -486,8 +550,8 @@ describe('leg history', () => {
             series.samples.map((s) => s.ts),
             [2, 3, 4, 5].map((i) => 1000 + i * POLL),
         );
-        assert.equal(series.samples.at(-1).receivedPackets, 100);
-        assert.equal(series.samples.at(-1).lossPct, 1);
+        assert.equal(series.samples.at(-1)?.receivedPackets, 100);
+        assert.equal(series.samples.at(-1)?.lossPct, 1);
     });
 
     test('a leg that has been gone longer than the history covers is dropped', () => {

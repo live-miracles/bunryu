@@ -9,11 +9,12 @@ import {
     outputHealth,
     reportedState,
     summarizeOutputError,
+    type OutputStatusView,
 } from '../src/utils/outputStatus';
 
 const T = 1_700_000_000_000;
 
-const output = (over = {}) => ({
+const output = (over: Partial<OutputStatusView> = {}): OutputStatusView => ({
     id: '1-1',
     name: 'YouTube',
     url: 'rtmp://dest.example/live/1-1',
@@ -34,8 +35,11 @@ const output = (over = {}) => ({
     ...over,
 });
 const liveInput = { live: true };
-const verdict = (over, input = liveInput, includeInput) =>
-    outputHealth(output(over), input, includeInput);
+const verdict = (
+    over: Partial<OutputStatusView>,
+    input: { live: boolean } = liveInput,
+    includeInput?: boolean,
+) => outputHealth(output(over), input, includeInput);
 
 describe('outputHealth', () => {
     test('a stopped output is off, whatever it last said', () => {
@@ -88,7 +92,7 @@ describe('outputHealth', () => {
     });
 
     test('between retries: the error while one is current, waiting otherwise', () => {
-        const between = { status: 'stopped', startedAtMs: null };
+        const between: Partial<OutputStatusView> = { status: 'stopped', startedAtMs: null };
         assert.equal(
             verdict({ ...between, failures: 2, lastError: 'x', lastErrorAt: 1 }).status,
             'error',
@@ -120,8 +124,8 @@ describe('outputHealth', () => {
 
     // Every state an output can be in, for the checks that hold whatever the state.
     function* states() {
-        for (const desiredState of ['running', 'stopped'])
-            for (const status of ['running', 'stopped', 'failed'])
+        for (const desiredState of ['running', 'stopped'] as const)
+            for (const status of ['running', 'stopped', 'failed'] as const)
                 for (const bitrateKbps of [null, 100, 4000])
                     for (const warningReason of [null, 'Timestamps are jumping'])
                         for (const startedAtMs of [null, T])
@@ -172,7 +176,7 @@ describe('outputHealth', () => {
                 assert.equal(o.status, 'running', label);
                 assert.equal(live, true, label);
                 assert.equal(o.warningReason, null, label);
-                assert.ok(o.bitrateKbps >= 200, label);
+                assert.ok((o.bitrateKbps ?? 0) >= 200, label);
             }
             if (v.status === 'error') {
                 assert.ok(o.status === 'failed' || hasCurrentError(o), label);

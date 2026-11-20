@@ -1,12 +1,35 @@
-import { describe, test, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { ProbeFailure } from '../src/services/mediaProbe';
 
 const originalCwd = process.cwd();
-let tempDir;
+let tempDir: string;
+
+interface ExecCall {
+    args: string[];
+    opts: { killSignal?: string; timeout?: number };
+}
+type ExecCallback = (err: Error | null, stdout: string, stderr: string) => void;
+
+// Replaces childProcess.execFile as the probe calls it: (command, args, options, callback).
+// execFile's own overloads cannot be matched by a fake, so this is where it is cast.
+function fakeExecFile(
+    t: TestContext,
+    fake: (cmd: string, args: string[], opts: ExecCall['opts'], cb: ExecCallback) => unknown,
+) {
+    t.mock.method(childProcess, 'execFile', fake as unknown as typeof childProcess.execFile);
+}
+
+// The next queued outcome; the test fails here if the probe asked more often than expected.
+function takeNext<T>(queue: T[]): T {
+    const next = queue.shift();
+    assert.ok(next);
+    return next;
+}
 
 function loadMediaProbe() {
     fs.writeFileSync(
@@ -40,7 +63,7 @@ describe('mediaProbe failure reporting', () => {
 
     test('reports a killed probe as a timeout with its stderr tail', async (t) => {
         const url = 'rtmp://127.0.0.1:21935/live/key04_0123456789abcdef0123456789abcdef';
-        t.mock.method(childProcess, 'execFile', (_cmd, args, _opts, cb) => {
+        fakeExecFile(t, (_cmd, args, _opts, cb) => {
             assert.deepEqual(args.slice(0, 2), ['-v', 'error']);
             const err = Object.assign(new Error('killed'), {
                 killed: true,
@@ -51,7 +74,7 @@ describe('mediaProbe failure reporting', () => {
             return {};
         });
         const { runFfprobe } = loadMediaProbe();
-        const failures = [];
+        const failures: ProbeFailure[] = [];
         const result = await runFfprobe(url, undefined, (f) => failures.push(f));
 
         assert.equal(result, null);
@@ -62,17 +85,17 @@ describe('mediaProbe failure reporting', () => {
     });
 
     test('reports a non-zero exit and unparseable output with distinct reasons', async (t) => {
-        const outcomes = [
+        const outcomes: [Error | null, string][] = [
             [Object.assign(new Error('exit 1'), { code: 1 }), ''],
             [null, 'not json'],
         ];
-        t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
-            const [err, stdout] = outcomes.shift();
+        fakeExecFile(t, (_cmd, _args, _opts, cb) => {
+            const [err, stdout] = takeNext(outcomes);
             queueMicrotask(() => cb(err, stdout, 'boom'));
             return {};
         });
         const { runFfprobe } = loadMediaProbe();
-        const failures = [];
+        const failures: ProbeFailure[] = [];
         await runFfprobe('rtmp://x/live/k', undefined, (f) => failures.push(f));
         await runFfprobe('rtmp://x/live/k', undefined, (f) => failures.push(f));
 
@@ -101,8 +124,8 @@ describe('keyframe interval probe', () => {
 
     // 25 fps packets over `seconds`, a keyframe every `gop` seconds, as ffprobe
     // prints them (pts_time,dts_time,flags).
-    function packets(seconds, gop, { first = 0 } = {}) {
-        const lines = [];
+    function packets(seconds: number, gop: number, { first = 0 }: { first?: number } = {}) {
+        const lines: string[] = [];
         for (let i = 0; i < seconds * 25; i++) {
             const t = first + i / 25;
             lines.push(
@@ -177,39 +200,42 @@ describe('keyframe interval probe', () => {
     });
 
     test('runKeyframeProbe asks ffprobe for the first video stream packets over the window', async (t) => {
-        let seen;
-        t.mock.method(childProcess, 'execFile', (_cmd, args, opts, cb) => {
-            seen = { args, opts };
+        const calls: ExecCall[] = [];
+        fakeExecFile(t, (_cmd, args, opts, cb) => {
+            calls.push({ args, opts });
             queueMicrotask(() => cb(null, packets(12, 2), ''));
             return {};
         });
         const { runKeyframeProbe } = loadMediaProbe();
-        const failures = [];
+        const failures: ProbeFailure[] = [];
         const stats = await runKeyframeProbe('rtmp://x/live/k', undefined, (f) => failures.push(f));
         assert.deepEqual(failures, []);
+        assert.ok(stats);
         assert.equal(stats.maxGapSec, 2);
+        const [seen] = calls;
+        assert.ok(seen);
         assert.ok(seen.args.includes('v:0'));
         assert.ok(seen.args.includes('%+12'));
         assert.equal(seen.args.at(-1), 'rtmp://x/live/k');
         assert.equal(seen.opts.killSignal, 'SIGKILL');
-        assert.ok(seen.opts.timeout > 12000);
+        assert.ok(seen.opts.timeout !== undefined && seen.opts.timeout > 12000);
     });
 
     test('runKeyframeProbe reports a timeout and an empty answer as failures', async (t) => {
-        const outcomes = [
+        const outcomes: [Error | null, string][] = [
             [
                 Object.assign(new Error('killed'), { killed: true, signal: 'SIGKILL', code: null }),
                 '',
             ],
             [null, ''],
         ];
-        t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
-            const [err, stdout] = outcomes.shift();
+        fakeExecFile(t, (_cmd, _args, _opts, cb) => {
+            const [err, stdout] = takeNext(outcomes);
             queueMicrotask(() => cb(err, stdout, 'boom'));
             return {};
         });
         const { runKeyframeProbe } = loadMediaProbe();
-        const failures = [];
+        const failures: ProbeFailure[] = [];
         assert.equal(
             await runKeyframeProbe('rtmp://x/live/k', undefined, (f) => failures.push(f)),
             null,

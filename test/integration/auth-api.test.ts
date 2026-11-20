@@ -1,29 +1,31 @@
 import { describe, test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { dispatch } from '../helpers/http';
+import { dispatch, type MockResult } from '../helpers/http';
+import type { Db } from '../../src/types';
 
-function makeDb() {
-    const settings = new Map();
-    const sessionRows = new Map();
+// The auth module only uses the settings and session methods, so that is all the fake has.
+function makeDb(): Db {
+    const settings = new Map<string, string>();
+    const sessionRows = new Map<string, number>();
     return {
-        getSetting: (key) => settings.get(key) ?? null,
-        setSetting: (key, value) => settings.set(key, value),
-        createSession: (token) => sessionRows.set(token, Date.now()),
-        deleteSession: (token) => sessionRows.delete(token),
+        getSetting: (key: string) => settings.get(key) ?? null,
+        setSetting: (key: string, value: string) => settings.set(key, value),
+        createSession: (token: string) => sessionRows.set(token, Date.now()),
+        deleteSession: (token: string) => sessionRows.delete(token),
         listSessions: () => [...sessionRows.keys()],
-        pruneExpiredSessions: (maxAgeMs) => {
+        pruneExpiredSessions: (maxAgeMs: number) => {
             const cutoff = Date.now() - maxAgeMs;
             for (const [token, createdAt] of sessionRows) {
                 if (createdAt < cutoff) sessionRows.delete(token);
             }
         },
-    };
+    } as unknown as Db;
 }
 
 // The auth module keeps sessions and the login rate limiter in module state,
 // so each test loads a fresh copy.
-async function createHarness(initialPassword = 'admin', existingDb) {
+async function createHarness(initialPassword = 'admin', existingDb?: Db) {
     delete require.cache[require.resolve('../../src/api/auth')];
     const { registerAuthApi, initializePassword } =
         require('../../src/api/auth') as typeof import('../../src/api/auth');
@@ -33,10 +35,11 @@ async function createHarness(initialPassword = 'admin', existingDb) {
     registerAuthApi(app, db);
     return {
         db,
-        login: (password, ip, headers) =>
+        login: (password: string, ip?: string, headers?: Record<string, string>) =>
             dispatch(app, 'POST', '/api/auth/login', { password }, ip, undefined, headers),
-        logout: (cookie) => dispatch(app, 'POST', '/api/auth/logout', undefined, undefined, cookie),
-        changePassword: (currentPassword, newPassword, cookie) =>
+        logout: (cookie?: string) =>
+            dispatch(app, 'POST', '/api/auth/logout', undefined, undefined, cookie),
+        changePassword: (currentPassword: string, newPassword: string, cookie?: string) =>
             dispatch(
                 app,
                 'POST',
@@ -45,15 +48,19 @@ async function createHarness(initialPassword = 'admin', existingDb) {
                 undefined,
                 cookie,
             ),
-        request: (method, route, body, cookie) =>
+        request: (method: string, route: string, body?: unknown, cookie?: string) =>
             dispatch(app, method, route, body, undefined, cookie),
     };
 }
 
+function setCookieOf(res: MockResult): string {
+    return String(res.headers['set-cookie']);
+}
+
 // Extracts just "session=<token>" from a Set-Cookie response header so it can
 // be replayed as a request's Cookie header.
-function sessionCookieFrom(res) {
-    return res.headers['set-cookie'].split(';')[0];
+function sessionCookieFrom(res: MockResult): string {
+    return setCookieOf(res).split(';')[0];
 }
 
 describe('auth login integration', () => {
@@ -68,7 +75,7 @@ describe('auth login integration', () => {
 
         assert.equal(res.status, 200);
         assert.deepEqual(res.body, { ok: true });
-        assert.match(res.headers['set-cookie'], /^session=[0-9a-f]{64}; HttpOnly/);
+        assert.match(setCookieOf(res), /^session=[0-9a-f]{64}; HttpOnly/);
     });
 
     test('loginLimiterKey groups IPv6 by /64 and unwraps IPv4-mapped addresses', () => {
@@ -198,7 +205,7 @@ describe('auth session integration', () => {
 
         const logoutRes = await harness.logout(cookie);
         assert.equal(logoutRes.status, 200);
-        assert.match(logoutRes.headers['set-cookie'], /Max-Age=0/);
+        assert.match(setCookieOf(logoutRes), /Max-Age=0/);
 
         // The same token must no longer authenticate anything.
         const replay = await harness.logout(cookie);
@@ -312,8 +319,8 @@ describe('auth session integration', () => {
         const plain = await harness.login('admin');
         const tls = await harness.login('admin', undefined, { 'x-forwarded-proto': 'https' });
 
-        assert.doesNotMatch(plain.headers['set-cookie'], /Secure/);
-        assert.match(tls.headers['set-cookie'], /; Secure/);
+        assert.doesNotMatch(setCookieOf(plain), /Secure/);
+        assert.match(setCookieOf(tls), /; Secure/);
     });
 
     test('IPv6 clients are rate limited per /64, so rotating addresses does not help', async () => {
@@ -349,7 +356,7 @@ describe('initial dashboard password', () => {
         delete require.cache[require.resolve('../../src/api/auth')];
         const { initializePassword, MissingInitialPasswordError } =
             require('../../src/api/auth') as typeof import('../../src/api/auth');
-        for (const none of ['', undefined]) {
+        for (const none of ['', undefined] as string[]) {
             await assert.rejects(initializePassword(makeDb(), none), MissingInitialPasswordError);
         }
     });

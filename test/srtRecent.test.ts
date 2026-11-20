@@ -1,12 +1,29 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SRT_RECENT_WINDOW_MS, createSrtRecentTracker } from '../src/utils/srtRecent';
+import type { SrtRelayStreamStatus } from '../src/services/srtRelay';
+import {
+    SRT_RECENT_WINDOW_MS,
+    createSrtRecentTracker,
+    type SrtRecentStats,
+} from '../src/utils/srtRecent';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 
-function leg(ip, totals = {}) {
+type RelayLeg = SrtRelayStreamStatus['input']['legs'][number];
+
+// The counters a test sets on a link; the others stay 0.
+interface Totals {
+    packets?: number;
+    loss?: number;
+    drop?: number;
+    retrans?: number;
+}
+
+// The fakes carry only the counters the tracker reads, so leg() and status() each hold the
+// one cast to the relay's real types.
+function leg(ip: string, totals: Totals = {}): RelayLeg {
     return {
         ip,
         port: 40000,
@@ -15,11 +32,23 @@ function leg(ip, totals = {}) {
         recvLossTotal: totals.loss ?? 0,
         recvDropTotal: totals.drop ?? 0,
         retransTotal: totals.retrans ?? 0,
-    };
+    } as RelayLeg;
 }
 
 // A bonded input reports drops only on the group; loss and retransmits are per leg.
-function status({ packets = 0, drop = 0, legs = [], active = true, output = {} } = {}) {
+function status({
+    packets = 0,
+    drop = 0,
+    legs = [],
+    active = true,
+    output = {},
+}: {
+    packets?: number;
+    drop?: number;
+    legs?: RelayLeg[];
+    active?: boolean;
+    output?: Totals & { connected?: boolean };
+} = {}): SrtRelayStreamStatus {
     return {
         inputActive: active,
         outputConnected: output.connected ?? false,
@@ -36,7 +65,7 @@ function status({ packets = 0, drop = 0, legs = [], active = true, output = {} }
             retransTotal: output.retrans ?? 0,
             sendDropTotal: output.drop ?? 0,
         },
-    };
+    } as unknown as SrtRelayStreamStatus;
 }
 
 describe('SRT recent counters', () => {
@@ -67,20 +96,20 @@ describe('SRT recent counters', () => {
             retrans: null,
             drop: 3,
         });
-        assert.equal(recent.legs.get('a').loss, 4);
+        assert.equal(recent.legs.get('a')!.loss, 4);
     });
 
     test('only counts the last ten minutes', () => {
         const tracker = createSrtRecentTracker();
         // 100 drops in minute 0..1, then nothing for twenty minutes.
-        let recent;
+        let recent!: SrtRecentStats;
         for (let t = 0; t <= 20 * MINUTE; t += 5 * SECOND) {
             const drop = t < MINUTE ? Math.round((t / MINUTE) * 100) : 100;
             recent = tracker.update(1, t, status({ drop, packets: t }));
         }
-        assert.equal(recent.input.drop, 0);
-        assert.ok(recent.input.spanMs <= SRT_RECENT_WINDOW_MS + 5 * SECOND);
-        assert.ok(recent.input.spanMs >= SRT_RECENT_WINDOW_MS);
+        assert.equal(recent.input!.drop, 0);
+        assert.ok(recent.input!.spanMs <= SRT_RECENT_WINDOW_MS + 5 * SECOND);
+        assert.ok(recent.input!.spanMs >= SRT_RECENT_WINDOW_MS);
     });
 
     test('starts over when a counter goes backwards (the link reconnected)', () => {
@@ -91,7 +120,7 @@ describe('SRT recent counters', () => {
         // Not "-597": the old session's counts are gone, and one poll has no span.
         assert.equal(recent.legs.get('a'), null);
         const next = tracker.update(1, 15 * SECOND, status({ legs: [leg('a', { loss: 4 })] }));
-        assert.equal(next.legs.get('a').loss, 1);
+        assert.equal(next.legs.get('a')!.loss, 1);
     });
 
     test('starts over after a gap between polls', () => {
@@ -111,13 +140,13 @@ describe('SRT recent counters', () => {
         assert.equal(gone.input, null);
         tracker.update(1, 15 * SECOND, status({ drop: 2 }));
         const back = tracker.update(1, 20 * SECOND, status({ drop: 4 }));
-        assert.equal(back.input.spanMs, 5 * SECOND);
-        assert.equal(back.input.drop, 2);
+        assert.equal(back.input!.spanMs, 5 * SECOND);
+        assert.equal(back.input!.drop, 2);
     });
 
     test('follows a leg by IP across a port change and keeps legs apart', () => {
         const tracker = createSrtRecentTracker();
-        const poll = (t, aLoss, bLoss, port) =>
+        const poll = (t: number, aLoss: number, bLoss: number, port: number) =>
             tracker.update(
                 1,
                 t,
@@ -127,18 +156,18 @@ describe('SRT recent counters', () => {
             );
         poll(0, 0, 0, 1111);
         const recent = poll(5 * SECOND, 7, 2, 2222);
-        assert.equal(recent.legs.get('a').loss, 7);
-        assert.equal(recent.legs.get('b').loss, 2);
+        assert.equal(recent.legs.get('a')!.loss, 7);
+        assert.equal(recent.legs.get('b')!.loss, 2);
     });
 
     test('tracks the output and each pipeline on its own', () => {
         const tracker = createSrtRecentTracker();
-        const out = (t, drop) =>
+        const out = (t: number, drop: number) =>
             tracker.update(1, t, status({ output: { connected: true, packets: t, drop } }));
         out(0, 0);
         const recent = out(5 * SECOND, 4);
-        assert.equal(recent.output.drop, 4);
-        assert.equal(recent.output.packets, 5 * SECOND);
+        assert.equal(recent.output!.drop, 4);
+        assert.equal(recent.output!.packets, 5 * SECOND);
         assert.equal(tracker.update(2, 5 * SECOND, status()).output, null);
     });
 

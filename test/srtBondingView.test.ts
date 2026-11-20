@@ -8,9 +8,15 @@ import {
     renderBondedLegs,
     renderBondingStats,
 } from '../public/ts/features/srt-bonding-view';
+import type {
+    SrtBondingInputStatus,
+    SrtBondingLeg,
+    SrtBondingStatus,
+    SrtRecent,
+} from '../public/ts/types';
 
 const MIN = 60_000;
-const recent = (over = {}) => ({
+const recent = (over: Partial<SrtRecent> = {}): SrtRecent => ({
     spanMs: 10 * MIN,
     packets: 520_000,
     loss: 0,
@@ -57,7 +63,7 @@ describe('recentFigure', () => {
     });
 });
 
-function leg(over = {}) {
+function leg(over: Partial<SrtBondingLeg> = {}): SrtBondingLeg {
     return {
         ip: '203.0.113.10',
         port: 40000,
@@ -70,11 +76,12 @@ function leg(over = {}) {
         recvDropTotal: 3_070,
         recent: recent({ loss: 2, retrans: 3, drop: 0 }),
         ...over,
-    };
+    } as SrtBondingLeg; // a leg with only the fields these tests read
 }
 
 describe('bonded legs table', () => {
-    const input = (legs) => ({ bonded: true, expectedLegs: legs.length, legs });
+    const input = (legs: SrtBondingLeg[]) =>
+        ({ bonded: true, expectedLegs: legs.length, legs }) as SrtBondingStatus['input'];
 
     test('shows the last ten minutes of each leg, with the window in the header', () => {
         const html = renderBondedLegs(input([leg(), leg({ ip: '203.0.113.11' })]));
@@ -101,6 +108,7 @@ describe('bonded legs table', () => {
         const cells = html.match(
             /<td class="tabular-nums text-xs[^"]*" title="[^"]*">[^<]*\/[^<]*<\/td>/g,
         );
+        assert.ok(cells);
         assert.equal(cells.length, 2);
         assert.doesNotMatch(cells[0], /opacity-50|text-warning/, 'a leg that dropped is plain');
         assert.match(cells[1], /opacity-50/);
@@ -114,28 +122,29 @@ describe('bonded legs table', () => {
 });
 
 describe('relay stats row', () => {
-    const status = (inputOver = {}) => ({
-        inputActive: true,
-        outputConnected: true,
-        input: {
-            recvUniquePacketsTotal: 31_691_658,
-            recvPacketsTotal: null,
-            recvLossTotal: null,
-            retransTotal: null,
-            recvDropTotal: 286,
-            latencyMs: 240,
-            recent: recent({ loss: null, retrans: null, drop: 0 }),
-            legs: [],
-            ...inputOver,
-        },
-        output: {
-            sentPacketsTotal: 1,
-            sendLossTotal: 5,
-            retransTotal: 6,
-            sendDropTotal: 7,
-            recent: recent({ loss: 0, retrans: 1, drop: 0 }),
-        },
-    });
+    const status = (inputOver: Partial<SrtBondingInputStatus> = {}) =>
+        ({
+            inputActive: true,
+            outputConnected: true,
+            input: {
+                recvUniquePacketsTotal: 31_691_658,
+                recvPacketsTotal: null,
+                recvLossTotal: null,
+                retransTotal: null,
+                recvDropTotal: 286,
+                latencyMs: 240,
+                recent: recent({ loss: null, retrans: null, drop: 0 }),
+                legs: [],
+                ...inputOver,
+            },
+            output: {
+                sentPacketsTotal: 1,
+                sendLossTotal: 5,
+                retransTotal: 6,
+                sendDropTotal: 7,
+                recent: recent({ loss: 0, retrans: 1, drop: 0 }),
+            },
+        }) as SrtBondingStatus;
 
     test('labels the window and shows only drops for a bonded group', () => {
         const html = renderBondingStats(status(), true);

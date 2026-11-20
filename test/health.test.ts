@@ -1,13 +1,26 @@
-import { after, describe, test, beforeEach, afterEach } from 'node:test';
+import { after, describe, test, beforeEach, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { Readable, Writable } from 'node:stream';
 import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { isProbeUsable } from '../src/services/health';
+import { isProbeUsable, type HealthService, type HealthSnapshot } from '../src/services/health';
+import type { Db, Output, Pipeline } from '../src/types';
+import type { OutputService } from '../src/services/outputs';
+import type {
+    SrtRelayInputStatus,
+    SrtRelayLegStatus,
+    SrtRelayOutputStatus,
+    SrtRelayService,
+    SrtRelayStreamStatus,
+} from '../src/services/srtRelay';
+import type { InputProtocol, InputState } from '../src/services/inputState';
+import type { DiagnosticsLogger } from '../src/utils/diagnostics';
+import type { SrsApi } from '../src/utils/srs';
+import type { HealthVerdicts } from '../src/utils/healthVerdicts';
+import { dispatch } from './helpers/http';
 
 describe('health media probe validation', () => {
     test('accepts video with codec and dimensions', () => {
@@ -61,101 +74,75 @@ after(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-class MockRequest extends Readable {
-    constructor() {
-        super();
-        this.method = 'GET';
-        this.url = '/api/health';
-        this.headers = {};
-        this.socket = { remoteAddress: '127.0.0.1' };
-        this.connection = this.socket;
-    }
-    _read() {
-        this.push(null);
-    }
+// What GET /api/health serves: the snapshot plus the verdicts of every input and output.
+type HealthResponse = HealthSnapshot & { verdicts: HealthVerdicts };
+
+function getSnapshot(app: object): Promise<HealthResponse> {
+    return dispatch(app, 'GET', '/api/health').then((res) => res.body);
 }
 
-class MockResponse extends Writable {
-    constructor(resolve) {
-        super();
-        this.statusCode = 200;
-        this.headers = {};
-        this.chunks = [];
-        this.resolve = resolve;
-        this.setHeader = (name, value) => {
-            this.headers[String(name).toLowerCase()] = value;
-        };
-        this.getHeader = (name) => this.headers[String(name).toLowerCase()];
-        this.removeHeader = (name) => {
-            delete this.headers[String(name).toLowerCase()];
-        };
-        this.writeHead = (statusCode, headers = {}) => {
-            this.statusCode = statusCode;
-            for (const [name, value] of Object.entries(headers)) this.setHeader(name, value);
-            return this;
-        };
-        this.end = (chunk, encoding, callback) => {
-            if (chunk) this.chunks.push(Buffer.from(chunk, encoding));
-            const text = Buffer.concat(this.chunks).toString('utf8');
-            this.resolve(text ? JSON.parse(text) : undefined);
-            if (callback) callback();
-            return this;
-        };
-    }
-    _write(chunk, _encoding, callback) {
-        this.chunks.push(Buffer.from(chunk));
-        callback();
-    }
-}
-
-function getSnapshot(app) {
-    return new Promise((resolve, reject) => {
-        app.handle(new MockRequest(), new MockResponse(resolve), reject);
-    });
-}
-
-function jsonResponse(body, ok = true, status = 200) {
+function jsonResponse(body: unknown, ok = true, status = 200) {
     return { ok, status, json: async () => body };
 }
 
 // SRS as the health poll sees it: the streams and clients it has, or an Error to make that
 // call fail. A function is asked again at every poll, so SRS can change between polls.
-function fakeSrs({ streams = [], clients = [] } = {}) {
-    const answer = (value) => async () => {
+function fakeSrs({
+    streams = [],
+    clients = [],
+}: { streams?: unknown; clients?: unknown } = {}): SrsApi {
+    const answer = (value: unknown) => async () => {
         const current = typeof value === 'function' ? value() : value;
         if (current instanceof Error) throw current;
         return current;
     };
-    return { streams: answer(streams), clients: answer(clients) };
+    return { streams: answer(streams), clients: answer(clients) } as unknown as SrsApi;
 }
 
-function makeFakeDb(pipelines, outputs = []) {
-    const logs = [];
-    return {
+// A diagnostics event has whatever fields the code under test logged, and the tests read
+// them by name.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DiagEvent = { event: string; [field: string]: any };
+
+interface FakeLogRow {
+    id: number;
+    pipelineId: number;
+    event: string;
+    message: string;
+}
+
+// The pipelines and outputs are partial rows: a test gives only the fields its scenario reads.
+function makeFakeDb(pipelines: Array<Partial<Pipeline>>, outputs: Array<Partial<Output>> = []) {
+    const logs: FakeLogRow[] = [];
+    const db = {
         logs,
         appendLogThrows: false,
         getConfigRev: () => 1,
         listPipelines: () => pipelines,
         listOutputs: () => outputs,
-        appendPipelineLog(pipelineId, event, message) {
+        appendPipelineLog(pipelineId: number, event: string, message: string) {
             if (this.appendLogThrows) throw new Error('db busy');
             logs.push({ id: logs.length + 1, pipelineId, event, message });
             return logs.length;
         },
-        updatePipelineLog(pipelineId, id, message) {
+        updatePipelineLog(pipelineId: number, id: number, message: string) {
             const row = logs.find((l) => l.id === id && l.pipelineId === pipelineId);
             if (row) row.message = message;
             return !!row;
         },
     };
+    return db as unknown as Db & { logs: FakeLogRow[]; appendLogThrows: boolean };
 }
 
+type FakeDb = ReturnType<typeof makeFakeDb>;
+
 function makeFakeOutputService() {
-    const restarts = [];
+    const restarts: Array<{ pipelineId: number; staggerBase: number | undefined }> = [];
+    const formatRestarts: Array<{ pipelineId: number; why: string; startedBeforeMs: number }> = [];
     return {
         restarts,
         getStats: () => ({
@@ -169,45 +156,53 @@ function makeFakeOutputService() {
             memoryLimitBytes: null,
             cpuPercent: null,
         }),
-        restartPipelineOutputs(pipelineId, staggerBase) {
+        restartPipelineOutputs(pipelineId: number, staggerBase?: number) {
             restarts.push({ pipelineId, staggerBase });
             return 0;
         },
-        formatRestarts: [],
-        restartRunningOutputs(pipelineId, why, startedBeforeMs) {
-            this.formatRestarts.push({ pipelineId, why, startedBeforeMs });
+        formatRestarts,
+        restartRunningOutputs(pipelineId: number, why: string, startedBeforeMs: number) {
+            formatRestarts.push({ pipelineId, why, startedBeforeMs });
             return 3;
         },
+    } as unknown as OutputService & {
+        restarts: typeof restarts;
+        formatRestarts: typeof formatRestarts;
     };
 }
 
-function makeFakeSrtRelay() {
+function makeFakeSrtRelay(): SrtRelayService {
     return {
         getStats: () => ({ status: 'stopped', lastError: null }),
         getStreamStatus: () => makeBondingStatus({ inputActive: false }),
-    };
+    } as unknown as SrtRelayService;
 }
 
 // The SRS/relay rows of the Server events table, without any host resource rows a
 // real /proc reading on the machine running the tests could add.
-function srsServiceEvents(service) {
+function srsServiceEvents(service: HealthService) {
     return service.getSrsEvents().filter((e) => e.source !== 'host');
 }
 
 function makeDiagnosticsSpy() {
-    const events = [];
+    const events: DiagEvent[] = [];
     return {
         events,
-        event(event, fields = {}) {
+        event(event: string, fields: Record<string, unknown> = {}) {
             events.push({ event, ...fields });
         },
         close() {},
-    };
+    } as unknown as DiagnosticsLogger & { events: typeof events };
 }
 
 // Fills in the full SrtRelayStreamStatus shape (see src/services/srtRelay.ts)
 // so tests only need to specify the fields a given scenario cares about.
-function makeBondingStatus(overrides = {}) {
+type BondingOverrides = Partial<Omit<SrtRelayStreamStatus, 'input' | 'output'>> & {
+    input?: Partial<SrtRelayInputStatus>;
+    output?: Partial<SrtRelayOutputStatus>;
+};
+
+function makeBondingStatus(overrides: BondingOverrides = {}): SrtRelayStreamStatus {
     const { input: inputOverrides, output: outputOverrides, ...rest } = overrides;
     return {
         inputActive: true,
@@ -256,7 +251,7 @@ function makeBondingStatus(overrides = {}) {
     };
 }
 
-function makeLeg(overrides = {}) {
+function makeLeg(overrides: Partial<SrtRelayLegStatus> = {}): SrtRelayLegStatus {
     return {
         ip: '203.0.113.10',
         port: 10081,
@@ -281,48 +276,67 @@ function makeLeg(overrides = {}) {
 
 // A relay double whose getStreamStatus() result the test can swap out between
 // polls to simulate the bonded relay's stats changing over time.
-function makeFakeSrtRelayMutable(initialStatus) {
+function makeFakeSrtRelayMutable(initialStatus: SrtRelayStreamStatus) {
     let status = initialStatus;
     return {
-        setStatus(next) {
+        setStatus(next: SrtRelayStreamStatus) {
             status = next;
         },
         getStats: () => ({ status: 'running', lastError: null }),
         getStreamStatus: () => status,
-    };
+    } as unknown as SrtRelayService & { setStatus(next: SrtRelayStreamStatus): void };
 }
 
-async function tickPoll(t, ms = 5000) {
+async function tickPoll(t: TestContext, ms = 5000) {
     t.mock.timers.tick(ms);
     await sleep(20);
 }
 
 function makeFakeInputState() {
-    const live = new Map();
-    const protocol = new Map();
-    return {
+    const live = new Map<number, boolean>();
+    const protocol = new Map<number, InputProtocol>();
+    const inputState = {
         setSrsReachable() {},
-        setPipelineState(id, isLive, proto) {
+        setPipelineState(id: number, isLive: boolean, proto: InputProtocol | null) {
             live.set(id, isLive);
             if (proto) protocol.set(id, proto);
             else protocol.delete(id);
         },
         setInputResolution() {},
-        clearPipeline(id) {
+        clearPipeline(id: number) {
             live.delete(id);
             protocol.delete(id);
         },
-        keepOnly(ids) {
+        keepOnly(ids: Set<number>) {
             for (const id of [...live.keys()]) {
                 if (!ids.has(id)) this.clearPipeline(id);
             }
         },
-        isLive: (id) => live.get(id) ?? false,
-        getProtocol: (id) => protocol.get(id) ?? null,
+        isLive: (id: number) => live.get(id) ?? false,
+        getProtocol: (id: number) => protocol.get(id) ?? null,
     };
+    return inputState as unknown as InputState;
 }
 
-function loadHealthService(t) {
+type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
+
+// loadHealthService() has replaced execFile with a mock; a test re-scripts it here.
+function mockExecFile(
+    implementation: (
+        command: string,
+        args: string[],
+        options: unknown,
+        callback: ExecFileCallback,
+    ) => unknown,
+) {
+    (
+        childProcess.execFile as unknown as {
+            mock: { mockImplementation(fn: typeof implementation): void };
+        }
+    ).mock.mockImplementation(implementation);
+}
+
+function loadHealthService(t: TestContext) {
     fs.writeFileSync(
         path.join(tempDir, 'bunryu.json'),
         JSON.stringify(
@@ -346,9 +360,13 @@ function loadHealthService(t) {
     // No pipeline in these tests reaches the ffprobe-scheduling branch with a
     // real url unless explicitly connected+protocol'd; guard it anyway so a
     // real ffprobe binary is never shelled out to during this suite.
-    t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
-        queueMicrotask(() => cb(new Error('ffprobe disabled in test'), '', ''));
-    });
+    t.mock.method(
+        childProcess,
+        'execFile',
+        (_cmd: string, _args: string[], _opts: unknown, cb: (...args: unknown[]) => void) => {
+            queueMicrotask(() => cb(new Error('ffprobe disabled in test'), '', ''));
+        },
+    );
     delete require.cache[require.resolve('../src/services/health')];
     delete require.cache[require.resolve('../src/services/hostMonitor')];
     delete require.cache[require.resolve('../src/utils/srsConfig')];
@@ -402,7 +420,7 @@ describe('createHealthService poll orchestration', () => {
     test('/api/health carries a verdict for every saved input and output, worked out when asked', async (t) => {
         t.mock.method(console, 'error', () => {});
         const createHealthService = loadHealthService(t);
-        const outputs = [
+        const outputs: Array<Partial<Output>> = [
             {
                 id: '1-1',
                 pipelineId: 1,
@@ -453,6 +471,7 @@ describe('createHealthService poll orchestration', () => {
         assert.deepEqual(snapshot.verdicts, { inputs: {}, outputs: {} });
         assert.equal(typeof snapshot.srsReachable, 'boolean');
         const failed = diagnostics.events.find((e) => e.event === 'status-verdict-failed');
+        assert.ok(failed);
         assert.match(failed.error, /database is locked/);
 
         service.shutdown();
@@ -467,11 +486,11 @@ describe('createHealthService poll orchestration', () => {
         db.listPipelines = () => {
             throw new Error('database is locked');
         };
-        const unhandled = [];
-        const onUnhandled = (reason) => unhandled.push(reason);
+        const unhandled: unknown[] = [];
+        const onUnhandled = (reason: unknown) => unhandled.push(reason);
         process.on('unhandledRejection', onUnhandled);
         t.after(() => process.off('unhandledRejection', onUnhandled));
-        const events = [];
+        const events: DiagEvent[] = [];
         const service = createHealthService(
             db,
             makeFakeOutputService(),
@@ -495,7 +514,7 @@ describe('createHealthService poll orchestration', () => {
             throw new Error('ECONNREFUSED');
         });
         const createHealthService = loadHealthService(t);
-        const events = [];
+        const events: DiagEvent[] = [];
         const service = createHealthService(
             makeFakeDb([]),
             makeFakeOutputService(),
@@ -503,7 +522,7 @@ describe('createHealthService poll orchestration', () => {
             makeFakeInputState(),
             { event: (event, fields) => events.push({ event, ...fields }), close: async () => {} },
         );
-        const seen = [];
+        const seen: HealthSnapshot[] = [];
         service.onSnapshot((snapshot) => seen.push(snapshot));
         service.onSnapshot(() => {
             throw new Error('listener bug');
@@ -551,7 +570,7 @@ describe('createHealthService poll orchestration', () => {
     });
 
     test('a malformed (non-JSON) streams response is treated as unreachable, not a crash', async (t) => {
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/')) {
                 return { ok: true, status: 200, json: async () => JSON.parse('not json') };
             }
@@ -702,7 +721,7 @@ describe('createHealthService poll orchestration', () => {
 
     test('does not crash the poll loop when appendPipelineLog throws', async (t) => {
         const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/')) {
                 return jsonResponse({
                     code: 0,
@@ -754,7 +773,7 @@ describe('createHealthService poll orchestration', () => {
 
     test('restartPipelineOutputs is invoked exactly once on the offline-to-online transition', async (t) => {
         const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/')) {
                 return jsonResponse({
                     code: 0,
@@ -825,7 +844,7 @@ describe('createHealthService poll orchestration', () => {
         const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
         const pipelines = [pipeline];
         t.mock.timers.enable({ apis: ['setInterval'] });
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/')) {
                 return jsonResponse({
                     code: 0,
@@ -876,7 +895,7 @@ describe('createHealthService poll orchestration', () => {
         const pipelines = [pipeline];
         let cid = 'cid-1';
         t.mock.timers.enable({ apis: ['setInterval'] });
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/')) {
                 return jsonResponse({
                     code: 0,
@@ -935,7 +954,7 @@ describe('createHealthService poll orchestration', () => {
     });
 
     test('an unassigned/deleted pipeline never appears in the snapshot', async (t) => {
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/')) return jsonResponse({ code: 0, streams: [] });
             return jsonResponse({ code: 0, clients: [] });
         });
@@ -992,7 +1011,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('surfaces packet-drop, retransmission, belated, latency, bitrate-collapse, and forwarding-stalled alerts once a relay baseline exists', async (t) => {
         let stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -1058,7 +1077,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             ],
         );
         assert.equal(
-            alerts.find((a) => a.code === 'input-bitrate-collapse').message,
+            alerts.find((a) => a.code === 'input-bitrate-collapse')?.message,
             'Input bitrate dropped from 1 Mb/s to 300 kb/s.',
         );
 
@@ -1069,10 +1088,17 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         // Polls an RTMP input whose ffprobe reports 50 fps; `framesPerPoll(i)`
         // is how many frames SRS counts between poll i-1 and poll i (5 s).
         // The measurement window is 2 minutes, i.e. 24 polls.
-        async function pollFrameRate(t, framesPerPoll, { polls = 27, changeCidAt = null } = {}) {
+        async function pollFrameRate(
+            t: TestContext,
+            framesPerPoll: (poll: number) => number,
+            {
+                polls = 27,
+                changeCidAt = null,
+            }: { polls?: number; changeCidAt?: number | null } = {},
+        ) {
             let frames = 1024;
             let cid = 'cid-1';
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({
                         code: 0,
@@ -1081,7 +1107,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 return jsonResponse({ code: 0, clients: [] });
             });
             const createHealthService = loadHealthService(t);
-            childProcess.execFile.mock.mockImplementation((_cmd, _args, _opts, cb) => {
+            mockExecFile((_cmd, _args, _opts, cb) => {
                 queueMicrotask(() =>
                     cb(
                         null,
@@ -1128,7 +1154,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             const history = await pollFrameRate(t, () => 200);
             assert.deepEqual(history[22], []);
             assert.ok(
-                history.at(-1).includes('input-low-framerate'),
+                history.at(-1)?.includes('input-low-framerate'),
                 `expected input-low-framerate, got ${JSON.stringify(history.at(-1))}`,
             );
         });
@@ -1136,7 +1162,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         test('warns when the counted frame rate is above 110% of the probed rate', async (t) => {
             const history = await pollFrameRate(t, () => 280);
             assert.ok(
-                history.at(-1).includes('input-high-framerate'),
+                history.at(-1)?.includes('input-high-framerate'),
                 `expected input-high-framerate, got ${JSON.stringify(history.at(-1))}`,
             );
         });
@@ -1161,7 +1187,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     describe('keyframe interval check', () => {
         // ffprobe packet lines for 12 s at 25 fps, a keyframe every `gop` seconds.
-        const packets = (gop) =>
+        const packets = (gop: number) =>
             Array.from({ length: 300 }, (_, i) => {
                 const t = i / 25;
                 return `${(t + 0.08).toFixed(6)},${t.toFixed(6)},${i % (gop * 25) === 0 ? 'K__' : '___'}`;
@@ -1169,17 +1195,23 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
         // One pipeline; the probe answers the stream JSON, the keyframe call `keyframeAnswer`.
         async function keyframes(
-            t,
+            t: TestContext,
             {
                 gop,
                 keyframeError = null,
                 hangKeyframe = null,
                 settleFirst = true,
                 fieldOrder = null,
+            }: {
+                gop: number;
+                keyframeError?: Error | null;
+                hangKeyframe?: ((signal: string) => unknown) | null;
+                settleFirst?: boolean;
+                fieldOrder?: string | null;
             },
         ) {
             let cid = 'cid-1';
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({
                         code: 0,
@@ -1188,8 +1220,8 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 return jsonResponse({ code: 0, clients: [] });
             });
             const createHealthService = loadHealthService(t);
-            const calls = [];
-            childProcess.execFile.mock.mockImplementation((_cmd, args, _opts, cb) => {
+            const calls: string[][] = [];
+            mockExecFile((_cmd, args, _opts, cb) => {
                 calls.push(args);
                 queueMicrotask(() => {
                     if (args.includes('-read_intervals')) {
@@ -1248,7 +1280,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                     await tickPoll(t); // the next poll carries the probe results
                     return (await getSnapshot(app)).pipelines['1'];
                 },
-                reconnect: async (nextCid) => {
+                reconnect: async (nextCid: string) => {
                     cid = nextCid;
                     await tickPoll(t);
                     await sleep(300);
@@ -1260,13 +1292,14 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         test('a 6 s GOP raises input-keyframe-interval, with the measurement shown', async (t) => {
             const ctx = await keyframes(t, { gop: 6 });
             const pipeline = await ctx.snapshot();
-            assert.equal(pipeline.input.keyframes.keyframes, 2);
-            assert.equal(pipeline.input.keyframes.maxGapSec, 6);
+            assert.equal(pipeline.input.keyframes?.keyframes, 2);
+            assert.equal(pipeline.input.keyframes?.maxGapSec, 6);
             const alert = pipeline.alerts.find((a) => a.code === 'input-keyframe-interval');
             assert.ok(alert, JSON.stringify(pipeline.alerts));
             assert.equal(alert.severity, 'warning');
             assert.match(alert.message, /6\.0 s/);
             const event = ctx.diagnostics.events.find((e) => e.event === 'keyframe-interval');
+            assert.ok(event);
             assert.equal(event.tooLong, true);
             assert.equal(event.maxGapSec, 6);
             assert.equal(ctx.db.logs.filter((l) => l.event === 'keyframe_interval').length, 1);
@@ -1292,10 +1325,10 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         test('a 2 s GOP raises nothing but is still reported', async (t) => {
             const ctx = await keyframes(t, { gop: 2 });
             const pipeline = await ctx.snapshot();
-            assert.equal(pipeline.input.keyframes.meanGapSec, 2);
+            assert.equal(pipeline.input.keyframes?.meanGapSec, 2);
             assert.ok(!pipeline.alerts.some((a) => a.code === 'input-keyframe-interval'));
             assert.equal(
-                ctx.diagnostics.events.find((e) => e.event === 'keyframe-interval').tooLong,
+                ctx.diagnostics.events.find((e) => e.event === 'keyframe-interval')?.tooLong,
                 false,
             );
             assert.equal(ctx.db.logs.filter((l) => l.event === 'keyframe_interval').length, 0);
@@ -1325,7 +1358,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             assert.equal((await ctx.snapshot()).input.keyframes, null);
             await ctx.settle();
             assert.equal(count(), 1);
-            assert.equal((await ctx.snapshot()).input.keyframes.maxGapSec, 2);
+            assert.equal((await ctx.snapshot()).input.keyframes?.maxGapSec, 2);
             ctx.shutdown();
         });
 
@@ -1343,8 +1376,11 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         });
 
         test('shutdown kills a check still in flight', async (t) => {
-            const kills = [];
-            const ctx = await keyframes(t, { gop: 2, hangKeyframe: (sig) => kills.push(sig) });
+            const kills: string[] = [];
+            const ctx = await keyframes(t, {
+                gop: 2,
+                hangKeyframe: (sig: string) => kills.push(sig),
+            });
             assert.equal(ctx.calls.filter((a) => a.includes('-read_intervals')).length, 1);
             ctx.shutdown();
             assert.deepEqual(kills, ['SIGKILL']);
@@ -1352,7 +1388,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
         test('after a mass reconnect only a few checks run at once, the rest queue', async (t) => {
             const keys = ['key01', 'key02', 'key03', 'key04', 'key05', 'key06'];
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({
                         code: 0,
@@ -1368,8 +1404,8 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             });
             const createHealthService = loadHealthService(t);
             const started = [];
-            const waiting = [];
-            childProcess.execFile.mock.mockImplementation((_cmd, args, _opts, cb) => {
+            const waiting: ExecFileCallback[] = [];
+            mockExecFile((_cmd, args, _opts, cb) => {
                 if (args.includes('-read_intervals')) {
                     started.push(args.at(-1));
                     waiting.push(cb); // each check reads its 12 s window until released
@@ -1414,7 +1450,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             for (let i = 0; i < 13; i++) await tickPoll(t); // 60 s after the probes
             await sleep(100);
             assert.equal(started.length, 4, 'four checks run, two wait');
-            waiting.shift()(null, packets(2), '');
+            waiting.shift()?.(null, packets(2), '');
             await sleep(50);
             assert.equal(started.length, 5, 'a finished check starts the next one');
             service.shutdown();
@@ -1445,10 +1481,17 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     describe('input format change on a new publisher', () => {
         // One pipeline whose publisher cid and ffprobe answer the test controls.
-        async function format(t) {
+        interface FormatProbe {
+            codec: string;
+            width: number;
+            height: number;
+            audio: number;
+        }
+
+        async function format(t: TestContext) {
             let cid = 'cid-1';
-            let probe = { codec: 'h264', width: 1920, height: 1080, audio: 1 };
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            let probe: FormatProbe | null = { codec: 'h264', width: 1920, height: 1080, audio: 1 };
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({
                         code: 0,
@@ -1457,7 +1500,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 return jsonResponse({ code: 0, clients: [] });
             });
             const createHealthService = loadHealthService(t);
-            childProcess.execFile.mock.mockImplementation((_cmd, _args, _opts, cb) => {
+            mockExecFile((_cmd, _args, _opts, cb) => {
                 queueMicrotask(() => {
                     if (!probe) return cb(new Error('no media'), '', '');
                     const streams = [
@@ -1497,7 +1540,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 diagnostics,
                 db,
                 // A new publisher: another cid, probed on the next poll.
-                async reconnect(nextProbe, nextCid, ms = 5000) {
+                async reconnect(nextProbe: FormatProbe | null, nextCid: string, ms = 5000) {
                     probe = nextProbe;
                     cid = nextCid;
                     await tickPoll(t, ms);
@@ -1517,6 +1560,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             assert.match(call.why, /h264 1920x1080, 1 audio track to h264 1280x720, 1 audio track/);
             assert.ok(call.startedBeforeMs > 0);
             const event = ctx.diagnostics.events.find((e) => e.event === 'input-format-changed');
+            assert.ok(event);
             assert.equal(event.outputsRestarted, 3);
             assert.equal(event.suppressed, false);
             assert.ok(ctx.db.logs.some((l) => l.event === 'format_changed'));
@@ -1526,14 +1570,14 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         test('restarts on a changed codec or audio track count too', async (t) => {
             const ctx = await format(t);
             await ctx.reconnect({ codec: 'hevc', width: 1920, height: 1080, audio: 1 }, 'cid-2');
-            assert.match(ctx.outputs.formatRestarts.at(-1).why, /to hevc 1920x1080/);
+            assert.match(String(ctx.outputs.formatRestarts.at(-1)?.why), /to hevc 1920x1080/);
             await ctx.reconnect(
                 { codec: 'hevc', width: 1920, height: 1080, audio: 2 },
                 'cid-3',
                 65_000,
             );
             assert.match(
-                ctx.outputs.formatRestarts.at(-1).why,
+                String(ctx.outputs.formatRestarts.at(-1)?.why),
                 /1 audio track to hevc 1920x1080, 2 audio tracks/,
             );
             ctx.shutdown();
@@ -1579,19 +1623,13 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     describe('POST /api/pipelines/:id/reprobe', () => {
-        function post(app, url) {
-            return new Promise((resolve, reject) => {
-                const req = new MockRequest();
-                req.method = 'POST';
-                req.url = url;
-                const res = new MockResponse((body) => resolve({ status: res.statusCode, body }));
-                app.handle(req, res, reject);
-            });
+        function post(app: object, url: string) {
+            return dispatch(app, 'POST', url);
         }
 
         // One live RTMP pipeline whose ffprobe calls are counted, and a second one that is idle.
-        async function reprobeSetup(t) {
-            t.mock.method(globalThis, 'fetch', async (url) => {
+        async function reprobeSetup(t: TestContext) {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({
                         code: 0,
@@ -1600,8 +1638,8 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 return jsonResponse({ code: 0, clients: [] });
             });
             const createHealthService = loadHealthService(t);
-            const probeCalls = [];
-            childProcess.execFile.mock.mockImplementation((_cmd, args, _opts, cb) => {
+            const probeCalls: Array<string | undefined> = [];
+            mockExecFile((_cmd, args, _opts, cb) => {
                 probeCalls.push(args.at(-1));
                 queueMicrotask(() =>
                     cb(
@@ -1668,7 +1706,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         test('refuses a second request while the first probe is still running', async (t) => {
             const ctx = await reprobeSetup(t);
             // Held open: the fake ffprobe of the reprobe never answers.
-            childProcess.execFile.mock.mockImplementation(() => ({ kill() {} }));
+            mockExecFile(() => ({ kill() {} }));
             const first = await post(ctx.app, '/api/pipelines/1/reprobe');
             assert.equal(first.status, 200);
             await sleep(50);
@@ -1681,7 +1719,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('records one started and one ended event per alert episode', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -1733,7 +1771,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('forgets a bonded leg that has sent no sample for an hour', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -1761,13 +1799,9 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         await sleep(20);
         await tickPoll(t);
 
-        const req = new MockRequest();
-        req.url = '/api/health/pipelines/1/legs/history';
-        const history = await new Promise((resolve, reject) => {
-            app.handle(req, new MockResponse(resolve), reject);
-        });
+        const history = (await dispatch(app, 'GET', '/api/health/pipelines/1/legs/history')).body;
         assert.deepEqual(
-            history.legs.map((leg) => leg.ip),
+            history.legs.map((leg: { ip: string }) => leg.ip),
             ['198.51.100.20'],
         );
 
@@ -1776,7 +1810,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('an alert keeps the time its episode started instead of moving to each poll', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -1802,7 +1836,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.start();
         await sleep(20);
 
-        const sinceByPoll = [];
+        const sinceByPoll: Array<number | undefined> = [];
         for (const drops of [5, 5, 5]) {
             received += 900;
             dropped += drops;
@@ -1811,7 +1845,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             const alert = (await getSnapshot(app)).pipelines['1'].alerts.find(
                 (a) => a.code === 'srt-packets-dropped',
             );
-            sinceByPoll.push(alert.sinceMs);
+            sinceByPoll.push(alert?.sinceMs);
         }
 
         assert.equal(sinceByPoll[1], sinceByPoll[0], 'sinceMs must not move with each poll');
@@ -1820,7 +1854,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     test('the output health passes the warning start time through', async (t) => {
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -1847,7 +1881,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             {
                 ...makeFakeOutputService(),
                 getStats: () => ({
-                    ...makeFakeOutputService().getStats(),
+                    ...makeFakeOutputService().getStats(''),
                     status: 'running',
                     warningReason: 'falling behind',
                     warningSinceMs: 1234,
@@ -1869,7 +1903,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('reports pure packet loss (no drops) instead of the drop alert', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -1914,7 +1948,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('logs a bonded-leg-transition event and a bonded-leg-quality alert when a leg comes up with bad packet quality', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -1985,14 +2019,14 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('flags a bonded leg that drops out of the group and clears it when the leg returns', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
         });
         const createHealthService = loadHealthService(t);
-        const leg = (ip) => makeLeg({ ip });
-        const withLegs = (...ips) => makeBondingStatus({ input: { legs: ips.map(leg) } });
+        const leg = (ip: string) => makeLeg({ ip });
+        const withLegs = (...ips: string[]) => makeBondingStatus({ input: { legs: ips.map(leg) } });
         const relay = makeFakeSrtRelayMutable(withLegs('203.0.113.10', '203.0.113.11'));
         const pipeline = { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 };
         const service = createHealthService(
@@ -2029,8 +2063,8 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         const lost = await legDownAlert();
         assert.equal(lost.legs, 1);
         assert.equal(lost.expectedLegs, 2);
-        assert.equal(lost.alert.severity, 'warning');
-        assert.equal(lost.alert.message, '1 of 2 bonded legs is down.');
+        assert.equal(lost.alert?.severity, 'warning');
+        assert.equal(lost.alert?.message, '1 of 2 bonded legs is down.');
 
         relay.setStatus(withLegs('203.0.113.10', '203.0.113.12'));
         await tickPoll(t);
@@ -2041,7 +2075,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('forgets how many legs a bonded input had once the input goes away', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -2086,9 +2120,13 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     describe('when the SRS clients list cannot be read', () => {
-        async function bondedSnapshot(t, clientsOk, diagnostics) {
+        async function bondedSnapshot(
+            t: TestContext,
+            clientsOk: boolean,
+            diagnostics?: DiagnosticsLogger,
+        ) {
             const stream = streamFixture({ tcUrl: 'srt://x:10080' });
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({ code: 0, streams: [stream] });
                 if (!clientsOk) throw new Error('timed out');
@@ -2133,9 +2171,9 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     describe("another pipeline's SRT output into a pipeline's stream key", () => {
-        async function conflictSnapshot(t, outputOverrides) {
+        async function conflictSnapshot(t: TestContext, outputOverrides: Partial<Output>) {
             const stream = streamFixture({ tcUrl: 'srt://x:10080' });
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({ code: 0, streams: [stream] });
                 return jsonResponse({
@@ -2144,7 +2182,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 });
             });
             const outputService = makeFakeOutputService();
-            const outputs = [
+            const outputs: Array<Partial<Output>> = [
                 {
                     id: '2-1',
                     pipelineId: 2,
@@ -2159,7 +2197,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                     ...outputOverrides,
                 },
             ];
-            outputService.getStats = () => ({
+            outputService.getStats = (() => ({
                 status: 'running',
                 pid: 1,
                 bitrateKbps: 4000,
@@ -2169,7 +2207,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 memoryUsageBytes: null,
                 memoryLimitBytes: null,
                 cpuPercent: null,
-            });
+            })) as unknown as OutputService['getStats'];
             const createHealthService = loadHealthService(t);
             const service = createHealthService(
                 makeFakeDb(
@@ -2218,7 +2256,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     describe('a main/backup group', () => {
         // In a backup group the standby leg is idle by design while the main leg runs.
-        const legsWith = (...states) =>
+        const legsWith = (...states: SrtRelayLegStatus['state'][]) =>
             makeBondingStatus({
                 input: {
                     legs: states.map((state, i) =>
@@ -2227,9 +2265,9 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 },
             });
 
-        async function legHealths(t, status) {
+        async function legHealths(t: TestContext, status: SrtRelayStreamStatus) {
             const stream = streamFixture();
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({ code: 0, streams: [stream] });
                 return jsonResponse({ code: 0, clients: [] });
@@ -2268,13 +2306,22 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     describe('bonded leg history', () => {
         // The relay drops a failed leg from legs[] instead of reporting it broken, so the pipeline
         // log and the diagnostics are where an operator can see which link went and when.
-        const legsOf = (...ips) =>
+        const legsOf = (...ips: string[]) =>
             makeBondingStatus({ input: { legs: ips.map((ip) => makeLeg({ ip })) } });
-        const legLines = (db) => db.logs.filter((l) => l.event === 'legs').map((l) => l.message);
+        const legLines = (db: FakeDb) =>
+            db.logs.filter((l) => l.event === 'legs').map((l) => l.message);
 
-        async function startService(t, status, { db = null, withDate = false, now } = {}) {
+        async function startService(
+            t: TestContext,
+            status: SrtRelayStreamStatus,
+            {
+                db = null,
+                withDate = false,
+                now,
+            }: { db?: FakeDb | null; withDate?: boolean; now?: number } = {},
+        ) {
             const stream = streamFixture();
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({ code: 0, streams: [stream] });
                 return jsonResponse({ code: 0, clients: [] });
@@ -2335,7 +2382,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         });
 
         test('reports the last minutes of loss, retransmits and drops per leg, group and output', async (t) => {
-            const at = (lost, dropped, sendDropped) =>
+            const at = (lost: number, dropped: number, sendDropped: number) =>
                 makeBondingStatus({
                     input: {
                         recvDropTotal: dropped,
@@ -2352,27 +2399,27 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             const app = express();
             service.registerRoutes(app);
             const { srtBonding } = (await getSnapshot(app)).pipelines['1'];
-            assert.equal(srtBonding.input.recent.spanMs, 10_000);
-            assert.equal(srtBonding.input.recent.drop, 2);
-            assert.equal(srtBonding.input.legs[0].recent.loss, 9);
-            assert.equal(srtBonding.input.legs[0].recent.retrans, 9);
-            assert.equal(srtBonding.output.recent.drop, 3);
+            assert.equal(srtBonding.input.recent?.spanMs, 10_000);
+            assert.equal(srtBonding.input.recent?.drop, 2);
+            assert.equal(srtBonding.input.legs[0].recent?.loss, 9);
+            assert.equal(srtBonding.input.legs[0].recent?.retrans, 9);
+            assert.equal(srtBonding.output.recent?.drop, 3);
             assert.equal(srtBonding.input.recvDropTotal, 42, 'the totals are still reported');
             service.shutdown();
         });
 
         describe('relay errors', () => {
             const CLOCK = 1_800_000_000_000;
-            const publishError = (retryMs) =>
+            const publishError = (retryMs: number | null) =>
                 `Failed to publish to downstream output: srt_connect target=127.0.0.1:10080 streamid=#!::r=live/key01,m=publish: Connection setup failure; retrying in ${retryMs} ms`;
-            const withError = (message, at) =>
+            const withError = (message: string | null, at: number | null) =>
                 makeBondingStatus({
                     inputActive: true,
                     lastError: message,
                     lastErrorAt: at,
                     input: { legs: [makeLeg()] },
                 });
-            const errorLines = (db) => db.logs.filter((l) => l.event === 'relay_error');
+            const errorLines = (db: FakeDb) => db.logs.filter((l) => l.event === 'relay_error');
 
             test('writes the relay error to the pipeline log once and merges its retries', async (t) => {
                 const { relay, diagnostics, db, service } = await startService(
@@ -2436,7 +2483,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         });
 
         test('a leg that returns from a new port is logged as lost and joined', async (t) => {
-            const withPort = (port) =>
+            const withPort = (port: number) =>
                 makeBondingStatus({
                     input: {
                         legs: [
@@ -2481,7 +2528,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         });
 
         test('logs nothing for a plain SRT input', async (t) => {
-            const plain = (ip) =>
+            const plain = (ip: string) =>
                 makeBondingStatus({
                     input: { bonded: false, legs: [makeLeg({ ip, port: 49152 })] },
                 });
@@ -2552,15 +2599,15 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('describes a plain relay input as an SRT input, not a bonded leg', async (t) => {
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
         });
         const createHealthService = loadHealthService(t);
-        const plainLink = (overrides) =>
+        const plainLink = (overrides: Partial<SrtRelayLegStatus>) =>
             makeLeg({ ip: '198.51.100.7', port: 49152, state: 'running', ...overrides });
-        const plainStatus = (linkOverrides) =>
+        const plainStatus = (linkOverrides: Partial<SrtRelayLegStatus>) =>
             makeBondingStatus({
                 input: {
                     bonded: false,
@@ -2605,14 +2652,14 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             /^SRT input from 198\.51\.100\.7:49152: Connection packet drops/,
         );
         assert.doesNotMatch(qualityAlert.message, /leg/i);
-        assert.equal(input.legs[0].healthReason.startsWith('Connection packet drops'), true);
+        assert.equal(input.legs[0].healthReason?.startsWith('Connection packet drops'), true);
 
         service.shutdown();
     });
 
     test('logs input-publisher-transition and surfaces a transient publisher-reconnected alert on a CID change', async (t) => {
         let stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
             return jsonResponse({ code: 0, clients: [] });
@@ -2656,10 +2703,10 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     describe('input-flapping alert', () => {
-        async function pollWithConnectionPattern(t, pattern) {
+        async function pollWithConnectionPattern(t: TestContext, pattern: boolean[]) {
             let present = pattern[0];
             const stream = streamFixture();
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({ code: 0, streams: present ? [stream] : [] });
                 return jsonResponse({ code: 0, clients: [] });
@@ -2716,7 +2763,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         test('disconnects older than five minutes no longer count', async (t) => {
             let present = true;
             const stream = streamFixture();
-            t.mock.method(globalThis, 'fetch', async (url) => {
+            t.mock.method(globalThis, 'fetch', async (url: unknown) => {
                 if (String(url).includes('/streams/'))
                     return jsonResponse({ code: 0, streams: present ? [stream] : [] });
                 return jsonResponse({ code: 0, clients: [] });
@@ -2756,7 +2803,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     test('logs srs-transition and input-transition diagnostics events across an outage and recovery', async (t) => {
         let reachable = true;
         const stream = streamFixture();
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (!reachable) throw new Error('down');
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [stream] });
@@ -2807,12 +2854,23 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
         service.shutdown();
     });
+    // The unmocked fs functions take many overloads; the pass-through only forwards its arguments.
+    const passthrough = (fn: unknown) => fn as (...args: unknown[]) => unknown;
+
     // Serves a fake /proc/meminfo (and process list) and lets every other read
     // through, so the rest of the health service still sees the real fs.
-    function mockHostMemory(t, state) {
+    interface HostState {
+        availableKb: number;
+        cpuSome10?: number;
+        diskFreeRatio?: number;
+        dataDevice?: number;
+        rcvbufErrors?: number;
+    }
+
+    function mockHostMemory(t: TestContext, state: HostState) {
         const realReadFileSync = fs.readFileSync;
         const realReaddirSync = fs.readdirSync;
-        t.mock.method(fs, 'readFileSync', (file, ...rest) => {
+        t.mock.method(fs, 'readFileSync', (file: string, ...rest: unknown[]) => {
             if (file === '/proc/meminfo') {
                 return `MemTotal: 1024000 kB\nMemAvailable: ${state.availableKb} kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n`;
             }
@@ -2836,10 +2894,10 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 );
             }
             if (file === '/proc/net/udp6') return '  sl  local_address\n';
-            return realReadFileSync(file, ...rest);
+            return passthrough(realReadFileSync)(file, ...rest);
         });
-        t.mock.method(fs, 'readdirSync', (dir, ...rest) =>
-            dir === '/proc' ? ['77'] : realReaddirSync(dir, ...rest),
+        t.mock.method(fs, 'readdirSync', (dir: string, ...rest: unknown[]) =>
+            dir === '/proc' ? ['77'] : passthrough(realReaddirSync)(dir, ...rest),
         );
         // Disk: state.diskFreeRatio of a 1000-block filesystem, for both the data
         // directory (tempDir here) and '/', which share a device unless state.dataDevice
@@ -2850,17 +2908,17 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             blocks: 1000,
             bavail: Math.round((state.diskFreeRatio ?? 0.5) * 1000),
         }));
-        t.mock.method(fs, 'statSync', (file, ...rest) =>
+        t.mock.method(fs, 'statSync', (file: string, ...rest: unknown[]) =>
             file === '/' || file === tempDir
                 ? { dev: file === tempDir ? (state.dataDevice ?? 1) : 1 }
-                : realStatSync(file, ...rest),
+                : passthrough(realStatSync)(file, ...rest),
         );
     }
 
     test('logs host-memory-low/recovered transitions with top processes, with hysteresis', async (t) => {
-        const state = { availableKb: 400_000 }; // 39% of 1000MB: healthy
+        const state: HostState = { availableKb: 400_000 }; // 39% of 1000MB: healthy
         mockHostMemory(t, state);
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -2913,9 +2971,9 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     test('logs host-cpu-high/recovered with hysteresis and shows both in the Server events table', async (t) => {
-        const state = { availableKb: 400_000, cpuSome10: 20 };
+        const state: HostState = { availableKb: 400_000, cpuSome10: 20 };
         mockHostMemory(t, state);
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -2980,9 +3038,9 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     test('logs host-disk-low/recovered per filesystem, once for a shared device', async (t) => {
-        const state = { availableKb: 400_000, diskFreeRatio: 0.5 };
+        const state: HostState = { availableKb: 400_000, diskFreeRatio: 0.5 };
         mockHostMemory(t, state);
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -3052,7 +3110,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('health-snapshot records node/srs/relay CPU and RSS, host memory and each output memory limit', async (t) => {
         mockHostMemory(t, { availableKb: 400_000 });
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -3107,9 +3165,9 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     test('health-snapshot reports how many datagrams the kernel dropped since the previous snapshot', async (t) => {
-        const state = { availableKb: 400_000, rcvbufErrors: 5 };
+        const state: HostState = { availableKb: 400_000, rcvbufErrors: 5 };
         mockHostMemory(t, state);
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -3143,7 +3201,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
 
     test('health-snapshot still records node and host memory when no process-usage source is wired', async (t) => {
         mockHostMemory(t, { availableKb: 400_000 });
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -3163,6 +3221,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         await sleep(20);
 
         const snapshot = diagnostics.events.find((e) => e.event === 'health-snapshot');
+        assert.ok(snapshot);
         assert.ok(snapshot.processes.node.rssBytes > 0);
         assert.equal(snapshot.processes.node.cpuPercent, null);
         assert.deepEqual(snapshot.processes.srs, { cpuPercent: null, rssBytes: null });
@@ -3172,7 +3231,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     test('records a failed ffprobe in diagnostics and the pipeline log, once per publisher in the log', async (t) => {
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -3206,7 +3265,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
     });
 
     test('a throw while recording a probe result is logged, not an unhandled rejection', async (t) => {
-        t.mock.method(globalThis, 'fetch', async (url) => {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/'))
                 return jsonResponse({ code: 0, streams: [streamFixture()] });
             return jsonResponse({ code: 0, clients: [] });
@@ -3216,12 +3275,12 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         diagnostics.event = (event) => {
             if (event === 'media-probe-failed') throw new Error('diagnostics write failed');
         };
-        const rejections = [];
-        const onRejection = (reason) => rejections.push(reason);
+        const rejections: unknown[] = [];
+        const onRejection = (reason: unknown) => rejections.push(reason);
         process.on('unhandledRejection', onRejection);
         t.after(() => process.off('unhandledRejection', onRejection));
-        const errors = [];
-        t.mock.method(console, 'error', (...args) => errors.push(args.join(' ')));
+        const errors: string[] = [];
+        t.mock.method(console, 'error', (...args: unknown[]) => errors.push(args.join(' ')));
         const service = createHealthService(
             makeFakeDb([{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1 }]),
             makeFakeOutputService(),
@@ -3262,7 +3321,7 @@ describe('shared encodes (renditions) in the health snapshot', () => {
         send_bytes: 0,
         ...overrides,
     });
-    const outputRow = (overrides) => ({
+    const outputRow = (overrides: Partial<Output>): Partial<Output> => ({
         id: '1-1',
         pipelineId: 1,
         seq: 1,
@@ -3312,15 +3371,34 @@ describe('shared encodes (renditions) in the health snapshot', () => {
         delete require.cache[require.resolve('../src/utils/srsConfig')];
     });
 
-    async function pollOnce(t, { streams, outputs, outputStats, diagnostics, outputService }) {
-        t.mock.method(globalThis, 'fetch', async (url) => {
+    async function pollOnce(
+        t: TestContext,
+        {
+            streams,
+            outputs,
+            outputStats = {},
+            diagnostics,
+            outputService,
+        }: {
+            streams: unknown[];
+            outputs: Array<Partial<Output>>;
+            outputStats?: Record<string, unknown>;
+            diagnostics?: DiagnosticsLogger;
+            outputService?: OutputService;
+        },
+    ) {
+        t.mock.method(globalThis, 'fetch', async (url: unknown) => {
             if (String(url).includes('/streams/')) return jsonResponse({ code: 0, streams });
             return jsonResponse({ code: 0, clients: [] });
         });
         const createHealthService = loadHealthService(t);
         const service = createHealthService(
             makeFakeDb([pipeline], outputs),
-            outputService ?? { ...makeFakeOutputService(), getStats: (id) => outputStats[id] },
+            outputService ??
+                ({
+                    ...makeFakeOutputService(),
+                    getStats: (id: string) => outputStats[id],
+                } as unknown as OutputService),
             makeFakeSrtRelay(),
             makeFakeInputState(),
             diagnostics,
@@ -3402,11 +3480,11 @@ describe('shared encodes (renditions) in the health snapshot', () => {
             stream({ id: 's3', name: 'r1_720p_a0', app: 'internal', clients: 5 }),
         ];
         const without = [stream({ clients: 2 })];
-        const run = async (streams) => {
+        const run = async (streams: ReturnType<typeof stream>[]) => {
             const outputService = {
                 ...makeFakeOutputService(),
                 getStats: () => statsFor(),
-            };
+            } as unknown as ReturnType<typeof makeFakeOutputService>;
             const snapshot = await pollOnce(t, {
                 streams,
                 outputs: [renditionRow()],
@@ -3421,7 +3499,7 @@ describe('shared encodes (renditions) in the health snapshot', () => {
         assert.equal(b.input.connected, true);
         assert.equal(b.input.readers, 1);
         // uptimeMs is wall-clock dependent; everything else must be identical.
-        const stable = ({ uptimeMs: _uptimeMs, ...rest }) => rest;
+        const stable = ({ uptimeMs: _uptimeMs, ...rest }: { uptimeMs?: unknown }) => rest;
         assert.deepEqual(stable(b.input), stable(a.input));
         assert.equal(b.restarts.length, a.restarts.length);
     });
@@ -3450,6 +3528,7 @@ describe('shared encodes (renditions) in the health snapshot', () => {
         });
 
         const snapshot = diagnostics.events.find((e) => e.event === 'health-snapshot');
+        assert.ok(snapshot);
         assert.deepEqual(Object.keys(snapshot.pipelines['1'].outputs), ['1-1']);
     });
 
@@ -3466,6 +3545,7 @@ describe('shared encodes (renditions) in the health snapshot', () => {
         });
 
         const snapshot = diagnostics.events.find((e) => e.event === 'health-snapshot');
+        assert.ok(snapshot);
         const outputs = snapshot.pipelines['1'].outputs;
         assert.equal(outputs['1-1'].role, 'rendition');
         assert.equal(outputs['1-1'].renditionId, null);

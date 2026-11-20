@@ -7,6 +7,7 @@ import {
     maskKey,
     maskSecrets,
     publishRows,
+    type PublishRow,
 } from '../public/ts/core/publish-modes';
 
 const ctx = {
@@ -21,7 +22,14 @@ const ctx = {
         'srt://live.example.org:10081?mode=caller&grouptype=broadcast&streamid=#!::r=live/key01_abcdef,m=publish&passphrase=pass%20phrase%2B1&pbkeylen=16',
 };
 
-const pipeline = (connected, isSrt, relayActive = false) => ({
+// The row with this label; a missing one fails the test where it is looked up.
+function row(rows: PublishRow[], label: string): PublishRow {
+    const found = rows.find((r) => r.label === label);
+    assert.ok(found, `no "${label}" row`);
+    return found;
+}
+
+const pipeline = (connected: boolean, isSrt: boolean, relayActive = false) => ({
     input: { connected, isSrt },
     srtBonding: { inputActive: relayActive },
 });
@@ -98,9 +106,9 @@ describe('publishRows', () => {
 
     test('SRT Relay uses the relay port and has a bonded and a single-link URL', () => {
         const rows = publishRows('relay', ctx);
-        assert.equal(rows.find((r) => r.label === 'Port').value, '10081');
-        const bonded = rows.find((r) => r.label === 'Bonded URL');
-        const single = rows.find((r) => r.label === 'Single-link URL');
+        assert.equal(row(rows, 'Port').value, '10081');
+        const bonded = row(rows, 'Bonded URL');
+        const single = row(rows, 'Single-link URL');
         assert.equal(bonded.value, ctx.relayBondedUrl);
         assert.equal(single.value, ctx.relayUrl);
         assert.ok(bonded.value.includes('grouptype=broadcast'));

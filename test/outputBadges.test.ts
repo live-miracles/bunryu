@@ -1,20 +1,23 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { outputMetricsBadge } from '../public/ts/features/output-badges';
+import type { InputHealth, OutputView } from '../public/ts/types';
 
-const output = (over) => ({
-    status: 'running',
-    videoEncoding: 'copy',
-    bitrateKbps: 3000,
-    cpuPercent: null,
-    memoryUsageBytes: null,
-    memoryLimitBytes: null,
-    speed: null,
-    ...over,
-});
+// The badge reads only these fields of an output.
+const output = (over: Partial<OutputView>) =>
+    ({
+        status: 'running',
+        videoEncoding: 'copy',
+        bitrateKbps: 3000,
+        cpuPercent: null,
+        memoryUsageBytes: null,
+        memoryLimitBytes: null,
+        speed: null,
+        ...over,
+    }) as unknown as OutputView;
 
 describe('output badge: only what is abnormal', () => {
-    const input = { live: true, recvBitrateKbps: 8900 };
+    const input = { live: true, recvBitrateKbps: 8900 } as InputHealth;
     const MB = 1e6;
 
     test('a healthy copy output has no badge', () => {

@@ -87,7 +87,7 @@ export function summarizeOutputError(error: string | null | undefined, fallback:
 
 // SRS reports a zero receive bitrate until its rolling bitrate statistics are
 // populated. Do not show that startup placeholder as a bitrate. (The server holds the
-// same 30 s for the input's low-bitrate warning; test/statusConstants.test.js pins it.)
+// same 30 s for the input's low-bitrate warning; test/statusConstants.test.ts pins it.)
 const INPUT_BITRATE_STATS_WARMUP_MS = 30_000;
 
 export function inputBitrateStatsReady(input: InputHealth): boolean {

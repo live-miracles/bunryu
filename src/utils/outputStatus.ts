@@ -4,7 +4,7 @@ import { encodeRecipe, isRenditionUrl, recipeOfRendition } from './renditions.js
 // What state an output is in and why: the one place these rules live. The verdict they give
 // (dot colour, Issues text) goes to the dashboard in /api/health (healthVerdicts.ts), and
 // `reportedState` below turns it into what the Key Vault reporter sends. The dashboard has
-// no copy; the few values it repeats for display are pinned in test/statusConstants.test.js.
+// no copy; the few values it repeats for display are pinned in test/statusConstants.test.ts.
 
 // The dashboard repeats this one (LOW_BITRATE_KBPS in public/ts/core/utils.ts) for badges.
 const LOW_BITRATE_KBPS = 200;

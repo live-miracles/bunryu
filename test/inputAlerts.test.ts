@@ -1,18 +1,29 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parsePipelines, INPUT_ALERT_CODES } from '../public/ts/core/pipeline';
+import type { ConfigData, HealthData, PipelineAlert } from '../public/ts/types';
 
-const alert = (code) => ({ severity: 'warning', code, message: code, sinceMs: 1 });
+const alert = (code: string): PipelineAlert => ({
+    severity: 'warning',
+    code,
+    message: code,
+    sinceMs: 1,
+});
 
-function parseWithAlerts(alerts) {
+// The tests give parsePipelines only the fields it reads; these two factories hold the
+// one cast from such a partial object to the real payload types.
+const fakeConfig = (config: object) => config as unknown as Partial<ConfigData>;
+const fakeHealth = (health: object) => health as unknown as Partial<HealthData>;
+
+function parseWithAlerts(alerts: PipelineAlert[]) {
     return parsePipelines(
-        {
+        fakeConfig({
             pipelines: [{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1, groupId: null }],
             outputs: [],
             layoutOrder: [],
             encodings: ['copy'],
-        },
-        {
+        }),
+        fakeHealth({
             pipelines: {
                 1: {
                     input: {
@@ -26,7 +37,7 @@ function parseWithAlerts(alerts) {
                     alerts,
                 },
             },
-        },
+        }),
     )[0];
 }
 
@@ -39,7 +50,7 @@ describe('input-level alerts', () => {
             alert('srt-packet-loss'),
         ]);
         assert.deepEqual(
-            p.input.alerts.map((a) => a.code),
+            p.input.alerts?.map((a) => a.code),
             ['input-flapping', 'input-low-framerate', 'input-high-framerate'],
         );
     });
@@ -52,8 +63,11 @@ describe('input-level alerts', () => {
 
     test('a pipeline with no health yet has no input alerts', () => {
         const [p] = parsePipelines(
-            { pipelines: [{ id: 1, name: 'P1', streamKey: 'k', streamKeyId: 1 }], outputs: [] },
-            { pipelines: {} },
+            fakeConfig({
+                pipelines: [{ id: 1, name: 'P1', streamKey: 'k', streamKeyId: 1 }],
+                outputs: [],
+            }),
+            fakeHealth({ pipelines: {} }),
         );
         assert.deepEqual(p.input.alerts, []);
     });

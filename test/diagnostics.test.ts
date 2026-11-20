@@ -4,16 +4,20 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createDiagnosticsLogger, runLogged } from '../src/utils/diagnostics';
+import {
+    createDiagnosticsLogger,
+    runLogged,
+    type DiagnosticsLogger,
+} from '../src/utils/diagnostics';
 
-function sleep(ms) {
+function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // createDiagnosticsLogger's write stream opens the file asynchronously (an
 // fs.open under the hood), so a bare synchronous close() does not guarantee
 // the file is on disk yet — every test settles this before asserting.
-async function closeAndSettle(logger) {
+async function closeAndSettle(logger: DiagnosticsLogger) {
     logger.close();
     await sleep(30);
 }
@@ -22,7 +26,7 @@ function mkTempDir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-diagnostics-'));
 }
 
-const roots = [];
+const roots: string[] = [];
 after(() => {
     for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
 });
@@ -33,7 +37,17 @@ function tempDiagnosticsDir() {
     return path.join(root, 'diagnostics');
 }
 
-function readLines(file) {
+// One parsed JSONL record. Only some records carry `error` or `dropped`; a test reads a
+// field only on the record that has it.
+interface DiagnosticsRecord {
+    ts: string;
+    event: string;
+    error: string;
+    dropped: number;
+    [field: string]: unknown;
+}
+
+function readLines(file: string): DiagnosticsRecord[] {
     return fs
         .readFileSync(file, 'utf8')
         .split('\n')
@@ -41,7 +55,7 @@ function readLines(file) {
         .map((line) => JSON.parse(line));
 }
 
-function listDiagnosticsFiles(dir) {
+function listDiagnosticsFiles(dir: string) {
     return fs
         .readdirSync(dir)
         .filter((name) => /^diagnostics-.*\.jsonl$/.test(name))
@@ -52,7 +66,7 @@ function listDiagnosticsFiles(dir) {
 // can pre-place a file the logger will recognize as "today's" active file.
 function todayFileName(sequence = 0) {
     const now = new Date();
-    const pad = (value) => String(value).padStart(2, '0');
+    const pad = (value: number) => String(value).padStart(2, '0');
     const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     return `diagnostics-${date}${sequence > 0 ? `.${sequence}` : ''}.jsonl`;
 }
@@ -370,7 +384,7 @@ describe('diagnostics logger failures', () => {
         roots.push(root);
         const blocker = path.join(root, 'not-a-dir');
         fs.writeFileSync(blocker, '');
-        let logger;
+        let logger!: DiagnosticsLogger;
         assert.doesNotThrow(() => {
             logger = createDiagnosticsLogger(path.join(blocker, 'diagnostics'));
             logger.event('nowhere');
@@ -397,8 +411,13 @@ describe('runLogged', () => {
     });
 
     test('contains a throwing step and records it', () => {
-        const events = [];
-        const diagnostics = { event: (name, fields) => events.push({ name, fields }) };
+        const events: { name: string; fields: Record<string, string> }[] = [];
+        const diagnostics: DiagnosticsLogger = {
+            event: (name, fields) => {
+                events.push({ name, fields: fields as Record<string, string> });
+            },
+            close: async () => {},
+        };
         const originalError = console.error;
         console.error = () => {};
         try {

@@ -8,6 +8,10 @@ import {
     readStoredKeyVault,
 } from '../src/utils/keyVaultConfig';
 
+// The refusal of a parse, or '' when it was accepted (so a message check on it fails).
+const errorOf = (parsed: ReturnType<typeof parseKeyVaultInput>): string =>
+    'error' in parsed ? parsed.error : '';
+
 const SECRET = 'fake-key-vault-secret-0123456789-abcdef';
 const INPUT = { url: 'https://kv.example.invalid/functions/v1/ingest', secret: SECRET };
 // What is saved: the two values derived from the secret, not the secret itself.
@@ -50,11 +54,11 @@ describe('parseKeyVaultInput', () => {
             assert.ok('config' in parsed, host);
         }
         const remote = parseKeyVaultInput({ ...INPUT, url: 'http://kv.example.invalid/in' }, null);
-        assert.match(remote.error, /https/);
+        assert.match(errorOf(remote), /https/);
     });
 
     test('refuses what cannot work, with the field named', () => {
-        const cases = [
+        const cases: [unknown, RegExp][] = [
             [null, /object/],
             [[], /object/],
             [{ ...INPUT, url: undefined }, /url is required/],
@@ -67,13 +71,13 @@ describe('parseKeyVaultInput', () => {
         ];
         for (const [input, message] of cases) {
             const parsed = parseKeyVaultInput(input, null);
-            assert.match(parsed.error ?? '', message, JSON.stringify(input));
+            assert.match(errorOf(parsed), message, JSON.stringify(input));
         }
     });
 
     test('an empty secret falls back to the saved one only', () => {
         const empty = { ...INPUT, secret: '' };
-        assert.match(parseKeyVaultInput(empty, null).error, /secret is required/);
+        assert.match(errorOf(parseKeyVaultInput(empty, null)), /secret is required/);
         assert.deepEqual(parseKeyVaultInput(empty, GOOD), { config: GOOD });
         const moved = parseKeyVaultInput(
             { ...empty, url: 'https://other.example.invalid/in' },
@@ -99,12 +103,12 @@ describe('readStoredKeyVault', () => {
     test('a value that cannot be used is off, with the reason, and never throws', () => {
         const garbled = readStoredKeyVault('{oops');
         assert.equal(garbled.config, null);
-        assert.match(garbled.problem, /not valid JSON/);
+        assert.match(garbled.problem ?? '', /not valid JSON/);
         const invalid = readStoredKeyVault(
             JSON.stringify({ ...GOOD, url: 'http://remote.invalid' }),
         );
         assert.equal(invalid.config, null);
-        assert.match(invalid.problem, /https/);
+        assert.match(invalid.problem ?? '', /https/);
         assert.equal(readStoredKeyVault('null').config, null);
     });
 });
@@ -119,8 +123,11 @@ describe('publicKeyVaultConfig', () => {
 
 describe('checkKeyVaultHost', () => {
     test('refuses link-local (cloud metadata) and unspecified addresses', async () => {
-        assert.match(await checkKeyVaultHost('https://169.254.169.254/latest'), /not allowed/);
-        assert.match(await checkKeyVaultHost('https://0.0.0.0/x'), /not allowed/);
+        assert.match(
+            (await checkKeyVaultHost('https://169.254.169.254/latest')) ?? '',
+            /not allowed/,
+        );
+        assert.match((await checkKeyVaultHost('https://0.0.0.0/x')) ?? '', /not allowed/);
     });
 
     test('allows a public address, a private LAN one and loopback', async () => {

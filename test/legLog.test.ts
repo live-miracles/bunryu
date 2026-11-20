@@ -12,23 +12,29 @@ import {
     describeLegChange,
     suppressedLegLinesMessage,
     takeSuppressedLegLines,
+    type LegChange,
+    type LegHealthLogged,
 } from '../src/utils/legLog';
 
 const A = '203.0.113.10:10081';
 const B = '198.51.100.7:49152';
 const C = '192.0.2.44:50000';
 
+// The change a test expects (never null), so a missing one fails right here.
+function changeOf(previous: string[] | null, current: string[]): LegChange {
+    const change = describeLegChange(previous, current);
+    assert.ok(change, 'expected a leg change');
+    return change;
+}
+
 describe('describeLegChange', () => {
     test('reports the starting set when the input has just come up', () => {
-        const change = describeLegChange(null, [A, B]);
+        const change = changeOf(null, [A, B]);
         assert.equal(change.from, 0);
         assert.equal(change.to, 2);
         assert.deepEqual(change.joined, [A, B]);
         assert.equal(change.message, `Bonded input connected with 2 legs: ${A}, ${B}`);
-        assert.equal(
-            describeLegChange(null, [A]).message,
-            `Bonded input connected with 1 leg: ${A}`,
-        );
+        assert.equal(changeOf(null, [A]).message, `Bonded input connected with 1 leg: ${A}`);
     });
 
     test('says nothing while the same legs are connected, in any order', () => {
@@ -38,7 +44,7 @@ describe('describeLegChange', () => {
     });
 
     test('names the leg that was lost and the legs that remain', () => {
-        const change = describeLegChange([A, B], [A]);
+        const change = changeOf([A, B], [A]);
         assert.deepEqual([change.from, change.to], [2, 1]);
         assert.deepEqual(change.left, [B]);
         assert.deepEqual(change.joined, []);
@@ -46,14 +52,14 @@ describe('describeLegChange', () => {
     });
 
     test('names the leg that joined', () => {
-        const change = describeLegChange([A], [A, C]);
+        const change = changeOf([A], [A, C]);
         assert.deepEqual(change.joined, [C]);
         assert.equal(change.message, `Bonded legs went from 1 to 2: joined ${C} (now: ${A}, ${C})`);
     });
 
     test('a leg that comes back from a new port is one lost and one joined', () => {
         const back = '198.51.100.7:50001';
-        const change = describeLegChange([A, B], [A, back]);
+        const change = changeOf([A, B], [A, back]);
         assert.deepEqual(change.left, [B]);
         assert.deepEqual(change.joined, [back]);
         assert.equal(
@@ -64,10 +70,10 @@ describe('describeLegChange', () => {
 
     test('handles every leg gone and every leg replaced', () => {
         assert.equal(
-            describeLegChange([A, B], []).message,
+            changeOf([A, B], []).message,
             `Bonded legs went from 2 to 0: lost ${A}, ${B} (now: none)`,
         );
-        const change = describeLegChange([A], [B, C]);
+        const change = changeOf([A], [B, C]);
         assert.deepEqual([change.left, change.joined], [[A], [B, C]]);
     });
 });
@@ -111,7 +117,7 @@ describe('the pipeline log limit', () => {
 });
 
 describe('noteLegHealth', () => {
-    const fresh = () => ({ health: 'ok', betterSinceMs: null });
+    const fresh = (): LegHealthLogged => ({ health: 'ok', betterSinceMs: null });
 
     test('a worsening is a change at once, the same level is not', () => {
         const logged = fresh();
@@ -130,7 +136,7 @@ describe('noteLegHealth', () => {
     });
 
     test('an improvement counts only once held, and any setback starts the wait again', () => {
-        const logged = { health: 'error', betterSinceMs: null };
+        const logged: LegHealthLogged = { health: 'error', betterSinceMs: null };
         assert.equal(noteLegHealth(logged, 'warn', 0), null);
         assert.equal(noteLegHealth(logged, 'warn', LEG_RECOVERY_HOLD_MS - 1), null);
         // Back to the logged level: the wait is over, nothing was said.

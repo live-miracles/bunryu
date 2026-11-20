@@ -1,8 +1,17 @@
 import { describe, test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createKeyVaultReporter } from '../src/services/keyVaultReporter';
-import { hashDestination } from '../src/utils/keyVaultPayload';
+import type { AddressInfo } from 'node:net';
+import {
+    createKeyVaultReporter,
+    type KeyVaultReporterDeps,
+    type KeyVaultReporterOptions,
+} from '../src/services/keyVaultReporter';
+import type { HealthSnapshot } from '../src/services/health';
+import { hashDestination, type KeyVaultPayload } from '../src/utils/keyVaultPayload';
+import type { KeyVaultConfig } from '../src/utils/keyVaultConfig';
+import type { KeyVaultStatus } from '../src/utils/keyVaultStatus';
+import type { DiagnosticsLogger } from '../src/utils/diagnostics';
 
 const CONFIG = {
     url: 'https://kv.example.invalid/functions/v1/ingest?project=fake',
@@ -18,8 +27,8 @@ const FAST = {
     timeoutMs: 100,
 };
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function waitFor(condition, ms = 3000) {
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+async function waitFor(condition: () => boolean, ms = 3000) {
     const end = Date.now() + ms;
     while (!condition()) {
         if (Date.now() > end) assert.fail('timed out waiting for the condition');
@@ -27,12 +36,12 @@ async function waitFor(condition, ms = 3000) {
     }
 }
 
-const reporters = [];
+const reporters: ReturnType<typeof createKeyVaultReporter>[] = [];
 afterEach(() => {
     for (const reporter of reporters.splice(0)) reporter.shutdown();
 });
 
-function entry(over = {}) {
+function entry(over: Record<string, unknown> = {}) {
     return {
         status: 'running',
         bitrateKbps: 4000,
@@ -49,8 +58,16 @@ function entry(over = {}) {
 
 // A reporter wired to fake health and database objects. `world.output` is the one
 // configured output; change `world.health` and call `emit()` for a new health poll.
-function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
-    const listeners = [];
+interface SetupOptions {
+    fetchFn?: typeof fetch;
+    options?: Partial<KeyVaultReporterOptions>;
+    // What Settings holds: off (null), saved, or a stored value that cannot be read.
+    config?: KeyVaultConfig | Error | null;
+    db?: KeyVaultReporterDeps['db'];
+}
+
+function setup({ fetchFn, options = FAST, config = CONFIG, db }: SetupOptions = {}) {
+    const listeners: Array<(snapshot: HealthSnapshot) => void> = [];
     const world = {
         health: entry(),
         live: true,
@@ -58,53 +75,60 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
         instance: 'test',
         throwOnList: false,
         // What Settings holds now; a test changes it and calls reporter.reconfigure().
-        config,
+        config: config as KeyVaultConfig | Error | null,
     };
-    const snapshot = () => ({
-        pipelines: {
-            1: {
-                input: {
-                    connected: world.live,
-                    live: world.live,
-                    mediaOk: true,
-                    mediaError: null,
-                    recvBitrateKbps: 4000,
-                    uptimeMs: 120_000,
-                    audioTracks: [{}],
-                    audio: null,
+    // The reporter reads only these fields of a health snapshot.
+    const snapshot = () =>
+        ({
+            pipelines: {
+                1: {
+                    input: {
+                        connected: world.live,
+                        live: world.live,
+                        mediaOk: true,
+                        mediaError: null,
+                        recvBitrateKbps: 4000,
+                        uptimeMs: 120_000,
+                        audioTracks: [{}],
+                        audio: null,
+                    },
+                    outputs: { '1-1': world.health },
+                    alerts: [],
                 },
-                outputs: { '1-1': world.health },
-                alerts: [],
             },
+        }) as unknown as HealthSnapshot;
+    const events: Array<{ event: string; [field: string]: unknown }> = [];
+    const diagnostics: DiagnosticsLogger = {
+        event: (event, fields = {}) => {
+            events.push({ event, ...fields });
         },
-    });
-    const events = [];
-    const diagnostics = {
-        event: (event, fields = {}) => events.push({ event, ...fields }),
         close: async () => {},
     };
-    const fakeDb = db ?? {
-        listPipelines: () => {
-            if (world.throwOnList) throw new Error('database is locked');
-            return [{ id: 1, name: 'Hindi', streamKey: 'k', streamKeyId: 1, groupId: null }];
-        },
-        listOutputs: () => [
-            {
-                id: '1-1',
-                pipelineId: 1,
-                seq: 1,
-                name: 'YouTube main',
-                desiredState: 'running',
-                videoEncoding: 'copy',
-                url: DESTINATION,
-                audioEncoding: 'copy',
-                translation: null,
-                lastError: null,
-                hasErrorHistory: false,
+    // The reporter reads only the fields of the rows set here.
+    const fakeDb: KeyVaultReporterDeps['db'] =
+        db ??
+        ({
+            listPipelines: () => {
+                if (world.throwOnList) throw new Error('database is locked');
+                return [{ id: 1, name: 'Hindi', streamKey: 'k', streamKeyId: 1, groupId: null }];
             },
-        ],
-        getOutputErrorHistory: () => [],
-    };
+            listOutputs: () => [
+                {
+                    id: '1-1',
+                    pipelineId: 1,
+                    seq: 1,
+                    name: 'YouTube main',
+                    desiredState: 'running',
+                    videoEncoding: 'copy',
+                    url: DESTINATION,
+                    audioEncoding: 'copy',
+                    translation: null,
+                    lastError: null,
+                    hasErrorHistory: false,
+                },
+            ],
+            getOutputErrorHistory: () => [],
+        } as unknown as KeyVaultReporterDeps['db']);
     const reporter = createKeyVaultReporter({
         getConfig: () => {
             if (world.config instanceof Error) throw world.config;
@@ -132,15 +156,33 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db } = {}) {
 
 const ok = () => Promise.resolve(new Response(null, { status: 200 }));
 
-// A fetch that records the requests and answers with whatever `respond` returns.
-function recordingFetch(respond = ok) {
-    const calls = [];
-    const fetchFn = (url, init) => {
-        calls.push({ url, init, at: Date.now(), body: JSON.parse(init.body) });
-        return respond(calls.length, init);
-    };
-    return { calls, fetchFn };
+// What the reporter sends: always a POST with a JSON string body and these headers.
+type RecordedInit = RequestInit & {
+    headers: Record<string, string>;
+    body: string;
+    signal: AbortSignal;
+};
+interface RecordedCall {
+    url: string;
+    init: RecordedInit;
+    at: number;
+    body: KeyVaultPayload;
 }
+
+// A fetch that records the requests and answers with whatever `respond` returns.
+function recordingFetch(respond: (n: number, init: RecordedInit) => Promise<Response> = ok) {
+    const calls: RecordedCall[] = [];
+    const fetchFn = (url: string | URL | Request, init?: RequestInit) => {
+        const sent = init as RecordedInit;
+        calls.push({ url: String(url), init: sent, at: Date.now(), body: JSON.parse(sent.body) });
+        return respond(calls.length, sent);
+    };
+    return { calls, fetchFn: fetchFn as typeof fetch };
+}
+
+// status() is null only while the reports are off; the tests that read it have them on.
+const statusOf = (h: { reporter: { status(): KeyVaultStatus | null } }) =>
+    h.reporter.status() as KeyVaultStatus;
 
 describe('Key Vault reporter', () => {
     test('is off without saved settings: nothing sent, nothing logged', async () => {
@@ -208,10 +250,10 @@ describe('Key Vault reporter', () => {
     });
 
     test('settings changed while a report is on its way cancel it and send the new one', async () => {
-        const hung = [];
+        const hung: RecordedInit[] = [];
         const { calls, fetchFn } = recordingFetch((n, init) =>
             n === 1
-                ? new Promise((_resolve, reject) => {
+                ? new Promise<Response>((_resolve, reject) => {
                       hung.push(init);
                       init.signal.addEventListener('abort', () => reject(init.signal.reason));
                   })
@@ -268,7 +310,7 @@ describe('Key Vault reporter', () => {
         assert.equal(calls.length, 0);
         const invalid = h.events.filter((e) => e.event === 'key-vault-settings-invalid');
         assert.equal(invalid.length, 1);
-        assert.match(invalid[0].error, /not a valid URL/);
+        assert.match(invalid[0]!.error as string, /not a valid URL/);
     });
 
     test('sends nothing before the first health poll, then a report right after it', async () => {
@@ -405,7 +447,7 @@ describe('Key Vault reporter', () => {
         await waitFor(() => calls.length >= 4, 5000);
         const failed = h.events.filter((e) => e.event === 'key-vault-report-failed');
         assert.equal(failed.length, 1);
-        assert.match(failed[0].error, /ECONNREFUSED/);
+        assert.match(failed[0]!.error as string, /ECONNREFUSED/);
         assert.equal(failed[0].instance, 'test');
         assert.equal(failed[0].endpoint, 'https://kv.example.invalid/functions/v1/ingest');
         assert.equal(h.events.filter((e) => e.event === 'key-vault-report-recovered').length, 0);
@@ -422,9 +464,9 @@ describe('Key Vault reporter', () => {
         await waitFor(() => calls.length >= 2); // two failed reports
         failing = false;
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-recovered'));
-        const recovered = h.events.find((e) => e.event === 'key-vault-report-recovered');
-        assert.ok(recovered.failedReports >= 2);
-        assert.ok(recovered.downMs > 0);
+        const recovered = h.events.find((e) => e.event === 'key-vault-report-recovered')!;
+        assert.ok((recovered.failedReports as number) >= 2);
+        assert.ok((recovered.downMs as number) > 0);
 
         // Good reports after the recovery log nothing.
         const logged = h.events.length;
@@ -448,13 +490,13 @@ describe('Key Vault reporter', () => {
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
         assert.equal(calls.length, 1);
         const failed = h.events.find((e) => e.event === 'key-vault-report-failed');
-        assert.equal(failed.status, 401);
+        assert.equal(failed!.status, 401);
     });
 
     test('a receiver that never answers times out and does not block anything else', async () => {
         const { calls, fetchFn } = recordingFetch(
             (_n, init) =>
-                new Promise((_resolve, reject) => {
+                new Promise<Response>((_resolve, reject) => {
                     init.signal.addEventListener('abort', () => reject(init.signal.reason));
                 }),
         );
@@ -465,7 +507,7 @@ describe('Key Vault reporter', () => {
         assert.ok(Date.now() - startedAt < 50);
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
         assert.equal(calls.length, 1);
-        assert.match(h.events[1].error, /timed out after 100 ms/);
+        assert.match(h.events[1]!.error as string, /timed out after 100 ms/);
     });
 
     test('only one report is on its way at a time', async () => {
@@ -504,7 +546,7 @@ describe('Key Vault reporter', () => {
         assert.equal(calls.length, 0);
         const failures = h.events.filter((e) => e.event === 'key-vault-report-build-failed');
         assert.equal(failures.length, 1);
-        assert.match(failures[0].error, /database is locked/);
+        assert.match(failures[0]!.error as string, /database is locked/);
 
         h.world.throwOnList = false;
         await waitFor(() => calls.length >= 1);
@@ -544,7 +586,8 @@ describe('Key Vault reporter', () => {
 });
 
 describe('Key Vault reporter status', () => {
-    const reply = (status, body) => () => Promise.resolve(new Response(body ?? null, { status }));
+    const reply = (status: number, body?: string) => () =>
+        Promise.resolve(new Response(body ?? null, { status }));
 
     test('is null while the reports are off', () => {
         const h = setup({ fetchFn: recordingFetch().fetchFn, config: null });
@@ -565,9 +608,9 @@ describe('Key Vault reporter status', () => {
         });
         h.emit();
         await waitFor(() => calls.length === 1);
-        await waitFor(() => h.reporter.status().state === 'ok');
-        const status = h.reporter.status();
-        assert.ok(Math.abs(status.lastReportAtMs - Date.now()) < 2000);
+        await waitFor(() => statusOf(h).state === 'ok');
+        const status = statusOf(h);
+        assert.ok(Math.abs(status.lastReportAtMs! - Date.now()) < 2000);
         assert.equal(status.problem, null);
         assert.equal(status.skipped, null, 'an answer that does not say leaves it unknown');
     });
@@ -577,8 +620,8 @@ describe('Key Vault reporter status', () => {
         const h = setup({ fetchFn });
         h.reporter.start();
         h.emit();
-        await waitFor(() => h.reporter.status().state === 'ok');
-        assert.equal(h.reporter.status().skipped, 2);
+        await waitFor(() => statusOf(h).state === 'ok');
+        assert.equal(statusOf(h).skipped, 2);
     });
 
     test('an answer that is not what was expected still counts as a report that went through', async () => {
@@ -587,8 +630,8 @@ describe('Key Vault reporter status', () => {
             const h = setup({ fetchFn });
             h.reporter.start();
             h.emit();
-            await waitFor(() => h.reporter.status().state === 'ok');
-            assert.equal(h.reporter.status().skipped, null, body);
+            await waitFor(() => statusOf(h).state === 'ok');
+            assert.equal(statusOf(h).skipped, null, body);
         }
     });
 
@@ -597,8 +640,8 @@ describe('Key Vault reporter status', () => {
         const h = setup({ fetchFn });
         h.reporter.start();
         h.emit();
-        await waitFor(() => h.reporter.status().state === 'ok');
-        assert.equal(h.reporter.status().skipped, null);
+        await waitFor(() => statusOf(h).state === 'ok');
+        assert.equal(statusOf(h).skipped, null);
     });
 
     test('names the problem and when it began, and keeps the last good report', async () => {
@@ -609,27 +652,27 @@ describe('Key Vault reporter status', () => {
         const h = setup({ fetchFn });
         h.reporter.start();
         h.emit();
-        await waitFor(() => h.reporter.status().state === 'ok');
-        const good = h.reporter.status().lastReportAtMs;
+        await waitFor(() => statusOf(h).state === 'ok');
+        const good = statusOf(h).lastReportAtMs;
 
         answer = 401;
-        await waitFor(() => h.reporter.status().state === 'failing', 5000);
-        const failing = h.reporter.status();
-        assert.match(failing.problem, /refused the secret \(HTTP 401\)/);
+        await waitFor(() => statusOf(h).state === 'failing', 5000);
+        const failing = statusOf(h);
+        assert.match(failing.problem as string, /refused the secret \(HTTP 401\)/);
         assert.equal(failing.lastReportAtMs, good);
-        assert.ok(failing.failingSinceMs >= good);
+        assert.ok(failing.failingSinceMs! >= good!);
 
         // Further failures keep when it began.
         const sent = calls.length;
         await waitFor(() => calls.length >= sent + 2, 5000);
-        assert.equal(h.reporter.status().failingSinceMs, failing.failingSinceMs);
+        assert.equal(statusOf(h).failingSinceMs, failing.failingSinceMs);
 
         answer = 200;
-        await waitFor(() => h.reporter.status().state === 'ok', 5000);
-        const recovered = h.reporter.status();
+        await waitFor(() => statusOf(h).state === 'ok', 5000);
+        const recovered = statusOf(h);
         assert.equal(recovered.problem, null);
         assert.equal(recovered.failingSinceMs, null);
-        assert.ok(recovered.lastReportAtMs > good);
+        assert.ok(recovered.lastReportAtMs! > good!);
     });
 
     test('a link whose host does not exist is named as such', async () => {
@@ -643,9 +686,9 @@ describe('Key Vault reporter status', () => {
         const h = setup({ fetchFn });
         h.reporter.start();
         h.emit();
-        await waitFor(() => h.reporter.status().state === 'failing');
-        assert.match(h.reporter.status().problem, /host in the link was not found/);
-        assert.equal(h.reporter.status().lastReportAtMs, null);
+        await waitFor(() => statusOf(h).state === 'failing');
+        assert.match(statusOf(h).problem as string, /host in the link was not found/);
+        assert.equal(statusOf(h).lastReportAtMs, null);
     });
 
     test('a failure to build the report shows as a problem too, and clears when it recovers', async () => {
@@ -654,13 +697,13 @@ describe('Key Vault reporter status', () => {
         h.world.throwOnList = true;
         h.reporter.start();
         h.emit();
-        await waitFor(() => h.reporter.status().state === 'failing');
-        assert.match(h.reporter.status().problem, /could not build the report/);
+        await waitFor(() => statusOf(h).state === 'failing');
+        assert.match(statusOf(h).problem as string, /could not build the report/);
         assert.equal(calls.length, 0);
 
         h.world.throwOnList = false;
-        await waitFor(() => h.reporter.status().state === 'ok', 5000);
-        assert.equal(h.reporter.status().problem, null);
+        await waitFor(() => statusOf(h).state === 'ok', 5000);
+        assert.equal(statusOf(h).problem, null);
     });
 
     test('saving new settings starts the status again', async () => {
@@ -668,11 +711,11 @@ describe('Key Vault reporter status', () => {
         const h = setup({ fetchFn });
         h.reporter.start();
         h.emit();
-        await waitFor(() => h.reporter.status().state === 'failing');
+        await waitFor(() => statusOf(h).state === 'failing');
 
         h.world.config = { ...CONFIG, url: 'https://other.example.invalid/ingest' };
         h.reporter.reconfigure();
-        const status = h.reporter.status();
+        const status = statusOf(h);
         assert.equal(status.problem, null);
         assert.equal(status.lastReportAtMs, null);
         assert.equal(status.state, 'waiting');
@@ -683,18 +726,28 @@ describe('Key Vault reporter status', () => {
     });
 });
 
+interface ReceivedRequest {
+    method: string | undefined;
+    url: string | undefined;
+    headers: http.IncomingHttpHeaders;
+    body: string;
+}
+
 describe('Key Vault reporter against a local receiver', () => {
-    let server;
+    let server: http.Server | undefined;
     afterEach(async () => {
-        if (server?.listening) await new Promise((resolve) => server.close(resolve));
+        const open = server;
+        if (open?.listening) await new Promise<void>((resolve) => open.close(() => resolve()));
         server?.closeAllConnections?.();
     });
 
-    function listen(handler) {
-        const requests = [];
-        server = http.createServer((req, res) => {
-            const chunks = [];
-            req.on('data', (c) => chunks.push(c));
+    function listen(
+        handler: (request: ReceivedRequest, res: http.ServerResponse, count: number) => void,
+    ) {
+        const requests: ReceivedRequest[] = [];
+        const receiver = http.createServer((req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (c: Buffer) => chunks.push(c));
             req.on('end', () => {
                 const body = Buffer.concat(chunks).toString('utf8');
                 const record = { method: req.method, url: req.url, headers: req.headers, body };
@@ -702,9 +755,13 @@ describe('Key Vault reporter against a local receiver', () => {
                 handler(record, res, requests.length);
             });
         });
-        return new Promise((resolve) =>
-            server.listen(0, '127.0.0.1', () =>
-                resolve({ requests, url: `http://127.0.0.1:${server.address().port}/ingest` }),
+        server = receiver;
+        return new Promise<{ requests: ReceivedRequest[]; url: string }>((resolve) =>
+            receiver.listen(0, '127.0.0.1', () =>
+                resolve({
+                    requests,
+                    url: `http://127.0.0.1:${(receiver.address() as AddressInfo).port}/ingest`,
+                }),
             ),
         );
     }
@@ -757,21 +814,23 @@ describe('Key Vault reporter against a local receiver', () => {
         h.reporter.start();
         h.emit();
         await waitFor(() => requests.length === 1);
-        await waitFor(() => h.reporter.status().state === 'ok');
-        assert.equal(h.reporter.status().skipped, 3);
+        await waitFor(() => statusOf(h).state === 'ok');
+        assert.equal(statusOf(h).skipped, 3);
     });
 
     test('does not follow a redirect with the token', async () => {
-        const otherRequests = [];
+        const otherRequests: http.IncomingHttpHeaders[] = [];
         const other = http.createServer((req, res) => {
             otherRequests.push(req.headers);
             res.writeHead(200).end();
         });
-        await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+        await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', () => resolve()));
         try {
             const { url } = await listen((_req, res) =>
                 res
-                    .writeHead(307, { Location: `http://127.0.0.1:${other.address().port}/steal` })
+                    .writeHead(307, {
+                        Location: `http://127.0.0.1:${(other.address() as AddressInfo).port}/steal`,
+                    })
                     .end(),
             );
             const h = setup({ config: { ...CONFIG, url } });
@@ -780,7 +839,7 @@ describe('Key Vault reporter against a local receiver', () => {
             await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
             assert.equal(otherRequests.length, 0);
         } finally {
-            await new Promise((resolve) => other.close(resolve));
+            await new Promise<void>((resolve) => other.close(() => resolve()));
         }
     });
 
@@ -800,12 +859,12 @@ describe('Key Vault reporter against a local receiver', () => {
 
     test('survives a receiver that is gone', async () => {
         const { url } = await listen((_req, res) => res.end());
-        await new Promise((resolve) => server.close(resolve));
+        await new Promise<void>((resolve) => server!.close(() => resolve()));
         const h = setup({ config: { ...CONFIG, url } });
         h.reporter.start();
         h.emit();
         await waitFor(() => h.events.some((e) => e.event === 'key-vault-report-failed'));
         const failed = h.events.find((e) => e.event === 'key-vault-report-failed');
-        assert.match(failed.error, /fetch failed|ECONNREFUSED/);
+        assert.match(failed!.error as string, /fetch failed|ECONNREFUSED/);
     });
 });

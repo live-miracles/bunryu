@@ -48,8 +48,8 @@ export default tseslint.config(
         languageOptions: { globals: globals.browser },
     },
     {
-        // The tests are CommonJS; a test that needs a module loaded fresh (module-level
-        // caches, patched exports) keeps a typed require().
+        // A test that needs a module loaded fresh (module-level caches, patched exports)
+        // keeps a typed require().
         files: ['**/*.js', 'test/**/*.ts'],
         rules: { '@typescript-eslint/no-require-imports': 'off' },
     },

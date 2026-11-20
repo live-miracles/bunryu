@@ -6,7 +6,7 @@ import path from 'node:path';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-configcheck-'));
 const originalCwd = process.cwd();
-const file = (name) => path.join(tempDir, name);
+const file = (name: string) => path.join(tempDir, name);
 
 process.chdir(tempDir);
 after(() => {
@@ -32,14 +32,14 @@ function writeValidFiles() {
     fs.writeFileSync(file('goryu.json'), '{}');
 }
 
-function replaceWithDirectory(name) {
+function replaceWithDirectory(name: string) {
     fs.rmSync(file(name), { force: true });
     fs.mkdirSync(file(name));
 }
 
 describe('isPermanentConfigError', () => {
     const { isPermanentConfigError } = load();
-    const withCode = (code) => Object.assign(new Error('read failed'), { code });
+    const withCode = (code: string) => Object.assign(new Error('read failed'), { code });
 
     test('a missing file or invalid JSON is permanent, also as the cause of a wrapper', () => {
         assert.equal(isPermanentConfigError(withCode('ENOENT')), true);
@@ -75,7 +75,7 @@ describe('startup config check', () => {
             const { checkConfigFiles, isPermanentConfigError } = load();
             assert.throws(
                 () => checkConfigFiles(),
-                (err) => {
+                (err: Error) => {
                     assert.match(err.message, new RegExp(`Failed to read ${label} .*${name}`));
                     return isPermanentConfigError(err);
                 },

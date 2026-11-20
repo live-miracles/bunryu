@@ -1,6 +1,5 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as vectors from './fixtures/key-vault-hash-vectors.json';
 import {
     MAX_MESSAGE_LENGTH,
     buildPayload,
@@ -9,7 +8,18 @@ import {
     normalizeDestinationUrl,
     payloadSignature,
     redactMessage,
+    type PayloadSource,
 } from '../src/utils/keyVaultPayload';
+import type { PipelineStatusHealth } from '../src/utils/healthVerdicts';
+import type { InputStatusEntry } from '../src/utils/inputStatus';
+import type { OutputHealthEntry } from '../src/utils/outputStatus';
+import type { Output, Pipeline } from '../src/types';
+
+// The JSON fixture is read with require: the test tsconfig has no resolveJsonModule.
+const vectors = require('./fixtures/key-vault-hash-vectors.json') as {
+    secret: string;
+    vectors: { description: string; url: string; normalized: string; hash: string }[];
+};
 
 describe('destination hash', () => {
     test('matches every shared test vector, which Key Vault must reproduce', () => {
@@ -135,11 +145,11 @@ describe('redactMessage', () => {
 describe('buildPayload', () => {
     const T = 1_700_000_000_000;
     const SECRET = 'payload-test-secret-0123456789';
-    const pipelines = [
+    const pipelines: Pipeline[] = [
         { id: 1, name: 'Hindi', streamKey: 'k1', streamKeyId: 1, groupId: null },
         { id: 2, name: 'Tamil', streamKey: 'k2', streamKeyId: 2, groupId: null },
     ];
-    const out = (id, pipelineId, over = {}) => ({
+    const out = (id: string, pipelineId: number, over: Partial<Output> = {}): Output => ({
         id,
         pipelineId,
         seq: 1,
@@ -148,12 +158,12 @@ describe('buildPayload', () => {
         videoEncoding: 'copy',
         url: `rtmp://dest.example/live/${id}`,
         audioEncoding: 'copy',
-        translation: null,
+        watchUrl: '',
         lastError: null,
         hasErrorHistory: false,
         ...over,
     });
-    const healthEntry = (over = {}) => ({
+    const healthEntry = (over: Partial<OutputHealthEntry> = {}): OutputHealthEntry => ({
         status: 'running',
         bitrateKbps: 4000,
         startedAtMs: T - 60_000,
@@ -165,7 +175,7 @@ describe('buildPayload', () => {
         ready: null,
         ...over,
     });
-    const source = (over = {}) => ({
+    const source = (over: Partial<PayloadSource> = {}): PayloadSource => ({
         instance: 'prod',
         hashSecret: SECRET,
         pipelines,
@@ -252,7 +262,7 @@ describe('buildPayload', () => {
                         },
                     },
                 },
-                failedAttemptsOf: (id) => (id === '2-1' ? 8 : 0),
+                failedAttemptsOf: (id: string) => (id === '2-1' ? 8 : 0),
             }),
         );
         const [warning, error, stopped] = payload.outputs;
@@ -352,11 +362,11 @@ describe('buildPayload', () => {
 
     test('sinceMs holds while the status holds, restarts on a change and forgets deleted outputs', () => {
         const since = createSinceTracker();
-        const health = (over) => ({
+        const health = (over: Partial<OutputHealthEntry>) => ({
             1: { input: { live: true }, outputs: { '1-1': healthEntry(over) } },
         });
         const outputs = [out('1-1', 1)];
-        const build = (nowMs, over) =>
+        const build = (nowMs: number, over: Partial<OutputHealthEntry>) =>
             buildPayload(
                 source({
                     outputs,
@@ -398,19 +408,28 @@ describe('buildPayload', () => {
 
     describe('inputs', () => {
         // A healthy, connected input; `over` changes what the case is about.
-        const inputEntry = (over = {}) => ({
+        const inputEntry = (
+            over: Partial<InputStatusEntry> = {},
+        ): PipelineStatusHealth['input'] => ({
             connected: true,
             live: true,
             mediaOk: true,
             mediaError: null,
             recvBitrateKbps: 4000,
             uptimeMs: 120_000,
-            audioTracks: [{}],
+            audioTracks: [{}] as InputStatusEntry['audioTracks'],
             audio: null,
             ...over,
         });
+        interface OneOptions extends Partial<PayloadSource> {
+            alerts?: PipelineStatusHealth['alerts'];
+            outputDesired?: Output['desiredState'] | null;
+        }
         // One pipeline, "Hindi", with one output that should run (or not).
-        const one = (input, { alerts = [], outputDesired = 'running', nowMs = T, ...rest } = {}) =>
+        const one = (
+            input: PipelineStatusHealth['input'],
+            { alerts = [], outputDesired = 'running', nowMs = T, ...rest }: OneOptions = {},
+        ) =>
             buildPayload(
                 source({
                     pipelines: [pipelines[0]],
@@ -441,7 +460,7 @@ describe('buildPayload', () => {
         });
 
         test('maps each verdict of the dashboard to a reported status', () => {
-            const cases = [
+            const cases: [string, PipelineStatusHealth['input'], OneOptions, string, string][] = [
                 ['good', inputEntry(), {}, 'running', ''],
                 [
                     'warn: no audio',
@@ -583,7 +602,8 @@ describe('buildPayload', () => {
 
         test('sinceMs holds while the status holds, restarts on a change and forgets deleted pipelines', () => {
             const since = createSinceTracker();
-            const build = (nowMs, input) => one(input, { since, nowMs });
+            const build = (nowMs: number, input: PipelineStatusHealth['input']) =>
+                one(input, { since, nowMs });
             const off = inputEntry({ connected: false, live: false });
             assert.equal(build(T, off).sinceMs, T);
             assert.equal(build(T + 5000, off).sinceMs, T, 'unchanged status keeps its time');

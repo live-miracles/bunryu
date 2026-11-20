@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { Recipe } from '../src/utils/renditions';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-renditions-'));
 const originalCwd = process.cwd();
@@ -45,16 +46,23 @@ after(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-const out = (videoEncoding, audioEncoding, url = 'rtmp://example.com/live/x') => ({
+const out = (videoEncoding: string, audioEncoding: string, url = 'rtmp://example.com/live/x') => ({
     pipelineId: 12,
     videoEncoding,
     audioEncoding,
     url,
 });
 
+// The recipe of an output that has one; the test fails here if it has none.
+function recipeOf(videoEncoding: string, audioEncoding: string): Recipe {
+    const recipe = encodeRecipe(out(videoEncoding, audioEncoding));
+    assert.ok(recipe);
+    return recipe;
+}
+
 describe('splitOutputs', () => {
-    const user = (id) => ({ id, url: `rtmp://example.com/live/${id}` });
-    const encode = (id) => ({
+    const user = (id: string) => ({ id, url: `rtmp://example.com/live/${id}` });
+    const encode = (id: string) => ({
         id,
         url: renditionUrl(1, { videoEncoding: '720p', audioEncoding: '0', key: '720p_a0' }),
     });
@@ -110,12 +118,12 @@ describe('encodeRecipe', () => {
     });
 
     test('track 0 is a real track selection, not the source audio', () => {
-        assert.equal(encodeRecipe(out('copy', '0')).key, 'copy_a0');
+        assert.equal(encodeRecipe(out('copy', '0'))?.key, 'copy_a0');
     });
 
     test('every preset needs an encode', () => {
         for (const v of ['720p', '1080p', 'vertical_rotate']) {
-            assert.equal(encodeRecipe(out(v, '2')).key, `${v}_a2`);
+            assert.equal(encodeRecipe(out(v, '2'))?.key, `${v}_a2`);
         }
     });
 
@@ -135,7 +143,7 @@ describe('encodeRecipe', () => {
 });
 
 describe('sharedRecipe (needs two configured outputs with the recipe)', () => {
-    const u = (video, audio, n) => ({
+    const u = (video: string, audio: string, n: number) => ({
         ...out(video, audio, `rtmp://example.com/live/${n}`),
         id: `12-${n}`,
     });
@@ -149,8 +157,8 @@ describe('sharedRecipe (needs two configured outputs with the recipe)', () => {
     test('two configured outputs with the same recipe share, whatever their desired state', () => {
         const a = { ...u('720p', '1', 1), desiredState: 'running' };
         const b = { ...u('720p', '1', 2), desiredState: 'stopped' };
-        assert.equal(sharedRecipe(a, [a, b]).key, '720p_a1');
-        assert.equal(sharedRecipe(b, [a, b]).key, '720p_a1');
+        assert.equal(sharedRecipe(a, [a, b])?.key, '720p_a1');
+        assert.equal(sharedRecipe(b, [a, b])?.key, '720p_a1');
     });
 
     test('the recipe must be identical: video and audio both', () => {
@@ -175,22 +183,22 @@ describe('sharedRecipe (needs two configured outputs with the recipe)', () => {
         const a = u('720p', '1', 1);
         const b = u('720p', '1', 2);
         assert.equal(sharedRecipe(a, [a]), null);
-        assert.equal(sharedRecipe(a, [a, b]).key, '720p_a1');
+        assert.equal(sharedRecipe(a, [a, b])?.key, '720p_a1');
         assert.equal(sharedRecipe(a, [a]), null);
     });
 });
 
 describe('rendition naming', () => {
     test('stream name and url use the pipeline id and the recipe key', () => {
-        const recipe = encodeRecipe(out('720p', '1'));
+        const recipe = recipeOf('720p', '1');
         assert.equal(RENDITION_APP, 'internal');
         assert.equal(renditionStreamName(12, recipe), 'r12_720p_a1');
         assert.equal(renditionUrl(12, recipe), 'rtmp://127.0.0.1:21935/internal/r12_720p_a1');
     });
 
     test('stream names for the documented examples', () => {
-        assert.equal(renditionStreamName(3, encodeRecipe(out('copy', '0'))), 'r3_copy_a0');
-        assert.equal(renditionStreamName(7, encodeRecipe(out('1080p', 'copy'))), 'r7_1080p_acopy');
+        assert.equal(renditionStreamName(3, recipeOf('copy', '0')), 'r3_copy_a0');
+        assert.equal(renditionStreamName(7, recipeOf('1080p', 'copy')), 'r7_1080p_acopy');
     });
 
     test('renditionStreamName throws for a recipe that would not match the pattern', () => {
@@ -203,7 +211,7 @@ describe('rendition naming', () => {
     });
 
     test('display names list only what is encoded, with tracks numbered like the dashboard (T1 = track 0)', () => {
-        const name = (v, a) => renditionName(encodeRecipe(out(v, a)));
+        const name = (v: string, a: string) => renditionName(recipeOf(v, a));
         assert.equal(name('720p', '1'), 'Shared encode 720p · T2');
         assert.equal(name('copy', '0'), 'Shared encode T1');
         assert.equal(name('1080p', 'copy'), 'Shared encode 1080p');
@@ -250,11 +258,8 @@ describe('rendition recognition', () => {
     });
 
     test('recipeOfRendition rebuilds the recipe from the row fields', () => {
-        const r = recipeOfRendition({
-            url: accepted[0],
-            videoEncoding: '720p',
-            audioEncoding: '1',
-        });
+        const row = { url: accepted[0], videoEncoding: '720p', audioEncoding: '1' };
+        const r = recipeOfRendition(row);
         assert.deepEqual(r, { videoEncoding: '720p', audioEncoding: '1', key: '720p_a1' });
         assert.equal(renditionUrl(12, r), 'rtmp://127.0.0.1:21935/internal/r12_720p_a1');
     });

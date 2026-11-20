@@ -30,7 +30,7 @@ export interface KeyVaultPublicConfig {
 export const MIN_SECRET_LENGTH = 32;
 
 // HMAC-SHA256 of the secret under a label, hex. The labels and the pinned values in
-// test/keyVaultConfig.test.js are Key Vault's (supabase/functions/_shared/secrets.ts):
+// test/keyVaultConfig.test.ts are Key Vault's (supabase/functions/_shared/secrets.ts):
 // change them together or the token will never be accepted.
 export function deriveKeyVaultSecrets(secret: string): { token: string; hashSecret: string } {
     const derive = (label: string) =>

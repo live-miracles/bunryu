@@ -1,23 +1,32 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { OutputService } from '../src/services/outputs';
+import type { Db } from '../src/types';
 import { wantRunning, wantStopped } from '../src/services/outputDesiredState';
 
 // One log for both the database and the process, so a test reads the order they were called in.
-function harness({ startFails = false, dbFailsOn = null } = {}) {
-    const log = [];
+// The fakes implement only the methods each function under test calls. The database fake
+// returns nothing where the real method returns the row, so it is cast to its Pick<Db> once.
+type DesiredState = 'running' | 'stopped';
+
+function harness({
+    startFails = false,
+    dbFailsOn = null,
+}: { startFails?: boolean; dbFailsOn?: DesiredState | null } = {}) {
+    const log: string[] = [];
     const db = {
-        setOutputDesiredState(id, state) {
+        setOutputDesiredState(id: string, state: DesiredState) {
             log.push(`db:${id}:${state}`);
             if (dbFailsOn === state) throw new Error('db down');
         },
-    };
-    const outputService = {
-        async start(id, options) {
+    } as unknown as Pick<Db, 'setOutputDesiredState'>;
+    const outputService: Pick<OutputService, 'start' | 'stop'> = {
+        async start(id: string, options?: { byUser?: boolean }) {
             log.push(`start:${id}:${options?.byUser ? 'user' : 'auto'}`);
             if (startFails) throw new Error('Invalid output URL');
         },
-        stop(id) {
+        stop(id: string) {
             log.push(`stop:${id}`);
         },
     };

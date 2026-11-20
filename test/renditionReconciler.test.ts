@@ -1,8 +1,10 @@
-import { describe, test } from 'node:test';
+import { describe, test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createDb } from '../src/db/index';
 import { createRenditionReconciler } from '../src/services/renditions';
+import type { DiagnosticsLogger } from '../src/utils/diagnostics';
+import type { Db, Output } from '../src/types';
 import {
     isRenditionOutput,
     encodeRecipe,
@@ -10,37 +12,57 @@ import {
     renditionUrl,
 } from '../src/utils/renditions';
 
+// The saved row of an output the test expects to exist.
+function savedOutput(db: Db, id: string): Output {
+    const row = db.getOutput(id);
+    assert.ok(row, `output ${id} should exist`);
+    return row;
+}
+
+// The fields of the diagnostics events these tests read.
+interface EventFields {
+    outputId?: string;
+    idleMs?: number;
+    readers?: number;
+    error?: string;
+}
+
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function fakeOutputService() {
-    const calls = [];
+    const calls: [string, string][] = [];
     // Outputs currently reading a rendition, by rendition id (tests set it).
-    const readers = new Map();
+    const readers = new Map<string, number>();
     return {
         calls,
         readers,
-        readersOf: (id) => readers.get(id) ?? 0,
-        async start(id) {
+        readersOf: (id: string) => readers.get(id) ?? 0,
+        async start(id: string) {
             calls.push(['start', id]);
         },
-        stop(id) {
+        stop(id: string) {
             calls.push(['stop', id]);
         },
-        async stopAndWait(id) {
+        async stopAndWait(id: string) {
             calls.push(['stopAndWait', id]);
         },
-        async retire(id) {
+        async retire(id: string) {
             calls.push(['retire', id]);
         },
     };
 }
 
-function harness(t) {
+function harness(t: TestContext) {
     t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 1_000_000 });
     const db = createDb(':memory:');
     const outputService = fakeOutputService();
-    const events = [];
-    const diagnostics = { event: (name, fields) => events.push([name, fields]), close() {} };
+    const events: [string, EventFields][] = [];
+    const diagnostics: DiagnosticsLogger = {
+        event: (name, fields) => {
+            events.push([name, (fields ?? {}) as EventFields]);
+        },
+        close: async () => {},
+    };
     const reconciler = createRenditionReconciler(db, outputService, diagnostics);
     reconciler.start();
     t.after(() => reconciler.shutdown());
@@ -55,14 +77,27 @@ function harness(t) {
             await flush();
             await flush();
         },
-        renditions: (pipelineId) => db.listOutputsForPipeline(pipelineId).filter(isRenditionOutput),
+        renditions: (pipelineId: number) =>
+            db.listOutputsForPipeline(pipelineId).filter(isRenditionOutput),
         // Adds an output. A recipe is only shared when two outputs are configured with
         // it, so an output that needs an encode gets a stopped twin unless `solo`.
         addUser(
-            pipelineId,
-            { video = 'copy', audio = 'copy', desired = 'stopped', url, solo = false } = {},
+            pipelineId: number,
+            {
+                video = 'copy',
+                audio = 'copy',
+                desired = 'stopped',
+                url,
+                solo = false,
+            }: {
+                video?: string;
+                audio?: string;
+                desired?: string;
+                url?: string;
+                solo?: boolean;
+            } = {},
         ) {
-            const make = (dest, state) => {
+            const make = (dest: string | undefined, state: string) => {
                 const o = db.createOutput({
                     pipelineId,
                     name: `${video}/${audio}`,
@@ -355,12 +390,12 @@ describe('rendition reconciler: desired state', () => {
         h.db.setOutputDesiredState(o.id, 'stopped');
         await h.tick(); // grace starts
         await h.tick(10_000);
-        assert.equal(h.db.getOutput(row.id).desiredState, 'running');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'running');
         await h.tick(4_000);
-        assert.equal(h.db.getOutput(row.id).desiredState, 'running', '14 s: still in grace');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'running', '14 s: still in grace');
         await h.tick(2_000);
 
-        assert.equal(h.db.getOutput(row.id).desiredState, 'stopped');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'stopped');
         assert.deepEqual(
             h.outputService.calls.filter((c) => c[0] === 'stop'),
             [['stop', row.id]],
@@ -368,7 +403,7 @@ describe('rendition reconciler: desired state', () => {
         const idle = h.events.find((e) => e[0] === 'rendition-idle-stop');
         assert.ok(idle);
         assert.equal(idle[1].outputId, row.id);
-        assert.ok(idle[1].idleMs >= 15_000);
+        assert.ok((idle[1].idleMs ?? 0) >= 15_000);
     });
 
     test('a quick stop/start keeps the same encode running (no restart)', async (t) => {
@@ -384,7 +419,7 @@ describe('rendition reconciler: desired state', () => {
         await h.tick(5_000);
         await h.tick(30_000);
 
-        assert.equal(h.db.getOutput(row.id).desiredState, 'running');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'running');
         assert.equal(h.outputService.calls.filter((c) => c[0] === 'start').length, 1);
         assert.equal(h.outputService.calls.filter((c) => c[0] === 'stop').length, 0);
     });
@@ -403,7 +438,11 @@ describe('rendition reconciler: desired state', () => {
         h.db.setOutputDesiredState(o.id, 'stopped');
         await h.tick(10_000);
 
-        assert.equal(h.db.getOutput(row.id).desiredState, 'running', 'only 10 s since last stop');
+        assert.equal(
+            savedOutput(h.db, row.id).desiredState,
+            'running',
+            'only 10 s since last stop',
+        );
     });
 
     test('with two dependents the rendition stays up until both are stopped', async (t) => {
@@ -416,12 +455,12 @@ describe('rendition reconciler: desired state', () => {
 
         h.db.setOutputDesiredState(a.id, 'stopped');
         await h.tick(30_000);
-        assert.equal(h.db.getOutput(row.id).desiredState, 'running');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'running');
         h.db.setOutputDesiredState(b.id, 'stopped');
         await h.tick();
         await h.tick(16_000);
 
-        assert.equal(h.db.getOutput(row.id).desiredState, 'stopped');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'stopped');
     });
 
     test('after an app restart a rendition with no running dependent stops after 15 s', async (t) => {
@@ -433,6 +472,7 @@ describe('rendition reconciler: desired state', () => {
             videoEncoding: '720p',
             audioEncoding: 'copy',
         });
+        assert.ok(recipe);
         for (const dest of ['a', 'b']) {
             db.createOutput({
                 pipelineId: p.id,
@@ -456,12 +496,12 @@ describe('rendition reconciler: desired state', () => {
 
         t.mock.timers.tick(1000);
         await flush();
-        assert.equal(db.getOutput(row.id).desiredState, 'running');
+        assert.equal(savedOutput(db, row.id).desiredState, 'running');
         t.mock.timers.tick(15_000);
         await flush();
         await flush();
 
-        assert.equal(db.getOutput(row.id).desiredState, 'stopped');
+        assert.equal(savedOutput(db, row.id).desiredState, 'stopped');
         assert.deepEqual(
             svc.calls.filter((c) => c[0] === 'stop'),
             [['stop', row.id]],
@@ -479,7 +519,7 @@ describe('rendition reconciler: desired state', () => {
 
         await h.tick();
         const row = h.renditions(p.id)[0];
-        assert.equal(h.db.getOutput(row.id).desiredState, 'stopped');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'stopped');
         assert.ok(h.eventNames().includes('rendition-start-error'));
 
         for (let i = 0; i < 20; i++) await h.tick();
@@ -503,7 +543,7 @@ describe('rendition reconciler: robustness', () => {
 
         await h.tick();
         assert.equal(h.eventNames()[0], 'rendition-reconcile-error');
-        assert.match(h.events[0][1].error, /db is busy/);
+        assert.match(h.events[0][1].error ?? '', /db is busy/);
         assert.equal(h.renditions(p.id).length, 0);
 
         fail = false;
@@ -547,11 +587,11 @@ describe('rendition reconciler: robustness', () => {
             audioEncoding: 'copy',
             watchUrl: '',
         });
-        let release;
+        let release: () => void = () => assert.fail('retire was never called');
         let stops = 0;
         h.outputService.retire = () => {
             stops++;
-            return new Promise((resolve) => (release = resolve));
+            return new Promise<void>((resolve) => (release = resolve));
         };
 
         await h.tick();
@@ -647,13 +687,14 @@ describe('rendition reconciler: when to share', () => {
 
         assert.equal(h.renditions(p.id).length, 1, 'kept while a reader runs');
         assert.equal(h.outputService.calls.filter((c) => c[0] === 'retire').length, 0);
-        assert.equal(h.db.getOutput(row.id).desiredState, 'running');
+        assert.equal(savedOutput(h.db, row.id).desiredState, 'running');
         assert.deepEqual(
             h.eventNames().filter((n) => n === 'rendition-removal-deferred'),
             ['rendition-removal-deferred'],
             'logged once, not every tick',
         );
         const deferred = h.events.find((e) => e[0] === 'rendition-removal-deferred');
+        assert.ok(deferred);
         assert.equal(deferred[1].outputId, row.id);
         assert.equal(deferred[1].readers, 2);
 

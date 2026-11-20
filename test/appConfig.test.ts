@@ -18,7 +18,7 @@ after(() => {
 // appConfig.ts caches its result in module scope on first read, so every test
 // that depends on file contents must delete the module from require.cache and
 // re-require it after writing the fixture — same pattern as srs.ts/srsConfig.ts
-// in test/utils.test.js.
+// in test/utils.test.ts.
 function loadAppConfig(rawConfig: unknown) {
     if (rawConfig === undefined) {
         fs.rmSync(configPath, { force: true });

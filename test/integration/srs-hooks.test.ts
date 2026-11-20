@@ -1,4 +1,5 @@
 import { describe, test } from 'node:test';
+import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 
@@ -9,10 +10,24 @@ import {
 } from '../../src/api/srs';
 import { createInputState } from '../../src/services/inputState';
 import { createRejectedPublishes } from '../../src/services/rejectedPublishes';
+import type { SrsEvent } from '../../src/services/health';
+import type { Db, Output } from '../../src/types';
 import childProcess from 'node:child_process';
 import { dispatch } from '../helpers/http';
 
-function createHarness(assignedKeys, unassignedKeys = [], outputs = []) {
+type Body = Record<string, unknown>;
+
+// The fields of a rejected-publish entry that these tests look an entry up by.
+interface RejectedEntry {
+    label: string;
+    reason: string;
+}
+
+function createHarness(
+    assignedKeys: string[],
+    unassignedKeys: string[] = [],
+    outputs: Output[] = [],
+) {
     const app = express();
     const calls = { listStreamKeys: 0, listPipelines: 0, listOutputs: 0 };
     let configRev = 1;
@@ -37,17 +52,21 @@ function createHarness(assignedKeys, unassignedKeys = [], outputs = []) {
                 name: `Pipeline ${index + 1}`,
                 streamKey,
                 streamKeyId: index + 1,
+                groupId: null,
             }));
         },
     };
     const inputState = createInputState();
     const rejectedPublishes = createRejectedPublishes();
-    const events = [];
+    // `why` is the one field a test reads as text.
+    const events: Array<{ event: string; why?: string } & Record<string, unknown>> = [];
     const diagnostics = {
-        event: (event, fields = {}) => events.push({ event, ...fields }),
+        event: (event: string, fields: Record<string, unknown> = {}) =>
+            events.push({ event, ...fields }),
         close: async () => {},
     };
-    registerSrsHooks(app, db, inputState, rejectedPublishes, diagnostics);
+    // The fake has the three methods the hooks call; the rest of Db is not needed.
+    registerSrsHooks(app, db as unknown as Db, inputState, rejectedPublishes, diagnostics);
     registerRejectedPublishesApi(app, rejectedPublishes);
     return {
         calls,
@@ -55,8 +74,8 @@ function createHarness(assignedKeys, unassignedKeys = [], outputs = []) {
             configRev++;
         },
         rejected: () => dispatch(app, 'GET', '/api/rejected-publishes'),
-        publish: (body) => dispatch(app, 'POST', '/api/srs/on_publish', body),
-        play: (body) => dispatch(app, 'POST', '/api/srs/on_play', body),
+        publish: (body: Body) => dispatch(app, 'POST', '/api/srs/on_publish', body),
+        play: (body: Body) => dispatch(app, 'POST', '/api/srs/on_play', body),
         ready: () => dispatch(app, 'GET', '/api/ready'),
         inputState,
         events,
@@ -71,8 +90,8 @@ describe('SRS publish hook integration', () => {
     });
 
     test('a non-IP "ip" never reaches logs or the dashboard list (no log forging)', async (t) => {
-        const lines = [];
-        t.mock.method(console, 'log', (...args) => lines.push(args.join(' ')));
+        const lines: string[] = [];
+        t.mock.method(console, 'log', (...args: unknown[]) => lines.push(args.join(' ')));
         const harness = createHarness([]);
         const forged = '6.6.6.6\n[srs-hook] allowed publish from 10.0.0.1: key01_<redacted>';
 
@@ -129,9 +148,9 @@ describe('SRS publish hook integration', () => {
 
     test('records a rejected unassigned key, listing only its label', async () => {
         const harness = createHarness(['key01_good'], ['key02_spare']);
-        const logs = [];
+        const logs: string[] = [];
         const origLog = console.log;
-        console.log = (...args) => logs.push(args.join(' '));
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
         try {
             await harness.publish({
                 app: 'live',
@@ -184,9 +203,9 @@ describe('SRS publish hook integration', () => {
 
     test('records and logs a publish with no stream name instead of failing silently', async () => {
         const harness = createHarness(['key01_good']);
-        const logs = [];
+        const logs: string[] = [];
         const origLog = console.log;
-        console.log = (...args) => logs.push(args.join(' '));
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
         let res;
         try {
             res = await harness.publish({ app: 'live', tcUrl: 'srt://127.0.0.1/live' });
@@ -212,9 +231,9 @@ describe('SRS publish hook integration', () => {
 
     test('records a rejected outside play (e.g. SRT id missing m=publish) apart from publishes', async () => {
         const harness = createHarness(['key01_good']);
-        const logs = [];
+        const logs: string[] = [];
         const origLog = console.log;
-        console.log = (...args) => logs.push(args.join(' '));
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
         let res;
         try {
             res = await harness.play({
@@ -236,11 +255,11 @@ describe('SRS publish hook integration', () => {
         assert.equal(res.status, 403);
         const { rejected } = (await harness.rejected()).body;
         assert.equal(rejected.length, 2);
-        const keyed = rejected.find((r) => r.label === 'key01');
+        const keyed = rejected.find((r: RejectedEntry) => r.label === 'key01');
         assert.equal(keyed.kind, 'play');
         assert.equal(keyed.reason, 'assigned');
         assert.equal(keyed.protocol, 'srt');
-        const aggregate = rejected.find((r) => r.reason === 'unrecognized');
+        const aggregate = rejected.find((r: RejectedEntry) => r.reason === 'unrecognized');
         assert.equal(aggregate.kind, 'play');
         assert.ok(!JSON.stringify(rejected).includes('good'));
         assert.ok(!JSON.stringify(rejected).includes('abc'));
@@ -319,8 +338,8 @@ describe('SRS publish hook integration', () => {
     test('a retried cross-protocol publish is logged once per window, with diagnostics', async (t) => {
         const harness = createHarness(['key01_good']);
         harness.inputState.setPipelineState(1, true, 'rtmp');
-        const lines = [];
-        t.mock.method(console, 'log', (line) => lines.push(String(line)));
+        const lines: string[] = [];
+        t.mock.method(console, 'log', (line: unknown) => lines.push(String(line)));
 
         for (let i = 0; i < 5; i += 1) {
             await harness.publish({
@@ -336,7 +355,7 @@ describe('SRS publish hook integration', () => {
         assert.equal(rejected.length, 1);
         assert.equal(rejected[0].pipelineId, 1);
         assert.equal(rejected[0].protocol, 'srt');
-        assert.match(rejected[0].why, /already live via rtmp/);
+        assert.match(rejected[0].why ?? '', /already live via rtmp/);
     });
 
     test('an allowed publish is recorded in diagnostics', async () => {
@@ -448,16 +467,21 @@ describe('SRS publish hook integration', () => {
 });
 
 describe('SRS publish hook: internal app (shared encodes)', () => {
-    const rendition = (overrides = {}) => ({
+    const rendition = (overrides: Partial<Output> = {}): Output => ({
         id: '1-2',
         pipelineId: 1,
+        seq: 2,
+        name: 'r1_720p',
+        watchUrl: '',
+        lastError: null,
+        hasErrorHistory: false,
         desiredState: 'running',
         url: 'rtmp://127.0.0.1:21935/internal/r1_720p_a0',
         videoEncoding: '720p',
         audioEncoding: '0',
         ...overrides,
     });
-    const publish = (harness, overrides = {}) =>
+    const publish = (harness: ReturnType<typeof createHarness>, overrides: Body = {}) =>
         harness.publish({
             app: 'internal',
             stream: 'r1_720p_a0',
@@ -601,12 +625,26 @@ describe('SRS play hook integration', () => {
 });
 
 describe('SRS logs API integration', () => {
-    function createLogsHarness(t, { execError, execOutput = '' } = {}) {
+    function createLogsHarness(
+        t: TestContext,
+        { execError, execOutput = '' }: { execError?: Error; execOutput?: string } = {},
+    ) {
         const app = express();
-        const events = [{ source: 'srs', type: 'recovered', message: 'test event', ts: 1 }];
-        t.mock.method(childProcess, 'execFile', (_cmd, _args, _opts, cb) => {
-            queueMicrotask(() => cb(execError ?? null, execOutput, ''));
-        });
+        const events: SrsEvent[] = [
+            { source: 'srs', type: 'recovered', message: 'test event', ts: 1 },
+        ];
+        t.mock.method(
+            childProcess,
+            'execFile',
+            (
+                _cmd: string,
+                _args: string[],
+                _opts: unknown,
+                cb: (error: Error | null, stdout: string, stderr: string) => void,
+            ) => {
+                queueMicrotask(() => cb(execError ?? null, execOutput, ''));
+            },
+        );
         registerSrsLogsApi(app, () => events);
         return {
             events,

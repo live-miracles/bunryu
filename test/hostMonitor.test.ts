@@ -1,25 +1,35 @@
-import { describe, test } from 'node:test';
+import { describe, test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHostMonitor } from '../src/services/hostMonitor';
+import { createHostMonitor, type HostReaders } from '../src/services/hostMonitor';
+import type { DiskUsage } from '../src/utils/procStats';
 
 const MB = 1024 * 1024;
 
+const MEMORY = { availableBytes: 400 * MB, totalBytes: 1000 * MB, swapUsedBytes: 0 };
+
 // A monitor over fixed readings: a test sets `state` and calls `check`.
-function setup(t) {
+function setup(t: TestContext) {
     t.mock.method(console, 'warn', () => {});
     t.mock.method(console, 'log', () => {});
-    const state = {
-        memory: { availableBytes: 400 * MB, totalBytes: 1000 * MB, swapUsedBytes: 0 },
+    const state: {
+        memory: ReturnType<HostReaders['memory']>;
+        cpu: ReturnType<HostReaders['cpuPressure']>;
+        disks: Record<string, DiskUsage>;
+    } = {
+        memory: { ...MEMORY },
         cpu: { some10: 1, some60: 1 },
         disks: { '/data': { device: 1, availableBytes: 500 * MB, totalBytes: 1000 * MB } },
     };
-    const rows = [];
-    const events = [];
+    const rows: { type: string; message: string }[] = [];
+    const events: Record<string, unknown>[] = [];
     const monitor = createHostMonitor({
         pollIntervalMs: 5000,
         record: (type, message) => rows.push({ type, message }),
         topCpuConsumers: () => [{ name: 'node', cpuPercent: 80 }],
-        diagnostics: { event: (event, fields) => events.push({ event, ...fields }) },
+        diagnostics: {
+            event: (event, fields) => void events.push({ event, ...fields }),
+            close: () => Promise.resolve(),
+        },
         readers: {
             memory: () => state.memory,
             cpuPressure: () => state.cpu,
@@ -42,7 +52,7 @@ describe('host monitor', () => {
 
     test('low memory starts an alert naming the top processes, and ends past the recover line', (t) => {
         const { monitor, state, rows, events } = setup(t);
-        state.memory = { ...state.memory, availableBytes: 100 * MB };
+        state.memory = { ...MEMORY, availableBytes: 100 * MB };
         monitor.check();
         assert.deepEqual(monitor.openAlerts(), ['memory']);
         assert.equal(rows[0].type, 'problem');
@@ -51,12 +61,12 @@ describe('host monitor', () => {
         assert.equal(events[0].thresholdPercent, 15);
 
         // 17% is above the 15% start line but below the 20% recover line: still open.
-        state.memory = { ...state.memory, availableBytes: 170 * MB };
+        state.memory = { ...MEMORY, availableBytes: 170 * MB };
         monitor.check();
         assert.deepEqual(monitor.openAlerts(), ['memory']);
         assert.equal(rows.length, 1);
 
-        state.memory = { ...state.memory, availableBytes: 300 * MB };
+        state.memory = { ...MEMORY, availableBytes: 300 * MB };
         monitor.check();
         assert.deepEqual(monitor.openAlerts(), []);
         assert.equal(rows[1].type, 'recovered');

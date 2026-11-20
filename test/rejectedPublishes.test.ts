@@ -8,7 +8,7 @@ function clockedStore() {
     const store = createRejectedPublishes(() => t);
     return {
         store,
-        advance: (ms) => {
+        advance: (ms: number) => {
             t += ms;
         },
     };
@@ -25,9 +25,10 @@ describe('rejected publishes store', () => {
         const list = store.list();
         assert.equal(list.length, 2);
         const k1 = list.find((e) => e.label === 'key01');
+        assert.ok(k1);
         assert.equal(k1.attempts, 2);
         assert.equal(k1.reason, 'unassigned');
-        assert.equal(list.find((e) => e.label === 'key02').reason, 'unknown');
+        assert.equal(list.find((e) => e.label === 'key02')?.reason, 'unknown');
     });
 
     test('lists the most recent attempt first with its age', () => {
@@ -81,12 +82,13 @@ describe('rejected publishes store', () => {
         const list = store.list();
         assert.equal(list.length, 2);
         const rtmp = list.find((e) => e.protocol === 'rtmp');
+        assert.ok(rtmp);
         assert.equal(rtmp.reason, 'unrecognized');
         assert.equal(rtmp.label, '');
         assert.equal(rtmp.attempts, 502);
         assert.equal(rtmp.streams, 100);
         assert.equal(rtmp.streamsCapped, true);
-        assert.equal(list.find((e) => e.protocol === 'srt').streams, 1);
+        assert.equal(list.find((e) => e.protocol === 'srt')?.streams, 1);
         assert.ok(!JSON.stringify(list).includes('whatever'));
         assert.ok(!JSON.stringify(list).includes('junk'));
     });
@@ -129,8 +131,9 @@ describe('rejected publishes store', () => {
 
         const list = store.list();
         assert.equal(list.length, 2);
-        assert.equal(list.find((e) => e.kind === 'publish').reason, 'unassigned');
+        assert.equal(list.find((e) => e.kind === 'publish')?.reason, 'unassigned');
         const playEntry = list.find((e) => e.kind === 'play');
+        assert.ok(playEntry);
         assert.equal(playEntry.reason, 'assigned');
         assert.equal(playEntry.label, 'key01');
     });
@@ -144,9 +147,10 @@ describe('rejected publishes store', () => {
         const list = store.list();
         assert.equal(list.length, 2);
         const play = list.find((e) => e.kind === 'play');
+        assert.ok(play);
         assert.equal(play.reason, 'unrecognized');
         assert.equal(play.streams, 2);
-        assert.equal(list.find((e) => e.kind === 'publish').streams, 1);
+        assert.equal(list.find((e) => e.kind === 'publish')?.streams, 1);
     });
 
     test('stays bounded under a flood of distinct key labels', () => {
@@ -159,7 +163,7 @@ describe('rejected publishes store', () => {
 describe('rejected publishes suppressed-count flush', () => {
     test('reports the suppressed count once the window ends even if the attempts stop', () => {
         let t = 1_000_000;
-        const lines = [];
+        const lines: string[] = [];
         const store = createRejectedPublishes(
             () => t,
             (line) => lines.push(line),

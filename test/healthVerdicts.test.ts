@@ -1,17 +1,27 @@
 // The verdicts the server works out for /api/health (src/utils/healthVerdicts.ts): one for every
 // saved input and output, from the saved rows and the last poll. The rules behind them are
-// tested in outputStatus.test.js and inputStatus.test.js; this is how they are applied.
+// tested in outputStatus.test.ts and inputStatus.test.ts; this is how they are applied.
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHealthVerdicts, UNKNOWN_VERDICT } from '../src/utils/healthVerdicts';
+import {
+    buildHealthVerdicts,
+    UNKNOWN_VERDICT,
+    type PipelineStatusHealth,
+} from '../src/utils/healthVerdicts';
+import type { Output, Pipeline } from '../src/types';
+import type { InputStatusEntry } from '../src/utils/inputStatus';
+import type { OutputHealthEntry } from '../src/utils/outputStatus';
+import type { PipelineAlert } from '../src/utils/srtLinkAlerts';
 
 const T = 1_700_000_000_000;
 const RENDITION_URL = 'rtmp://127.0.0.1:21935/internal/r1_720p_acopy';
 
-const pipelines = [{ id: 1, name: 'Hindi', streamKey: 'k', streamKeyId: 1, groupId: null }];
+const pipelines: Pipeline[] = [
+    { id: 1, name: 'Hindi', streamKey: 'k', streamKeyId: 1, groupId: null },
+];
 
-const row = (id, overrides = {}) => ({
+const row = (id: string, overrides: Partial<Output> = {}): Output => ({
     id,
     pipelineId: 1,
     seq: Number(id.split('-')[1]),
@@ -20,12 +30,16 @@ const row = (id, overrides = {}) => ({
     videoEncoding: 'copy',
     url: `rtmp://dest.example/live/${id}`,
     audioEncoding: 'copy',
+    watchUrl: '',
     lastError: null,
     hasErrorHistory: false,
     ...overrides,
 });
 
-const entry = (overrides = {}) => ({
+// A poll's output entry as the status rules read it, with the fields a poll also carries.
+type EntryFixture = OutputHealthEntry & { role: string; [field: string]: unknown };
+
+const entry = (overrides: Partial<EntryFixture> = {}): EntryFixture => ({
     status: 'running',
     pid: 1,
     bitrateKbps: 4000,
@@ -47,9 +61,14 @@ const entry = (overrides = {}) => ({
     ...overrides,
 });
 
-const alert = (code, severity) => ({ severity, code, message: `${code} happened`, sinceMs: T });
+const alert = (code: string, severity: PipelineAlert['severity']): PipelineAlert => ({
+    severity,
+    code,
+    message: `${code} happened`,
+    sinceMs: T,
+});
 
-const inputEntry = (over = {}) => ({
+const inputEntry = (over: Partial<InputStatusEntry> = {}) => ({
     connected: true,
     live: true,
     isSrt: false,
@@ -72,18 +91,21 @@ const inputEntry = (over = {}) => ({
 
 // The verdicts for one pipeline: `health` is its health entry, or undefined before a poll has
 // seen it.
-const verdictsFor = (rows, health) =>
+const verdictsFor = (rows: Output[], health?: PipelineStatusHealth) =>
     buildHealthVerdicts({ pipelines, outputs: rows, health: health ? { 1: health } : {} });
 
 describe('health verdicts', () => {
     test('an output has the verdict of its state', () => {
-        const health = (over, live = true) => ({
+        const health = (over: Partial<EntryFixture>, live = true) => ({
             input: inputEntry({ live }),
             outputs: { '1-1': entry(over) },
             alerts: [],
         });
-        const verdict = (over, live, desiredState = 'running') =>
-            verdictsFor([row('1-1', { desiredState })], health(over, live)).outputs['1-1'];
+        const verdict = (
+            over: Partial<EntryFixture>,
+            live?: boolean,
+            desiredState: Output['desiredState'] = 'running',
+        ) => verdictsFor([row('1-1', { desiredState })], health(over, live)).outputs['1-1'];
 
         assert.deepEqual(verdict({}), { status: 'good', issues: [] });
         assert.deepEqual(verdict({ status: 'failed' }, true, 'stopped'), {
@@ -100,7 +122,7 @@ describe('health verdicts', () => {
     });
 
     test('an input has the verdict of its state, its alerts with their code and age', () => {
-        const input = (over, alerts = []) =>
+        const input = (over: Partial<InputStatusEntry>, alerts: PipelineAlert[] = []) =>
             verdictsFor([], { input: inputEntry(over), outputs: {}, alerts }).inputs[1];
 
         assert.deepEqual(input({}), { status: 'good', issues: [] });
@@ -122,7 +144,7 @@ describe('health verdicts', () => {
     });
 
     test('a shared encode also has its verdict without the input; its outputs wait for it', () => {
-        const rows = (renditionDesired = 'running') => [
+        const rows = (renditionDesired: Output['desiredState'] = 'running') => [
             row('1-1', { videoEncoding: '720p' }),
             row('1-2', { videoEncoding: '720p' }),
             row('1-9', {
@@ -132,7 +154,7 @@ describe('health verdicts', () => {
                 desiredState: renditionDesired,
             }),
         ];
-        const health = (live, encode) => ({
+        const health = (live: boolean, encode: Partial<EntryFixture>) => ({
             input: inputEntry({ live }),
             outputs: {
                 '1-1': entry({ status: 'stopped', startedAtMs: null }),
@@ -197,7 +219,7 @@ describe('health verdicts: one that cannot be worked out', () => {
                 throw new Error('bad data');
             },
         });
-        const reported = [];
+        const reported: unknown[][] = [];
         const verdicts = buildHealthVerdicts(
             {
                 pipelines: [
@@ -214,7 +236,7 @@ describe('health verdicts: one that cannot be worked out', () => {
                     },
                 },
             },
-            (what, id, err) => reported.push([what, id, err.message]),
+            (what, id, err) => reported.push([what, id, (err as Error).message]),
         );
 
         // The pipeline's outputs cannot be read together, so each is unknown...
@@ -231,7 +253,7 @@ describe('health verdicts: one that cannot be worked out', () => {
     });
 
     test('an input that cannot be read is unknown; its outputs are still worked out', () => {
-        const reported = [];
+        const reported: unknown[][] = [];
         const verdicts = buildHealthVerdicts(
             {
                 pipelines,
@@ -240,7 +262,7 @@ describe('health verdicts: one that cannot be worked out', () => {
                     1: {
                         input: inputEntry(),
                         outputs: { '1-1': entry() },
-                        alerts: [null],
+                        alerts: [null as unknown as PipelineAlert], // a malformed alert the rules cannot read
                     },
                 },
             },

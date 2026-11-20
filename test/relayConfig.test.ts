@@ -96,7 +96,7 @@ describe('normalizeRelayConfig', () => {
 describe('readRelayConfig', () => {
     const relayPath = () => getRelayConfigPath();
     // relayConfig.ts caches its first successful read at module scope, so each test
-    // re-requires it, as appConfig.test.js does.
+    // re-requires it, as appConfig.test.ts does.
     function freshReadRelayConfig() {
         delete require.cache[require.resolve('../src/utils/relayConfig')];
         return (require('../src/utils/relayConfig') as typeof import('../src/utils/relayConfig'))

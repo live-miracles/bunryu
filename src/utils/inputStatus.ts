@@ -5,7 +5,7 @@ import type { ReportedStatus } from './outputStatus.js';
 // give (dot colour, Issues text) goes to the dashboard in /api/health (healthVerdicts.ts),
 // and `reportedInputState` below turns it into what the Key Vault reporter sends. The
 // dashboard has no copy; the few values it repeats for display are pinned in
-// test/statusConstants.test.js.
+// test/statusConstants.test.ts.
 
 // The dashboard repeats these two (LOW_BITRATE_KBPS in public/ts/core/utils.ts and
 // INPUT_BITRATE_STATS_WARMUP_MS in public/ts/core/status.ts) for the bitrate it shows.

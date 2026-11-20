@@ -4,32 +4,37 @@ import express from 'express';
 
 import { createDb } from '../../src/db/index';
 import { registerPipelineApi } from '../../src/api/pipelines';
+import type { OutputService } from '../../src/services/outputs';
+import type { PreviewService } from '../../src/services/preview';
+import type { SrtRelayService } from '../../src/services/srtRelay';
 import { dispatch } from '../helpers/http';
 
 function makeFakePreviewService() {
-    const stopped = [];
+    const stopped: number[] = [];
     return {
         stopped,
-        stop(pipelineId) {
+        stop(pipelineId: number) {
             stopped.push(pipelineId);
         },
     };
 }
 
 function makeFakeOutputService() {
-    const stoppedAndWaited = [];
-    const retired = [];
+    const stoppedAndWaited: string[] = [];
+    const retired: string[] = [];
     // Outputs whose FFmpeg has not exited yet, though the operator stopped them.
-    const stillRunning = new Set();
+    const stillRunning = new Set<string>();
     return {
         stoppedAndWaited,
         retired,
         stillRunning,
-        getStats: (outputId) => ({ status: stillRunning.has(outputId) ? 'running' : 'stopped' }),
-        async stopAndWait(outputId) {
+        getStats: (outputId: string) => ({
+            status: stillRunning.has(outputId) ? 'running' : 'stopped',
+        }),
+        async stopAndWait(outputId: string) {
             stoppedAndWaited.push(outputId);
         },
-        async retire(outputId) {
+        async retire(outputId: string) {
             retired.push(outputId);
         },
     };
@@ -40,7 +45,7 @@ function makeFakeSrtRelayService() {
         getStats() {
             return { status: 'running', pid: 4242 };
         },
-        getStreamStatus(streamId) {
+        getStreamStatus(streamId: string) {
             return { streamId, acceptedBySrs: false };
         },
     };
@@ -52,13 +57,21 @@ function createHarness() {
     const previewService = makeFakePreviewService();
     const outputService = makeFakeOutputService();
     const srtRelayService = makeFakeSrtRelayService();
-    registerPipelineApi(app, db, outputService, previewService, srtRelayService);
+    // The fakes implement only the methods the pipeline routes call.
+    registerPipelineApi(
+        app,
+        db,
+        outputService as unknown as OutputService,
+        previewService as unknown as PreviewService,
+        srtRelayService as unknown as SrtRelayService,
+    );
     return {
         db,
         previewService,
         outputService,
         srtRelayService,
-        request: (method, route, body) => dispatch(app, method, route, body),
+        request: (method: string, route: string, body?: unknown) =>
+            dispatch(app, method, route, body),
     };
 }
 
@@ -179,7 +192,7 @@ describe('Pipelines API integration', () => {
                 const res = await harness.request('POST', `/api/pipelines/${p.id}`, { name });
                 assert.equal(res.status, 400, JSON.stringify(name));
             }
-            assert.equal(harness.db.getPipeline(p.id).name, p.name);
+            assert.equal(harness.db.getPipeline(p.id)?.name, p.name);
         });
 
         test('rejects a missing name', async () => {
@@ -205,7 +218,7 @@ describe('Pipelines API integration', () => {
             });
             assert.equal(res.status, 409);
             assert.match(res.body.error, /already exists/);
-            assert.equal(harness.db.getPipeline(p.id).name, p.name);
+            assert.equal(harness.db.getPipeline(p.id)?.name, p.name);
         });
 
         test('keeps the name when saved again with a key change', async () => {
@@ -251,6 +264,7 @@ describe('Pipelines API integration', () => {
             const spare = harness.db
                 .listStreamKeys()
                 .find((k) => k.id !== a.streamKeyId && k.id !== b.streamKeyId);
+            assert.ok(spare);
             // A feeds B, and B feeds the spare key. Putting A on the spare key closes the circle.
             harness.db.createOutput({
                 pipelineId: a.id,
@@ -268,7 +282,7 @@ describe('Pipelines API integration', () => {
             });
             assert.equal(res.status, 409);
             assert.match(res.body.error, /restream loop/);
-            assert.equal(harness.db.getPipeline(a.id).streamKeyId, a.streamKeyId);
+            assert.equal(harness.db.getPipeline(a.id)?.streamKeyId, a.streamKeyId);
             assert.equal(harness.previewService.stopped.length, 0);
         });
 
@@ -283,7 +297,7 @@ describe('Pipelines API integration', () => {
                 assert.equal(res.status, 400, String(streamKeyId));
                 assert.equal(res.body.error, 'invalid streamKeyId');
             }
-            assert.equal(harness.db.getPipeline(p.id).streamKeyId, p.streamKeyId);
+            assert.equal(harness.db.getPipeline(p.id)?.streamKeyId, p.streamKeyId);
             assert.deepEqual(harness.previewService.stopped, []);
         });
 
@@ -300,7 +314,7 @@ describe('Pipelines API integration', () => {
             });
 
             assert.equal(res.status, 409);
-            assert.equal(harness.db.getPipeline(p1.id).streamKeyId, p1.streamKeyId);
+            assert.equal(harness.db.getPipeline(p1.id)?.streamKeyId, p1.streamKeyId);
             assert.deepEqual(harness.previewService.stopped, []);
         });
 
@@ -317,9 +331,9 @@ describe('Pipelines API integration', () => {
                 audioEncoding: '0',
             });
             harness.db.setOutputDesiredState(r.id, 'running');
-            const desiredAtKill = {};
+            const desiredAtKill: Record<string, string | undefined> = {};
             const realStopAndWait = harness.outputService.stopAndWait;
-            harness.outputService.stopAndWait = async (id) => {
+            harness.outputService.stopAndWait = async (id: string) => {
                 desiredAtKill[id] = harness.db.getOutput(id)?.desiredState;
                 return realStopAndWait.call(harness.outputService, id);
             };
@@ -355,7 +369,7 @@ describe('Pipelines API integration', () => {
 
             assert.equal(res.status, 200);
             assert.equal(res.body.streamKeyId, p2.streamKeyId);
-            assert.equal(harness.db.getOutput(o.id).desiredState, 'stopped');
+            assert.equal(harness.db.getOutput(o.id)?.desiredState, 'stopped');
             assert.deepEqual(harness.outputService.stoppedAndWaited, []);
         });
 
@@ -381,7 +395,7 @@ describe('Pipelines API integration', () => {
 
             assert.equal(res.status, 409);
             assert.deepEqual(harness.outputService.stoppedAndWaited, []);
-            assert.equal(harness.db.getOutput(r.id).desiredState, 'running');
+            assert.equal(harness.db.getOutput(r.id)?.desiredState, 'running');
         });
 
         test('renaming with an unchanged streamKeyId succeeds even with a running output', async () => {
@@ -452,7 +466,7 @@ describe('Pipelines API integration', () => {
             });
 
             assert.equal(res.status, 400);
-            assert.equal(harness.db.getPipeline(p.id).groupId, null);
+            assert.equal(harness.db.getPipeline(p.id)?.groupId, null);
         });
 
         test('a bad groupId stops no preview and changes nothing when the key changes too', async () => {
@@ -468,7 +482,7 @@ describe('Pipelines API integration', () => {
 
             assert.equal(res.status, 400);
             assert.deepEqual(harness.previewService.stopped, []);
-            assert.equal(harness.db.getPipeline(p1.id).streamKeyId, p1.streamKeyId);
+            assert.equal(harness.db.getPipeline(p1.id)?.streamKeyId, p1.streamKeyId);
         });
     });
 
@@ -571,7 +585,7 @@ describe('Pipelines API integration', () => {
 
             assert.equal(res.status, 200);
             assert.deepEqual(
-                res.body.map((l) => l.message),
+                res.body.map((l: { message: string }) => l.message),
                 ['second', 'first'],
             );
         });

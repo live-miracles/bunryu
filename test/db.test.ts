@@ -11,7 +11,13 @@ import { createDb } from '../src/db/index';
 // Each helper creates a fresh isolated in-memory DB
 const makeDb = () => createDb(':memory:');
 
-function withDbFile(fn) {
+// A row the test expects to exist; it fails here, with a clear message, when it does not.
+function must<T>(row: T | null | undefined): T {
+    assert.ok(row, 'expected the row to exist');
+    return row;
+}
+
+function withDbFile(fn: (file: string) => void) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-db-keys-'));
     try {
         fn(path.join(dir, 'test.db'));
@@ -83,7 +89,7 @@ describe('Pipeline CRUD', () => {
     test('getPipeline returns the created pipeline', () => {
         const db = makeDb();
         const p = db.createPipeline();
-        const got = db.getPipeline(p.id);
+        const got = must(db.getPipeline(p.id));
         assert.equal(got?.name, p.name);
         assert.equal(got?.streamKey, p.streamKey);
     });
@@ -129,9 +135,9 @@ describe('Pipeline CRUD', () => {
         assert.throws(() => db.createPipeline({ name: 'MAIN STAGE' }), /already exists/);
         assert.throws(() => db.updatePipeline(b.id, 'main stage'), /already exists/);
         assert.equal(db.listPipelines().length, 2);
-        assert.notEqual(db.getPipeline(b.id).name, 'main stage');
+        assert.notEqual(must(db.getPipeline(b.id)).name, 'main stage');
         // Its own name, in another case, is fine.
-        assert.equal(db.updatePipeline(a.id, 'MAIN STAGE').name, 'MAIN STAGE');
+        assert.equal(must(db.updatePipeline(a.id, 'MAIN STAGE')).name, 'MAIN STAGE');
     });
 
     test('a default name skips one an operator already gave another pipeline', () => {
@@ -153,7 +159,7 @@ describe('Pipeline CRUD', () => {
             raw.prepare('UPDATE pipelines SET name = ? WHERE id = ?').run('Same', a.id);
             raw.close();
             const db = createDb(file);
-            assert.equal(db.updatePipeline(a.id, 'Same').name, 'Same');
+            assert.equal(must(db.updatePipeline(a.id, 'Same')).name, 'Same');
             assert.throws(() => db.updatePipeline(a.id, 'same'), /already exists/);
         });
     });
@@ -219,7 +225,7 @@ describe('Pipeline CRUD', () => {
         const db = makeDb();
         const p1 = db.createPipeline();
         const p2 = db.createPipeline();
-        const updated = db.updatePipeline(p1.id, p1.name, p2.streamKeyId);
+        const updated = must(db.updatePipeline(p1.id, p1.name, p2.streamKeyId));
         assert.equal(updated.streamKeyId, p2.streamKeyId);
         assert.equal(updated.streamKey, p2.streamKey);
     });
@@ -232,8 +238,8 @@ describe('Pipeline CRUD', () => {
         const p1 = db.createPipeline();
         const p2 = db.createPipeline();
         db.updatePipeline(p1.id, p1.name, p2.streamKeyId);
-        assert.equal(db.getPipeline(p1.id).streamKeyId, p2.streamKeyId);
-        assert.equal(db.getPipeline(p2.id).streamKeyId, p2.streamKeyId);
+        assert.equal(must(db.getPipeline(p1.id)).streamKeyId, p2.streamKeyId);
+        assert.equal(must(db.getPipeline(p2.id)).streamKeyId, p2.streamKeyId);
     });
 
     test('updatePipeline rejects a stream key id that does not exist (FK constraint)', () => {
@@ -251,7 +257,7 @@ describe('Pipeline CRUD', () => {
         const [group] = db.replacePipelineGroups([{ name: 'Main' }]);
         const p = db.createPipeline();
         db.updatePipeline(p.id, p.name, undefined, group.id);
-        const updated = db.updatePipeline(p.id, 'Renamed');
+        const updated = must(db.updatePipeline(p.id, 'Renamed'));
         assert.equal(updated.groupId, group.id);
     });
 
@@ -260,7 +266,7 @@ describe('Pipeline CRUD', () => {
         const [group] = db.replacePipelineGroups([{ name: 'Main' }]);
         const p = db.createPipeline();
         db.updatePipeline(p.id, p.name, undefined, group.id);
-        const updated = db.updatePipeline(p.id, p.name, undefined, null);
+        const updated = must(db.updatePipeline(p.id, p.name, undefined, null));
         assert.equal(updated.groupId, null);
     });
 
@@ -297,7 +303,7 @@ describe('regenerateStreamKeys', () => {
         const p = db.createPipeline();
         const oldKey = p.streamKey;
         db.regenerateStreamKeys();
-        const got = db.getPipeline(p.id);
+        const got = must(db.getPipeline(p.id));
         assert.equal(got.streamKeyId, p.streamKeyId);
         assert.notEqual(got.streamKey, oldKey);
     });
@@ -385,7 +391,7 @@ describe('Output CRUD', () => {
             db.createOutputs([
                 { pipelineId: p.id, name: 'A', url: 'rtmp://a' },
                 // Violates the outputs.pipeline_id NOT NULL constraint mid-batch.
-                { pipelineId: null, name: 'B', url: 'rtmp://b' },
+                { pipelineId: null as unknown as number, name: 'B', url: 'rtmp://b' },
             ]),
         );
         assert.equal(db.listOutputsForPipeline(p.id).length, 0);
@@ -501,7 +507,7 @@ describe('Output CRUD', () => {
         const o = db.createOutput({ pipelineId: p.id, name: 'X', url: 'rtmp://x' });
         let now = 1_000_000;
         t.mock.method(Date, 'now', () => now);
-        const crash = (pid, uptime) =>
+        const crash = (pid: number, uptime: number) =>
             `watchdog: ffmpeg received no input data; restarting process\npid=${pid}\nuptime=${uptime}s\nRestarting output: No input data (port 1935)`;
 
         db.setOutputLastError(o.id, crash(100, 45), 'crash');
@@ -736,6 +742,7 @@ describe('Output CRUD', () => {
                 videoEncoding: 'copy',
                 url: 'rtmp://x',
                 audioEncoding: 'copy',
+                watchUrl: '',
             }),
             null,
         );
@@ -773,9 +780,9 @@ describe('Output CRUD', () => {
         const b = db.createOutput({ pipelineId: p1.id, name: 'B', url: 'rtmp://b' });
         const c = db.createOutput({ pipelineId: p2.id, name: 'C', url: 'rtmp://c' });
         db.setDesiredStateForPipeline(p1.id, 'running');
-        assert.equal(db.getOutput(a.id).desiredState, 'running');
-        assert.equal(db.getOutput(b.id).desiredState, 'running');
-        assert.equal(db.getOutput(c.id).desiredState, 'stopped');
+        assert.equal(must(db.getOutput(a.id)).desiredState, 'running');
+        assert.equal(must(db.getOutput(b.id)).desiredState, 'running');
+        assert.equal(must(db.getOutput(c.id)).desiredState, 'stopped');
     });
 
     test('recreating an output after deleting the last one reuses its seq, not a running counter', () => {
@@ -983,10 +990,10 @@ describe('Pipeline groups', () => {
         const [group] = db.replacePipelineGroups([{ name: 'Main' }]);
         const p = db.createPipeline();
         db.updatePipeline(p.id, p.name, undefined, group.id);
-        assert.equal(db.getPipeline(p.id).groupId, group.id);
+        assert.equal(must(db.getPipeline(p.id)).groupId, group.id);
 
         db.replacePipelineGroups([]);
-        assert.equal(db.getPipeline(p.id).groupId, null);
+        assert.equal(must(db.getPipeline(p.id)).groupId, null);
     });
 
     test('replacePipelineGroups bumps the config revision', () => {
@@ -1059,7 +1066,7 @@ describe('schema version stamp', () => {
     const { SCHEMA_VERSION, DatabaseSchemaError, checkSchemaVersion } =
         require('../src/db/schema') as typeof import('../src/db/schema');
 
-    function withDbFile(fn) {
+    function withDbFile(fn: (file: string) => void) {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunryu-db-version-'));
         try {
             fn(path.join(dir, 'test.db'));
@@ -1068,7 +1075,7 @@ describe('schema version stamp', () => {
         }
     }
 
-    function userVersion(file) {
+    function userVersion(file: string) {
         const raw = new Database(file);
         try {
             return raw.pragma('user_version', { simple: true });
@@ -1177,10 +1184,10 @@ describe('Corrupt History', () => {
 
                 const outputs = db.listOutputs();
                 assert.equal(outputs.length, 2);
-                assert.equal(outputs.find((o) => o.id === bad.id).hasErrorHistory, false);
+                assert.equal(must(outputs.find((o) => o.id === bad.id)).hasErrorHistory, false);
                 assert.ok(db.getOutput(good.id));
                 assert.equal(
-                    db.listOutputIds().find((o) => o.id === bad.id).hasErrorHistory,
+                    must(db.listOutputIds().find((o) => o.id === bad.id)).hasErrorHistory,
                     false,
                 );
             } finally {

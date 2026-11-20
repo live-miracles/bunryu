@@ -1,40 +1,67 @@
 import { describe, test } from 'node:test';
+import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createInputLifecycle } from '../src/services/inputLifecycle';
+import type { InputAlertSources } from '../src/services/inputLifecycle';
 import { createInputState } from '../src/services/inputState';
+import type { ProbeResult } from '../src/services/mediaProbe';
+import type { ProbeScheduler } from '../src/services/probeScheduler';
+import type { SrsStream, SrsStreamVideo } from '../src/utils/srs';
 
 const START = 1_700_000_000_000;
 const SEC = 1000;
 
 const pipeline = { id: 1, streamKey: 'key01' };
 
-function stream(over = {}) {
+interface FormatRestart {
+    id: number;
+    why: string;
+    since: number;
+}
+
+function stream(over: Partial<SrsStream> = {}): SrsStream {
     return {
+        id: 'stream-1',
         app: 'live',
         name: 'key01',
+        vhost: '__defaultVhost__',
         tcUrl: 'rtmp://x/live',
+        live_ms: 0,
         publish: { active: true, cid: 'cid-1' },
+        kbps: { recv_30s: 0, send_30s: 0 },
+        clients: 0,
         frames: 0,
+        recv_bytes: 0,
+        send_bytes: 0,
         ...over,
     };
 }
 
-function probeResult(width = 1920, tracks = 1) {
+function probeResult(width = 1920, tracks = 1): ProbeResult {
     return {
-        video: { codec: 'h264', width, height: 1080 },
+        video: { codec: 'h264', profile: 'High', level: '4.0', width, height: 1080 },
         audio: null,
-        audioTracks: Array.from({ length: tracks }, () => ({})),
+        audioTracks: Array.from({ length: tracks }, (_, index) => ({
+            index,
+            codec: 'aac',
+            sampleRate: 48000,
+            channels: 2,
+            profile: 'LC',
+            language: null,
+            title: null,
+            pid: null,
+        })),
     };
 }
 
 // A lifecycle over fakes, with the clock under the test's control.
-function setup(t) {
+function setup(t: TestContext) {
     t.mock.timers.enable({ apis: ['Date'], now: START });
-    const logs = [];
-    const events = [];
-    const probeCalls = [];
-    const restarts = [];
-    const formatRestarts = [];
+    const logs: Array<{ pipelineId: number; event: string; message: string }> = [];
+    const events: Array<{ event: string } & Record<string, unknown>> = [];
+    const probeCalls: unknown[][] = [];
+    const restarts: Array<{ id: number; base: number | undefined }> = [];
+    const formatRestarts: FormatRestart[] = [];
     // What the fake probe scheduler answers: whether the call scheduled an ffprobe.
     const launches = { next: true };
     const inputState = createInputState();
@@ -55,17 +82,25 @@ function setup(t) {
         },
         inputState,
         probes: {
-            ensure: (...args) => {
+            ensure: (...args: Parameters<ProbeScheduler['ensure']>) => {
                 probeCalls.push(['ensure', ...args]);
                 return launches.next;
             },
-            clear: (id) => probeCalls.push(['clear', id]),
+            clear: (id: number) => {
+                probeCalls.push(['clear', id]);
+            },
         },
-        diagnostics: { event: (event, fields) => events.push({ event, ...fields }) },
+        diagnostics: {
+            event: (event, fields) => {
+                events.push({ event, ...fields });
+            },
+            close: async () => {},
+        },
     });
     const staggers = { ffprobe: 0, restart: 0 };
-    const observe = (s, reachable = true) => lifecycle.observe(pipeline, s, reachable, staggers);
-    const alerts = (over = {}) =>
+    const observe = (s: SrsStream | undefined, reachable = true) =>
+        lifecycle.observe(pipeline, s, reachable, staggers);
+    const alerts = (over: Partial<InputAlertSources> = {}) =>
         lifecycle.alerts(
             1,
             {
@@ -78,7 +113,7 @@ function setup(t) {
             },
             Date.now(),
         );
-    const tick = (ms) => t.mock.timers.tick(ms);
+    const tick = (ms: number) => t.mock.timers.tick(ms);
     return {
         lifecycle,
         inputState,
@@ -139,8 +174,8 @@ describe('input lifecycle: transitions', () => {
         tick(90 * SEC);
         const seen = observe(undefined);
         assert.deepEqual(seen, { live: false, connected: false, isSrt: false });
-        assert.equal(logs.at(-1).event, 'offline');
-        assert.match(logs.at(-1).message, /^Input disconnected \(was live for 1m 30s\)$/);
+        assert.equal(logs.at(-1)?.event, 'offline');
+        assert.match(logs.at(-1)?.message ?? '', /^Input disconnected \(was live for 1m 30s\)$/);
         assert.deepEqual(probeCalls.at(-1), ['clear', 1]);
         assert.equal(inputState.isLive(1), false);
     });
@@ -172,6 +207,7 @@ describe('input lifecycle: transitions', () => {
             ['clear', 'ensure'],
         );
         const change = events.find((e) => e.event === 'input-publisher-transition');
+        assert.ok(change);
         assert.deepEqual(
             { from: change.fromCid, to: change.toCid, protocol: change.protocol },
             { from: 'cid-1', to: 'cid-2', protocol: 'rtmp' },
@@ -203,6 +239,7 @@ describe('input lifecycle: alerts', () => {
             tick(10 * SEC);
         }
         const flap = alerts().find((a) => a.code === 'input-flapping');
+        assert.ok(flap);
         assert.match(flap.message, /^Input disconnected 3 times in the last 5 minutes\.$/);
         tick(5 * 60 * SEC);
         assert.deepEqual(alerts(), []);
@@ -221,7 +258,7 @@ describe('input lifecycle: alerts', () => {
     test('a frame rate more than 10 % off the probed one alerts once the 2 minute window is full', (t) => {
         const { alerts, tick } = setup(t);
         const nominalFps = 50;
-        const at = (frames) => alerts({ fpsStream: stream({ frames }), nominalFps });
+        const at = (frames: number) => alerts({ fpsStream: stream({ frames }), nominalFps });
         assert.deepEqual(at(1000), []); // window not full yet
         tick(60 * SEC);
         assert.deepEqual(at(1000 + 60 * 25), []);
@@ -270,7 +307,15 @@ describe('input lifecycle: alerts', () => {
 
     test('an interlaced input alerts, naming its scan, only while connected', (t) => {
         const { alerts } = setup(t);
-        const video = { codec: 'h264', width: 1920, height: 1080, fps: 25, fieldOrder: 'tt' };
+        const video: SrsStreamVideo = {
+            codec: 'h264',
+            profile: 'High',
+            level: '4.0',
+            width: 1920,
+            height: 1080,
+            fps: 25,
+            fieldOrder: 'tt',
+        };
         const found = alerts({ video });
         assert.deepEqual(
             found.map((a) => a.code),
@@ -284,7 +329,14 @@ describe('input lifecycle: alerts', () => {
 
     test('progressive, unknown or unprobed scan does not alert', (t) => {
         const { alerts } = setup(t);
-        const video = { codec: 'h264', width: 1920, height: 1080, fps: 50 };
+        const video: SrsStreamVideo = {
+            codec: 'h264',
+            profile: 'High',
+            level: '4.0',
+            width: 1920,
+            height: 1080,
+            fps: 50,
+        };
         for (const fieldOrder of ['progressive', 'unknown', null, undefined]) {
             assert.deepEqual(alerts({ video: { ...video, fieldOrder } }), [], String(fieldOrder));
         }
@@ -305,14 +357,17 @@ describe('input lifecycle: format changes', () => {
         tick(10 * SEC);
         lifecycle.noteProbe(1, probeResult(1280));
         assert.equal(formatRestarts.length, 1);
-        assert.equal(formatRestarts[0].since, START);
+        // assert.deepEqual above narrowed the array to never[]; read it as declared.
+        const [restart] = formatRestarts as FormatRestart[];
+        assert.equal(restart.since, START);
         assert.match(
-            formatRestarts[0].why,
+            restart.why,
             /^input format changed from h264 1920x1080, 1 audio track to h264 1280x1080, 1 audio track$/,
         );
-        assert.equal(logs.at(-1).event, 'format_changed');
-        assert.match(logs.at(-1).message, /restarting 3 running outputs$/);
+        assert.equal(logs.at(-1)?.event, 'format_changed');
+        assert.match(logs.at(-1)?.message ?? '', /restarting 3 running outputs$/);
         const changed = events.find((e) => e.event === 'input-format-changed');
+        assert.ok(changed);
         assert.equal(changed.outputsRestarted, 3);
         assert.equal(changed.suppressed, false);
     });
@@ -326,7 +381,7 @@ describe('input lifecycle: format changes', () => {
         lifecycle.noteProbe(1, probeResult(1920));
         assert.equal(formatRestarts.length, 1);
         assert.match(
-            logs.at(-1).message,
+            logs.at(-1)?.message ?? '',
             /outputs not restarted \(another format restart less than 60 s ago\)$/,
         );
 
@@ -340,6 +395,6 @@ describe('input lifecycle: format changes', () => {
         lifecycle.noteProbe(1, probeResult(1920));
         lifecycle.noteProbe(1, probeResult(1280));
         assert.deepEqual(formatRestarts, []);
-        assert.equal(events.find((e) => e.event === 'input-format-changed').outputsRestarted, 0);
+        assert.equal(events.find((e) => e.event === 'input-format-changed')?.outputsRestarted, 0);
     });
 });

@@ -6,7 +6,21 @@ import {
     sharedEncodeIndicator,
     sharedEncodeUsage,
     SHARED_ENCODE_RESTART_LOCKOUT_MS,
+    type SharedEncodeCardDeps,
+    type SharedEncodeSide,
+    type SharedEncodeStatus,
 } from '../public/ts/features/shared-encodes';
+import type { StatusIssue } from '../public/ts/core/status';
+import type {
+    LayoutOrderEntry,
+    Output,
+    OutputStatus,
+    OutputView,
+    Pipeline,
+    PipelineHealth,
+    PipelineView,
+} from '../public/ts/types';
+import type { Pipeline as ServerPipeline } from '../src/types';
 import { sharedEncodeIssue } from '../src/utils/outputStatus';
 import { sharedEncodeLabel } from '../public/ts/core/renditions';
 import { buildHealthVerdicts } from '../src/utils/healthVerdicts';
@@ -14,7 +28,7 @@ import { buildHealthVerdicts } from '../src/utils/healthVerdicts';
 const ENCODINGS = ['copy', '720p', '1080p', 'vertical_rotate'];
 const R720 = 'rtmp://127.0.0.1:21935/internal/r1_720p_a1';
 
-const outputRow = (id, overrides = {}) => ({
+const outputRow = (id: string, overrides: Partial<Output> = {}): Output => ({
     id,
     pipelineId: '1',
     seq: Number(id.split('-')[1]),
@@ -23,11 +37,18 @@ const outputRow = (id, overrides = {}) => ({
     videoEncoding: 'copy',
     url: `rtmp://dest.example/live/${id}`,
     audioEncoding: 'copy',
+    watchUrl: '',
     lastError: null,
     hasErrorHistory: false,
     ...overrides,
 });
-const renditionRow = (id, url, video, audio, overrides = {}) =>
+const renditionRow = (
+    id: string,
+    url: string,
+    video: string,
+    audio: string,
+    overrides: Partial<Output> = {},
+) =>
     outputRow(id, {
         name: `Shared encode ${video} · track ${audio}`,
         url,
@@ -36,13 +57,20 @@ const renditionRow = (id, url, video, audio, overrides = {}) =>
         ...overrides,
     });
 
-const outputHealth = (overrides = {}) => ({
+// An output's health as the server sends it: the dashboard's OutputStatus with the two
+// shared-encode fields always present, which the server's verdict rules require.
+type OutputHealthRow = OutputStatus & { renditionId: string | null; ready: boolean | null };
+
+const outputHealth = (overrides: Partial<OutputStatus> = {}): OutputHealthRow => ({
     status: 'running',
     pid: 1,
     bitrateKbps: 3000,
     startedAtMs: Date.now() - 65_000,
     failures: 0,
+    nextRetryAtMs: null,
     warningReason: null,
+    warningSinceMs: null,
+    speed: null,
     lastError: null,
     hasErrorHistory: false,
     memoryUsageBytes: null,
@@ -67,21 +95,68 @@ const GOOD_INPUT = {
     audio: null,
 };
 
-function parse({ outputs, health = {}, layoutOrder = [] }) {
-    const pipelines = [{ id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1, groupId: null }];
-    const pipelineHealth = { input: GOOD_INPUT, outputs: health, alerts: [] };
+// The slice of a pipeline's health these tests need; the SRT bonding block is left out.
+function pipelineHealthOf(
+    outputs: Record<string, OutputHealthRow>,
+): PipelineHealth & { outputs: Record<string, OutputHealthRow> } {
+    return { input: GOOD_INPUT, outputs, alerts: [] } as unknown as PipelineHealth & {
+        outputs: Record<string, OutputHealthRow>;
+    };
+}
+
+function parse({
+    outputs,
+    health = {},
+    layoutOrder = [],
+}: {
+    outputs: Output[];
+    health?: Record<string, OutputHealthRow>;
+    layoutOrder?: LayoutOrderEntry[];
+}): PipelineView {
+    // The server and the dashboard type a pipeline differently (a number id, no URLs).
+    const serverPipelines: ServerPipeline[] = [
+        { id: 1, name: 'P1', streamKey: 'key01', streamKeyId: 1, groupId: null },
+    ];
+    const pipelines: Pipeline[] = [
+        {
+            id: '1',
+            name: 'P1',
+            streamKey: 'key01',
+            streamKeyId: 1,
+            groupId: null,
+            rtmpPublishUrl: '',
+            srtPublishUrl: '',
+            rtmpPublishUrlLocal: '',
+            srtPublishUrlLocal: '',
+        },
+    ];
+    const pipelineHealth = pipelineHealthOf(health);
     return parsePipelines(
         { pipelines, outputs, layoutOrder, encodings: ENCODINGS },
         {
             pipelines: { 1: pipelineHealth },
             // What the server sends: its verdicts on the same outputs and health.
             verdicts: buildHealthVerdicts({
-                pipelines,
+                pipelines: serverPipelines,
                 outputs: outputs.map((o) => ({ ...o, pipelineId: 1 })),
                 health: { 1: pipelineHealth },
             }),
         },
     )[0];
+}
+
+// An output of the parsed pipeline; the test fails here if it is not there.
+function outOf(p: PipelineView, id: string): OutputView {
+    const out = p.outs.find((o) => o.id === id);
+    assert.ok(out, `output ${id}`);
+    return out;
+}
+
+// The first match of `re` in `html`; the test fails here when there is none.
+function firstMatch(html: string, re: RegExp): RegExpMatchArray {
+    const m = html.match(re);
+    assert.ok(m, `${re} in the html`);
+    return m;
 }
 
 const FLEET = () => [
@@ -121,8 +196,8 @@ describe('parsePipelines: shared encodes', () => {
         const p = parse({ outputs: FLEET() });
         const byId = Object.fromEntries(p.outs.map((o) => [o.id, o]));
 
-        assert.equal(byId['1-3'].sharedEncode.id, '1-2');
-        assert.equal(byId['1-4'].sharedEncode.id, '1-2');
+        assert.equal(byId['1-3'].sharedEncode?.id, '1-2');
+        assert.equal(byId['1-4'].sharedEncode?.id, '1-2');
         assert.equal(byId['1-1'].sharedEncode, null, 'plain copy');
         assert.equal(byId['1-5'].sharedEncode, null, 'multi-track');
         assert.equal(byId['1-7'].sharedEncode, null, 'rendition not created yet');
@@ -181,7 +256,7 @@ describe('parsePipelines: outputs that started direct', () => {
         const byId = Object.fromEntries(p.outs.map((o) => [o.id, o]));
 
         assert.equal(byId['1-3'].sharedEncode, null);
-        assert.equal(byId['1-4'].sharedEncode.id, '1-2');
+        assert.equal(byId['1-4'].sharedEncode?.id, '1-2');
         assert.deepEqual(
             p.renditions[0].dependents.map((d) => d.id),
             ['1-4'],
@@ -193,7 +268,7 @@ describe('parsePipelines: outputs that started direct', () => {
             outputs: FLEET(),
             health: { '1-3': outputHealth({ status: 'stopped', startedAtMs: null }) },
         });
-        assert.equal(p.outs.find((o) => o.id === '1-3').sharedEncode.id, '1-2');
+        assert.equal(outOf(p, '1-3').sharedEncode?.id, '1-2');
         assert.deepEqual(
             p.renditions[0].dependents.map((d) => d.id),
             ['1-3', '1-4'],
@@ -208,12 +283,12 @@ describe('parsePipelines: outputs that started direct', () => {
                 '1-3': outputHealth({ renditionId: null }),
             },
         });
-        assert.equal(sharedEncodeIssue(p.outs.find((o) => o.id === '1-3')), null);
+        assert.equal(sharedEncodeIssue(outOf(p, '1-3')), null);
     });
 });
 
 describe('sharedEncodeIssue', () => {
-    const view = (rendition = {}, output = {}) => {
+    const view = (rendition: Partial<OutputStatus> = {}, output: Partial<OutputStatus> = {}) => {
         const p = parse({
             outputs: FLEET(),
             health: {
@@ -221,11 +296,12 @@ describe('sharedEncodeIssue', () => {
                 '1-3': outputHealth({ status: 'stopped', startedAtMs: null, ...output }),
             },
         });
-        return p.outs.find((o) => o.id === '1-3');
+        return outOf(p, '1-3');
     };
 
     test('waiting for a rendition that is not ready yet', () => {
         const issue = sharedEncodeIssue(view({ status: 'running', ready: false }));
+        assert.ok(issue);
         assert.equal(issue.severity, 'warning');
         assert.equal(issue.message, 'Waiting for Shared encode 720p · track 2');
     });
@@ -239,6 +315,7 @@ describe('sharedEncodeIssue', () => {
                 failures: 2,
             }),
         );
+        assert.ok(issue);
         assert.equal(issue.severity, 'warning');
         assert.equal(issue.message, 'Shared encode failed: Connection refused');
     });
@@ -253,6 +330,7 @@ describe('sharedEncodeIssue', () => {
                 lastError: `${Date.now()}\nexit=1\nBroken pipe`,
             }),
         );
+        assert.ok(issue);
         assert.equal(issue.message, 'Shared encode failed: Broken pipe');
     });
 
@@ -260,6 +338,7 @@ describe('sharedEncodeIssue', () => {
         const issue = sharedEncodeIssue(
             view({ status: 'running', ready: false }, { status: 'failed' }),
         );
+        assert.ok(issue);
         assert.match(issue.message, /^Waiting for Shared encode /);
     });
 
@@ -270,34 +349,46 @@ describe('sharedEncodeIssue', () => {
             null,
         );
         const p = parse({
-            outputs: FLEET().map((o) => (o.id === '1-3' ? { ...o, desiredState: 'stopped' } : o)),
+            outputs: FLEET().map((o) =>
+                o.id === '1-3' ? { ...o, desiredState: 'stopped' as const } : o,
+            ),
         });
-        assert.equal(sharedEncodeIssue(p.outs.find((o) => o.id === '1-3')), null);
+        assert.equal(sharedEncodeIssue(outOf(p, '1-3')), null);
     });
 
     test('an output without a shared encode has no issue', () => {
         const p = parse({ outputs: FLEET() });
-        assert.equal(sharedEncodeIssue(p.outs.find((o) => o.id === '1-1')), null);
-        assert.equal(sharedEncodeIssue(p.outs.find((o) => o.id === '1-7')), null);
+        assert.equal(sharedEncodeIssue(outOf(p, '1-1')), null);
+        assert.equal(sharedEncodeIssue(outOf(p, '1-7')), null);
     });
 
     test('a rendition whose desired state is stopped is idle, not an error', () => {
         const p = parse({
-            outputs: FLEET().map((o) => (o.id === '1-2' ? { ...o, desiredState: 'stopped' } : o)),
+            outputs: FLEET().map((o) =>
+                o.id === '1-2' ? { ...o, desiredState: 'stopped' as const } : o,
+            ),
             health: { '1-3': outputHealth({ status: 'stopped', startedAtMs: null }) },
         });
-        const issue = sharedEncodeIssue(p.outs.find((o) => o.id === '1-3'));
+        const issue = sharedEncodeIssue(outOf(p, '1-3'));
+        assert.ok(issue);
         assert.match(issue.message, /^Waiting for Shared encode /);
     });
 });
 
 describe('sharedEncodeLabel and sharedEncodeUsage', () => {
-    const r = (video, audio, dependents = [], readers = null) => ({
-        videoEncoding: video,
-        audioEncoding: audio,
-        dependents,
-        readers,
-    });
+    // Only these four fields of a rendition are read here.
+    const r = (
+        video: string,
+        audio: string,
+        dependents: unknown[] = [],
+        readers: number | null = null,
+    ) =>
+        ({
+            videoEncoding: video,
+            audioEncoding: audio,
+            dependents,
+            readers,
+        }) as unknown as OutputView;
 
     test('names the video unless it is copy and the audio track as T<n>', () => {
         assert.equal(sharedEncodeLabel(r('720p', '1')), '720p · T2');
@@ -312,11 +403,20 @@ describe('sharedEncodeLabel and sharedEncodeUsage', () => {
 });
 
 describe('Shared encodes card', () => {
-    const side = (status, issues = []) => ({ status, issues });
-    const deps = (overrides = {}) => ({ restartLocked: () => false, ...overrides });
+    const side = (status: SharedEncodeStatus, issues: StatusIssue[] = []): SharedEncodeSide => ({
+        status,
+        issues,
+    });
+    const deps = (overrides: Partial<SharedEncodeCardDeps> = {}): SharedEncodeCardDeps => ({
+        restartLocked: () => false,
+        ...overrides,
+    });
     // The pipeline with the verdicts the two halves of the dot show replaced: the encode's
     // own, and the input's.
-    const withSides = (pipeline, { ffmpeg, input }) => ({
+    const withSides = (
+        pipeline: PipelineView,
+        { ffmpeg, input }: { ffmpeg?: SharedEncodeSide; input?: SharedEncodeSide },
+    ): PipelineView => ({
         ...pipeline,
         input: { ...pipeline.input, verdict: input ?? pipeline.input.verdict },
         renditions: pipeline.renditions.map((r) => ({
@@ -324,7 +424,7 @@ describe('Shared encodes card', () => {
             verdict: { ...r.verdict, withoutInput: ffmpeg ?? r.verdict.withoutInput },
         })),
     });
-    const pipelineWith = (renditionHealth = {}, rows = FLEET()) =>
+    const pipelineWith = (renditionHealth: Partial<OutputStatus> = {}, rows = FLEET()) =>
         parse({
             outputs: rows,
             health: {
@@ -369,9 +469,10 @@ describe('Shared encodes card', () => {
     });
 
     describe('status dot', () => {
-        const dot = (html) => html.match(/<div aria-label="status"[^>]*>/)[0];
-        const tooltip = (html) =>
-            html.match(
+        const dot = (html: string) => firstMatch(html, /<div aria-label="status"[^>]*>/)[0];
+        const tooltip = (html: string) =>
+            firstMatch(
+                html,
                 /aria-label="status"[\s\S]*?<div class="js-tooltip-content hidden">([\s\S]*?)<\/div>\s*<\/span>/,
             )[1];
 
@@ -420,7 +521,7 @@ describe('Shared encodes card', () => {
 
         test('an encode nobody uses is grey on both sides and says it is idle', () => {
             const rows = FLEET().map((o) =>
-                o.id === '1-2' ? { ...o, desiredState: 'stopped' } : o,
+                o.id === '1-2' ? { ...o, desiredState: 'stopped' as const } : o,
             );
             const html = renderSharedEncodeRows(
                 withSides(
@@ -454,7 +555,7 @@ describe('Shared encodes card', () => {
     });
 
     test('shows the encoding as badges like an output card: video if not copy, audio as T<n>', () => {
-        const only = (video, audio) =>
+        const only = (video: string, audio: string) =>
             renderSharedEncodeRows(
                 parse({
                     outputs: [
@@ -524,23 +625,23 @@ describe('Shared encodes card', () => {
 
     test('no error line while the rendition is stopped, no failure badge at zero', () => {
         const ts = Date.now();
-        const stopped = renderSharedEncodeRows(
-            pipelineWith({ lastError: `${ts}\nboom` }).renditions.length
-                ? parse({
-                      outputs: FLEET().map((o) =>
-                          o.id === '1-2' ? { ...o, desiredState: 'stopped' } : o,
-                      ),
-                      health: {
-                          '1-2': outputHealth({
-                              status: 'stopped',
-                              lastError: `${ts}\nboom`,
-                              startedAtMs: null,
-                          }),
-                      },
-                  })
-                : null,
-            deps(),
-        );
+        const pipeline = pipelineWith({ lastError: `${ts}\nboom` }).renditions.length
+            ? parse({
+                  outputs: FLEET().map((o) =>
+                      o.id === '1-2' ? { ...o, desiredState: 'stopped' as const } : o,
+                  ),
+                  health: {
+                      '1-2': outputHealth({
+                          status: 'stopped',
+                          lastError: `${ts}\nboom`,
+                          startedAtMs: null,
+                      }),
+                  },
+              })
+            : null;
+        // (A pipeline without renditions would have failed inside the render below.)
+        assert.ok(pipeline);
+        const stopped = renderSharedEncodeRows(pipeline, deps());
         assert.ok(!stopped.includes('boom'));
         assert.ok(!renderSharedEncodeRows(pipelineWith(), deps()).includes('badge-error'));
     });
@@ -562,8 +663,9 @@ describe('Shared encodes card', () => {
     });
 
     test('History is red only while the latest record is a crash', () => {
-        const button = (over) =>
-            renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true, ...over }), deps()).match(
+        const button = (over: Partial<OutputStatus>) =>
+            firstMatch(
+                renderSharedEncodeRows(pipelineWith({ hasErrorHistory: true, ...over }), deps()),
                 /<button[^>]*data-action="error-info"[^>]*>/,
             )[0];
 
@@ -603,7 +705,7 @@ describe('Shared encodes card', () => {
             pipelineWith({ hasErrorHistory: true, failures: 2, bitrateKbps: 120 }),
             deps(),
         );
-        const at = (needle) => html.indexOf(needle);
+        const at = (needle: string) => html.indexOf(needle);
         const order = [
             at('aria-label="status"'),
             at('data-action="restart-shared"'),

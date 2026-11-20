@@ -50,11 +50,11 @@ writeRelayConfig();
 const { createSrtRelayService } =
     require('../src/services/srtRelay') as typeof import('../src/services/srtRelay');
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitFor(fn, timeoutMs = 3000) {
+async function waitFor<T>(fn: () => T, timeoutMs = 3000): Promise<T> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         const value = fn();
@@ -110,11 +110,11 @@ const UNREPORTED_INPUT = {
 };
 
 describe('SRT relay service', () => {
-    const cleanup = [];
+    const cleanup: Array<() => unknown> = [];
 
     afterEach(async () => {
         while (cleanup.length) {
-            await cleanup.pop()();
+            await cleanup.pop()?.();
         }
         writeRelayConfig();
         global.fetch = originalFetch;
@@ -311,7 +311,7 @@ describe('SRT relay service', () => {
     describe('plain (non-bonded) SRT input', () => {
         const STREAM_ID = '#!::r=live/key01,m=publish';
 
-        async function readStream(streamState) {
+        async function readStream(streamState: Record<string, unknown>) {
             global.fetch = async () =>
                 new Response(
                     JSON.stringify({
@@ -833,13 +833,15 @@ describe('SRT relay service', () => {
     });
 
     function makeDiagnosticsSpy() {
-        const events = [];
+        // `error` is the one field a test reads as text.
+        const events: Array<{ event: string; error?: string | null } & Record<string, unknown>> =
+            [];
         return {
             events,
-            event(event, fields = {}) {
+            event(event: string, fields: Record<string, unknown> = {}) {
                 events.push({ event, ...fields });
             },
-            close() {},
+            async close() {},
         };
     }
 
@@ -937,6 +939,6 @@ describe('SRT relay service', () => {
         });
         assert.equal(transitions[1].from, 'running');
         assert.equal(transitions[1].to, 'failed');
-        assert.match(transitions[1].error, /ECONNREFUSED/);
+        assert.match(transitions[1].error ?? '', /ECONNREFUSED/);
     });
 });

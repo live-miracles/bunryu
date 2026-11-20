@@ -8,8 +8,10 @@ import {
     statusTotals,
 } from '../public/ts/core/status-grid';
 import { withVerdicts } from './helpers/verdicts';
+import type { AudioTrackInfo, InputHealth, OutputView, PipelineView } from '../public/ts/types';
+import type { ActivityEvent } from '../src/utils/activityFeed';
 
-const liveInput = (overrides = {}) => ({
+const liveInput = (overrides: Partial<InputHealth> = {}): InputHealth => ({
     connected: true,
     live: true,
     isSrt: false,
@@ -26,45 +28,54 @@ const liveInput = (overrides = {}) => ({
     publisherType: null,
     video: null,
     audio: null,
-    audioTracks: [{}],
+    audioTracks: [{} as AudioTrackInfo],
     ...overrides,
 });
 
 const offInput = () => liveInput({ connected: false, live: false, mediaOk: null });
 
-const output = (id, overrides = {}) => ({
-    id,
-    pipelineId: '1',
-    seq: 1,
-    name: `Out ${id}`,
-    desiredState: 'running',
-    status: 'running',
-    pid: 1,
-    bitrateKbps: 4000,
-    startedAtMs: 1,
-    failures: 0,
-    nextRetryAtMs: null,
-    warningReason: null,
-    warningSinceMs: null,
-    lastError: null,
-    hasErrorHistory: false,
-    lastErrorAt: null,
-    sharedEncode: null,
-    renditionId: null,
-    ...overrides,
-});
+// Only the fields a card reads; the other OutputView fields are left out, so it is cast here.
+const output = (id: string, overrides: Partial<OutputView> = {}): OutputView =>
+    ({
+        id,
+        pipelineId: '1',
+        seq: 1,
+        name: `Out ${id}`,
+        desiredState: 'running',
+        status: 'running',
+        pid: 1,
+        bitrateKbps: 4000,
+        startedAtMs: 1,
+        failures: 0,
+        nextRetryAtMs: null,
+        warningReason: null,
+        warningSinceMs: null,
+        lastError: null,
+        hasErrorHistory: false,
+        lastErrorAt: null,
+        sharedEncode: null,
+        renditionId: null,
+        ...overrides,
+    }) as OutputView;
 
-const stopped = (id) => output(id, { desiredState: 'stopped', status: 'stopped', pid: null });
-const failed = (id) =>
+const stopped = (id: string) =>
+    output(id, { desiredState: 'stopped', status: 'stopped', pid: null });
+const failed = (id: string) =>
     output(id, {
         status: 'failed',
         bitrateKbps: null,
         lastError: 'Connection refused',
         lastErrorAt: 5,
     });
-const warning = (id) => output(id, { warningReason: 'Timestamp discontinuities' });
+const warning = (id: string) => output(id, { warningReason: 'Timestamp discontinuities' });
 
-const pipeline = (id, input, outs, extra = {}) =>
+// The fixtures give only the fields a card reads, so the pipeline is cast once, here.
+const pipeline = (
+    id: number,
+    input: InputHealth,
+    outs: OutputView[],
+    extra: Record<string, unknown> = {},
+): PipelineView =>
     withVerdicts({
         id: String(id),
         name: `Pipeline ${id}`,
@@ -75,14 +86,18 @@ const pipeline = (id, input, outs, extra = {}) =>
         outs,
         renditions: [],
         ...extra,
-    });
+    } as unknown as PipelineView);
 
 const NOW = 1_000_000;
 const RELAY_UP = { relayProcessRunning: true, nowMs: NOW };
-const cardsOf = (pipelines, relay = RELAY_UP) => buildStatusCards(pipelines, relay);
+const cardsOf = (pipelines: PipelineView[], relay = RELAY_UP) => buildStatusCards(pipelines, relay);
 
 // A bonded relay input whose SRS side is accepted and flowing, with the given legs.
-const relayPipeline = (legs, srtBonding = {}, extra = {}) =>
+const relayPipeline = (
+    legs: unknown[],
+    srtBonding: Record<string, unknown> = {},
+    extra: Record<string, unknown> = {},
+) =>
     pipeline(1, liveInput({ isSrt: true }), [output('a')], {
         srtBonding: {
             inputActive: true,
@@ -100,7 +115,7 @@ const relayPipeline = (legs, srtBonding = {}, extra = {}) =>
         },
         ...extra,
     });
-const okLeg = (ip) => ({ ip, state: 'running', health: 'ok', healthReason: null });
+const okLeg = (ip: string) => ({ ip, state: 'running', health: 'ok', healthReason: null });
 
 describe('buildStatusCards', () => {
     test('a bonded relay leg with a warning shows on the card, as it does in the sidebar', () => {
@@ -268,9 +283,9 @@ describe('buildStatusCards', () => {
     });
 
     test('the type shows how the input arrives', () => {
-        const type = (p) => cardsOf([p])[0].type;
+        const type = (p: PipelineView) => cardsOf([p])[0].type;
         assert.equal(type(pipeline(1, liveInput({ isSrt: true }), [])), 'SRT');
-        const relay = (bonded) => ({ acceptedBySrs: true, input: { bonded } });
+        const relay = (bonded: boolean) => ({ acceptedBySrs: true, input: { bonded } });
         assert.equal(type(pipeline(1, liveInput(), [], { srtBonding: relay(true) })), 'Bonded');
         assert.equal(type(pipeline(1, liveInput(), [], { srtBonding: relay(false) })), 'Relay');
     });
@@ -325,6 +340,7 @@ describe('groupStatusCards', () => {
 
     test('a pipeline whose group was deleted counts as ungrouped', () => {
         const ungrouped = groupStatusCards(cards, groups, false).at(-1);
+        assert.ok(ungrouped);
         assert.ok(ungrouped.cards.some((c) => c.id === '4'));
     });
 
@@ -350,7 +366,8 @@ describe('groupStatusCards', () => {
 });
 
 describe('problemEvents', () => {
-    const ev = (ts, severity) => ({ ts, severity, label: 'x', message: '' });
+    const ev = (ts: number, severity: ActivityEvent['severity']) =>
+        ({ ts, severity, label: 'x', message: '' }) as ActivityEvent;
     // The API order: newest first.
     const events = [ev(5, 'ok'), ev(4, 'error'), ev(3, 'info'), ev(2, 'warning'), ev(1, 'error')];
 

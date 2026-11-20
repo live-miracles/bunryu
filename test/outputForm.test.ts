@@ -7,9 +7,14 @@ import {
     editOutputForm,
     outputLocked,
     submitOutputForm,
+    type FormOutput,
+    type OutputFormInvalid,
+    type OutputFormValues,
 } from '../public/ts/core/output-form';
+import type { RestreamTarget } from '../public/ts/core/destination';
+import type { SrtFormValues } from '../public/ts/core/srt';
 
-const targets = [
+const targets: RestreamTarget[] = [
     {
         id: 7,
         rtmpPublishUrlLocal: 'rtmp://127.0.0.1/live/key07',
@@ -17,7 +22,7 @@ const targets = [
     },
 ];
 
-const saved = (over = {}) => ({
+const saved = (over: Partial<FormOutput> = {}): FormOutput => ({
     name: 'Main',
     videoEncoding: 'copy',
     url: 'rtmp://a.rtmp.youtube.com/live2/abcd-efgh',
@@ -26,7 +31,7 @@ const saved = (over = {}) => ({
     ...over,
 });
 
-const values = (over = {}) => ({
+const values = (over: Partial<OutputFormValues> = {}): OutputFormValues => ({
     name: 'Main',
     videoEncoding: 'copy',
     audioEncoding: 'copy',
@@ -36,7 +41,7 @@ const values = (over = {}) => ({
     ...over,
 });
 
-const srtFields = (over = {}) => ({
+const srtFields = (over: Partial<SrtFormValues> = {}): SrtFormValues => ({
     mode: 'caller',
     host: 'srt.example.net',
     port: '9000',
@@ -46,6 +51,25 @@ const srtFields = (over = {}) => ({
     streamId: '',
     ...over,
 });
+
+// What a test reads from a submission: `body` when it expects a save and `invalid` when it
+// expects a refusal. submitOutputForm returns one case or the other, so this view of it
+// holds the one cast (a running output's save has only name and watchUrl; a test reads the
+// other fields only on a full save), and a wrong expectation still fails on the assertion.
+interface SubmissionView {
+    ok: boolean;
+    body: {
+        name: string;
+        watchUrl: string;
+        videoEncoding: string;
+        url: string;
+        audioEncoding: string;
+    };
+    invalid: OutputFormInvalid;
+}
+
+const submit = (...args: Parameters<typeof submitOutputForm>) =>
+    submitOutputForm(...args) as unknown as SubmissionView;
 
 describe('addOutputForm', () => {
     test('the first output starts empty on a Custom RTMP destination', () => {
@@ -123,16 +147,12 @@ describe('the watch link', () => {
     });
 
     test('is sent trimmed with a new output', () => {
-        const result = submitOutputForm(
-            values({ watchUrl: '  https://youtu.be/abc ' }),
-            undefined,
-            targets,
-        );
+        const result = submit(values({ watchUrl: '  https://youtu.be/abc ' }), undefined, targets);
         assert.equal(result.body.watchUrl, 'https://youtu.be/abc');
     });
 
     test('a running output can still change it, and the rest stays locked', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ watchUrl: 'https://youtu.be/abc' }),
             { desiredState: 'running' },
             targets,
@@ -150,12 +170,12 @@ describe('the watch link', () => {
             'ftp://x/y',
             'https://a b',
         ]) {
-            const result = submitOutputForm(values({ watchUrl: bad }), undefined, targets);
+            const result = submit(values({ watchUrl: bad }), undefined, targets);
             assert.equal(result.ok, false, bad);
             assert.equal(result.invalid.watchUrl, true, bad);
             assert.equal(result.invalid.key, false, bad);
         }
-        const running = submitOutputForm(
+        const running = submit(
             values({ watchUrl: 'javascript:alert(1)' }),
             { desiredState: 'running' },
             targets,
@@ -179,7 +199,7 @@ describe('outputLocked and destinationOf', () => {
 
 describe('submitOutputForm', () => {
     test('a valid new output sends the whole payload with the built URL', () => {
-        const result = submitOutputForm(values({ name: '  Main  ' }), undefined, targets);
+        const result = submit(values({ name: '  Main  ' }), undefined, targets);
         assert.deepEqual(result, {
             ok: true,
             body: {
@@ -193,7 +213,7 @@ describe('submitOutputForm', () => {
     });
 
     test('trims the key before building the URL', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ destination: { key: '  abcd-efgh ', srt: null } }),
             undefined,
             targets,
@@ -203,7 +223,7 @@ describe('submitOutputForm', () => {
     });
 
     test('a running output sends only its name and watch link, whatever else the form holds', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ name: 'Renamed', destination: null }),
             { desiredState: 'running' },
             targets,
@@ -212,11 +232,7 @@ describe('submitOutputForm', () => {
     });
 
     test('a running output with an empty name flags only the name', () => {
-        const result = submitOutputForm(
-            values({ name: ' ' }),
-            { desiredState: 'running' },
-            targets,
-        );
+        const result = submit(values({ name: ' ' }), { desiredState: 'running' }, targets);
         assert.deepEqual(result, {
             ok: false,
             invalid: { name: true, watchUrl: false, key: false, srt: [] },
@@ -224,7 +240,7 @@ describe('submitOutputForm', () => {
     });
 
     test('an empty name is flagged along with a bad destination, so both show', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ name: '', destination: { key: '', srt: null } }),
             undefined,
             targets,
@@ -236,16 +252,12 @@ describe('submitOutputForm', () => {
     });
 
     test('an empty key is flagged', () => {
-        const result = submitOutputForm(
-            values({ destination: { key: '', srt: null } }),
-            undefined,
-            targets,
-        );
+        const result = submit(values({ destination: { key: '', srt: null } }), undefined, targets);
         assert.deepEqual(result.invalid, { name: false, watchUrl: false, key: true, srt: [] });
     });
 
     test('a Custom RTMP value that is not an rtmp URL is flagged', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ server: 'custom-rtmp', destination: { key: 'example.net/app', srt: null } }),
             undefined,
             targets,
@@ -254,7 +266,7 @@ describe('submitOutputForm', () => {
     });
 
     test('a Restream pipeline that no longer exists is flagged', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ server: 'restream-rtmp', destination: { key: '99', srt: null } }),
             undefined,
             targets,
@@ -263,7 +275,7 @@ describe('submitOutputForm', () => {
     });
 
     test('a Restream destination sends the pipeline publish URL', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ server: 'restream-srt', destination: { key: '7', srt: null } }),
             undefined,
             targets,
@@ -272,7 +284,7 @@ describe('submitOutputForm', () => {
     });
 
     test('Custom SRT builds the URL from its fields', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({
                 server: 'custom-srt',
                 destination: { key: '', srt: srtFields({ latency: '240' }) },
@@ -286,7 +298,7 @@ describe('submitOutputForm', () => {
     });
 
     test('Custom SRT names the fields that are wrong, not the key', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({
                 server: 'custom-srt',
                 destination: { key: '', srt: srtFields({ host: '', port: '0' }) },
@@ -303,7 +315,7 @@ describe('submitOutputForm', () => {
     });
 
     test('a form without its destination row cannot be saved, and flags nothing', () => {
-        const result = submitOutputForm(values({ destination: null }), undefined, targets);
+        const result = submit(values({ destination: null }), undefined, targets);
         assert.deepEqual(result, {
             ok: false,
             invalid: { name: false, watchUrl: false, key: false, srt: [] },
@@ -311,7 +323,7 @@ describe('submitOutputForm', () => {
     });
 
     test('Custom SRT with its fields missing from the row cannot be saved', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ server: 'custom-srt', destination: { key: '', srt: null } }),
             undefined,
             targets,
@@ -320,7 +332,7 @@ describe('submitOutputForm', () => {
     });
 
     test('editing a stopped output sends the whole payload', () => {
-        const result = submitOutputForm(
+        const result = submit(
             values({ videoEncoding: '720p' }),
             { desiredState: 'stopped' },
             targets,

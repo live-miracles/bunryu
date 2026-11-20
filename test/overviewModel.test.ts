@@ -1,12 +1,18 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildOverviewModel } from '../public/ts/core/overview-model';
+import {
+    buildOverviewModel,
+    type OutputRow,
+    type OverviewModelInput,
+    type OverviewTable,
+} from '../public/ts/core/overview-model';
 import { withVerdicts } from './helpers/verdicts';
+import type { AudioTrackInfo, InputHealth, OutputView, PipelineView } from '../public/ts/types';
 
 const NOW = 1_000_000;
 
-const liveInput = (overrides = {}) => ({
+const liveInput = (overrides: Partial<InputHealth> = {}): InputHealth => ({
     connected: true,
     live: true,
     isSrt: false,
@@ -23,39 +29,43 @@ const liveInput = (overrides = {}) => ({
     publisherType: null,
     video: null,
     audio: null,
-    audioTracks: [{}],
+    audioTracks: [{} as AudioTrackInfo],
     ...overrides,
 });
 const offInput = () => liveInput({ connected: false, live: false, mediaOk: null });
 
-const output = (id, overrides = {}) => ({
-    id,
-    pipelineId: '1',
-    seq: 1,
-    name: `Out ${id}`,
-    url: `rtmp://live.example/app/${id}`,
-    desiredState: 'running',
-    status: 'running',
-    pid: 1,
-    bitrateKbps: 4000,
-    cpuPercent: null,
-    memoryUsageBytes: null,
-    startedAtMs: 1,
-    failures: 0,
-    nextRetryAtMs: null,
-    warningReason: null,
-    warningSinceMs: null,
-    lastError: null,
-    hasErrorHistory: false,
-    lastErrorAt: null,
-    videoEncoding: 'copy',
-    audioEncoding: 'copy',
-    dependents: [],
-    ...overrides,
-});
-const stopped = (id) => output(id, { desiredState: 'stopped', status: 'stopped', pid: null });
-const failed = (id) => output(id, { status: 'failed', bitrateKbps: null, lastError: 'Refused' });
-const warning = (id) => output(id, { warningReason: 'Timestamp discontinuities' });
+// Only the fields the tables read; the other OutputView fields are left out, so it is cast here.
+const output = (id: string, overrides: Partial<OutputView> = {}): OutputView =>
+    ({
+        id,
+        pipelineId: '1',
+        seq: 1,
+        name: `Out ${id}`,
+        url: `rtmp://live.example/app/${id}`,
+        desiredState: 'running',
+        status: 'running',
+        pid: 1,
+        bitrateKbps: 4000,
+        cpuPercent: null,
+        memoryUsageBytes: null,
+        startedAtMs: 1,
+        failures: 0,
+        nextRetryAtMs: null,
+        warningReason: null,
+        warningSinceMs: null,
+        lastError: null,
+        hasErrorHistory: false,
+        lastErrorAt: null,
+        videoEncoding: 'copy',
+        audioEncoding: 'copy',
+        dependents: [],
+        ...overrides,
+    }) as OutputView;
+const stopped = (id: string) =>
+    output(id, { desiredState: 'stopped', status: 'stopped', pid: null });
+const failed = (id: string) =>
+    output(id, { status: 'failed', bitrateKbps: null, lastError: 'Refused' });
+const warning = (id: string) => output(id, { warningReason: 'Timestamp discontinuities' });
 
 const idleBonding = () => ({
     inputActive: false,
@@ -80,7 +90,13 @@ const idleBonding = () => ({
     },
 });
 
-const pipeline = (id, input, outs, extra = {}) =>
+// The fixtures give only the fields the tables read, so the pipeline is cast once, here.
+const pipeline = (
+    id: number,
+    input: InputHealth,
+    outs: OutputView[],
+    extra: Record<string, unknown> = {},
+): PipelineView =>
     withVerdicts({
         id: String(id),
         name: `Pipeline ${id}`,
@@ -94,9 +110,9 @@ const pipeline = (id, input, outs, extra = {}) =>
         outs,
         renditions: [],
         ...extra,
-    });
+    } as unknown as PipelineView);
 
-const leg = (over = {}) => ({
+const leg = (over: Record<string, unknown> = {}) => ({
     ip: '203.0.113.10',
     state: 'running',
     health: 'ok',
@@ -106,7 +122,14 @@ const leg = (over = {}) => ({
 });
 
 // A relay input that is flowing into SRS; `bonded` makes it a two-leg group.
-const relayPipeline = (id, { bonded = false, bondingOver = {}, legs } = {}) => {
+const relayPipeline = (
+    id: number,
+    {
+        bonded = false,
+        bondingOver = {},
+        legs,
+    }: { bonded?: boolean; bondingOver?: Record<string, unknown>; legs?: unknown[] } = {},
+) => {
     const base = idleBonding();
     return pipeline(id, liveInput({ publisherIp: '127.0.0.1' }), [], {
         srtBonding: {
@@ -128,7 +151,7 @@ const relayPipeline = (id, { bonded = false, bondingOver = {}, legs } = {}) => {
     });
 };
 
-const build = (pipelines, over = {}) =>
+const build = (pipelines: PipelineView[], over: Partial<OverviewModelInput> = {}) =>
     buildOverviewModel({
         pipelines,
         metrics: {},
@@ -140,7 +163,7 @@ const build = (pipelines, over = {}) =>
         ...over,
     });
 
-const outputNames = (table) => table.rows.map((r) => r.output.name);
+const outputNames = (table: OverviewTable<OutputRow>) => table.rows.map((r) => r.output.name);
 
 describe('an output table under the All / Active / Issues filter', () => {
     const pipelines = () => [
@@ -167,11 +190,12 @@ describe('an output table under the All / Active / Issues filter', () => {
     });
 
     test('the counts ignore the filter and the search', () => {
-        for (const over of [
+        const overs: Partial<OverviewModelInput>[] = [
             { filter: 'all' },
             { filter: 'problems' },
             { filter: 'active', outputSearch: 'warn' },
-        ]) {
+        ];
+        for (const over of overs) {
             const { outputs } = build(pipelines(), over);
             assert.equal(outputs.total, 4);
             assert.equal(outputs.problems, 2);
@@ -293,7 +317,8 @@ describe('the Inputs table', () => {
             pipeline(1, liveInput(), []),
             pipeline(2, liveInput(), [], { name: 'Hall' }),
         ];
-        const ids = (over) => build(pipelines, over).inputs.rows.map((r) => r.pipeline.id);
+        const ids = (over: Partial<OverviewModelInput>) =>
+            build(pipelines, over).inputs.rows.map((r) => r.pipeline.id);
         assert.deepEqual(ids({ inputSearch: 'hall' }), ['2']);
         assert.deepEqual(ids({ inputSearch: 'KEY01_SECRET' }), ['1']);
         assert.deepEqual(ids({ inputSearch: 'srv.example/live/key02' }), ['2']);
@@ -384,7 +409,7 @@ describe('the Shared encodes table', () => {
     });
 
     test('the Outputs search matches the pipeline or the encode label', () => {
-        const names = (outputSearch) =>
+        const names = (outputSearch: string) =>
             outputNames(build(withEncodes(), { outputSearch }).sharedEncodes);
         assert.deepEqual(names('720p'), ['Out r1']);
         assert.deepEqual(names('t1'), ['Out r2']);
@@ -457,7 +482,7 @@ describe('the System usage figures', () => {
             pipeline(1, liveInput({ recvBitrateKbps: null }), [output('a', { bitrateKbps: null })]),
         ]);
         assert.equal(usage.uptimeSeconds, null);
-        for (const row of ['cpuPercent', 'ramBytes', 'downlinkKbps', 'uplinkKbps']) {
+        for (const row of ['cpuPercent', 'ramBytes', 'downlinkKbps', 'uplinkKbps'] as const) {
             assert.deepEqual(usage[row], unreported, row);
         }
     });
@@ -598,7 +623,7 @@ describe('mistakes in how an output is configured', () => {
         assert.equal(model.outputs.problems, 2);
         assert.equal(model.totals.problems, 2);
         assert.deepEqual(
-            build(pipelines()).outputs.rows.find((r) => r.output.id === 'tip').mistakes,
+            build(pipelines()).outputs.rows.find((r) => r.output.id === 'tip')?.mistakes,
             [],
         );
     });

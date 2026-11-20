@@ -1,8 +1,19 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pipelineDiagnosticsOf } from '../src/services/healthDiagnostics';
+import type { PipelineHealth } from '../src/services/health';
 
-const output = (status, over = {}) => ({
+// What these tests read from a pipeline's diagnostics (the function returns unknown).
+interface PipelineDiagnostics {
+    input: Record<string, unknown>;
+    bonding: { input: { legs: Record<string, unknown>[] } };
+    outputs: Record<string, Record<string, unknown>>;
+    alerts: unknown;
+}
+const diagnosticsOf = (result: Record<string, unknown>, id: string) =>
+    result[id] as PipelineDiagnostics;
+
+const output = (status: 'running' | 'stopped' | 'failed', over: Record<string, unknown> = {}) => ({
     status,
     pid: status === 'running' ? 77 : null,
     bitrateKbps: null,
@@ -25,56 +36,58 @@ const output = (status, over = {}) => ({
     ...over,
 });
 
-const pipeline = (outputs) => ({
-    input: {
-        connected: true,
-        live: true,
-        isSrt: false,
-        mediaOk: true,
-        recvBitrateKbps: 4000,
-        sendBitrateKbps: 8000,
-        publisherIp: '203.0.113.9',
-    },
-    srtBonding: {
-        inputActive: true,
-        outputConnected: true,
-        retryFailures: 0,
-        forwardedPackets: 10,
-        forwardedBytes: 1000,
-        lastPacketAt: 1,
-        lastInputPacketAt: 2,
+const pipeline = (outputs: Record<string, ReturnType<typeof output>>) =>
+    ({
         input: {
-            recvPacketsTotal: 5,
-            recvUniquePacketsTotal: 5,
-            recvLossTotal: 0,
-            recvDropTotal: 0,
-            retransTotal: 0,
-            recvRateMbps: 5,
-            latencyMs: 120,
-            expectedLegs: 1,
-            legs: [
-                {
-                    ip: '198.51.100.4',
-                    port: 4000,
-                    state: 'running',
-                    health: 'ok',
-                    healthReason: null,
-                    recvPacketsTotal: 5,
-                    recvUniquePacketsTotal: 5,
-                    recvLossTotal: 0,
-                    recvDropTotal: 0,
-                    retransTotal: 0,
-                    recvRateMbps: 5,
-                    rttMs: 20,
-                    latencyMs: 120,
-                    bandwidthMbps: 99,
-                },
-            ],
+            connected: true,
+            live: true,
+            isSrt: false,
+            mediaOk: true,
+            recvBitrateKbps: 4000,
+            sendBitrateKbps: 8000,
+            publisherIp: '203.0.113.9',
         },
-    },
-    outputs,
-    alerts: [{ code: 'input-flapping' }],
-});
+        srtBonding: {
+            inputActive: true,
+            outputConnected: true,
+            retryFailures: 0,
+            forwardedPackets: 10,
+            forwardedBytes: 1000,
+            lastPacketAt: 1,
+            lastInputPacketAt: 2,
+            input: {
+                recvPacketsTotal: 5,
+                recvUniquePacketsTotal: 5,
+                recvLossTotal: 0,
+                recvDropTotal: 0,
+                retransTotal: 0,
+                recvRateMbps: 5,
+                latencyMs: 120,
+                expectedLegs: 1,
+                legs: [
+                    {
+                        ip: '198.51.100.4',
+                        port: 4000,
+                        state: 'running',
+                        health: 'ok',
+                        healthReason: null,
+                        recvPacketsTotal: 5,
+                        recvUniquePacketsTotal: 5,
+                        recvLossTotal: 0,
+                        recvDropTotal: 0,
+                        retransTotal: 0,
+                        recvRateMbps: 5,
+                        rttMs: 20,
+                        latencyMs: 120,
+                        bandwidthMbps: 99,
+                    },
+                ],
+            },
+        },
+        outputs,
+        alerts: [{ code: 'input-flapping' }],
+        // a pipeline with only the fields the diagnostics keep
+    }) as unknown as PipelineHealth;
 
 describe('pipelineDiagnosticsOf', () => {
     test('keeps each pipeline under its id, with the input, bonding and alert fields', () => {
@@ -83,7 +96,7 @@ describe('pipelineDiagnosticsOf', () => {
             2: pipeline({}),
         });
         assert.deepEqual(Object.keys(result), ['1', '2']);
-        const first = result['1'];
+        const first = diagnosticsOf(result, '1');
         assert.deepEqual(first.input, {
             connected: true,
             live: true,
@@ -98,22 +111,26 @@ describe('pipelineDiagnosticsOf', () => {
     });
 
     test('leaves out fields the diagnostics do not keep', () => {
-        const { input, bonding, outputs } = pipelineDiagnosticsOf({
-            1: pipeline({ a: output('running') }),
-        })['1'];
+        const { input, bonding, outputs } = diagnosticsOf(
+            pipelineDiagnosticsOf({ 1: pipeline({ a: output('running') }) }),
+            '1',
+        );
         assert.equal('publisherIp' in input, false);
         assert.equal('bandwidthMbps' in bonding.input.legs[0], false);
         assert.equal('lastError' in outputs.a, false);
     });
 
     test('a stopped output is left out, every other status is kept', () => {
-        const { outputs } = pipelineDiagnosticsOf({
-            1: pipeline({
-                stopped: output('stopped'),
-                running: output('running', { bitrateKbps: 3000, warningReason: 'slow' }),
-                failed: output('failed', { failures: 3 }),
+        const { outputs } = diagnosticsOf(
+            pipelineDiagnosticsOf({
+                1: pipeline({
+                    stopped: output('stopped'),
+                    running: output('running', { bitrateKbps: 3000, warningReason: 'slow' }),
+                    failed: output('failed', { failures: 3 }),
+                }),
             }),
-        })['1'];
+            '1',
+        );
         assert.deepEqual(Object.keys(outputs), ['running', 'failed']);
         assert.equal(outputs.running.bitrateKbps, 3000);
         assert.equal(outputs.running.warningReason, 'slow');

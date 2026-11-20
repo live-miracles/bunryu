@@ -631,7 +631,7 @@ ends it. Measured with the pinned FFmpeg n7.1.4 on loopback, 100-110 s cap per r
   value would restart outputs sooner on a platform that merely pauses reading.
 - **The connect case needs nothing:** FFmpeg's own connect timeout already ends it
   after 5 s, long before the 45 s socket watchdog.
-- **Regression test:** `test/outputTimeout.test.js` runs real FFmpeg on the arguments
+- **Regression test:** `test/outputTimeout.test.ts` runs real FFmpeg on the arguments
   Bunryu builds against a destination that never answers (RTMP and RTMPS, no
   certificate needed), plus a control without the option; it passed on FFmpeg 7.1.4
   and the development machine's 8.0.1.
@@ -1386,7 +1386,7 @@ A tip (Track 1 costs CPU, SRT to RTMP with copy audio can jitter) is a muted not
 and counts nowhere: tips that turned working outputs amber would teach people to ignore amber,
 the reason Key Vault leaves advice out. Neither changes a status dot, which stays the
 server's verdict; before this the Outputs list counted all advice and the other views none. The dashboard repeats three values for display: the input alert codes, the
-200 kb/s floor and the 30 s warm-up for SRS's zero bitrate; `test/statusConstants.test.js` pins
+200 kb/s floor and the 30 s warm-up for SRS's zero bitrate; `test/statusConstants.test.ts` pins
 them to the server's.
 
 **Checked on the isolated test stack:** a healthy pipeline showed every dot green; with the
@@ -1427,7 +1427,7 @@ verdict.
 ### The dashboard keeps its own copy of the shared-encode recipe rule
 
 **Decision (October 2026):** `public/ts/core/renditions.ts` stays a hand-kept twin of
-`encodeRecipe` and `RENDITION_URL_RE` in `src/utils/renditions.ts`. `test/renditions.test.js`
+`encodeRecipe` and `RENDITION_URL_RE` in `src/utils/renditions.ts`. `test/renditions.test.ts`
 runs both over every video and audio combination and fails if they disagree.
 
 **Why:** the twin is about 25 lines. Removing it means either publishing each output's
@@ -1521,7 +1521,7 @@ dot, minus the advice (see
   halves; the derivation takes any secret of 32 or more characters. Only the two derived
   values are saved, so the reporter and the saved format did not change and the secret
   is not kept. The derivation is pinned by the same two values in both repositories'
-  tests (`test/keyVaultConfig.test.js`). A link saved before this change keeps working
+  tests (`test/keyVaultConfig.test.ts`). A link saved before this change keeps working
   with its old token and hash secret until Key Vault is moved to the new secret.
 - **Push, not pull.** Key Vault runs on a free serverless tier and Bunryu sits behind a
   tunnel with a login, so Key Vault cannot call in without a second credential and a new

@@ -7,6 +7,7 @@ import {
     isDestinationUrl,
     restreamChoices,
     sanitizedDestinationFor,
+    type ServerId,
 } from '../public/ts/core/destination';
 
 const pipelines = [
@@ -19,7 +20,7 @@ const pipelines = [
 
 describe('detectServer and buildDestinationUrl', () => {
     test('a stored URL is read back to the preset and value that produce it', () => {
-        const cases = [
+        const cases: [ServerId, string][] = [
             ['youtube', 'abcd-efgh'],
             ['instagram', '123?s_bl=1&s_prp=xyz-1&token=t'],
             ['restream-rtmp', '7'],
@@ -90,7 +91,11 @@ describe('isDestinationUrl', () => {
 });
 
 describe('restreamChoices', () => {
-    const p = (id, streamKeyId) => ({ id: String(id), name: `P${id}`, streamKeyId });
+    const p = (id: number, streamKeyId: number) => ({
+        id: String(id),
+        name: `P${id}`,
+        streamKeyId,
+    });
 
     test('leaves out the pipeline itself', () => {
         assert.deepEqual(

@@ -32,9 +32,12 @@ const ENCODERS = `Encoders:
 `;
 
 // A stand-in ffmpeg that prints the given listings, like the real one does.
-function fakeFfmpeg(name, { protocols = PROTOCOLS, encoders = ENCODERS } = {}) {
+function fakeFfmpeg(
+    name: string,
+    { protocols = PROTOCOLS, encoders = ENCODERS }: { protocols?: string; encoders?: string } = {},
+) {
     const file = path.join(tempDir, name);
-    const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+    const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
     fs.writeFileSync(
         file,
         `#!/bin/sh
@@ -103,7 +106,7 @@ describe('checkFfmpeg', () => {
         const missing = path.join(tempDir, 'no-such-ffmpeg');
         const result = await checkFfmpeg(missing, missing);
         assert.equal(result.ok, false);
-        assert.match(result.error, /no-such-ffmpeg\) did not run/);
+        assert.match(result.error ?? '', /no-such-ffmpeg\) did not run/);
     });
 });
 

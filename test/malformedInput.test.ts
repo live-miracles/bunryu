@@ -44,7 +44,9 @@ after(() => {
 });
 
 // mulberry32: tiny seeded PRNG.
-function rng(seed) {
+type Rand = () => number;
+
+function rng(seed: number): Rand {
     let a = seed >>> 0;
     return () => {
         a = (a + 0x6d2b79f5) >>> 0;
@@ -88,7 +90,7 @@ const TOKENS = [
     'a'.repeat(5000),
 ];
 
-function mutateString(rand, seedText) {
+function mutateString(rand: Rand, seedText: string): string {
     let s = seedText;
     const ops = 1 + Math.floor(rand() * 6);
     for (let i = 0; i < ops; i++) {
@@ -111,7 +113,7 @@ function mutateString(rand, seedText) {
     return s;
 }
 
-const ODD_VALUES = [
+const ODD_VALUES: unknown[] = [
     null,
     undefined,
     true,
@@ -132,15 +134,17 @@ const ODD_VALUES = [
 ];
 
 // Randomly replaces, deletes or adds fields anywhere in a JSON-like value.
-function mutateJson(rand, value, depth = 0) {
+function mutateJson(rand: Rand, value: unknown, depth = 0): unknown {
     if (Array.isArray(value)) {
-        const out = value.map((v) => (rand() < 0.3 ? mutateJson(rand, v, depth + 1) : v));
+        const out: unknown[] = value.map((v: unknown) =>
+            rand() < 0.3 ? mutateJson(rand, v, depth + 1) : v,
+        );
         if (rand() < 0.15) out.push(ODD_VALUES[Math.floor(rand() * ODD_VALUES.length)]);
         if (rand() < 0.1) out.length = 0;
         return out;
     }
     if (value && typeof value === 'object') {
-        const out = {};
+        const out: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(value)) {
             const roll = rand();
             if (roll < 0.1) continue;
@@ -155,7 +159,7 @@ function mutateJson(rand, value, depth = 0) {
 }
 
 // Runs fn over generated inputs; any throw or slow call fails with the input.
-function fuzz(name, gen, check) {
+function fuzz<T>(name: string, gen: (rand: Rand) => T, check: (input: T) => void): void {
     const rand = rng(SEED);
     for (let i = 0; i < ITERATIONS; i++) {
         const input = gen(rand);
@@ -164,7 +168,7 @@ function fuzz(name, gen, check) {
             check(input);
         } catch (err) {
             assert.fail(
-                `${name} failed (seed ${SEED}, iteration ${i}): ${err.message}\ninput: ${JSON.stringify(input)?.slice(0, 500)}`,
+                `${name} failed (seed ${SEED}, iteration ${i}): ${err instanceof Error ? err.message : String(err)}\ninput: ${JSON.stringify(input)?.slice(0, 500)}`,
             );
         }
         const took = performance.now() - started;
@@ -202,7 +206,7 @@ describe('malformed input', () => {
     });
 
     test('classifyAddress gives a class for every IP the resolver can return', () => {
-        const hex = (rand) => Math.floor(rand() * 65536).toString(16);
+        const hex = (rand: Rand) => Math.floor(rand() * 65536).toString(16);
         fuzz(
             'classifyAddress',
             (rand) => {
@@ -262,12 +266,12 @@ describe('malformed input', () => {
             (rand) => mutateJson(rand, sample),
             (raw) => {
                 const config = normalizeRelayConfig(raw);
-                for (const key of ['input_port', 'output_port', 'status_port']) {
+                for (const key of ['input_port', 'output_port', 'status_port'] as const) {
                     assert.ok(
                         Number.isInteger(config[key]) && config[key] > 0 && config[key] <= 65535,
                     );
                 }
-                for (const key of ['input_host', 'output_host', 'passphrase']) {
+                for (const key of ['input_host', 'output_host', 'passphrase'] as const) {
                     assert.equal(typeof config[key], 'string');
                 }
             },
@@ -324,8 +328,8 @@ const STATUS = {
 
 describe('malformed relay status', () => {
     const originalFetch = global.fetch;
-    const unhandled = [];
-    const onUnhandled = (reason) => unhandled.push(reason);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
 
     before(() => process.on('unhandledRejection', onUnhandled));
     after(() => {
@@ -335,7 +339,7 @@ describe('malformed relay status', () => {
 
     test('a mutated /status body never throws out of the poller or corrupts a stream status', async () => {
         const rand = rng(SEED);
-        const seen = { running: 0, stopped: 0 };
+        const seen: Record<string, number> = { running: 0, stopped: 0 };
         for (let i = 0; i < 400; i++) {
             const body =
                 rand() < 0.1

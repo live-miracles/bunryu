@@ -1,8 +1,20 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-function fakeElement(value = '', dataset = {}) {
-    const classes = new Set();
+interface FakeElement {
+    value: string;
+    dataset: Record<string, string>;
+    textContent: string;
+    classList: {
+        add(c: string): unknown;
+        remove(c: string): unknown;
+        toggle(c: string, force?: boolean): unknown;
+        contains(c: string): boolean;
+    };
+}
+
+function fakeElement(value = '', dataset: Record<string, string> = {}): FakeElement {
+    const classes = new Set<string>();
     return {
         value,
         dataset,
@@ -16,16 +28,20 @@ function fakeElement(value = '', dataset = {}) {
     };
 }
 
-const hasError = (el) => el.classList.contains('input-error');
+const hasError = (el: FakeElement) => el.classList.contains('input-error');
+
+// The dashboard modules read these browser globals; the fakes below stand in for them, and this
+// is the one place they are let through as the DOM types they replace.
+const browser = globalThis as unknown as { document: unknown; window: unknown; fetch: unknown };
 
 describe('settings forms do not fail silently', () => {
-    let elements;
-    let rows;
-    let selectors;
-    let fetchCalls;
-    const realDocument = global.document;
-    const realFetch = global.fetch;
-    const realWindow = global.window;
+    let elements: Record<string, FakeElement>;
+    let rows: Record<string, unknown[]>;
+    let selectors: Record<string, unknown>;
+    let fetchCalls: string[];
+    const realDocument = browser.document;
+    const realFetch = browser.fetch;
+    const realWindow = browser.window;
 
     const toast = () => elements['error-msg'].textContent;
     const savedAnything = () =>
@@ -44,27 +60,27 @@ describe('settings forms do not fail silently', () => {
         elements['error-alert'].classList.add('hidden');
         rows = { '[data-pipeline-group-row]': [] };
         selectors = {};
-        global.document = {
-            getElementById: (id) => elements[id] ?? null,
-            querySelectorAll: (selector) => rows[selector] ?? [],
-            querySelector: (selector) => selectors[selector] ?? null,
+        browser.document = {
+            getElementById: (id: string) => elements[id] ?? null,
+            querySelectorAll: (selector: string) => rows[selector] ?? [],
+            querySelector: (selector: string) => selectors[selector] ?? null,
             addEventListener() {},
             title: '',
         };
         // Importing the editor pulls in the dashboard module, which starts a refresh
         // on load; its requests never settle here.
-        global.window = { location: { search: '', href: '' }, addEventListener() {} };
+        browser.window = { location: { search: '', href: '' }, addEventListener() {} };
         fetchCalls = [];
-        global.fetch = (url) => {
+        browser.fetch = (url: unknown) => {
             fetchCalls.push(String(url));
             return new Promise(() => {});
         };
     });
 
     afterEach(() => {
-        global.document = realDocument;
-        global.fetch = realFetch;
-        global.window = realWindow;
+        browser.document = realDocument;
+        browser.fetch = realFetch;
+        browser.window = realWindow;
     });
 
     test('an empty server name is marked, explained and not sent', async () => {

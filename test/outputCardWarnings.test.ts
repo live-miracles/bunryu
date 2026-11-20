@@ -1,9 +1,11 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderOutputCard } from '../public/ts/features/output-card';
+import type { DupRef } from '../public/ts/core/output-advice';
+import type { InputHealth, OutputView } from '../public/ts/types';
 import { withInputVerdict, withVerdict } from './helpers/verdicts';
 
-const output = (over) => ({
+const output = (over: Partial<OutputView> = {}): Partial<OutputView> => ({
     id: '1-1',
     name: 'o',
     desiredState: 'running',
@@ -21,9 +23,18 @@ const output = (over) => ({
     ...over,
 });
 const rtmpInput = { connected: true, live: true, isSrt: false, audioTracks: [] };
-const deps = { pendingOutputs: new Set() };
-const render = (over, input = rtmpInput) =>
-    renderOutputCard(withVerdict(output(over), input), withInputVerdict(input), new Map(), deps);
+const deps = { pendingOutputs: new Set<string>() };
+// The fixtures set only the fields the card reads, so they meet the card's real view
+// types here, in one place.
+const card = (out: object, input: object, dupUrls: Map<string, DupRef[]>, cardDeps: typeof deps) =>
+    renderOutputCard(
+        out as unknown as OutputView,
+        input as unknown as InputHealth,
+        dupUrls,
+        cardDeps,
+    );
+const render = (over: Partial<OutputView>, input = rtmpInput) =>
+    card(withVerdict(output(over), input), withInputVerdict(input), new Map(), deps);
 
 describe('RTMP input with Track 1 audio on an RTMP output', () => {
     test('warns that the audio is re-encoded and copy is cheaper', () => {
@@ -72,7 +83,7 @@ describe('a yellow status dot always says why', () => {
     test('a warning the output reports itself is listed once', () => {
         const html = render({ warningReason: 'Timestamps are jumping' });
 
-        assert.equal(html.match(/<span class="text-warning shrink-0">/g).length, 1); // one card line
+        assert.equal(html.match(/<span class="text-warning shrink-0">/g)?.length, 1); // one card line
         assert.match(
             html,
             /<div aria-label="status"[^>]*><\/div><div class="js-tooltip-content hidden">.*Timestamps are jumping/,
@@ -88,7 +99,7 @@ describe('a yellow status dot always says why', () => {
 });
 
 describe('output stopped after repeated failed attempts', () => {
-    const stoppedAfterFailures = (over) =>
+    const stoppedAfterFailures = (over: Partial<OutputView> = {}) =>
         render({
             desiredState: 'stopped',
             status: 'stopped',
@@ -119,31 +130,25 @@ describe('output stopped after repeated failed attempts', () => {
 // Every output warning (runtime, duplicate destination, encoding advice) is the
 // same kind of line: a warning icon and the message, with the full text in the
 // title, and any of them tints the card.
-const warningLines = (html) =>
+const warningLines = (html: string) =>
     [...html.matchAll(/<span class="text-xs text-warning truncate[^"]*" title="([^"]*)">/g)].map(
         (m) => m[1],
     );
 // A tip is a note: muted, with an info icon, and it never tints the card.
-const tipLines = (html) =>
+const tipLines = (html: string) =>
     [...html.matchAll(/<span class="text-xs text-muted truncate[^"]*" title="([^"]*)">/g)].map(
         (m) => m[1],
     );
-const tinted = (html) => /data-output-card="[^"]*" style="background:color-mix/.test(html);
+const tinted = (html: string) => /data-output-card="[^"]*" style="background:color-mix/.test(html);
 
 describe('duplicate destination', () => {
     const url = 'rtmp://a.example/live/key';
     const dups = new Map([
-        [
-            url,
-            [
-                { pipelineName: 'Other', outputName: 'YT' },
-                { pipelineName: 'Main', outputName: null },
-            ],
-        ],
+        [url, [{ pipelineName: 'Other', outputName: 'YT' }, { pipelineName: 'Main' }]],
     ]);
 
     test('is a warning line naming the other outputs, with the card tinted', () => {
-        const html = renderOutputCard(
+        const html = card(
             withVerdict(output({ url }), rtmpInput),
             withInputVerdict(rtmpInput),
             dups,
@@ -163,7 +168,7 @@ describe('duplicate destination', () => {
                 ],
             ],
         ]);
-        const html = renderOutputCard(
+        const html = card(
             withVerdict(output({ url }), rtmpInput),
             withInputVerdict(rtmpInput),
             self,
@@ -173,7 +178,7 @@ describe('duplicate destination', () => {
     });
 
     test('no longer marks the URL itself', () => {
-        const html = renderOutputCard(
+        const html = card(
             withVerdict(output({ url }), rtmpInput),
             withInputVerdict(rtmpInput),
             dups,
@@ -194,7 +199,7 @@ describe('all output warnings share one style', () => {
     test('runtime, then duplicate destination, then audio mistakes, each on its own line', () => {
         const url = 'rtmp://a.example/live/key';
         const dups = new Map([[url, [{ pipelineName: 'Other', outputName: 'YT' }]]]);
-        const html = renderOutputCard(
+        const html = card(
             withVerdict(
                 output({ url, warningReason: 'High memory usage', audioEncoding: '1' }),
                 rtmpInput,
@@ -224,7 +229,7 @@ describe('all output warnings share one style', () => {
     });
 
     test('the status dot lists the warnings, not the tips', () => {
-        const dotTip = (html) =>
+        const dotTip = (html: string) =>
             html.match(
                 /aria-label="status"[\s\S]*?js-tooltip-content hidden">([\s\S]*?)<\/div><\/span>/,
             )?.[1];
@@ -233,7 +238,7 @@ describe('all output warnings share one style', () => {
             undefined,
             'a tip gives the dot no text',
         );
-        assert.match(dotTip(render({ audioEncoding: '1' })), /only has one audio track/);
+        assert.match(dotTip(render({ audioEncoding: '1' })) ?? '', /only has one audio track/);
     });
 
     test('an output with no warnings is not tinted', () => {
@@ -314,7 +319,7 @@ describe('error line', () => {
 });
 
 describe('card tint follows the most severe problem', () => {
-    const tintOf = (html) => {
+    const tintOf = (html: string) => {
         const dot =
             /data-output-card="[^"]*" style="background:color-mix\(in oklab, var\(--dot-(bad|warn)\)/.exec(
                 html,

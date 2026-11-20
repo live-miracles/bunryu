@@ -1,24 +1,53 @@
-import { describe, test } from 'node:test';
+import { describe, test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createResourceUsage } from '../src/services/resourceUsage';
+import {
+    createResourceUsage,
+    type ResourceUsageOptions,
+    type ResourceUsageReaders,
+} from '../src/services/resourceUsage';
+import type { DiskUsage, HostMemory, NetCounters } from '../src/utils/procStats';
 
-const flush = () => new Promise((resolve) => setImmediate(resolve));
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 // One core's cumulative times; `busy` and `idle` are what it has spent so far.
-const cores = (...perCore) =>
+const cores = (...perCore: [busy: number, idle: number][]) =>
     perCore.map(([busy, idle]) => ({ user: busy, nice: 0, sys: 0, idle, irq: 0 }));
 
-const disk = (device, total, available) => ({
+const disk = (device: number, total: number, available: number): DiskUsage => ({
     device,
     totalBytes: total,
     availableBytes: available,
 });
 
-// Readers that answer from `world`, a plain object the test changes between ticks.
-function setup(t, world = {}, options = {}) {
+// What the fake readers answer with; the test changes it between ticks.
+interface World {
+    cpu: Record<string, number>[];
+    totalMemory: number;
+    freeMemory: number;
+    hostMemory: HostMemory | null;
+    // Keyed by directory.
+    disks: Record<string, DiskUsage | null>;
+    dataDir: string | null;
+    net: NetCounters | null;
+    // Keyed by process id.
+    rss: Record<number, number>;
+    cpuByPid: Record<number, number | null>;
+    srs: () => Promise<unknown>;
+    relayPid: number | null;
+}
+
+// Readers that answer from `world`.
+function setup(
+    t: TestContext,
+    world: Partial<World> = {},
+    options: {
+        readers?: Partial<ResourceUsageReaders>;
+        resourceUsage?: Partial<ResourceUsageOptions>;
+    } = {},
+) {
     t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 1_000_000 });
-    const w = {
+    const w: World = {
         cpu: cores([0, 0]),
         totalMemory: 8000,
         freeMemory: 1000,
@@ -57,7 +86,7 @@ function setup(t, world = {}, options = {}) {
     t.after(() => resourceUsage.stop());
     // Advances in one-second steps: one big tick would run every due timer with the clock
     // already at the end, giving all the samples one timestamp.
-    const tick = (ms) => {
+    const tick = (ms: number) => {
         for (let left = ms; left > 0; left -= 1000) t.mock.timers.tick(Math.min(1000, left));
     };
     return { w, resourceUsage, tick };
@@ -207,9 +236,9 @@ describe('disk', () => {
         resourceUsage.start();
         w.disks = { '/': disk(1, 1000, 100) };
         tick(29_000);
-        assert.equal(resourceUsage.system().disk.usedBytes, 500);
+        assert.equal(resourceUsage.system().disk?.usedBytes, 500);
         tick(1000);
-        assert.equal(resourceUsage.system().disk.usedBytes, 900);
+        assert.equal(resourceUsage.system().disk?.usedBytes, 900);
     });
 });
 
@@ -255,8 +284,10 @@ describe('history', () => {
         tick(5000 * 1500);
         const history = resourceUsage.history();
         assert.equal(history.length, 1440);
-        assert.equal(history.at(-1).ts, 1_000_000 + 5000 * 1500);
-        assert.equal(history[0].ts, history.at(-1).ts - 5000 * 1439);
+        const last = history.at(-1);
+        assert.ok(last);
+        assert.equal(last.ts, 1_000_000 + 5000 * 1500);
+        assert.equal(history[0].ts, last.ts - 5000 * 1439);
     });
 
     test('hands out a copy, so a caller cannot change what is kept', (t) => {
@@ -306,6 +337,7 @@ describe('process usage', () => {
         resourceUsage.start();
         await flush();
         const { srs } = resourceUsage.system();
+        assert.ok(srs.cpuPercent !== null);
         assert.ok(Math.abs(srs.cpuPercent - 5.5) < 0.001);
         assert.equal(srs.ramBytes, 20000 * 1024);
     });

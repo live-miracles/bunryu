@@ -10,9 +10,26 @@ import {
     localSrtTargetResource,
     localSrtTargets,
     relayAdmission,
+    type PipelineReadings,
 } from '../src/utils/pipelineHealth';
+import type { KeyframeResult, ProbeStatus } from '../src/services/probeScheduler';
+import type { ProbeResult } from '../src/services/mediaProbe';
+import type {
+    SrtRelayInputStatus,
+    SrtRelayLegStatus,
+    SrtRelayOutputStatus,
+    SrtRelayStreamStatus,
+} from '../src/services/srtRelay';
+import type { SrtRecentStats } from '../src/utils/srtRecent';
+import type { SrsClient, SrsStream, SrsStreamAudio, SrsStreamVideo } from '../src/utils/srs';
+import type { Output } from '../src/types';
 
 const SRT_PORT = 10080;
+
+// The cases set only the fields they read of SRS's and the probe's larger records; this
+// gives such a partial record its type, in one place.
+const fake = <T>(fields: Partial<T>) => fields as T;
+const srtStream = () => fake<SrsStream>({ tcUrl: 'srt://127.0.0.1:10080' });
 
 describe('isLoopbackIp', () => {
     test('accepts IPv4 and IPv6 loopback forms', () => {
@@ -31,7 +48,7 @@ describe('isLoopbackIp', () => {
 });
 
 describe('localSrtTargetResource', () => {
-    const resource = (url) => localSrtTargetResource(url, SRT_PORT);
+    const resource = (url: string) => localSrtTargetResource(url, SRT_PORT);
 
     test('names the stream a local SRS SRT destination publishes into', () => {
         assert.equal(
@@ -57,14 +74,20 @@ describe('localSrtTargetResource', () => {
 });
 
 describe('localSrtTargets and hasLocalSrtConflict', () => {
-    const out = (id, pipelineId, key, over = {}) => ({
+    type TargetOutput = Pick<Output, 'id' | 'pipelineId' | 'desiredState' | 'url'>;
+    const out = (
+        id: string,
+        pipelineId: number,
+        key: string,
+        over: Partial<TargetOutput> = {},
+    ): TargetOutput => ({
         id,
         pipelineId,
         desiredState: 'running',
         url: `srt://127.0.0.1:${SRT_PORT}?streamid=#!::r=live/${key},m=publish`,
         ...over,
     });
-    const build = (outputs, isRunning = () => true, srtPort = () => SRT_PORT) =>
+    const build = (outputs: TargetOutput[], isRunning = () => true, srtPort = () => SRT_PORT) =>
         localSrtTargets(outputs, isRunning, srtPort);
 
     test("another pipeline's running output into this key is a conflict", () => {
@@ -99,7 +122,7 @@ describe('localSrtTargets and hasLocalSrtConflict', () => {
             out('2-2', 2, 'key01'),
             out('1-1', 1, 'key01'),
         ]);
-        assert.deepEqual([...index.get('live/key01')].sort(), [1, 2]);
+        assert.deepEqual([...(index.get('live/key01') ?? [])].sort(), [1, 2]);
         assert.equal(hasLocalSrtConflict(index, 1, 'key01'), true);
         assert.equal(hasLocalSrtConflict(index, 2, 'key01'), true);
     });
@@ -134,8 +157,8 @@ describe('localSrtTargets and hasLocalSrtConflict', () => {
 });
 
 describe('relayAdmission', () => {
-    const relayClient = { id: 'c1', ip: '127.0.0.1', type: 'srt-publish' };
-    const admit = (over = {}) =>
+    const relayClient: SrsClient = { id: 'c1', ip: '127.0.0.1', type: 'srt-publish' };
+    const admit = (over: Partial<Parameters<typeof relayAdmission>[0]> = {}) =>
         relayAdmission({
             srtStream: true,
             clientsKnown: true,
@@ -183,24 +206,26 @@ describe('relayAdmission', () => {
 });
 
 describe('what the dashboard shows of the media', () => {
-    const probed = {
+    const probed = fake<ProbeStatus>({
         ok: true,
-        result: {
-            video: { codec: 'h264', width: 1920, height: 1080 },
+        result: fake<ProbeResult>({
+            video: fake<SrsStreamVideo>({ codec: 'h264', width: 1920, height: 1080 }),
             audio: null,
             audioTracks: [],
-        },
-    };
-    const stream = { video: { codec: 'h264', width: 1280, height: 720 } };
+        }),
+    });
+    const stream = fake<SrsStream>({
+        video: fake<SrsStreamVideo>({ codec: 'h264', width: 1280, height: 720 }),
+    });
 
     test('a successful probe wins over what SRS reports', () => {
         const media = displayedMedia(probed, stream);
         assert.equal(media.probed, probed.result);
-        assert.equal(media.video.width, 1920);
+        assert.equal(media.video?.width, 1920);
     });
 
     test('a failed or missing probe falls back to SRS, then to nothing', () => {
-        assert.deepEqual(displayedMedia({ ok: false, result: null }, stream), {
+        assert.deepEqual(displayedMedia(fake<ProbeStatus>({ ok: false, result: null }), stream), {
             probed: null,
             video: stream.video,
         });
@@ -208,16 +233,16 @@ describe('what the dashboard shows of the media', () => {
     });
 
     test('a stream is an SRT stream only while live and published over SRT', () => {
-        const srt = { tcUrl: 'srt://127.0.0.1:10080' };
+        const srt = srtStream();
         assert.equal(isSrtStream(true, srt), true);
         assert.equal(isSrtStream(false, srt), false);
-        assert.equal(isSrtStream(true, { tcUrl: 'rtmp://x/live' }), false);
+        assert.equal(isSrtStream(true, fake<SrsStream>({ tcUrl: 'rtmp://x/live' })), false);
         assert.equal(isSrtStream(true, undefined), false);
     });
 });
 
 describe('buildPipelineHealth', () => {
-    const rawRelay = (over = {}) => ({
+    const rawRelay = (over: Partial<SrtRelayStreamStatus> = {}): SrtRelayStreamStatus => ({
         inputActive: false,
         outputConnected: false,
         retryFailures: 0,
@@ -227,12 +252,17 @@ describe('buildPipelineHealth', () => {
         lastInputPacketAt: null,
         lastError: null,
         lastErrorAt: null,
-        input: { bonded: false, peer: null, legs: [] },
-        output: { connected: false },
+        input: fake<SrtRelayInputStatus>({ bonded: false, peer: null, legs: [] }),
+        output: fake<SrtRelayOutputStatus>({}),
         ...over,
     });
-    const recent = (over = {}) => ({ input: null, output: null, legs: new Map(), ...over });
-    const readings = (over = {}) => ({
+    const recent = (over: Partial<SrtRecentStats> = {}): SrtRecentStats => ({
+        input: null,
+        output: null,
+        legs: new Map(),
+        ...over,
+    });
+    const readings = (over: Partial<PipelineReadings> = {}): PipelineReadings => ({
         stream: undefined,
         publisher: undefined,
         clientsKnown: true,
@@ -264,13 +294,13 @@ describe('buildPipelineHealth', () => {
     });
 
     test('a live RTMP input carries its stream figures, probe and publisher', () => {
-        const stream = {
+        const stream = fake<SrsStream>({
             clients: 3,
             kbps: { recv_30s: 4000, send_30s: 8000 },
-            video: { codec: 'h264', width: 1280, height: 720 },
-            audio: { codec: 'aac' },
-        };
-        const keyframes = { checkedAt: 1 };
+            video: fake<SrsStreamVideo>({ codec: 'h264', width: 1280, height: 720 }),
+            audio: fake<SrsStreamAudio>({ codec: 'aac' }),
+        });
+        const keyframes = fake<KeyframeResult>({ checkedAt: 1 });
         const { input } = buildPipelineHealth(
             readings({
                 stream,
@@ -279,7 +309,13 @@ describe('buildPipelineHealth', () => {
                 connected: true,
                 protocol: 'rtmp',
                 probe: {
-                    status: { ok: true, startedAt: 10, checkedAt: 20, error: null, result: null },
+                    status: fake<ProbeStatus>({
+                        ok: true,
+                        startedAt: 10,
+                        checkedAt: 20,
+                        error: null,
+                        result: null,
+                    }),
                     inFlightSince: null,
                     keyframes,
                 },
@@ -296,7 +332,7 @@ describe('buildPipelineHealth', () => {
         assert.equal(input.mediaProbeStartedAt, 10);
         assert.equal(input.mediaCheckedAt, 20);
         assert.equal(input.keyframes, keyframes);
-        assert.equal(input.video.width, 1280);
+        assert.equal(input.video?.width, 1280);
         assert.deepEqual(input.audio, { codec: 'aac' });
     });
 
@@ -305,7 +341,13 @@ describe('buildPipelineHealth', () => {
             readings({
                 connected: true,
                 probe: {
-                    status: { ok: false, startedAt: 10, checkedAt: 20, error: 'x', result: null },
+                    status: fake<ProbeStatus>({
+                        ok: false,
+                        startedAt: 10,
+                        checkedAt: 20,
+                        error: 'x',
+                        result: null,
+                    }),
                     inFlightSince: 30,
                     keyframes: null,
                 },
@@ -318,7 +360,7 @@ describe('buildPipelineHealth', () => {
 
     test('an SRT input is told by its stream or, while connected, by the protocol', () => {
         const viaStream = buildPipelineHealth(
-            readings({ live: true, connected: true, stream: { tcUrl: 'srt://127.0.0.1:10080' } }),
+            readings({ live: true, connected: true, stream: srtStream() }),
         );
         assert.equal(viaStream.input.isSrt, true);
         const viaProtocol = buildPipelineHealth(readings({ connected: true, protocol: 'srt' }));
@@ -331,7 +373,7 @@ describe('buildPipelineHealth', () => {
         const publisher = { id: 'c1', ip: '127.0.0.1', type: 'srt-publish' };
         const accepted = buildPipelineHealth(
             readings({
-                stream: { tcUrl: 'srt://127.0.0.1:10080' },
+                stream: srtStream(),
                 publisher,
                 live: true,
                 connected: true,
@@ -348,7 +390,7 @@ describe('buildPipelineHealth', () => {
 
         const conflict = buildPipelineHealth(
             readings({
-                stream: { tcUrl: 'srt://127.0.0.1:10080' },
+                stream: srtStream(),
                 publisher,
                 live: true,
                 connected: true,
@@ -363,8 +405,8 @@ describe('buildPipelineHealth', () => {
 
     test("a leg's health is looked up by ip:port and its recent counters by ip", () => {
         const legs = [
-            { ip: '203.0.113.1', port: 4001, state: 'running' },
-            { ip: '203.0.113.2', port: 4002, state: 'running' },
+            fake<SrtRelayLegStatus>({ ip: '203.0.113.1', port: 4001, state: 'running' }),
+            fake<SrtRelayLegStatus>({ ip: '203.0.113.2', port: 4002, state: 'running' }),
         ];
         const legRecent = { spanMs: 60000, packets: 10, loss: 1, retrans: 0, drop: 0 };
         const { srtBonding } = buildPipelineHealth(
@@ -372,7 +414,7 @@ describe('buildPipelineHealth', () => {
                 relay: {
                     status: rawRelay({
                         inputActive: true,
-                        input: { bonded: true, peer: null, legs },
+                        input: fake<SrtRelayInputStatus>({ bonded: true, peer: null, legs }),
                     }),
                     expectedLegs: 2,
                     legHealth: new Map([

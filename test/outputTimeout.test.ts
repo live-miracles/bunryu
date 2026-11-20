@@ -20,32 +20,35 @@ const SOURCE = 'testsrc=size=64x64:rate=5';
 // The real timeout is 10 s; the mechanism is the same at 2 s and the test stays quick.
 const TEST_TIMEOUT_US = 2_000_000;
 
-const servers = [];
+const servers: net.Server[] = [];
 after(() => {
     for (const s of servers) s.close();
 });
 
 function silentServer() {
-    return new Promise((resolve) => {
-        const sockets = [];
+    return new Promise<number>((resolve) => {
+        const sockets: net.Socket[] = [];
         const server = net.createServer((socket) => {
             sockets.push(socket); // accept, then say nothing
             socket.on('error', () => {});
         });
         server.listen(0, '127.0.0.1', () => {
             const close = server.close.bind(server);
-            server.close = () => {
+            server.close = (callback?: (err?: Error) => void) => {
                 sockets.forEach((s) => s.destroy());
-                close();
+                return close(callback);
             };
             servers.push(server);
-            resolve(server.address().port);
+            resolve((server.address() as net.AddressInfo).port);
         });
     });
 }
 
 // The args Bunryu builds for a copy output, reading a test pattern instead of SRS.
-function bunryuArgs(url, { outputTimeoutUs = TEST_TIMEOUT_US } = {}) {
+function bunryuArgs(
+    url: string,
+    { outputTimeoutUs = TEST_TIMEOUT_US }: { outputTimeoutUs?: number | null } = {},
+) {
     const args = buildFfmpegArgs(SOURCE, url, 'copy');
     const at = args.lastIndexOf('-rw_timeout');
     assert.equal(at, args.length - 3, 'the output timeout is expected right before the url');
@@ -60,11 +63,18 @@ function bunryuArgs(url, { outputTimeoutUs = TEST_TIMEOUT_US } = {}) {
 
 // Resolves with how ffmpeg ended, or { stillRunning: true } if it was still going
 // after waitMs (then it is killed).
-function runFfmpeg(args, waitMs) {
-    return new Promise((resolve) => {
+interface FfmpegEnd {
+    stillRunning?: boolean;
+    code?: number | null;
+    ms: number;
+    stderr?: string;
+}
+
+function runFfmpeg(args: string[], waitMs: number) {
+    return new Promise<FfmpegEnd>((resolve) => {
         const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
         let stderr = '';
-        p.stderr.on('data', (d) => (stderr += d));
+        p.stderr.on('data', (d: Buffer) => (stderr += d));
         const startedAt = Date.now();
         let killedByTest = false;
         p.on('close', (code) => {
@@ -88,7 +98,7 @@ describe('output write timeout, real ffmpeg', { skip }, () => {
             );
             assert.ok(!result.stillRunning, 'ffmpeg must give up by itself');
             assert.notEqual(result.code, 0);
-            assert.match(result.stderr, /timed out/i);
+            assert.match(result.stderr ?? '', /timed out/i);
             assert.ok(result.ms >= 1500, `gave up too early (${result.ms} ms)`);
             assert.ok(result.ms < 9000, `took too long (${result.ms} ms)`);
         });

@@ -1,8 +1,12 @@
 import { describe, test } from 'node:test';
+import type { TestContext } from 'node:test';
+import type { ChildProcess } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { KeyframeStats, ProbeResult } from '../src/services/mediaProbe';
+import type { ProbeSchedulerDeps } from '../src/services/probeScheduler';
 
 // mediaProbe reads the ffprobe path from bunryu.json when it is loaded.
 const originalCwd = process.cwd();
@@ -23,6 +27,15 @@ const { createProbeScheduler } =
     require('../src/services/probeScheduler') as typeof import('../src/services/probeScheduler');
 process.chdir(originalCwd);
 
+// A probe result with only the fields these tests read, and what a runner finishes with.
+type ProbeFixture = Omit<ProbeResult, 'video'> & {
+    video: { codec: string; width: number; height: number } | null;
+};
+type KeyframeFixture = Pick<
+    KeyframeStats,
+    'windowSec' | 'spanSec' | 'keyframes' | 'meanGapSec' | 'maxGapSec'
+>;
+
 const USABLE = {
     video: { codec: 'h264', width: 1920, height: 1080 },
     audio: null,
@@ -32,11 +45,25 @@ const UNUSABLE = { video: null, audio: null, audioTracks: [] };
 const STATS = { windowSec: 12, spanSec: 12, keyframes: 6, meanGapSec: 2, maxGapSec: 2 };
 const SLOW_STATS = { ...STATS, keyframes: 2, meanGapSec: 6, maxGapSec: 6 };
 
-// A scripted ffprobe: every call waits for the test to finish it.
-function makeRunner(kind) {
-    const calls = [];
-    const run = (url, onChild) => {
-        const child = {
+interface FakeChild {
+    exitCode: number | null;
+    signalCode: string | null;
+    killed: (string | undefined)[];
+    kill(signal?: string): void;
+}
+interface RunnerCall<Fixture> {
+    kind: string;
+    url: string;
+    child: FakeChild;
+    finish: (result: Fixture | null) => void;
+}
+
+// A scripted ffprobe: every call waits for the test to finish it. The fixture a test
+// finishes with stands in for the runner's real result type.
+function makeRunner<Fixture, Result>(kind: string) {
+    const calls: RunnerCall<Fixture>[] = [];
+    const run = (url: string, onChild?: (child: ChildProcess) => void): Promise<Result | null> => {
+        const child: FakeChild = {
             exitCode: null,
             signalCode: null,
             killed: [],
@@ -44,10 +71,10 @@ function makeRunner(kind) {
                 this.killed.push(signal);
             },
         };
-        onChild?.(child);
-        let finish;
-        const promise = new Promise((resolve) => {
-            finish = resolve;
+        onChild?.(child as unknown as ChildProcess);
+        let finish: RunnerCall<Fixture>['finish'] = () => {};
+        const promise = new Promise<Result | null>((resolve) => {
+            finish = (fixture) => resolve(fixture as unknown as Result | null);
         });
         calls.push({ kind, url, child, finish });
         return promise;
@@ -55,18 +82,21 @@ function makeRunner(kind) {
     return { run, calls };
 }
 
-function setup(t, { onUsableProbe } = {}) {
+function setup(
+    t: TestContext,
+    { onUsableProbe }: { onUsableProbe?: ProbeSchedulerDeps['onUsableProbe'] } = {},
+) {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
-    const ffprobe = makeRunner('ffprobe');
-    const keyframe = makeRunner('keyframe');
-    const logs = [];
-    const events = [];
-    const usable = [];
+    const ffprobe = makeRunner<ProbeFixture, ProbeResult>('ffprobe');
+    const keyframe = makeRunner<KeyframeFixture, KeyframeStats>('keyframe');
+    const logs: { id: number; event: string; message: string }[] = [];
+    const events: ({ event: string } & Record<string, unknown>)[] = [];
+    const usable: { id: number; result: ProbeResult }[] = [];
     const scheduler = createProbeScheduler({
         db: { appendPipelineLog: (id, event, message) => logs.push({ id, event, message }) },
         diagnostics: {
             event: (event, fields = {}) => events.push({ event, ...fields }),
-            close() {},
+            close: () => Promise.resolve(),
         },
         onUsableProbe: onUsableProbe ?? ((id, result) => usable.push({ id, result })),
         runners: { runFfprobe: ffprobe.run, runKeyframeProbe: keyframe.run },
@@ -93,7 +123,7 @@ describe('probe scheduler', () => {
 
         ffprobe.calls[0].finish(USABLE);
         await settle();
-        assert.equal(scheduler.status(1).ok, true);
+        assert.equal(scheduler.status(1)?.ok, true);
         assert.equal(scheduler.inFlightSince(1), null);
         assert.deepEqual(
             usable.map((u) => u.id),
@@ -117,8 +147,8 @@ describe('probe scheduler', () => {
         await settle();
         ffprobe.calls[0].finish(UNUSABLE);
         await settle();
-        assert.equal(scheduler.status(1).ok, false);
-        assert.equal(scheduler.status(1).failedAttempts, 1);
+        assert.equal(scheduler.status(1)?.ok, false);
+        assert.equal(scheduler.status(1)?.failedAttempts, 1);
         assert.deepEqual(
             logs.map((l) => l.event),
             ['probe_failed'],
@@ -137,7 +167,7 @@ describe('probe scheduler', () => {
         assert.equal(ffprobe.calls.length, 2);
         ffprobe.calls[1].finish(UNUSABLE);
         await settle();
-        assert.equal(scheduler.status(1).failedAttempts, 2);
+        assert.equal(scheduler.status(1)?.failedAttempts, 2);
         assert.equal(logs.length, 1, 'a persistently bad input does not flood the pipeline log');
 
         t.mock.timers.tick(30_000);
@@ -146,7 +176,7 @@ describe('probe scheduler', () => {
         await settle();
         ffprobe.calls[2].finish(USABLE);
         await settle();
-        assert.equal(scheduler.status(1).failedAttempts, 0);
+        assert.equal(scheduler.status(1)?.failedAttempts, 0);
         assert.deepEqual(
             logs.map((l) => l.event),
             ['probe_failed', 'probe_recovered'],
@@ -228,7 +258,7 @@ describe('probe scheduler', () => {
         scheduler.keepOnly(new Set([2]));
 
         assert.equal(scheduler.status(1), null);
-        assert.equal(scheduler.status(2).ok, true);
+        assert.equal(scheduler.status(2)?.ok, true);
     });
 
     test('the keyframe check runs once, 60 s after the first usable probe', async (t) => {
@@ -250,12 +280,12 @@ describe('probe scheduler', () => {
 
         keyframe.calls[0].finish(SLOW_STATS);
         await settle();
-        assert.equal(scheduler.keyframes(1).maxGapSec, 6);
+        assert.equal(scheduler.keyframes(1)?.maxGapSec, 6);
         assert.deepEqual(
             events.map((e) => e.event).filter((e) => e.startsWith('keyframe')),
             ['keyframe-interval'],
         );
-        assert.equal(logs.at(-1).event, 'keyframe_interval');
+        assert.equal(logs.at(-1)?.event, 'keyframe_interval');
 
         scheduler.ensure(1, 'key01', 'srt', 0);
         assert.equal(keyframe.calls.length, 1, 'never re-measured for the same publisher');
@@ -352,7 +382,7 @@ describe('probe scheduler', () => {
         ffprobe.calls[0].finish(USABLE);
         await settle();
         const first = scheduler.status(1);
-        assert.equal(first.ok, true);
+        assert.equal(first?.ok, true);
 
         t.mock.timers.tick(5_000);
         assert.equal(scheduler.reprobe(1, 'key01', 'rtmp'), true);
@@ -364,8 +394,8 @@ describe('probe scheduler', () => {
 
         ffprobe.calls[1].finish({ ...USABLE, video: { codec: 'h264', width: 1280, height: 720 } });
         await settle();
-        assert.equal(scheduler.status(1).result.video.width, 1280);
-        assert.equal(scheduler.status(1).checkedAt, 1_005_600);
+        assert.equal(scheduler.status(1)?.result?.video?.width, 1280);
+        assert.equal(scheduler.status(1)?.checkedAt, 1_005_600);
         assert.equal(usable.length, 2, 'the new result goes through the usable-probe callback');
         assert.deepEqual(
             events.filter((e) => e.event === 'media-probe-requested'),
@@ -405,8 +435,8 @@ describe('probe scheduler', () => {
         await settle();
         ffprobe.calls[1].finish(UNUSABLE);
         await settle();
-        assert.equal(scheduler.status(1).ok, false);
-        assert.equal(scheduler.status(1).failedAttempts, 1);
+        assert.equal(scheduler.status(1)?.ok, false);
+        assert.equal(scheduler.status(1)?.failedAttempts, 1);
         assert.deepEqual(
             logs.map((l) => l.event),
             ['probe_failed'],
@@ -433,7 +463,7 @@ describe('probe scheduler', () => {
         ffprobe.calls[0].finish(USABLE);
         await settle();
 
-        assert.equal(scheduler.status(1).ok, true);
+        assert.equal(scheduler.status(1)?.ok, true);
         assert.equal(scheduler.inFlightSince(1), null, 'the in-flight marker is released');
     });
 });

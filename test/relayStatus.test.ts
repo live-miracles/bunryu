@@ -6,40 +6,58 @@ import {
     relayHealth,
     relayIssueList,
 } from '../public/ts/core/relay-status';
+import type {
+    PipelineAlert,
+    PipelineView,
+    SrtBondingInputStatus,
+    SrtBondingLeg,
+    SrtBondingStatus,
+} from '../public/ts/types';
 
 const NOW = 1_000_000;
 const FRESH = NOW - 1000;
 const STALE = NOW - 16_000;
 
-const leg = (over = {}) => ({
-    ip: '203.0.113.10',
-    state: 'running',
-    health: 'ok',
-    healthReason: null,
-    ...over,
-});
+// The fakes below carry only the fields relay-status reads, so each factory holds the one
+// cast to the real type. A leg's `state` is a plain string here because one test checks that
+// a state nobody knows reads as WARN.
+type LegOverride = Omit<Partial<SrtBondingLeg>, 'state'> & { state?: string };
+
+const leg = (over: LegOverride = {}) =>
+    ({
+        ip: '203.0.113.10',
+        state: 'running',
+        health: 'ok',
+        healthReason: null,
+        ...over,
+    }) as SrtBondingLeg;
 
 // A healthy, plain (not bonded) relay input forwarding into SRS.
-const pipeline = (over = {}, input = {}) => ({
-    alerts: [],
-    srtBonding: {
-        inputActive: true,
-        outputConnected: true,
-        acceptedBySrs: true,
-        publishConflict: false,
-        localSrtPublisherConflict: false,
-        retryFailures: 0,
-        forwardedPackets: 500,
-        lastPacketAt: FRESH,
-        lastInputPacketAt: FRESH,
-        lastError: null,
-        input: { bonded: false, expectedLegs: 1, legs: [leg()], ...input },
-        ...over,
-    },
-});
+const pipeline = (
+    over: Partial<SrtBondingStatus> = {},
+    input: Partial<SrtBondingInputStatus> = {},
+): PipelineView =>
+    ({
+        alerts: [],
+        srtBonding: {
+            inputActive: true,
+            outputConnected: true,
+            acceptedBySrs: true,
+            publishConflict: false,
+            localSrtPublisherConflict: false,
+            retryFailures: 0,
+            forwardedPackets: 500,
+            lastPacketAt: FRESH,
+            lastInputPacketAt: FRESH,
+            lastError: null,
+            input: { bonded: false, expectedLegs: 1, legs: [leg()], ...input },
+            ...over,
+        },
+    }) as unknown as PipelineView;
 
-const health = (p, running = true) => relayHealth(p, running, NOW);
-const messages = (h, side) => h.issues.filter((i) => i.side === side).map((i) => i.issue.message);
+const health = (p: PipelineView, running = true) => relayHealth(p, running, NOW);
+const messages = (h: ReturnType<typeof health>, side: string) =>
+    h.issues.filter((i) => i.side === side).map((i) => i.issue.message);
 
 describe('relayHealth', () => {
     test('a plain input that is flowing is good on both sides, with no issues', () => {
@@ -175,7 +193,7 @@ describe('relayHealth', () => {
     });
 
     describe('server alerts', () => {
-        const alert = (code, over = {}) => ({
+        const alert = (code: string, over: Partial<PipelineAlert> = {}): PipelineAlert => ({
             code,
             severity: 'warning',
             message: `${code} happened`,
@@ -203,7 +221,14 @@ describe('relayHealth', () => {
 describe('relayIssueList', () => {
     test('tags each reason with its side and leaves server alerts as they are', () => {
         const p = pipeline({ lastPacketAt: STALE, lastInputPacketAt: STALE }, {});
-        p.alerts = [{ code: 'srt-link-unstable', severity: 'warning', message: 'unstable' }];
+        // No sinceMs on purpose: the list passes a server alert through as it came.
+        p.alerts = [
+            {
+                code: 'srt-link-unstable',
+                severity: 'warning',
+                message: 'unstable',
+            } as PipelineAlert,
+        ];
         const list = relayIssueList(health(p));
         assert.deepEqual(
             list.map((i) => i.message),

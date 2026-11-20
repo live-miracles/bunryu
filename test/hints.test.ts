@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { alertHint, errorHint } from '../public/ts/core/hints';
 
 describe('errorHint', () => {
-    const cases = [
+    const cases: [string, RegExp][] = [
         ['rtmp://a.example/live/key: Connection refused', /refused the connection/i],
         ['tcp://a.example:1935: Operation timed out', /did not answer/i],
         ['Failed to resolve hostname a.example: Name or service not known', /host name/i],
@@ -32,7 +32,7 @@ describe('errorHint', () => {
     ];
     for (const [message, expected] of cases) {
         test(`explains "${message.slice(0, 40)}"`, () => {
-            assert.match(errorHint(message), expected);
+            assert.match(errorHint(message) ?? '', expected);
         });
     }
 
@@ -43,7 +43,7 @@ describe('errorHint', () => {
     });
 
     test('matches case-insensitively and across a multi-line stderr tail', () => {
-        assert.match(errorHint('exit=1\nlibrtmp\nCONNECTION REFUSED'), /refused/i);
+        assert.match(errorHint('exit=1\nlibrtmp\nCONNECTION REFUSED') ?? '', /refused/i);
     });
 });
 

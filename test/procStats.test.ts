@@ -21,7 +21,7 @@ import {
 // Builds a minimal /proc/<pid>/stat line. `comm` may contain spaces/parens to
 // exercise the lastIndexOf(')') split. utime/stime land at the 14th/15th
 // overall fields (fields[11]/fields[12] after slicing past the comm).
-function fakeStatLine(pid, comm, utime, stime) {
+function fakeStatLine(pid: number, comm: string, utime: number, stime: number) {
     const fields = ['S', '1', '1', '1', '0', '-1', '0', '0', '0', '0', '0', utime, stime];
     return `${pid} (${comm}) ${fields.join(' ')}`;
 }
@@ -86,7 +86,7 @@ describe('findPidsByExecutable', () => {
 
     test('ignores non-numeric /proc entries', (t) => {
         t.mock.method(fs, 'readdirSync', () => ['self', 'cpuinfo', '42']);
-        t.mock.method(fs, 'readFileSync', (p) => {
+        t.mock.method(fs, 'readFileSync', (p: unknown) => {
             if (String(p) === '/proc/42/cmdline') return '/usr/bin/ffmpeg\0-i\0in\0';
             throw new Error('should not read this path: ' + p);
         });
@@ -95,7 +95,7 @@ describe('findPidsByExecutable', () => {
 
     test('requires an exact argv[0] match, not a prefix/suffix match', (t) => {
         t.mock.method(fs, 'readdirSync', () => ['1', '2']);
-        t.mock.method(fs, 'readFileSync', (p) => {
+        t.mock.method(fs, 'readFileSync', (p: unknown) => {
             if (String(p) === '/proc/1/cmdline') return '/usr/bin/ffmpeg-old\0';
             if (String(p) === '/proc/2/cmdline') return '/usr/bin/ffmpeg\0';
             throw new Error('unexpected path');
@@ -105,7 +105,7 @@ describe('findPidsByExecutable', () => {
 
     test('skips a pid whose cmdline disappears mid-scan without throwing', (t) => {
         t.mock.method(fs, 'readdirSync', () => ['1', '2']);
-        t.mock.method(fs, 'readFileSync', (p) => {
+        t.mock.method(fs, 'readFileSync', (p: unknown) => {
             if (String(p) === '/proc/1/cmdline') throw new Error('ENOENT: exited mid-scan');
             if (String(p) === '/proc/2/cmdline') return '/usr/bin/ffmpeg\0';
             throw new Error('unexpected path');
@@ -141,7 +141,7 @@ describe('findPidsByExecutable', () => {
 
     test('returns every matching pid, in /proc listing order', (t) => {
         t.mock.method(fs, 'readdirSync', () => ['10', '20', '30']);
-        t.mock.method(fs, 'readFileSync', (p) => {
+        t.mock.method(fs, 'readFileSync', (p: unknown) => {
             const pid = String(p).split('/')[2];
             return pid === '20' ? '/other/bin\0' : '/usr/bin/ffmpeg\0';
         });
@@ -220,8 +220,8 @@ describe('createProcCpuTracker', () => {
     });
 
     test('returns null when the process disappears, and forgets it (next reappearance is a fresh baseline)', (t) => {
-        let readImpl = () => fakeStatLine(1, 'ffmpeg', 100, 50);
-        t.mock.method(fs, 'readFileSync', (...args) => readImpl(...args));
+        let readImpl: (...args: unknown[]) => string = () => fakeStatLine(1, 'ffmpeg', 100, 50);
+        t.mock.method(fs, 'readFileSync', (...args: unknown[]) => readImpl(...args));
         const tracker = createProcCpuTracker();
         tracker.sample('out1', 1);
 
@@ -248,7 +248,7 @@ describe('createProcCpuTracker', () => {
     test('tracks multiple keys independently', (t) => {
         let now = 1_000_000;
         t.mock.method(Date, 'now', () => now);
-        t.mock.method(fs, 'readFileSync', (p) =>
+        t.mock.method(fs, 'readFileSync', (p: unknown) =>
             String(p).includes('/1/') ? fakeStatLine(1, 'a', 100, 0) : fakeStatLine(2, 'b', 500, 0),
         );
         const tracker = createProcCpuTracker();
@@ -256,7 +256,7 @@ describe('createProcCpuTracker', () => {
         tracker.sample('b', 2);
 
         now += 1000;
-        t.mock.method(fs, 'readFileSync', (p) =>
+        t.mock.method(fs, 'readFileSync', (p: unknown) =>
             String(p).includes('/1/') ? fakeStatLine(1, 'a', 200, 0) : fakeStatLine(2, 'b', 600, 0),
         );
         assert.equal(tracker.sample('a', 1), 100);
@@ -291,7 +291,7 @@ describe('createProcCpuTracker', () => {
 
 describe('readUdpBufferCeilings', () => {
     test('reads rmem_max and wmem_max', (t) => {
-        t.mock.method(fs, 'readFileSync', (file) =>
+        t.mock.method(fs, 'readFileSync', (file: unknown) =>
             String(file).endsWith('/rmem_max') ? '16777216\n' : '212992\n',
         );
         assert.deepEqual(readUdpBufferCeilings(), {
@@ -301,7 +301,7 @@ describe('readUdpBufferCeilings', () => {
     });
 
     test('reports null for a value that is unreadable or not a number', (t) => {
-        t.mock.method(fs, 'readFileSync', (file) => {
+        t.mock.method(fs, 'readFileSync', (file: unknown) => {
             if (String(file).endsWith('/rmem_max')) throw new Error('ENOENT');
             return 'garbage\n';
         });
@@ -335,9 +335,9 @@ describe('readUdpStats', () => {
     const header =
         '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops\n';
     const files =
-        (overrides = {}) =>
-        (file) => {
-            const content = {
+        (overrides: Record<string, string | undefined> = {}) =>
+        (file: unknown) => {
+            const contents: Record<string, string | undefined> = {
                 '/proc/net/snmp':
                     'Ip: Forwarding\nIp: 1\n' +
                     'Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors\n' +
@@ -350,7 +350,8 @@ describe('readUdpStats', () => {
                     header +
                     '  14: 00000000000000000000000000000000:2761 00000000000000000000000000000000:0000 07 00000000:00000010 00:00000000 00000000  1000 0 3 2 0000000000000000 2\n',
                 ...overrides,
-            }[file];
+            };
+            const content = contents[String(file)];
             if (content === undefined) throw new Error(`ENOENT ${file}`);
             return content;
         };
@@ -397,7 +398,7 @@ describe('readHostMemory', () => {
 
     test('treats a box with no swap as zero swap used', (t) => {
         t.mock.method(fs, 'readFileSync', () => 'MemTotal: 1000 kB\nMemAvailable: 500 kB\n');
-        assert.equal(readHostMemory().swapUsedBytes, 0);
+        assert.equal(readHostMemory()?.swapUsedBytes, 0);
     });
 
     test('returns null when MemAvailable is missing or /proc is unreadable', (t) => {
@@ -434,7 +435,7 @@ describe('readDiskUsage', () => {
 describe('topProcessesByRss', () => {
     test('returns the largest processes first, skipping ones that vanish mid-scan', (t) => {
         t.mock.method(fs, 'readdirSync', () => ['1', '20', '30', '40', 'self', 'cpuinfo']);
-        t.mock.method(fs, 'readFileSync', (file) => {
+        t.mock.method(fs, 'readFileSync', (file: unknown) => {
             if (file === '/proc/1/status') return 'Name:\tsystemd\nVmRSS:\t 10000 kB\n';
             if (file === '/proc/20/status') return 'Name:\tnode\nVmRSS:\t 140000 kB\n';
             if (file === '/proc/30/status') return 'Name:\tkthreadd\nState:\tS\n'; // no VmRSS
@@ -456,8 +457,9 @@ describe('topProcessesByRss', () => {
 });
 
 describe('watchedFilesystems', () => {
-    const disk = (device) => ({ device, totalBytes: 100, availableBytes: 50 });
-    const reading = (byDir) => (dir) => byDir[dir] ?? null;
+    const disk = (device: number) => ({ device, totalBytes: 100, availableBytes: 50 });
+    const reading = (byDir: Record<string, ReturnType<typeof disk>>) => (dir: string) =>
+        byDir[dir] ?? null;
 
     test('is the data directory’s filesystem and the root’s, data first', () => {
         const found = watchedFilesystems('/data', reading({ '/data': disk(2), '/': disk(1) }));
