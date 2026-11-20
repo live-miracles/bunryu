@@ -1028,8 +1028,9 @@
             </div>
 
             <!-- Key Vault: where the status of every output is reported once a minute. Its own form, so
-                 Chrome does not pair the secret (a password field) with the form-less text inputs elsewhere
-                 on the page, such as the outputs filter, and offer saved passwords there. -->
+                 Chrome does not pair the secret with the form-less text inputs elsewhere on the page. The
+                 secret is a text box masked by CSS, not a password field: Chrome ignores autocomplete="off"
+                 on a password field and fills it (and the Link before it) with a saved login. -->
             <form class="border-base-content/10 space-y-2 border-t pt-3" autocomplete="off" onsubmit="return false;">
               <div>
                 <p class="text-sm font-medium">Key Vault</p>
@@ -1054,10 +1055,13 @@
                   <legend class="fieldset-legend">Secret</legend>
                   <div class="relative">
                     <input
-                      type="password"
+                      type="text"
                       id="settings-key-vault-secret-input"
                       autocomplete="off"
-                      class="input w-full pr-10 font-mono text-sm"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      data-mask
+                      class="input secret-mask w-full pr-10 font-mono text-sm"
                       oninput="this.classList.remove('input-error')" />
                     <button
                       type="button"
@@ -1357,8 +1361,15 @@
     <script>
       function togglePwVisibility(inputId, btn) {
         const input = document.getElementById(inputId);
-        const show = input.type === 'password';
-        input.type = show ? 'text' : 'password';
+        let show;
+        if (input.hasAttribute('data-mask')) {
+          // A text box masked by CSS (.secret-mask), so Chrome does not take it for a password.
+          show = input.classList.contains('secret-mask');
+          input.classList.toggle('secret-mask', !show);
+        } else {
+          show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+        }
         btn.children[0].classList.toggle('hidden', show);
         btn.children[1].classList.toggle('hidden', !show);
       }

@@ -334,6 +334,12 @@
     }
 
     /* ── Form controls ─────────────────────────────────────── */
+    /* A text box that shows dots, for a secret that is not a login: Chrome would fill a
+       password field with a saved password whatever autocomplete says. */
+    .secret-mask {
+        -webkit-text-security: disc;
+    }
+
     .input,
     .select,
     .textarea {
