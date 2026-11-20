@@ -58,6 +58,12 @@ npm run lint          # ESLint: unhandled promises, dead code
 npm run format:check
 ```
 
+`npm run typecheck` also checks the test files against the types in `src/`
+(`tsconfig.test.json`), so a fake that no longer matches the real interface fails
+there instead of passing quietly. Test files are still JavaScript. The ones listed
+under `exclude` in that file have not been cleaned up yet: after you fix one, remove
+it from the list. A new test file is checked from the start.
+
 `test/malformedInput.test.js` feeds seeded random mutations of `ss` output,
 destination URLs, names, the relay config and the relay `/status` JSON to their
 parsers and asserts they never throw, hang or return a malformed value. A failure

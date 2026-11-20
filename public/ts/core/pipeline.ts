@@ -226,7 +226,7 @@ export function srtPassphraseResetBlock(health: Partial<HealthData>): string | n
         0,
     );
     if (live === 0 && active === 0) return null;
-    const parts = [];
+    const parts: string[] = [];
     if (live > 0) parts.push(`${live} input${live === 1 ? '' : 's'} live`);
     if (active > 0) parts.push(`${active} output${active === 1 ? '' : 's'} not stopped`);
     return `${parts.join(', ')}. Stop them before resetting.`;
