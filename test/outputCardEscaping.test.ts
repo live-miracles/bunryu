@@ -1,0 +1,111 @@
+import { describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { renderOutputCard } from '../public/ts/features/output-card';
+import { state } from '../public/ts/core/state';
+import { withInputVerdict, withVerdict } from './helpers/verdicts';
+
+const output = (url) => ({
+    id: '1-1',
+    name: 'o',
+    desiredState: 'running',
+    status: 'running',
+    videoEncoding: 'copy',
+    audioEncoding: 'copy',
+    failures: 0,
+    lastError: null,
+    lastErrorAt: null,
+    hasErrorHistory: false,
+    warningReason: null,
+    startedAtMs: null,
+    url,
+});
+const input = { connected: false, isSrt: false, audioTracks: [] };
+const deps = { pendingOutputs: new Set() };
+const render = (url) =>
+    renderOutputCard(withVerdict(output(url), input), withInputVerdict(input), new Map(), deps);
+
+describe('output card escaping', () => {
+    test('a destination URL containing markup is shown as text', () => {
+        const html = render('rtmp://<svg onload=a()>');
+
+        assert.ok(!html.includes('<svg onload'), html);
+        assert.ok(html.includes('&lt;svg onload=a()&gt;'));
+    });
+
+    test('a pipeline name shown as a restream sink label is shown as text', () => {
+        state.config = {
+            pipelines: [
+                {
+                    name: '<img src=x onerror=alert(1)>',
+                    rtmpPublishUrlLocal: 'rtmp://localhost:21935/live/key01_x',
+                    srtPublishUrlLocal: 'srt://localhost:10080?x',
+                },
+            ],
+        };
+
+        const html = render('rtmp://localhost:21935/live/key01_x');
+
+        assert.ok(!html.includes('<img'), html);
+        assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
+        state.config = {};
+    });
+
+    test('an output name containing markup is shown as text', () => {
+        const html = renderOutputCard(
+            withVerdict({ ...output('rtmp://h/live/k'), name: '"><script>x()</script>' }, input),
+            withInputVerdict(input),
+            new Map(),
+            deps,
+        );
+
+        assert.ok(!html.includes('<script>'), html);
+    });
+});
+
+describe('output card history button', () => {
+    const history = (over) =>
+        renderOutputCard(
+            withVerdict({ ...output('rtmp://x/y'), hasErrorHistory: true, ...over }, input),
+            withInputVerdict(input),
+            new Map(),
+            deps,
+        );
+    const button = (html) => html.match(/<button[^>]*data-action="error-info"[^>]*>/)[0];
+
+    test('is red while the latest record is a crash', () => {
+        const html = history({ lastError: `${Date.now()}\nexit=1`, lastErrorAt: Date.now() });
+        assert.match(button(html), /text-error/);
+    });
+
+    test('keeps the normal color when the history has no current crash, e.g. after a stop', () => {
+        const html = history({ lastError: null, lastErrorAt: null });
+        assert.ok(button(html).includes('data-action="error-info"'));
+        assert.ok(!/text-error/.test(button(html)));
+    });
+
+    describe('watch link', () => {
+        const renderWatch = (watchUrl) =>
+            renderOutputCard(
+                withVerdict({ ...output('rtmp://h/live/k'), watchUrl }, input),
+                withInputVerdict(input),
+                new Map(),
+                deps,
+            );
+
+        test('an http(s) link is a new-tab link with the URL shown as text', () => {
+            const html = renderWatch('https://www.youtube.com/watch?v=a&b="x"');
+
+            assert.ok(
+                html.includes('href="https://www.youtube.com/watch?v=a&amp;b=&quot;x&quot;"'),
+            );
+            assert.ok(html.includes('target="_blank"'));
+            assert.ok(html.includes('rel="noopener noreferrer"'));
+        });
+
+        test('no link, or one that is not http(s), shows no link', () => {
+            for (const watchUrl of [undefined, '', 'javascript:alert(1)', 'data:text/html,x']) {
+                assert.ok(!renderWatch(watchUrl).includes('target="_blank"'), String(watchUrl));
+            }
+        });
+    });
+});
