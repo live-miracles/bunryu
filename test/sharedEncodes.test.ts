@@ -452,8 +452,9 @@ describe('Shared encodes card', () => {
         assert.match(html, />T2</);
         assert.match(html, /2 outs · 2 reads/);
         assert.match(html, /1m 5s/);
-        // An encode is expected to be busy: a figure shows only when it is off.
-        assert.ok(!/title="(bitrate|CPU|memory)/.test(html), 'a healthy encode has no figures');
+        // An encode always shows its CPU (what it costs); the other figures only when off.
+        assert.match(html, /title="CPU \(% of a core\)"[^>]*>41%?</);
+        assert.ok(!/title="(bitrate|memory)/.test(html), 'a healthy encode has no other figure');
     });
 
     test('shows each figure that is off as its own badge, like an output card', () => {
@@ -465,7 +466,7 @@ describe('Shared encodes card', () => {
         assert.match(html, /badge-warning[^>]*title="bitrate: below 200 kbps">120 kbps</);
         assert.match(html, /title="memory"/);
         assert.match(html, /title="speed \(x realtime\)"/);
-        assert.ok(!/title="CPU/.test(html), 'CPU of a video encode is never flagged');
+        assert.match(html, /title="CPU \(% of a core\)"/);
     });
 
     describe('status dot', () => {

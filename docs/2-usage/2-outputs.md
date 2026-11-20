@@ -113,8 +113,8 @@ encoding unless it is `copy`, and the audio track as `T1`, `T2`, …, where `T1`
 track 0), its uptime, how many outputs use it and how many are reading it now ("2 outs · 1
 read"), its bitrate, CPU and memory (the bitrate only when it is unusual, as on an output
 card), the failure count and **History**, followed by the last error. Like an output card, it
-shows a figure (bitrate, CPU, memory, speed) only when it is off, one badge each; an encode with
-a video encode is expected to be busy, so its CPU is not flagged. The Overview lists every
+shows a figure (bitrate, memory, speed) only when it is off, one badge each, but always its CPU, since an encode is
+what costs it. The Overview lists every
 encode in a **Shared encodes** table under Outputs, with all figures as columns. While an output's encode is not up, the
 output shows a warning ("Waiting for Shared encode …", or "Shared encode failed:
 …"), not an error. The pipeline's "N readers" counts only what reads the input
@@ -206,7 +206,7 @@ stream specification. The tabs and the Outputs search box filter it too (the sea
 pipeline name or the encoding). Its CPU and RAM are part of the Outs column of the usage table
 at the top.
 
-The output card shows status and uptime, and a small badge for each figure that is off, each
+The output card shows status and uptime, and a small badge for each figure that is off (and the CPU of a video encode), each
 with its own tooltip; a healthy output has none (every figure, per output, is in the
 Overview's Outputs table). The badges are:
 
@@ -215,8 +215,8 @@ Overview's Outputs table). The badges are:
   Without an input rate to compare with, only the 200 kbps floor applies. Its tooltip says
   which. A copy output at a few dozen kbps from a multi-Mbps input is sending audio only:
   look at the input's Issues (an interlaced input is one cause).
-- **CPU**, from 50% of a core on an output that copies the video. An output with a video
-  encode is expected to be busy, so its CPU is not flagged.
+- **CPU** (% of a core): always on an output with a video encode, to see what each one costs;
+  on an output that copies the video, only from 50% of a core.
 - **Memory**, from 70% of the output's limit (yellow; red from 90%).
 - **Speed** (media produced per second of wall time, 1.00x is realtime, measured over 30 s
   windows), when below 0.95x in yellow ("0.88x"), or above 1.05x in the normal colour, which

@@ -52,8 +52,17 @@ describe('output badge: only what is abnormal', () => {
         assert.equal(outputMetricsBadge(output({ bitrateKbps: 8200, cpuPercent: 49 }), input), '');
     });
 
-    test('an output with a video encode is not flagged for its CPU', () => {
-        const encoded = output({ videoEncoding: '720p', bitrateKbps: 3000, cpuPercent: 180 });
+    test('an output with a video encode always shows its CPU, whatever it is', () => {
+        for (const cpuPercent of [3, 180]) {
+            const encoded = output({ videoEncoding: '720p', bitrateKbps: 3000, cpuPercent });
+            const html = outputMetricsBadge(encoded, input);
+            assert.match(html, /title="CPU \(% of a core\)"/);
+            assert.ok(!/Mbps/.test(html), 'the encode alone: no bitrate badge');
+        }
+    });
+
+    test('an encode that has not reported its CPU yet shows none', () => {
+        const encoded = output({ videoEncoding: '720p', bitrateKbps: 3000, cpuPercent: null });
         assert.equal(outputMetricsBadge(encoded, input), '');
     });
 

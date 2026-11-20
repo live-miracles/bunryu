@@ -18,8 +18,9 @@ const SPEED_BADGE_HIGH = 1.05;
 // FFmpeg reports an average since the output started, not the current rate.
 const BITRATE_BADGE_LOW = 0.6;
 const BITRATE_BADGE_HIGH = 1.4;
-// A copy output costs 1 to 4% of a core (docs/1-getting-started/4-sizing.md), so CPU is
-// shown only from this much. An output with a video encode is expected to be busy: no CPU.
+// A copy output costs 1 to 4% of a core (docs/1-getting-started/4-sizing.md), so its CPU is
+// shown only from this much. An output with a video encode always shows its CPU: the encode
+// is what the host's CPU goes on, so the operator sees what each one costs.
 const CPU_BADGE_PERCENT = 50;
 
 export const ICON_PENCIL = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
@@ -46,7 +47,8 @@ function formatOutputMemory(output: OutputView): string | null {
 // none and the Overview's Outputs table is where the full set is read. The bitrate shows,
 // in warning colour like the status dot, when it is below the minimum or, for a copy of a
 // live input with a known rate, outside the band around it (see BITRATE_BADGE_LOW); the
-// CPU when a copy output uses CPU_BADGE_PERCENT or more; the memory from the warning
+// CPU always for an output with a video encode, and for a copy output from
+// CPU_BADGE_PERCENT; the memory from the warning
 // level; the speed when off realtime. A shared encode is judged the same way. Empty when
 // nothing is shown.
 export function outputMetricsBadge(output: OutputView, input?: InputHealth): string {
@@ -84,8 +86,8 @@ export function outputMetricsBadge(output: OutputView, input?: InputHealth): str
     const bitrateLabel = bitrateLow
         ? `bitrate: below ${LOW_BITRATE_KBPS} kbps`
         : `bitrate: input is ${formatBitrate(expected)}`;
-    const cpuOff =
-        output.cpuPercent !== null && copiesVideo && output.cpuPercent >= CPU_BADGE_PERCENT;
+    const cpuShown =
+        output.cpuPercent !== null && (!copiesVideo || output.cpuPercent >= CPU_BADGE_PERCENT);
     const memoryOff =
         output.memoryUsageBytes !== null &&
         memPercent !== null &&
@@ -97,7 +99,7 @@ export function outputMetricsBadge(output: OutputView, input?: InputHealth): str
             cls: 'badge-warning',
         },
         {
-            text: cpuOff ? formatCpuPercent(output.cpuPercent as number) : null,
+            text: cpuShown ? formatCpuPercent(output.cpuPercent as number) : null,
             label: 'CPU (% of a core)',
             cls: '',
         },

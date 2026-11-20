@@ -1150,17 +1150,19 @@ identical warning lines was left out), or the sidebar counts confuse operators.
 as its own badge with its own tooltip and colour (a red memory badge next to a yellow
 speed one), and nothing for a healthy output: the bitrate outside 60% to 140% of the
 pipeline input's (when the output copies the video and the input's rate is known) or below
-200 kbps; the CPU from 50% of a core on an output that copies the video; the memory from
+200 kbps; the CPU from 50% of a core on an output that copies the video, and always on an
+output with a video encode (November 2026: it was never shown there, but an encode is what
+the host's CPU goes on, so each one's cost should be visible); the memory from
 70% of its limit; the speed outside 0.95x to 1.05x, with no mention in the tooltip. A shared
-encode's badge keeps its CPU and memory always, since its cost is the point, and leaves out
-only an expected bitrate. The full per-output figures stay in the Overview's Outputs table.
+encode's badge is judged the same way and leaves out only an expected bitrate. The full per-output figures stay in the Overview's Outputs table.
 
 **Why:**
 
 - **Every healthy copy output printed the same "8.0 Mbps / 0.4% / 35 MB"**, which carried
   no information until it differed, and it was clutter on 100 rows. A copy output costs 1
   to 4% of a core and about 35 MB ([sizing](../1-getting-started/4-sizing.md)), so 50% of a
-  core is far outside normal; an output with a video encode runs at 100% or more by design.
+  core is far outside normal; an output with a video encode runs at 100% or more by design,
+  which is why its CPU is shown always and not as an alert.
 - **The band is wide because the numbers differ for normal reasons.** On an SRT input
   SRS reported 8.9 Mbps and the goryu legs 9.2 (libsrt counts 44 header bytes in each
   1316-byte packet, +3.3%), while copy outputs read 8.2 and 8.0: FLV carries less
