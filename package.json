@@ -21,8 +21,8 @@
         "server-down": "bash scripts/server-down.sh",
         "typecheck": "npx tsc -p tsconfig.backend.json --noEmit && npx tsc -p tsconfig.json --noEmit && npx tsc -p tsconfig.test.json",
         "test": "npm run test:unit && npm run test:integration",
-        "test:unit": "node --require tsx/cjs --test --test-concurrency=1 test/*.test.js",
-        "test:integration": "node --require tsx/cjs --test test/integration/*.test.js",
+        "test:unit": "node --require tsx/cjs --test --test-concurrency=1 test/*.test.js test/*.test.ts",
+        "test:integration": "node --require tsx/cjs --test test/integration/*.test.js test/integration/*.test.ts",
         "lint": "npx eslint .",
         "format": "npx prettier --write .",
         "format:check": "npx prettier --check ."

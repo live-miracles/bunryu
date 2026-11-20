@@ -8,11 +8,11 @@
         "checkJs": true,
         "noEmit": true,
         "strict": true,
-        "noImplicitAny": false,
+        "noImplicitAny": true,
         "skipLibCheck": true,
         "esModuleInterop": true
     },
-    "include": ["test/**/*.js", "public/ts/features/dashboard-entry.ts"],
+    "include": ["test/**/*.ts", "test/**/*.js", "public/ts/features/dashboard-entry.ts"],
     "exclude": [
         "test/collapsedGroups.test.js",
         "test/configCheck.test.js",
