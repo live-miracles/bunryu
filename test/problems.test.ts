@@ -8,7 +8,6 @@ import {
     isProblem,
     outputProblem,
     pipelineProblems,
-    problemContext,
     tallyStatuses,
     worstOfTally,
     worstStatus,
@@ -131,8 +130,7 @@ const pipeline = (
     );
 
 const RELAY_UP = { relayProcessRunning: true, nowMs: NOW };
-const problemsOf = (p: PipelineView, relay = RELAY_UP) =>
-    pipelineProblems(p, problemContext([p], relay.relayProcessRunning, relay.nowMs));
+const problemsOf = (p: PipelineView, relay = RELAY_UP) => pipelineProblems(p, relay);
 
 describe('status helpers', () => {
     test('counts each status on its own', () => {
@@ -180,8 +178,8 @@ describe('status helpers', () => {
 });
 
 describe('outputProblem', () => {
-    const problem = (over: Partial<OutputView>, mistakes: string[] = []) =>
-        outputProblem(asOutputView(withVerdict(output('a', over), rtmpInput())), mistakes);
+    const problem = (over: Partial<OutputView>) =>
+        outputProblem(asOutputView(withVerdict(output('a', over), rtmpInput())));
 
     test('a healthy output is not a problem', () => {
         const p = problem({});
@@ -206,20 +204,13 @@ describe('outputProblem', () => {
         assert.equal(problem({ ...stopped, lastError: 'boom', lastErrorAt: null }).severity, null);
     });
 
-    test('a warning status, a warning reason or a mistake is a warning, even when stopped', () => {
+    test('a warning status or a warning reason is a warning', () => {
         assert.equal(problem({ bitrateKbps: 100 }).severity, 'warning');
         assert.equal(problem({ warningReason: 'timestamps' }).severity, 'warning');
-        assert.equal(problem({ ...stopped }, ['Same destination as X']).severity, 'warning');
-    });
-
-    test('a mistake does not change the status, and is the message when nothing else is wrong', () => {
-        const p = problem({}, ['Same destination as X']);
-        assert.equal(p.status, 'good');
-        assert.equal(p.message, 'Same destination as X');
     });
 
     test('an error outranks a warning, and the verdict is the first message', () => {
-        const p = problem({ warningReason: 'x', lastError: 'boom', lastErrorAt: 1 }, ['m']);
+        const p = problem({ warningReason: 'x', lastError: 'boom', lastErrorAt: 1 });
         assert.equal(p.severity, 'error');
         assert.equal(p.message, 'x');
     });
@@ -281,16 +272,15 @@ describe('pipelineProblems: the input half', () => {
 });
 
 describe('pipelineProblems: the outputs', () => {
-    test('status counts and Problems are kept apart', () => {
+    test('the same destination on two outputs is not a problem: that is advice for the card', () => {
         const dup = [output('a', { url: 'rtmp://same/x' }), output('b', { url: 'rtmp://same/x' })];
         const p = problemsOf(pipeline(1, rtmpInput(), [...dup, output('c', { ...stopped })]));
         assert.deepEqual(p.tally, { good: 2, warn: 0, error: 0, off: 1 });
-        assert.equal(p.mistakes, 2);
-        assert.equal(p.severity, 'warn');
-        assert.equal(p.hasProblem, true);
+        assert.equal(p.severity, 'none');
+        assert.equal(p.hasProblem, false);
         assert.deepEqual(
             p.outputs.map((o) => o.severity),
-            ['warning', 'warning', null],
+            [null, null, null],
         );
     });
 
@@ -346,7 +336,7 @@ describe('groupProblems', () => {
             ]),
         });
         const fine = pipeline(2, rtmpInput(), [output('a')]);
-        const ctx = problemContext([unstable, fine], true, NOW);
+        const ctx = RELAY_UP;
         const group = groupProblems([unstable, fine].map((p) => pipelineProblems(p, ctx)));
         assert.equal(group.input, 'error');
     });

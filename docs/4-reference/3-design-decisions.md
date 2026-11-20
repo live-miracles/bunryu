@@ -870,8 +870,8 @@ migrated with `git show 79d20ce:scripts/migrate-db-2-to-3.mjs`.
 output whose destination is this server's own `live/<key>`, where that key is the
 pipeline's own input or the chain of such outputs leads back to it, can be created,
 pasted and edited. Its card shows a yellow line like the other configuration mistakes
-("Loops back into this pipeline's own input, so it cannot work"); it counts as a warning
-but is not an error in the output's History. The output form's restream dropdown does not
+("Loops back into this pipeline's own input, so it cannot work"); it is not an error in the
+output's History. The output form's restream dropdown does not
 offer the pipeline itself or one on its stream key; a custom RTMP/SRT URL or a pasted
 output is the way to get a loop. Start and Start all are not changed, moving a pipeline
 to another stream key is still refused when one of its outputs would then loop, and the
@@ -1380,12 +1380,14 @@ another output uses, audio settings that do not suit the input, a stream key two
 share): it is not a status, only the dashboard shows it, and its wording is the dashboard's to
 change, so it is a pure dashboard module (`public/ts/core/output-advice.ts`) and a change to
 it needs no server change. Each line is a mistake or a tip. A mistake (the same destination as
-another output, a track selection the input cannot supply) counts as a warning in every list
-and count of problems: the Outputs list, the Overview's Issues and the Status view's cards.
-A tip (Track 1 costs CPU, SRT to RTMP with copy audio can jitter) is a muted note on the card
-and counts nowhere: tips that turned working outputs amber would teach people to ignore amber,
-the reason Key Vault leaves advice out. Neither changes a status dot, which stays the
-server's verdict; before this the Outputs list counted all advice and the other views none. The dashboard repeats three values for display: the input alert codes, the
+another output, a track selection the input cannot supply) is a yellow line on the output's
+card; a tip (Track 1 costs CPU, SRT to RTMP with copy audio can jitter) is a muted note. Both
+are on the card only: not in the pipeline list, the Overview, the Status view or Problems, and
+neither changes a status dot, which stays the server's verdict. An operator may mean them (the
+same destination on two pipelines is a primary and its backup), and amber on every other view
+for something intended would teach people to ignore amber, the reason Key Vault leaves advice
+out. (Earlier the mistakes counted as warnings in every list, the pipeline list's badge and
+the Status view's "to fix"; November 2026 they were cut back to the card.) The dashboard repeats three values for display: the input alert codes, the
 200 kb/s floor and the 30 s warm-up for SRS's zero bitrate; `test/statusConstants.test.ts` pins
 them to the server's.
 
@@ -1405,7 +1407,7 @@ view, the Overview and the Outputs list draw its answer. The input half is the s
 verdict raised to the relay's warning or error, so an unstable or lost leg, or a relay that
 cannot reach SRS, shows on the dot even while the input is off; the relay never turns an input
 that is off into a healthy one. **Status** (dot colour, the counts beside it) and **Problem**
-(lists, filters, "has issues") stay separate: a Problem also counts an advice mistake and an
+(lists, filters, "has issues") stay separate: a Problem also counts an
 output stopped after repeated failures, whose status is off.
 
 **Why:** the rules had been written out in four places and had drifted. A verdict of warn with a

@@ -44,7 +44,7 @@ import {
     updatePipelineGroups,
 } from '../core/api.js';
 import { dupTooltip, formatOutputName, renderOutputCard } from './output-card.js';
-import { sharedStreamKeys } from '../core/output-advice.js';
+import { duplicateDestinations, restreamLoops, sharedStreamKeys } from '../core/output-advice.js';
 import { ICON_HISTORY, ICON_PENCIL, ICON_TRASH } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeUsage } from './shared-encodes.js';
 import { sharedEncodeLabel } from '../core/renditions.js';
@@ -70,12 +70,7 @@ import {
     type OutStatus,
     type StatusIssue,
 } from '../core/status.js';
-import {
-    issueLinesHtml,
-    mistakesTooltipHtml,
-    renderStatusTooltip,
-    splitDotGradient,
-} from './status-tooltip.js';
+import { issueLinesHtml, renderStatusTooltip, splitDotGradient } from './status-tooltip.js';
 import {
     countOutputs,
     matchesOutputFilter,
@@ -85,13 +80,7 @@ import {
 import { srtPassphraseResetBlock } from '../core/pipeline.js';
 import { countLabel, searchBoxHtml } from '../core/overview-filter.js';
 import { whilePending, type PendingOutputs } from '../core/pending-outputs.js';
-import {
-    groupProblems,
-    pipelineProblems,
-    problemContext,
-    tallyStatuses,
-    worstOfTally,
-} from '../core/problems.js';
+import { groupProblems, pipelineProblems, tallyStatuses, worstOfTally } from '../core/problems.js';
 import { CHART_SCROLL_STEP_MS, CHART_WINDOW_MS, chartCard, drawChart } from './dashboard-charts.js';
 import { renderInputStats } from './input-stats-view.js';
 import { renderStatusView } from './status-view.js';
@@ -442,7 +431,7 @@ function renderPipelineList(): void {
     if (draggingPipelineEl || draggingGroupEl) return; // preserve the DOM while a drag is in progress
 
     const relayProcessRunning = state.health.srtRelay?.status === 'running';
-    const ctx = problemContext(state.pipelines, relayProcessRunning, healthNowMs());
+    const ctx = { relayProcessRunning, nowMs: healthNowMs() };
     const rolled = new Map(state.pipelines.map((p) => [p.id, pipelineProblems(p, ctx)]));
     const inputStatuses = [...rolled.values()].map((r) => r.input.status);
     const inputsOn = inputStatuses.filter((s) => s === 'good').length;
@@ -494,14 +483,8 @@ function renderPipelineList(): void {
             },
             {
                 label: 'Outputs',
-                issues: problems.outputs.flatMap(({ output, mistakes }) =>
-                    [
-                        ...output.verdict.issues,
-                        ...mistakes.map((message) => ({
-                            severity: 'warning' as const,
-                            message,
-                        })),
-                    ].map((issue) => ({
+                issues: problems.outputs.flatMap(({ output }) =>
+                    output.verdict.issues.map((issue) => ({
                         severity: issue.severity,
                         message: `${output.name}: ${issue.message}`,
                     })),
@@ -524,14 +507,6 @@ function renderPipelineList(): void {
         const dupKeyWarn = dupKeyRefs
             ? `<span class="js-tooltip text-warning shrink-0 inline-flex" tabindex="0">${ICON_WARN}<div class="js-tooltip-content hidden">${dupTooltip('Duplicate stream key — also used by:', dupKeyRefs)}</div></span>`
             : '';
-
-        // A mistake in how an output is set up (same destination, a track the input lacks)
-        // never changes the dot, so the row carries its own marker, the same as the Status
-        // view's "to fix" badge.
-        const mistakeWarn =
-            problems.mistakeLines.length > 0
-                ? `<span class="js-tooltip text-warning shrink-0 inline-flex" tabindex="0">${ICON_WARN}<div class="js-tooltip-content hidden">${mistakesTooltipHtml(problems.mistakeLines)}</div></span>`
-                : '';
 
         // History, edit and delete show while the row is hovered or has keyboard focus (like
         // a group's); a touch screen has no hover and is for looking, so it never shows them.
@@ -556,7 +531,7 @@ function renderPipelineList(): void {
                 ${statusBadge(outFailed, 'badge-error')}
                 ${statusBadge(outOff, 'badge-ghost')}
                 <span class="${nameClass}">${name}</span>
-                ${dupKeyWarn}${mistakeWarn}
+                ${dupKeyWarn}
                 ${uptimeSpan}
                 ${inputTypeBadge}
                 ${tools}
@@ -945,23 +920,20 @@ function renderOverview(): void {
     );
 
     // ── Outputs ───────────────────────────────────────────
-    const outputRows = tableRows(
-        model.outputs,
-        9,
-        ({ pipeline: p, output: o, status: st, mistakes }) => {
-            const isOn = o.status === 'running';
-            const media = isOn ? deriveOutputMedia(p.input, o) : null;
-            const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
-            const errorBadge =
-                o.failures > 0
-                    ? `<span class="text-error inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
-                    : '';
-            const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
-            const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
-            return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
+    const outputRows = tableRows(model.outputs, 9, ({ pipeline: p, output: o, status: st }) => {
+        const isOn = o.status === 'running';
+        const media = isOn ? deriveOutputMedia(p.input, o) : null;
+        const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
+        const errorBadge =
+            o.failures > 0
+                ? `<span class="text-error inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
+                : '';
+        const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
+        const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
+        return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
             <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
             <td>${overviewStatusBadge(st)}</td>
-            <td>${renderOverviewIssues([...o.verdict.issues, ...mistakes.map((message) => ({ severity: 'warning' as const, message }))])}</td>
+            <td>${renderOverviewIssues(o.verdict.issues)}</td>
             <td class="tabular-nums text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
             ${td(formatBitrate(o.bitrateKbps))}
             <td class="tabular-nums text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
@@ -969,8 +941,7 @@ function renderOverview(): void {
             <td>${typeBadge(protocolLabel)}</td>
             <td class="font-mono text-xs">${spec}</td>
         </tr>`;
-        },
-    );
+    });
 
     // ── Shared encodes ────────────────────────────────────
     const encodeRows = tableRows(
@@ -1605,13 +1576,13 @@ function renderOutputsList(pipeline: PipelineView): void {
     }
 
     // Destination URL → the outputs that use it, across all pipelines, to flag duplicates.
-    const ctx = problemContext(
-        state.pipelines,
-        state.health.srtRelay?.status === 'running',
-        healthNowMs(),
-    );
-    const dupUrls = ctx.dupUrls;
+    const dupUrls = duplicateDestinations(state.pipelines);
+    const loops = restreamLoops(state.pipelines);
 
+    const ctx = {
+        relayProcessRunning: state.health.srtRelay?.status === 'running',
+        nowMs: healthNowMs(),
+    };
     const rows = pipelineProblems(pipeline, ctx).outputs.map(({ output, status, severity }) => ({
         output,
         status,
@@ -1651,7 +1622,7 @@ function renderOutputsList(pipeline: PipelineView): void {
                   .map(({ output }) =>
                       renderOutputCard(output, pipeline.input, dupUrls, {
                           pendingOutputs,
-                          loops: ctx.loops,
+                          loops,
                       }),
                   )
                   .join('');

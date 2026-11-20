@@ -219,15 +219,3 @@ export function outputAdvice(
         ...encodingAdvice(output, input),
     ];
 }
-
-// Only the mistakes, as text: what counts as a problem next to the output's status.
-export function outputMistakes(
-    output: OutputView,
-    input: InputHealth,
-    dupUrls: Map<string, DupRef[]>,
-    loops: ReadonlyMap<string, string> = new Map(),
-): string[] {
-    return outputAdvice(output, input, dupUrls, loops)
-        .filter((a) => a.level === 'mistake')
-        .map((a) => a.message);
-}

@@ -1,10 +1,4 @@
 import type { OutputView, PipelineView } from '../types.js';
-import {
-    duplicateDestinations,
-    outputMistakes,
-    restreamLoops,
-    type DupRef,
-} from './output-advice.js';
 import { relayHealth, relayIssueList, type RelayHealth } from './relay-status.js';
 import {
     lastErrorLine,
@@ -20,11 +14,13 @@ import {
 //
 // Two answers are kept apart on purpose (see GLOSSARY.md):
 //   - Status is the colour of a dot and the counts beside it: the server's verdict and, for
-//     an input, the relay in front of it. A mistake in how an output is configured never
-//     changes it.
+//     an input, the relay in front of it.
 //   - A Problem is what a list, filter or "has issues" flag picks out: a warning or error
-//     status, a mistake in how the output is configured, or an output that was stopped
-//     after repeated failures (its status is off, its error is still current).
+//     status, or an output that was stopped after repeated failures (its status is off, its
+//     error is still current).
+//
+// The advice about how an output is configured (core/output-advice.ts) is in neither: it
+// is shown on the output's card only.
 
 type Status = OutStatus | InputStatus;
 
@@ -64,12 +60,10 @@ export interface OutputProblem {
     output: OutputView;
     // The dot's status: the server's verdict.
     status: OutStatus;
-    // Mistakes in how the output is configured (core/output-advice.ts). Tips are not here.
-    mistakes: string[];
     // null when the output is not a Problem.
     severity: ProblemSeverity | null;
     // The first thing wrong with it, or '': its verdict's first issue, else its current
-    // error, else its first mistake.
+    // error.
     message: string;
 }
 
@@ -79,14 +73,13 @@ function hasErrorLine(output: OutputView): boolean {
     return output.lastErrorAt !== null && lastErrorLine(output) !== '';
 }
 
-// `mistakes` are the advice mistakes for the output; a shared encode has none.
-export function outputProblem(output: OutputView, mistakes: string[]): OutputProblem {
+export function outputProblem(output: OutputView): OutputProblem {
     const status = output.verdict.status;
     const errorLine = hasErrorLine(output);
     const severity: ProblemSeverity | null =
         status === 'error' || errorLine
             ? 'error'
-            : status === 'warn' || output.warningReason || mistakes.length > 0
+            : status === 'warn' || output.warningReason
               ? 'warning'
               : null;
     const message =
@@ -94,32 +87,14 @@ export function outputProblem(output: OutputView, mistakes: string[]): OutputPro
         (errorLine
             ? summarizeOutputError(output.lastError, 'Stopped after repeated failures.')
             : '') ||
-        mistakes[0] ||
         '';
-    return { output, status, mistakes, severity, message };
+    return { output, status, severity, message };
 }
 
-// What a render needs to judge pipelines, built once per render: whether the relay runs,
-// the time, the destinations more than one output uses, and the outputs that loop back
-// into their own pipeline.
+// What a render needs to judge pipelines: whether the relay runs, and the time.
 export interface ProblemContext {
     relayProcessRunning: boolean;
     nowMs: number;
-    dupUrls: Map<string, DupRef[]>;
-    loops: Map<string, string>;
-}
-
-export function problemContext(
-    pipelines: readonly PipelineView[],
-    relayProcessRunning: boolean,
-    nowMs: number,
-): ProblemContext {
-    return {
-        relayProcessRunning,
-        nowMs,
-        dupUrls: duplicateDestinations(pipelines),
-        loops: restreamLoops(pipelines),
-    };
 }
 
 export interface PipelineProblems {
@@ -137,9 +112,6 @@ export interface PipelineProblems {
     renditions: OutputProblem[];
     // The outputs' statuses.
     tally: StatusTally;
-    // How many outputs have a mistake, and each one as "Output name: mistake" for a tooltip.
-    mistakes: number;
-    mistakeLines: string[];
     // The Status view's card colour.
     severity: 'error' | 'warn' | 'none';
     // The pipeline belongs in the Issues view: its input is a warning or an error, or an
@@ -158,11 +130,8 @@ export function pipelineProblems(pipeline: PipelineView, ctx: ProblemContext): P
     const wanted = status === 'error' ? 'error' : 'warning';
     const message = (issues.find((i) => i.severity === wanted) ?? issues[0])?.message ?? '';
 
-    const outputs = pipeline.outs.map((o) =>
-        outputProblem(o, outputMistakes(o, pipeline.input, ctx.dupUrls, ctx.loops)),
-    );
-    const renditions = pipeline.renditions.map((r) => outputProblem(r, []));
-    const mistakes = outputs.filter((o) => o.mistakes.length > 0).length;
+    const outputs = pipeline.outs.map(outputProblem);
+    const renditions = pipeline.renditions.map(outputProblem);
     const severity =
         status === 'error' || outputs.some((o) => o.severity === 'error')
             ? 'error'
@@ -176,8 +145,6 @@ export function pipelineProblems(pipeline: PipelineView, ctx: ProblemContext): P
         outputs,
         renditions,
         tally: tallyStatuses(outputs.map((o) => o.status)),
-        mistakes,
-        mistakeLines: outputs.flatMap((o) => o.mistakes.map((m) => `${o.output.name}: ${m}`)),
         severity,
         hasProblem: isProblem(status) || outputs.some((o) => o.severity !== null),
     };

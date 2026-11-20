@@ -13,7 +13,6 @@ import {
     isOffline,
     isProblem,
     pipelineProblems,
-    problemContext,
     type OutputProblem,
 } from './problems.js';
 import { sharedEncodeLabel } from './renditions.js';
@@ -53,9 +52,6 @@ export interface OutputRow {
     pipeline: PipelineView;
     output: OutputView;
     status: OutStatus;
-    // Mistakes in how the output is configured (core/output-advice.ts): they make it an issue
-    // without changing its status.
-    mistakes: string[];
 }
 
 // One System usage figure per column. null is "not reported", drawn as a dash.
@@ -202,7 +198,7 @@ const legRateKbps = (leg: SrtBondingLeg): number | null =>
 export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
     const { pipelines, metrics: m, filter } = input;
 
-    const ctx = problemContext(pipelines, input.relayProcessRunning, input.nowMs);
+    const ctx = { relayProcessRunning: input.relayProcessRunning, nowMs: input.nowMs };
     const rolled = pipelines.map((pipeline) => pipelineProblems(pipeline, ctx));
 
     const relayPipelines = pipelines.filter(isRelayActive);
@@ -268,7 +264,6 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
             pipeline,
             output: found.output,
             status: found.status,
-            mistakes: found.mistakes,
         },
         problem: found.severity !== null,
         offline: isOffline(found.status),

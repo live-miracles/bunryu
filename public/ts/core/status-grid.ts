@@ -1,6 +1,6 @@
 import type { ActivityEvent, PipelineGroup, PipelineView } from '../types.js';
 import type { InputStatus, OutStatus } from './status.js';
-import { isProblem, pipelineProblems, problemContext, type StatusTally } from './problems.js';
+import { isProblem, pipelineProblems, type StatusTally } from './problems.js';
 
 // The Status view: one card per pipeline with a dot for every output. Pure functions that
 // turn the dashboard's state into what the view draws, so the DOM code stays thin.
@@ -9,8 +9,7 @@ export interface StatusDot {
     id: string;
     name: string;
     status: OutStatus;
-    // The first thing wrong with it, or '': a problem with its status, else its current
-    // error, else a mistake in how it is configured (which does not change its colour).
+    // The first thing wrong with it, or '': a problem with its status, else its current error.
     message: string;
 }
 
@@ -24,10 +23,6 @@ export interface StatusCard {
     inputMessage: string;
     dots: StatusDot[];
     tally: StatusTally;
-    // How many outputs have a mistake in how they are configured (core/output-advice.ts).
-    mistakes: number;
-    // Each mistake as "Output name: mistake", for the badge's tooltip.
-    mistakeLines: string[];
     // The card belongs in the Issues view (see PipelineProblems.hasProblem in core/problems.ts).
     hasIssue: boolean;
     severity: 'error' | 'warn' | 'none';
@@ -46,7 +41,7 @@ export interface RelayContext {
 }
 
 export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext): StatusCard[] {
-    const ctx = problemContext(pipelines, relay.relayProcessRunning, relay.nowMs);
+    const ctx = relay;
     return pipelines.map((p) => {
         const rolled = pipelineProblems(p, ctx);
         return {
@@ -65,8 +60,6 @@ export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext)
                 }),
             ),
             tally: rolled.tally,
-            mistakes: rolled.mistakes,
-            mistakeLines: rolled.mistakeLines,
             hasIssue: rolled.hasProblem,
             severity: rolled.severity,
         };

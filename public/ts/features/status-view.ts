@@ -18,7 +18,6 @@ import {
 } from '../core/status-grid.js';
 import type { ActivityEvent } from '../types.js';
 import { CHART_WINDOW_MS, drawChart } from './dashboard-charts.js';
-import { mistakesTooltipHtml } from './status-tooltip.js';
 
 // The Status view: every pipeline as a card with a dot per output, the host graphs and the
 // recent problems, on one page. It is drawn on every dashboard poll from the same state as
@@ -88,9 +87,6 @@ function cardHtml(c: StatusCard): string {
     const typeBadge = c.type
         ? `<span class="badge badge-xs badge-outline shrink-0">${escapeHtml(c.type)}</span>`
         : '';
-    // Outputs set up wrongly (same destination, a track the input lacks): their dots keep the
-    // colour of what is happening, so the card says there is something to fix.
-    const fix = badge(c.mistakes, 'badge-warning', 'to fix', mistakesTooltipHtml(c.mistakeLines));
     const body = inline
         ? `<span class="ml-auto flex shrink-0 flex-wrap items-center gap-1">${dots || '<span class="text-muted text-xs">no outputs</span>'}</span>`
         : '';
@@ -98,7 +94,7 @@ function cardHtml(c: StatusCard): string {
         <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
             ${dotHtml(c.inputStatus, `Input: ${inputState || c.inputStatus}`, inputState ? '' : c.inputMessage, 'h-3.5 w-3.5')}
             <span class="min-w-0 truncate font-semibold">${escapeHtml(c.name)}</span>
-            ${summary}${inline ? typeBadge : ''}${fix}${body}
+            ${summary}${inline ? typeBadge : ''}${body}
         </span>
         ${inline ? '' : `<span class="mt-1.5 flex flex-wrap gap-1">${dots}</span>`}
     </a>`;

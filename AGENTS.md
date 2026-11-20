@@ -309,9 +309,9 @@ only for a new module.
   `core/relay-status.ts` is the same for a pipeline's relay path (`relayHealth`: the input and
   output halves with the issues behind each, given the clock; the leg health colour and label).
   `core/problems.ts` is the one place that decides what is a Problem and what status a pipeline's
-  dot shows (`problemContext` once per render, `pipelineProblems` per pipeline, `groupProblems`,
+  dot shows (`pipelineProblems` per pipeline, `groupProblems`,
   `outputProblem`): the input half is the verdict raised to the relay's warning or error, a
-  Problem also counts a mistake and an output stopped after repeated failures, and the sidebar,
+  Problem also counts an output stopped after repeated failures, and the sidebar,
   Status view, Overview and Outputs list only draw its answer;
   `core/status-grid.ts` builds the Status view's cards, dots, groups, counts and problem list
   (`features/status-view.ts` draws it, in parts replaced only when their HTML changed);
@@ -352,8 +352,8 @@ only for a new module.
   `core/output-advice.ts` is the advice about how an output or pipeline is configured (a
   destination another output uses, audio settings that do not suit the input, a stream key
   two pipelines share): pure, dashboard-only, never part of a status or of the Key Vault report.
-  A line is a mistake (counted as a warning by `outputProblem`, the Overview's Issues and the
-  Status view's cards) or a tip (on the output card only);
+  A line is a mistake (a yellow line) or a tip (a muted note), both on the output card only:
+  they reach no pipeline badge, Status card, Overview row or Problem;
   `core/outputs-filter.ts` has the Outputs list's filter, "Problems" test and summary
   counts (`outputProblem` in `core/problems.ts` says what counts as a problem);
   `core/pending-outputs.ts` keeps an output's Start/Stop button disabled from the click until the

@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import {
     duplicateDestinations,
     outputAdvice,
-    outputMistakes,
     refLabel,
     restreamLoops,
     sharedStreamKeys,
@@ -197,24 +196,6 @@ describe('outputAdvice', () => {
     });
 });
 
-describe('outputMistakes', () => {
-    test('is the text of the mistakes only: a tip is not one', () => {
-        const url = 'rtmp://a/x';
-        const dups = duplicateDestinations([
-            pipeline(1, 'Hindi', [
-                out('1-1', 'YT', url, { audioEncoding: '0' }),
-                out('1-2', 'FB', url),
-            ]),
-        ]);
-        const tipOnly = out('1-1', 'YT', 'rtmp://a/y', { audioEncoding: '0' });
-        assert.deepEqual(outputMistakes(tipOnly, rtmpInput, dups), []);
-        assert.deepEqual(
-            outputMistakes(out('1-1', 'YT', url, { audioEncoding: '0' }), rtmpInput, dups),
-            ['Same destination as Hindi → FB'],
-        );
-    });
-});
-
 describe('restreamLoops', () => {
     // A pipeline with the publish URLs the dashboard knows for its key.
     const withKey = (id: number, name: string, key: string, outs: OutputView[]): PipelineView => ({
@@ -304,7 +285,6 @@ describe('restreamLoops', () => {
         assert.deepEqual(outputAdvice(o, rtmpInput, new Map(), loops), [
             { level: 'mistake', message: loops.get('1-1') },
         ]);
-        assert.equal(outputMistakes(o, rtmpInput, new Map(), loops).length, 1);
         assert.deepEqual(outputAdvice(o, rtmpInput, new Map()), []);
     });
 });
