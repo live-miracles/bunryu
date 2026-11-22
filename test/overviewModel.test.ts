@@ -603,7 +603,7 @@ describe('advice about how an output is configured', () => {
                 output('a', { url: shared }),
                 // Track 1 on an RTMP input only costs CPU, and the same destination twice is
                 // an operator's choice (a backup pipeline).
-                output('tip', { audioEncoding: '0' }),
+                output('track1', { audioEncoding: '0' }),
             ]),
             pipeline(2, liveInput(), [output('b', { url: shared })]),
         ];

@@ -43,8 +43,12 @@ import {
     updatePipeline,
     updatePipelineGroups,
 } from '../core/api.js';
-import { dupTooltip, formatOutputName, renderOutputCard } from './output-card.js';
-import { duplicateDestinations, restreamLoops, sharedStreamKeys } from '../core/output-advice.js';
+import { formatOutputName, renderOutputCard } from './output-card.js';
+import {
+    duplicateDestinations,
+    otherPipelinesOnKey,
+    restreamLoops,
+} from '../core/output-advice.js';
 import { ICON_HISTORY, ICON_PENCIL, ICON_TRASH } from './output-badges.js';
 import { renderSharedEncodes, sharedEncodeUsage } from './shared-encodes.js';
 import { sharedEncodeLabel } from '../core/renditions.js';
@@ -65,6 +69,7 @@ import {
 import { audioSpecLines, videoSpec } from '../core/media-spec.js';
 import {
     displayInputBitrateKbps,
+    errorTone,
     statusColor,
     type InputStatus,
     type OutStatus,
@@ -460,10 +465,6 @@ function renderPipelineList(): void {
 
     const selectedId = getUrlParam('p');
 
-    // Pipelines sharing a stream key can't both actually publish — flag it the
-    // same way duplicate output destination URLs are flagged.
-    const dupKeys = sharedStreamKeys(state.pipelines);
-
     const renderPipelineRow = (p: PipelineView, groupKey: string): string => {
         const problems = rolled.get(p.id)!;
         const { good: outGood, warn: outWarn, error: outFailed, off: outOff } = problems.tally;
@@ -502,11 +503,6 @@ function renderPipelineList(): void {
         const inputTypeBadge = p.input.connected
             ? `<span class="badge badge-sm badge-outline shrink-0">${p.srtBonding.acceptedBySrs ? relayTypeLabel(p) : p.input.isSrt ? 'SRT' : 'RTMP'}</span>`
             : '';
-        const dupKeyRefs = dupKeys.get(p.streamKeyId);
-        const nameClass = dupKeyRefs ? 'truncate min-w-0 text-warning' : 'truncate min-w-0';
-        const dupKeyWarn = dupKeyRefs
-            ? `<span class="js-tooltip text-warning shrink-0 inline-flex" tabindex="0">${ICON_WARN}<div class="js-tooltip-content hidden">${dupTooltip('Duplicate stream key — also used by:', dupKeyRefs)}</div></span>`
-            : '';
 
         // History, edit and delete show while the row is hovered or has keyboard focus (like
         // a group's); a touch screen has no hover and is for looking, so it never shows them.
@@ -530,8 +526,7 @@ function renderPipelineList(): void {
                 ${statusBadge(outWarn, 'badge-warning')}
                 ${statusBadge(outFailed, 'badge-error')}
                 ${statusBadge(outOff, 'badge-ghost')}
-                <span class="${nameClass}">${name}</span>
-                ${dupKeyWarn}
+                <span class="truncate min-w-0">${name}</span>
                 ${uptimeSpan}
                 ${inputTypeBadge}
                 ${tools}
@@ -926,7 +921,7 @@ function renderOverview(): void {
         const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
         const errorBadge =
             o.failures > 0
-                ? `<span class="text-error inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
+                ? `<span class="text-${errorTone(o)} inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
                 : '';
         const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
         const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
@@ -952,7 +947,7 @@ function renderOverview(): void {
             const uptimeMs = r.startedAtMs !== null ? Date.now() - r.startedAtMs : null;
             const errorBadge =
                 r.failures > 0
-                    ? `<span class="text-error inline-flex items-center align-middle" title="${r.failures} error${r.failures === 1 ? '' : 's'} since this encode was last started">${ICON_ERROR}</span>`
+                    ? `<span class="text-${errorTone(r)} inline-flex items-center align-middle" title="${r.failures} error${r.failures === 1 ? '' : 's'} since this encode was last started">${ICON_ERROR}</span>`
                     : '';
             return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
             <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(sharedEncodeLabel(r))} ${errorBadge}</td>
@@ -1373,6 +1368,7 @@ function renderPipelineInfo(selectedId: string | null): void {
         relayUrl: relayUrlBase + relayUrlTail,
         relayBondedUrl: `${relayUrlBase}&grouptype=broadcast${relayUrlTail}`,
     });
+    renderSharedKeyWarning(pipeline);
     // Shown whenever relay input is arriving, whichever Publish mode is selected.
     bondingCard?.classList.toggle('hidden', !bondingInputActive);
     bondingCard?.classList.remove('text-muted');
@@ -1440,6 +1436,20 @@ let publishCardPipelineId: string | null = null;
 // Secret rows revealed with the eye button, until the time given.
 const PUBLISH_REVEAL_MS = 15_000;
 const publishRevealUntil = new Map<string, number>();
+
+// Pipelines sharing a stream key cannot both publish. It may be meant (a primary and its
+// backup), so it is one yellow line with the Publish card, not a mark on the pipeline list.
+function renderSharedKeyWarning(pipeline: PipelineView): void {
+    const el = document.getElementById('publish-key-warning');
+    if (!el) return;
+    const others = otherPipelinesOnKey(state.pipelines, pipeline);
+    el.classList.toggle('hidden', others.length === 0);
+    el.classList.toggle('flex', others.length > 0);
+    el.innerHTML =
+        others.length === 0
+            ? ''
+            : `<span class="shrink-0">${ICON_WARN}</span><span>This stream key is also used by ${others.map(escapeHtml).join(', ')}: only one of them can publish at a time.</span>`;
+}
 
 function renderPublishCard(
     pipeline: PipelineView,

@@ -239,7 +239,9 @@ export interface ReportedState {
 // The state the Key Vault reporter sends. The dashboard's "Problems" rule
 // (outputProblem in public/ts/core/problems.ts) without its advisory
 // warnings (a destination shared with another output, encoding advice): those are
-// about the configuration, not about whether the stream is being delivered.
+// about the configuration, not about whether the stream is being delivered. A stop after
+// repeated failures is an error here, so an outside monitor learns the output gave up; the
+// dashboard shows it as a yellow line on the card only.
 export function reportedState(o: OutputStatusView, input: { live: boolean }): ReportedState {
     if (o.desiredState === 'stopped') {
         // Only a stop after repeated failures keeps its error while stopped.

@@ -5,10 +5,17 @@ import {
     buildStatusCards,
     groupStatusCards,
     problemEvents,
+    rejectedPublishersCount,
     statusTotals,
 } from '../public/ts/core/status-grid';
 import { withVerdicts } from './helpers/verdicts';
-import type { AudioTrackInfo, InputHealth, OutputView, PipelineView } from '../public/ts/types';
+import type {
+    AudioTrackInfo,
+    InputHealth,
+    OutputView,
+    PipelineView,
+    RejectedPublish,
+} from '../public/ts/types';
 import type { ActivityEvent } from '../src/utils/activityFeed';
 
 const liveInput = (overrides: Partial<InputHealth> = {}): InputHealth => ({
@@ -391,6 +398,30 @@ describe('problemEvents', () => {
             events.map((e) => e.ts),
             [5, 4, 3, 2, 1],
         );
+    });
+});
+
+describe('rejectedPublishersCount', () => {
+    const rejected = (label: string) =>
+        ({
+            label,
+            kind: 'publish',
+            reason: 'unknown',
+            protocol: 'rtmp',
+            ip: null,
+            attempts: 3,
+            lastAttemptAgoMs: 1000,
+            streams: 1,
+            streamsCapped: false,
+        }) as RejectedPublish;
+
+    test('is how many were refused lately, 0 when none', () => {
+        assert.equal(rejectedPublishersCount([], 0), 0);
+        assert.equal(rejectedPublishersCount([rejected('a'), rejected('b')], 0), 2);
+    });
+
+    test('counts the entries beyond the API row cap too', () => {
+        assert.equal(rejectedPublishersCount([rejected('a')], 4), 5);
     });
 });
 

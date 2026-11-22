@@ -8,8 +8,7 @@ import {
     outputAdvice,
     refLabel,
     restreamLoops,
-    sharedStreamKeys,
-    type Advice,
+    otherPipelinesOnKey,
 } from '../public/ts/core/output-advice';
 import type { InputHealth, OutputView, PipelineView } from '../public/ts/types';
 
@@ -73,63 +72,61 @@ describe('duplicateDestinations', () => {
     });
 });
 
-describe('sharedStreamKeys', () => {
-    test('lists the pipelines that use the same key, and only those keys', () => {
-        const keys = sharedStreamKeys([
-            pipeline(1, 'Hindi', [], 7),
-            pipeline(2, 'Tamil', [], 7),
-            pipeline(3, 'Telugu', [], 8),
-        ]);
-        assert.deepEqual([...keys.keys()], [7]);
-        assert.deepEqual(keys.get(7), [{ pipelineName: 'Hindi' }, { pipelineName: 'Tamil' }]);
+describe('otherPipelinesOnKey', () => {
+    const all = [
+        pipeline(1, 'Hindi', [], 7),
+        pipeline(2, 'Tamil', [], 7),
+        pipeline(3, 'Telugu', [], 8),
+        pipeline(4, 'Kannada', [], 7),
+    ];
+
+    test('names the other pipelines on the same key, never the pipeline itself', () => {
+        assert.deepEqual(otherPipelinesOnKey(all, all[0]), ['Tamil', 'Kannada']);
+        assert.deepEqual(otherPipelinesOnKey(all, all[1]), ['Hindi', 'Kannada']);
+    });
+
+    test('is empty for a key of its own', () => {
+        assert.deepEqual(otherPipelinesOnKey(all, all[2]), []);
     });
 });
 
 describe('outputAdvice', () => {
     const none: ReturnType<typeof duplicateDestinations> = new Map();
-    const messages = (advice: Advice[]) => advice.map((a) => a.message);
-    const levels = (advice: Advice[]) => advice.map((a) => a.level);
 
     test('a plain copy output on a matching input has none', () => {
         assert.deepEqual(outputAdvice(out('1-1', 'YT', 'rtmp://a/x'), rtmpInput, none), []);
         assert.deepEqual(outputAdvice(out('1-1', 'YT', 'srt://a:1'), srtInput(), none), []);
     });
 
-    test('names the other outputs with the same destination, never the output itself: a mistake', () => {
+    test('names the other outputs with the same destination, never the output itself', () => {
         const url = 'rtmp://a/x';
         const dups = duplicateDestinations([
             pipeline(1, 'Hindi', [out('1-1', 'YT', url)]),
             pipeline(2, 'Tamil', [out('2-1', 'FB', url), out('2-2', 'Again', url)]),
         ]);
         const first = outputAdvice(out('1-1', 'YT', url), rtmpInput, dups);
-        assert.deepEqual(first, [
-            { level: 'mistake', message: 'Same destination as Tamil → FB, Tamil → Again' },
-        ]);
-        assert.deepEqual(messages(outputAdvice(out('2-1', 'FB', url), rtmpInput, dups)), [
+        assert.deepEqual(first, ['Same destination as Tamil → FB, Tamil → Again']);
+        assert.deepEqual(outputAdvice(out('2-1', 'FB', url), rtmpInput, dups), [
             'Same destination as Hindi → YT, Tamil → Again',
         ]);
     });
 
-    test('RTMP input: a track selection it cannot have is a mistake, Track 1 costing CPU a tip', () => {
+    test('RTMP input: a track selection it cannot have, and Track 1 costing CPU', () => {
         const other = outputAdvice(
             out('1-1', 'YT', 'rtmp://a/x', { audioEncoding: '1' }),
             rtmpInput,
             none,
         );
         assert.deepEqual(other, [
-            {
-                level: 'mistake',
-                message:
-                    'RTMP input only has one audio track — use copy or Track 1, not a different track selection.',
-            },
+            'RTMP input only has one audio track — use copy or Track 1, not a different track selection.',
         ]);
         const track1 = outputAdvice(
             out('1-1', 'YT', 'rtmp://a/x', { audioEncoding: '0' }),
             rtmpInput,
             none,
         );
-        assert.deepEqual(levels(track1), ['tip']);
-        assert.match(track1[0].message, /^Track 1 re-encodes the audio, which costs extra CPU/);
+        assert.equal(track1.length, 1);
+        assert.match(track1[0], /^Track 1 re-encodes the audio, which costs extra CPU/);
         // To an SRT destination Track 1 is not advised against.
         assert.deepEqual(
             outputAdvice(out('1-1', 'S', 'srt://a:1', { audioEncoding: '0' }), rtmpInput, none),
@@ -137,36 +134,31 @@ describe('outputAdvice', () => {
         );
     });
 
-    test('SRT input to an RTMP output copying the audio is a tip', () => {
+    test('SRT input to an RTMP output copying the audio', () => {
         const copy = outputAdvice(out('1-1', 'YT', 'rtmp://a/x'), srtInput(), none);
-        assert.deepEqual(levels(copy), ['tip']);
-        assert.match(copy[0].message, /^SRT-to-RTMP output should not use copy audio/);
+        assert.equal(copy.length, 1);
+        assert.match(copy[0], /^SRT-to-RTMP output should not use copy audio/);
         assert.deepEqual(
             outputAdvice(out('1-1', 'YT', 'rtmp://a/x', { audioEncoding: '1' }), srtInput(), none),
             [],
         );
     });
 
-    test('an SRT input with fewer audio tracks than the output selects is a mistake', () => {
+    test('an SRT input with fewer audio tracks than the output selects', () => {
         const advice = outputAdvice(
             out('1-1', 'YT', 'rtmp://a/x', { audioEncoding: '1,3' }),
             srtInput(2),
             none,
         );
         assert.deepEqual(advice, [
-            {
-                level: 'mistake',
-                message: 'Output selects track 4, but the input only has 2 audio tracks.',
-            },
+            'Output selects track 4, but the input only has 2 audio tracks.',
         ]);
         const one = outputAdvice(
             out('1-1', 'YT', 'rtmp://a/x', { audioEncoding: '2' }),
             srtInput(1),
             none,
         );
-        assert.deepEqual(messages(one), [
-            'Output selects track 3, but the input only has 1 audio track.',
-        ]);
+        assert.deepEqual(one, ['Output selects track 3, but the input only has 1 audio track.']);
     });
 
     test('nothing about the audio until an input is connected, or for an output with no URL', () => {
@@ -190,9 +182,50 @@ describe('outputAdvice', () => {
             ]),
         ]);
         const advice = outputAdvice(out('1-1', 'YT', url, { audioEncoding: '0' }), rtmpInput, dups);
-        assert.deepEqual(levels(advice), ['mistake', 'tip']);
-        assert.match(advice[0].message, /^Same destination as Hindi → FB$/);
-        assert.match(advice[1].message, /^Track 1 re-encodes/);
+        assert.equal(advice.length, 2);
+        assert.match(advice[0], /^Same destination as Hindi → FB$/);
+        assert.match(advice[1], /^Track 1 re-encodes/);
+    });
+});
+
+describe('an output stopped after repeated failed attempts', () => {
+    const none: ReturnType<typeof duplicateDestinations> = new Map();
+    const stopped = (lastError: string | null, lastErrorAt: number | null = 1) =>
+        out('1-1', 'YT', 'rtmp://a/x', { desiredState: 'stopped', lastError, lastErrorAt });
+
+    test('says how many attempts failed and to check and update the link', () => {
+        const advice = outputAdvice(
+            stopped('1\nStopped after 5 failed attempts. Last error: Connection refused'),
+            rtmpInput,
+            none,
+        );
+        assert.equal(advice.length, 1);
+        assert.equal(
+            advice[0],
+            'Stopped after 5 attempts: check the link and stream key, update the output, then start it again.',
+        );
+    });
+
+    test('does not need the input: it is about the destination', () => {
+        const off = { connected: false, isSrt: false, audioTracks: [] } as unknown as InputHealth;
+        const advice = outputAdvice(stopped('Stopped after 22 failed attempts'), off, none);
+        assert.match(advice[0], /^Stopped after 22 attempts:/);
+    });
+
+    test('a plain stop, or a running output with an error, gets none', () => {
+        assert.deepEqual(outputAdvice(stopped(null, null), rtmpInput, none), []);
+        assert.deepEqual(outputAdvice(stopped('boom', null), rtmpInput, none), []);
+        const running = out('1-1', 'YT', 'rtmp://a/x', {
+            desiredState: 'running',
+            lastError: 'Stopped after 5 failed attempts',
+            lastErrorAt: 1,
+        });
+        assert.deepEqual(outputAdvice(running, rtmpInput, none), []);
+    });
+
+    test('a message without a count still gets the advice', () => {
+        const advice = outputAdvice(stopped('something else'), rtmpInput, none);
+        assert.match(advice[0], /^Stopped after repeated failures: check the link/);
     });
 });
 
@@ -278,13 +311,11 @@ describe('restreamLoops', () => {
         assert.deepEqual([...loops.keys()].sort(), ['1-1', '2-1', '3-1']);
     });
 
-    test('a loop is a mistake on the output, and nothing is said without one', () => {
+    test('a loop is advice on the output, and nothing is said without one', () => {
         const a = withKey(1, 'A', 'kA', [out('1-1', 'Loop', toKey('kA'))]);
         const loops = restreamLoops([a]);
         const o = a.outs[0];
-        assert.deepEqual(outputAdvice(o, rtmpInput, new Map(), loops), [
-            { level: 'mistake', message: loops.get('1-1') },
-        ]);
+        assert.deepEqual(outputAdvice(o, rtmpInput, new Map(), loops), [loops.get('1-1')]);
         assert.deepEqual(outputAdvice(o, rtmpInput, new Map()), []);
     });
 });

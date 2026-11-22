@@ -190,13 +190,13 @@ describe('outputProblem', () => {
 
     test('an error status or a current error line is an error', () => {
         assert.equal(problem({ status: 'failed' }).severity, 'error');
-        assert.equal(problem({ ...stopped, lastError: 'boom', lastErrorAt: 1 }).severity, 'error');
+        assert.equal(problem({ lastError: 'boom', lastErrorAt: 1 }).severity, 'error');
     });
 
-    test('stopped after repeated failures: status off, still an error with its error as message', () => {
+    test('stopped after repeated failures: status off, not a problem, but its error is the message', () => {
         const p = problem({ ...stopped, lastError: 'Connection refused', lastErrorAt: 1 });
         assert.equal(p.status, 'off');
-        assert.equal(p.severity, 'error');
+        assert.equal(p.severity, null);
         assert.equal(p.message, 'Connection refused');
     });
 
@@ -284,12 +284,12 @@ describe('pipelineProblems: the outputs', () => {
         );
     });
 
-    test('an output stopped after repeated failures makes the pipeline a problem, with status off', () => {
+    test('an output stopped after repeated failures does not make the pipeline a problem', () => {
         const failedStop = output('a', { ...stopped, lastError: 'refused', lastErrorAt: 5 });
-        const p = problemsOf(pipeline(1, rtmpInput(), [failedStop]));
-        assert.equal(p.tally.off, 1);
-        assert.equal(p.severity, 'error');
-        assert.equal(p.hasProblem, true);
+        const p = problemsOf(pipeline(1, rtmpInput(), [failedStop, output('b')]));
+        assert.deepEqual(p.tally, { good: 1, warn: 0, error: 0, off: 1 });
+        assert.equal(p.severity, 'none');
+        assert.equal(p.hasProblem, false);
     });
 
     test('a stopped output and a healthy one are no problem', () => {

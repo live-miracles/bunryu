@@ -178,14 +178,15 @@ and Copy still act on every output of the pipeline. While it hides outputs the c
 dragged, because the saved order covers all of them.
 
 A card can also carry **advice** about how the output is set up, separate from what is
-happening to the stream. A *mistake* is a setup that will not do what you mean: the same
-destination as another output, a destination that publishes back into this pipeline's own input (a loop; it cannot work), a track selection the input cannot supply (an RTMP input has
-one audio track; an SRT input may have fewer than you chose). It shows as a yellow line on
-the card and nowhere else: not in the pipeline list, the Overview, the Status view or
-**Problems**, and the dot keeps the colour of what is happening, because you may do it on
-purpose (a backup pipeline with the same destination as the primary). A *tip* is a better way
-to do something that works (Track 1 re-encodes the audio and costs CPU; SRT to RTMP with copy
-audio can jitter): it is a muted note on the card.
+happening to the stream: the same destination as another output, a destination that
+publishes back into this pipeline's own input (a loop; it cannot work), a track selection the
+input cannot supply (an RTMP input has one audio track; an SRT input may have fewer than you
+chose), Track 1 re-encoding the audio (costs CPU), SRT to RTMP with copy audio (can
+jitter), and an output that was stopped after repeated failed attempts (one short line: after how
+many attempts, to check the link and stream key, update the output and start it again). Each is one yellow line on the card and nowhere else: it does not tint the card or
+colour the dot, and it is not in the pipeline list, the Overview, the Status view or
+**Problems**, because you may do it on purpose (a backup pipeline with the same destination
+as the primary).
 
 ### Overview
 
@@ -238,9 +239,11 @@ button return to the normal color and the retry count starts over; the record st
 the History. A record that holds a long FFmpeg log shows only its error line (the last
 line, as on the card) with **Show full log** to expand it, and its copy button puts the
 whole log on the clipboard. After a stop, or with only warnings, the button keeps the normal color. The exception is an
-output you stop after 5 failed attempts in a row: its card keeps a red "Stopped
-after 5 failed attempts" line with the last error, and the History button stays red,
-until you start the output again.
+output you stop after 5 failed attempts in a row: its card keeps a yellow "Stopped
+after 5 failed attempts" line with the last error, and the History button stays yellow,
+until you start the output again. It is a note on that card, not a Problem: the card is not
+tinted, and the pipeline's dot, the Status view, the Overview's Issues and the Problems
+filter ignore it, since a few outputs are always broken.
 Under a known error or warning (connection refused, a rejected stream key, an
 unresolvable host, a failed SRT handshake, an output falling behind realtime) the card
 adds an info icon to the line; hover or focus it for a "Hint:" with what to check first.
@@ -263,8 +266,10 @@ is live yet. Hover a dot for the output's name and what is
 wrong with it. A card with a warning or an error has a coloured border, and a pipeline with
 many outputs shows them as a block with its warning and failure counts.
 
-The top line counts inputs and outputs, and the **Issues** tab keeps only the pipelines with
-a warning, an error or an output stopped after repeated failures (the same rule as the Overview's Issues tab). On the right are the
+When SRS has refused publishers in the last five minutes, one red **Rejected publishers**
+card with their number sits above the pipelines (on both tabs); click it to open the Overview,
+where the list is under the pipelines. The top line counts inputs and outputs, and the **Issues** tab keeps only the pipelines with
+a warning or an error (the same rule as the Overview's Issues tab). On the right are the
 host's CPU, RAM, downlink and uplink for the last 15 minutes, and the latest warnings and
 errors, oldest at the top. Click a card to open the pipeline; Ctrl-click opens it in a new
 tab, so Status can stay on a second screen. About 500 outputs in the shape of 100, 80 and

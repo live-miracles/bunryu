@@ -10,7 +10,9 @@ copy button (two overlapping squares): server URL, key, stream ID or passphrase 
 that ask for them in separate fields, and the full publish URL (SRT Relay has two: **Bonded URL** for an encoder that sends over several links, and **Single-link URL** for an ordinary one). The stream key and
 stream ID are masked after their `keyNN_` prefix (`key01_••••••••`) and the passphrase
 entirely; the eye button beside each shows the real value for 15 s, for typing it
-into an encoder by hand. Copy always copies the real value.
+into an encoder by hand. Copy always copies the real value. When another pipeline uses the
+same stream key (a primary and its backup, say), a yellow line under the rows names it:
+only one of them can publish at a time.
 
 | Protocol | Port | URL shape |
 |----------|------|-----------|
@@ -254,5 +256,7 @@ copied unchanged, and only the audio is re-encoded to AAC.
 
 Publishes with an unknown stream key, or to any app other than `live`, are
 rejected by SRS before any output starts. Recent rejected attempts are listed under the pipeline list ("Rejected
-publish attempts"), which helps when an encoder is configured with a stale key;
+publish attempts"), which helps when an encoder is configured with a stale key. The **Status** page,
+which hides that list, shows one red "Rejected publishers" card with their number; click it to open the Overview.
+An entry is forgotten five minutes after its last attempt;
 see [Security](../3-operations/1-security.md) for details.

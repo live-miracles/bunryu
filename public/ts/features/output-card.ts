@@ -13,8 +13,8 @@ import {
 } from './output-badges.js';
 import { errorHint } from '../core/hints.js';
 import type { PendingOutputs } from '../core/pending-outputs.js';
-import { outputAdvice, refLabel, type Advice, type DupRef } from '../core/output-advice.js';
-import { lastErrorLine, statusColor, type StatusIssue } from '../core/status.js';
+import { outputAdvice, type DupRef } from '../core/output-advice.js';
+import { errorTone, lastErrorLine, statusColor, type StatusIssue } from '../core/status.js';
 import { issueLinesHtml } from './status-tooltip.js';
 
 type OutputCardDeps = {
@@ -45,14 +45,6 @@ function restreamSinkLabel(url: string): string | null {
     return null;
 }
 
-export function dupTooltip(headline: string, refs: DupRef[]): string {
-    const lines = refs.map(
-        (ref) =>
-            `<div class="text-xs leading-snug text-warning">${escapeHtml(refLabel(ref))}</div>`,
-    );
-    return `<div class="text-xs leading-snug font-semibold text-warning mb-0.5">${escapeHtml(headline)}</div>${lines.join('')}`;
-}
-
 // "since 3 min ago" after a warning that is still going on.
 function sinceHtml(sinceMs: number | null | undefined): string {
     return sinceMs
@@ -74,14 +66,11 @@ function currentErrorLine(output: OutputView): string {
     return output.lastErrorAt === null ? '' : lastErrorLine(output);
 }
 
-// Every warning the card shows, whether reported by the running output, one behind the
-// status dot (its verdict: a low bitrate, waiting to start) or a mistake in how it is
-// configured (see core/output-advice.ts). A yellow dot always has a line. Tips are not
-// warnings: they are listed apart.
-function outputWarnings(
-    output: OutputView,
-    advice: Advice[],
-): Array<{ message: string; sinceMs?: number | null }> {
+// Every warning the card shows, whether reported by the running output or one behind the
+// status dot (its verdict: a low bitrate, waiting to start). A yellow dot always has a line.
+// The advice about how the output is configured (core/output-advice.ts) is not one: it is
+// listed apart and changes neither the dot nor the card's tint.
+function outputWarnings(output: OutputView): Array<{ message: string; sinceMs?: number | null }> {
     const own = output.warningReason
         ? [{ message: output.warningReason, sinceMs: output.warningSinceMs }]
         : [];
@@ -91,11 +80,7 @@ function outputWarnings(
                 issue.severity === 'warning' && !own.some((w) => w.message === issue.message),
         )
         .map((issue) => ({ message: issue.message }));
-    return [
-        ...own,
-        ...fromHealth,
-        ...advice.filter((a) => a.level === 'mistake').map(({ message }) => ({ message })),
-    ];
+    return [...own, ...fromHealth];
 }
 
 export function renderOutputCard(
@@ -143,12 +128,16 @@ export function renderOutputCard(
     }
 
     const lastErrorLine = currentErrorLine(output);
+    // The error of a stopped output (a stop after repeated failures) is yellow, like advice:
+    // it is old news to look at, not something happening now, so it neither tints the card nor
+    // counts as a Problem. While the output runs it is red.
+    const tone = errorTone(output);
     const lastErrorTs = output.lastErrorAt
-        ? `<span class="text-xs text-error shrink-0" title="${formatLocalDateTime(output.lastErrorAt)}">${formatAgo(output.lastErrorAt, healthNowMs())}</span>`
+        ? `<span class="text-xs text-${tone} shrink-0" title="${formatLocalDateTime(output.lastErrorAt)}">${formatAgo(output.lastErrorAt, healthNowMs())}</span>`
         : '';
     const retryBadge =
         output.failures > 0
-            ? `<span class="badge badge-sm badge-error gap-1 shrink-0" title="${output.failures} retr${output.failures === 1 ? 'y' : 'ies'}">${ICON_ITERATION_CW}${output.failures}</span>`
+            ? `<span class="badge badge-sm badge-${tone} gap-1 shrink-0" title="${output.failures} retr${output.failures === 1 ? 'y' : 'ies'}">${ICON_ITERATION_CW}${output.failures}</span>`
             : '';
     // When the next retry is due, as of this health snapshot (the poll is every
     // 5 s, so it counts down in steps). Absent while the output waits for its input.
@@ -167,18 +156,17 @@ export function renderOutputCard(
                 ${retryBadge}
                 ${lastErrorTs}
                 ${retryInHtml}
-                <span class="text-xs text-error truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>${hintHtml(errorHint(lastErrorLine))}
+                <span class="text-xs text-${tone} truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>${hintHtml(errorHint(lastErrorLine))}
            </div>`
         : '';
-    // Red only while the latest record is a crash or a stop after repeated failures;
-    // after a plain stop (or only warnings) the history is there to open but nothing
-    // is currently wrong.
+    // Coloured only while the latest record is a crash (red) or a stop after repeated
+    // failures (yellow); after a plain stop (or only warnings) the history is there to open
+    // but nothing is currently wrong.
     const historyBtn = output.hasErrorHistory
-        ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? 'text-error' : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
+        ? `<button class="btn btn-xs btn-square btn-ghost ${output.lastError !== null ? `text-${tone}` : ''}" data-action="error-info" data-out-id="${output.id}" title="Error history">${ICON_HISTORY}</button>`
         : '';
     const advice = outputAdvice(output, input, dupUrls, deps.loops);
-    const warnings = outputWarnings(output, advice);
-    const tips = advice.filter((a) => a.level === 'tip');
+    const warnings = outputWarnings(output);
     // The dot's hover text: the same problems as the lines below, so it never shows
     // a colour without the reason. A healthy output has nothing to say.
     const dotIssues: StatusIssue[] = [
@@ -206,20 +194,24 @@ export function renderOutputCard(
            </div>`,
         )
         .join('');
-    // Tips are notes, not warnings: muted, with an info icon, and they never tint the card.
-    const tipsHtml = tips
+    // Advice looks like a warning line but is not one: it never tints the card or the dot.
+    const adviceHtml = advice
         .map(
-            ({ message }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
-                <span class="text-muted shrink-0">${ICON_INFO}</span>
-                <span class="text-xs text-muted truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>
+            (message) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
+                <span class="text-warning shrink-0">${ICON_WARN}</span>
+                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>
            </div>`,
         )
         .join('');
     // The card takes the colour of its most severe current problem: red for an
-    // error (a crash being retried, or a stop after repeated failures), yellow
-    // for warnings alone, none otherwise.
+    // error (a crash being retried), yellow for warnings alone, none otherwise. A stop
+    // after repeated failures is neither: its line is yellow and the card stays plain.
     const tintColor =
-        status === 'error' || lastErrorLine ? 'error' : warningsHtml ? 'warning' : null;
+        status === 'error' || (lastErrorLine && !isStopped)
+            ? 'error'
+            : warningsHtml
+              ? 'warning'
+              : null;
     const cardTint = tintColor
         ? `style="background:color-mix(in oklab, var(--${tintColor === 'error' ? 'dot-bad' : 'dot-warn'}) 12%, var(--panel))"`
         : '';
@@ -247,7 +239,7 @@ export function renderOutputCard(
             </div>
         </div>
         ${warningsHtml}
-        ${tipsHtml}
         ${lastErrorHtml}
+        ${adviceHtml}
     </div>`;
 }

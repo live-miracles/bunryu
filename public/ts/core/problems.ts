@@ -16,11 +16,11 @@ import {
 //   - Status is the colour of a dot and the counts beside it: the server's verdict and, for
 //     an input, the relay in front of it.
 //   - A Problem is what a list, filter or "has issues" flag picks out: a warning or error
-//     status, or an output that was stopped after repeated failures (its status is off, its
-//     error is still current).
+//     status.
 //
-// The advice about how an output is configured (core/output-advice.ts) is in neither: it
-// is shown on the output's card only.
+// Two things are in neither and show on the output's card only: the advice about how an
+// output is configured (core/output-advice.ts), and the error a stopped output keeps after
+// repeated failures (a few outputs are always broken: that must not turn a pipeline red).
 
 type Status = OutStatus | InputStatus;
 
@@ -62,13 +62,14 @@ export interface OutputProblem {
     status: OutStatus;
     // null when the output is not a Problem.
     severity: ProblemSeverity | null;
-    // The first thing wrong with it, or '': its verdict's first issue, else its current
-    // error.
+    // The first thing to look at, or '': its verdict's first issue, else its current error
+    // (for a stopped output, the one it was stopped after).
     message: string;
 }
 
 // An output's own error line, which an output keeps while stopped only after repeated
-// failures (the server clears it otherwise).
+// failures (the server clears it otherwise). While it runs it is a crash being retried; while
+// stopped it is not a Problem.
 function hasErrorLine(output: OutputView): boolean {
     return output.lastErrorAt !== null && lastErrorLine(output) !== '';
 }
@@ -77,7 +78,7 @@ export function outputProblem(output: OutputView): OutputProblem {
     const status = output.verdict.status;
     const errorLine = hasErrorLine(output);
     const severity: ProblemSeverity | null =
-        status === 'error' || errorLine
+        status === 'error' || (errorLine && output.desiredState !== 'stopped')
             ? 'error'
             : status === 'warn' || output.warningReason
               ? 'warning'

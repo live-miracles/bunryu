@@ -193,8 +193,8 @@ The report is a JSON `POST` with the token as a bearer token:
 
 - **`status`** is `running`, `warning`, `error` or `stopped`: the dashboard's output status
   (green, amber, red, grey) with its "Problems" rule for errors. A stop after repeated
-  failed attempts is `error` with `stoppedAfterFailures: true`; a stop an operator chose
-  is plain `stopped`. Advice about the configuration (an output that shares a destination
+  failed attempts is `error` with `stoppedAfterFailures: true` (the dashboard shows it only as a yellow
+  line on the output's card); a stop an operator chose is plain `stopped`. Advice about the configuration (an output that shares a destination
   with another, encoding tips) is not a warning here.
 - **`hash`** identifies the destination without revealing it: the first 32 hex characters of
   HMAC-SHA256 (keyed with the hash secret derived from the secret) of the URL, trimmed, with a lowercase scheme and host and

@@ -4,6 +4,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    errorTone,
     lastErrorLine,
     summarizeOutputError,
     toOutputStatusVerdict,
@@ -19,6 +20,11 @@ function outputWith(lastError: string | null): OutputView {
 }
 
 describe('the error helpers', () => {
+    test('errorTone is red while the output runs and yellow once it is stopped', () => {
+        assert.equal(errorTone({ desiredState: 'running' }), 'error');
+        assert.equal(errorTone({ desiredState: 'stopped' }), 'warning');
+    });
+
     test('lastErrorLine is the last non-empty line', () => {
         assert.equal(lastErrorLine(outputWith('a\nb\n\n')), 'b');
         assert.equal(lastErrorLine(outputWith(null)), '');

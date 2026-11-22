@@ -90,11 +90,11 @@ The status of an input or output (good, warn, error or off) and the problems beh
 _Avoid_: health (alone), state
 
 **Advice**:
-A hint about how an output or pipeline is configured, such as a destination another output also uses or audio settings that do not suit the input. It is a **mistake** (a setup that will not do what the operator means) or a **tip** (a better way to do something that works). The dashboard shows both on the output's card only; it is not part of a verdict, it is not a Problem, it never changes a status dot, and Key Vault never sees it.
+A hint about how an output or pipeline is configured, such as a destination another output also uses or audio settings that do not suit the input. The dashboard shows it as one yellow line on the output's card and nowhere else; it is not part of a verdict, it is not a Problem, it never changes a status dot, and Key Vault never sees it.
 _Avoid_: advisory warning
 
 **Problem**:
-An output or input with an error or a warning, as the card colours it, and also an output stopped after repeated failures (its status stays off, its error is still current). A dot's colour and the counts beside it are status and leave out the stopped output; every list, filter and "has issues" flag counts them. The Problems filter lists exactly these.
+An output or input with an error or a warning, as its dot colours it. An output stopped after repeated failures (its status stays off, its error is still current) is not one: its card shows the error as a yellow line only. The Problems filter lists exactly the Problems.
 _Avoid_: issue (that is a GitHub issue)
 
 **Diagnostics**:

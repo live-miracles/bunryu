@@ -869,7 +869,7 @@ migrated with `git show 79d20ce:scripts/migrate-db-2-to-3.mjs`.
 **Decision (November 2026, replacing an October 2026 rule that refused to save it):** an
 output whose destination is this server's own `live/<key>`, where that key is the
 pipeline's own input or the chain of such outputs leads back to it, can be created,
-pasted and edited. Its card shows a yellow line like the other configuration mistakes
+pasted and edited. Its card shows a yellow advice line
 ("Loops back into this pipeline's own input, so it cannot work"); it is not an error in the
 output's History. The output form's restream dropdown does not
 offer the pipeline itself or one on its stream key; a custom RTMP/SRT URL or a pasted
@@ -1379,17 +1379,17 @@ that generates a second copy at build time avoids that but still leaves the join
 until it is reloaded. The relay path's verdict (`relayHealth`) is still worked out in the
 browser. So is the advice about how an output or pipeline is configured (a destination
 another output uses, audio settings that do not suit the input, a stream key two pipelines
-share): it is not a status, only the dashboard shows it, and its wording is the dashboard's to
+share, which shows as a yellow line in the pipeline's Publish card): it is not a status, only the dashboard shows it, and its wording is the dashboard's to
 change, so it is a pure dashboard module (`public/ts/core/output-advice.ts`) and a change to
-it needs no server change. Each line is a mistake or a tip. A mistake (the same destination as
-another output, a track selection the input cannot supply) is a yellow line on the output's
-card; a tip (Track 1 costs CPU, SRT to RTMP with copy audio can jitter) is a muted note. Both
-are on the card only: not in the pipeline list, the Overview, the Status view or Problems, and
-neither changes a status dot, which stays the server's verdict. An operator may mean them (the
-same destination on two pipelines is a primary and its backup), and amber on every other view
-for something intended would teach people to ignore amber, the reason Key Vault leaves advice
-out. (Earlier the mistakes counted as warnings in every list, the pipeline list's badge and
-the Status view's "to fix"; November 2026 they were cut back to the card.) The dashboard repeats three values for display: the input alert codes, the
+it needs no server change. Every line is the same: one yellow line on the output's card (the
+same destination as another output, a loop, a track selection the input cannot supply, Track 1
+costing CPU, SRT to RTMP with copy audio). It does not tint the card, colour the status dot
+(which stays the server's verdict) or count in the pipeline list, the Overview, the Status view
+or Problems. An operator may mean them (the same destination on two pipelines is a primary and
+its backup), and amber on every other view for something intended would teach people to ignore
+amber, the reason Key Vault leaves advice out. (Earlier the lines were split into mistakes and
+tips, and the mistakes counted as warnings in every list, the pipeline list's badge and the
+Status view's "to fix"; November 2026 that was cut to one kind, on the card only.) The dashboard repeats three values for display: the input alert codes, the
 200 kb/s floor and the 30 s warm-up for SRS's zero bitrate; `test/statusConstants.test.ts` pins
 them to the server's.
 
@@ -1409,15 +1409,19 @@ view, the Overview and the Outputs list draw its answer. The input half is the s
 verdict raised to the relay's warning or error, so an unstable or lost leg, or a relay that
 cannot reach SRS, shows on the dot even while the input is off; the relay never turns an input
 that is off into a healthy one. **Status** (dot colour, the counts beside it) and **Problem**
-(lists, filters, "has issues") stay separate: a Problem also counts an
-output stopped after repeated failures, whose status is off.
+(lists, filters, "has issues") stay separate in the code, though both now follow the verdict.
+An output stopped after repeated failures (status off, error kept) is neither: its card shows
+the error as a yellow line and the pipeline is not marked (November 2026; before, it was an
+error Problem that put a red outline on the pipeline's Status card). There are always a few
+broken outputs, and one a person has stopped is not a reason to flag the whole pipeline; Key
+Vault still reports it as an error, so an outside monitor learns the output gave up.
 
 **Why:** the rules had been written out in four places and had drifted. A verdict of warn with a
 relay error was yellow in the sidebar (it folded the relay in only for a good verdict) and red in
 the Status view; the Status view skipped the relay for an off input, which hid a relay that could
 not reach SRS; the group header ignored the relay; the sidebar's output counts, the Overview and
 the Outputs filter each had their own idea of a Problem, and only the filter counted a stop after
-repeated failures. Six commits had moved or patched this rule before it had one home.
+repeated failures (since dropped, see above). Six commits had moved or patched this rule before it had one home.
 
 **Not changed:** a relay connected to SRS that SRS has not yet listed as the input stays a
 warning (the gap after a new publisher connects is normal, and an error would flash on every

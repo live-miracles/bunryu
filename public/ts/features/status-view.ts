@@ -12,6 +12,7 @@ import {
     buildStatusCards,
     groupStatusCards,
     problemEvents,
+    rejectedPublishersCount,
     statusTotals,
     type StatusCard,
     type StatusDot,
@@ -98,6 +99,20 @@ function cardHtml(c: StatusCard): string {
         </span>
         ${inline ? '' : `<span class="mt-1.5 flex flex-wrap gap-1">${dots}</span>`}
     </a>`;
+}
+
+// One red card above the pipelines when SRS refused publishers lately: how many, and a click
+// opens the Overview, where the list is under the pipelines.
+function rejectedCardHtml(count: number): string {
+    if (count === 0) return '';
+    return `<div class="columns-[19rem] gap-2"><a href="/" data-open-overview class="border-base-content/10 bg-base-100/50 hover:border-primary mb-2 block break-inside-avoid rounded-xl border px-3 py-2" style="border-color:color-mix(in oklab,var(--dot-bad) 70%,transparent)">
+        <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            ${dotHtml('error', 'Rejected publishers', 'SRS refused these. Nothing is being forwarded from them.', 'h-3.5 w-3.5')}
+            <span class="min-w-0 truncate font-semibold">Rejected publishers</span>
+            <span class="badge badge-sm badge-error">${count}</span>
+            <span class="text-muted ml-auto text-xs">Open the Overview to see them</span>
+        </span>
+    </a></div>`;
 }
 
 function sideChart(id: string, label: string): string {
@@ -202,6 +217,11 @@ function wireStatusView(el: HTMLElement): void {
             void window.openSrsLogsBtn();
             return;
         }
+        if (target.closest('[data-open-overview]')) {
+            e.preventDefault();
+            window.selectPipeline(null);
+            return;
+        }
         const link = target.closest<HTMLElement>('[data-pipeline-id]');
         if (link?.dataset.pipelineId) {
             e.preventDefault();
@@ -247,14 +267,15 @@ export function renderStatusView(): void {
 
     setPart(
         'status-cards',
-        groups.length === 0
-            ? `<p class="text-muted py-4">${issuesOnly ? 'No pipeline has a warning or an error.' : 'No pipelines yet.'}</p>`
-            : groups
-                  .map(
-                      (g) =>
-                          `${g.name ? `<h3 class="text-muted mt-3 mb-1.5 text-xs font-semibold tracking-wide uppercase first:mt-0">${escapeHtml(g.name)}</h3>` : ''}<div class="columns-[19rem] gap-2">${g.cards.map(cardHtml).join('')}</div>`,
-                  )
-                  .join(''),
+        rejectedCardHtml(rejectedPublishersCount(state.rejectedPublishes, state.rejectedOmitted)) +
+            (groups.length === 0
+                ? `<p class="text-muted py-4">${issuesOnly ? 'No pipeline has a warning or an error.' : 'No pipelines yet.'}</p>`
+                : groups
+                      .map(
+                          (g) =>
+                              `${g.name ? `<h3 class="text-muted mt-3 mb-1.5 text-xs font-semibold tracking-wide uppercase first:mt-0">${escapeHtml(g.name)}</h3>` : ''}<div class="columns-[19rem] gap-2">${g.cards.map(cardHtml).join('')}</div>`,
+                      )
+                      .join('')),
     );
 
     // The problems list stays pinned to its newest line unless someone scrolled up.

@@ -13,6 +13,7 @@ const output = (over: Partial<OutputView> = {}): Partial<OutputView> => ({
     videoEncoding: 'copy',
     audioEncoding: 'copy',
     failures: 0,
+    nextRetryAtMs: null,
     lastError: null,
     lastErrorAt: null,
     hasErrorHistory: false,
@@ -109,14 +110,24 @@ describe('output stopped after repeated failed attempts', () => {
             ...over,
         });
 
-    test('keeps the error line, in red, while the output stays stopped', () => {
+    test('keeps the error line, in yellow, while the output stays stopped', () => {
         const html = stoppedAfterFailures();
 
         assert.match(
             html,
-            /<span class="text-xs text-error truncate[^"]*" title="[^"]*">Stopped after 5 failed attempts\. Last error: Connection refused<\/span>/,
+            /<span class="text-xs text-warning truncate[^"]*" title="[^"]*">Stopped after 5 failed attempts\. Last error: Connection refused<\/span>/,
         );
-        assert.match(html, /text-error[^>]*data-action="error-info"/);
+        assert.match(html, /text-warning[^>]*data-action="error-info"/);
+        assert.ok(!/text-xs text-error|badge-error/.test(html), 'no red line or retry badge');
+    });
+
+    test('adds advice with the attempt count, to check and update the link', () => {
+        const lines = warningLines(stoppedAfterFailures());
+
+        assert.equal(lines.length, 2, 'the error line, then the advice');
+        assert.match(lines[0], /^Stopped after 5 failed attempts\. Last error/);
+        assert.match(lines[1], /^Stopped after 5 attempts: check the link and stream key/);
+        assert.ok(lines[1].length < 100, 'short enough for one line');
     });
 
     test('a plainly stopped output shows no error line', () => {
@@ -127,16 +138,11 @@ describe('output stopped after repeated failed attempts', () => {
     });
 });
 
-// Every output warning (runtime, duplicate destination, encoding advice) is the
-// same kind of line: a warning icon and the message, with the full text in the
-// title, and any of them tints the card.
+// Every yellow line on a card (a runtime warning, or advice about how the output is
+// configured) is a warning icon and the message, with the full text in the title. Only a
+// runtime warning tints the card and the dot; advice never does.
 const warningLines = (html: string) =>
     [...html.matchAll(/<span class="text-xs text-warning truncate[^"]*" title="([^"]*)">/g)].map(
-        (m) => m[1],
-    );
-// A tip is a note: muted, with an info icon, and it never tints the card.
-const tipLines = (html: string) =>
-    [...html.matchAll(/<span class="text-xs text-muted truncate[^"]*" title="([^"]*)">/g)].map(
         (m) => m[1],
     );
 const tinted = (html: string) => /data-output-card="[^"]*" style="background:color-mix/.test(html);
@@ -147,7 +153,7 @@ describe('duplicate destination', () => {
         [url, [{ pipelineName: 'Other', outputName: 'YT' }, { pipelineName: 'Main' }]],
     ]);
 
-    test('is a warning line naming the other outputs, with the card tinted', () => {
+    test('is a yellow line naming the other outputs, and does not tint the card', () => {
         const html = card(
             withVerdict(output({ url }), rtmpInput),
             withInputVerdict(rtmpInput),
@@ -155,7 +161,7 @@ describe('duplicate destination', () => {
             deps,
         );
         assert.deepEqual(warningLines(html), ['Same destination as Other → YT, Main']);
-        assert.ok(tinted(html));
+        assert.ok(!tinted(html));
     });
 
     test('leaves the output itself out of the list', () => {
@@ -189,14 +195,14 @@ describe('duplicate destination', () => {
     });
 });
 
-describe('all output warnings share one style', () => {
+describe('warnings and advice share one style', () => {
     test('a runtime warning is a warning line and tints the card', () => {
         const html = render({ warningReason: 'High memory usage' });
         assert.deepEqual(warningLines(html), ['High memory usage']);
         assert.ok(tinted(html));
     });
 
-    test('runtime, then duplicate destination, then audio mistakes, each on its own line', () => {
+    test('runtime, then duplicate destination, then audio advice, each on its own line', () => {
         const url = 'rtmp://a.example/live/key';
         const dups = new Map([[url, [{ pipelineName: 'Other', outputName: 'YT' }]]]);
         const html = card(
@@ -215,30 +221,26 @@ describe('all output warnings share one style', () => {
         assert.match(lines[2], /only has one audio track/);
     });
 
-    test('a tip is a muted note under the warnings: it never tints the card or counts as one', () => {
-        const html = render({ audioEncoding: '0' });
-        assert.deepEqual(warningLines(html), []);
-        assert.equal(tipLines(html).length, 1);
-        assert.match(tipLines(html)[0], /^Track 1 re-encodes the audio/);
-        assert.ok(!tinted(html));
-        // With a warning too, both show, the warning tints and the tip stays muted.
+    test('advice is a yellow line that never tints the card', () => {
+        for (const audioEncoding of ['0', '1']) {
+            const html = render({ audioEncoding });
+            assert.equal(warningLines(html).length, 1, audioEncoding);
+            assert.ok(!tinted(html), audioEncoding);
+        }
+        // With a runtime warning too, both show and the warning is what tints.
         const both = render({ audioEncoding: '0', warningReason: 'High memory usage' });
-        assert.deepEqual(warningLines(both), ['High memory usage']);
-        assert.equal(tipLines(both).length, 1);
+        assert.equal(warningLines(both).length, 2);
         assert.ok(tinted(both));
     });
 
-    test('the status dot lists the warnings, not the tips', () => {
-        const dotTip = (html: string) =>
+    test('the status dot has no text for advice, only for warnings', () => {
+        const dotText = (html: string) =>
             html.match(
                 /aria-label="status"[\s\S]*?js-tooltip-content hidden">([\s\S]*?)<\/div><\/span>/,
             )?.[1];
-        assert.equal(
-            dotTip(render({ audioEncoding: '0' })),
-            undefined,
-            'a tip gives the dot no text',
-        );
-        assert.match(dotTip(render({ audioEncoding: '1' })) ?? '', /only has one audio track/);
+        assert.equal(dotText(render({ audioEncoding: '0' })), undefined);
+        assert.equal(dotText(render({ audioEncoding: '1' })), undefined);
+        assert.match(dotText(render({ warningReason: 'High memory usage' })) ?? '', /High memory/);
     });
 
     test('an output with no warnings is not tinted', () => {
@@ -298,8 +300,9 @@ describe('narrow screens', () => {
 describe('error line', () => {
     const message =
         'Stopped after 22 failed attempts. Last error: Error opening output files: Input/output error';
+    // A crash being retried: red (a stopped output's error is yellow).
     const errored = () =>
-        render({ desiredState: 'stopped', status: 'stopped', lastError: message, lastErrorAt: 1 });
+        render({ status: 'failed', failures: 2, lastError: message, lastErrorAt: 1 });
 
     test('carries the full text in its title, since the line is truncated', () => {
         assert.match(
@@ -328,6 +331,14 @@ describe('card tint follows the most severe problem', () => {
     };
     const erroredCard = (over = {}) =>
         render({
+            status: 'failed',
+            failures: 2,
+            lastError: 'ffmpeg exited with code 1',
+            lastErrorAt: 1,
+            ...over,
+        });
+    const stoppedAfterFailures = (over = {}) =>
+        render({
             desiredState: 'stopped',
             status: 'stopped',
             lastError: 'Stopped after 5 failed attempts. Last error: Connection refused',
@@ -339,6 +350,14 @@ describe('card tint follows the most severe problem', () => {
         assert.equal(tintOf(erroredCard()), 'error');
     });
 
+    test('a stop after repeated failures does not tint it', () => {
+        assert.equal(tintOf(stoppedAfterFailures()), null);
+        // With a warning of its own, that is what tints it, in yellow.
+        assert.equal(
+            tintOf(stoppedAfterFailures({ warningReason: 'High memory usage' })),
+            'warning',
+        );
+    });
     test('a crash being retried tints it red', () => {
         const html = render({
             lastError: 'ffmpeg exited with code 1',

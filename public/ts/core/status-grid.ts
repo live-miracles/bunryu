@@ -1,4 +1,4 @@
-import type { ActivityEvent, PipelineGroup, PipelineView } from '../types.js';
+import type { ActivityEvent, PipelineGroup, PipelineView, RejectedPublish } from '../types.js';
 import type { InputStatus, OutStatus } from './status.js';
 import { isProblem, pipelineProblems, type StatusTally } from './problems.js';
 
@@ -64,6 +64,17 @@ export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext)
             severity: rolled.severity,
         };
     });
+}
+
+// The rejected publishers (what SRS refused: a wrong or unassigned key, a play request) as the
+// one red card the Status view shows, so a refused encoder is not missed there. `omitted` are
+// the entries beyond the API's row cap. 0 when nothing was refused lately (the server
+// forgets an entry five minutes after its last attempt).
+export function rejectedPublishersCount(
+    rejected: readonly RejectedPublish[],
+    omitted: number,
+): number {
+    return rejected.length + omitted;
 }
 
 export interface StatusTotals {

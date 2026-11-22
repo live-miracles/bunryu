@@ -311,9 +311,10 @@ only for a new module.
   `core/problems.ts` is the one place that decides what is a Problem and what status a pipeline's
   dot shows (`pipelineProblems` per pipeline, `groupProblems`,
   `outputProblem`): the input half is the verdict raised to the relay's warning or error, a
-  Problem also counts an output stopped after repeated failures, and the sidebar,
-  Status view, Overview and Outputs list only draw its answer;
+  Problem is a warning or error status (not advice, not the error a stopped output keeps),
+  and the sidebar, Status view, Overview and Outputs list only draw its answer;
   `core/status-grid.ts` builds the Status view's cards, dots, groups, counts and problem list
+  (and the count behind its red Rejected publishers card)
   (`features/status-view.ts` draws it, in parts replaced only when their HTML changed);
   `core/overview-model.ts` is the same for the Overview (`buildOverviewModel`: each table's
   rows under the All / Active / Issues filter and the search boxes, its counts and empty-state
@@ -352,8 +353,8 @@ only for a new module.
   `core/output-advice.ts` is the advice about how an output or pipeline is configured (a
   destination another output uses, audio settings that do not suit the input, a stream key
   two pipelines share): pure, dashboard-only, never part of a status or of the Key Vault report.
-  A line is a mistake (a yellow line) or a tip (a muted note), both on the output card only:
-  they reach no pipeline badge, Status card, Overview row or Problem;
+  Every line is one yellow line on the output card only: it tints neither the card nor the dot
+  and reaches no pipeline badge, Status card, Overview row or Problem;
   `core/outputs-filter.ts` has the Outputs list's filter, "Problems" test and summary
   counts (`outputProblem` in `core/problems.ts` says what counts as a problem);
   `core/pending-outputs.ts` keeps an output's Start/Stop button disabled from the click until the

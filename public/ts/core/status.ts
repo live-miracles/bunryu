@@ -61,6 +61,13 @@ export function toOutputStatusVerdict(verdict: OutputVerdict | undefined): Outpu
     return view;
 }
 
+// The colour of an output's error marks (the card's error line and History button, the
+// Overview's error icon): red while it runs, yellow once it is stopped, since a stopped
+// output's error is something to look at, not something happening now.
+export function errorTone(output: Pick<OutputView, 'desiredState'>): 'error' | 'warning' {
+    return output.desiredState === 'stopped' ? 'warning' : 'error';
+}
+
 export function lastErrorLine(output: OutputView): string {
     return (
         (output.lastError ?? '')
