@@ -248,8 +248,11 @@ only for a new module.
       stream and the publish conflict, the leg join) and builds once per poll the index of local
       SRT outputs that publish into another pipeline's key (`localSrtTargets`). Pure: the poll
       keeps every call with a side effect and its order.
-    - `hostMonitor.ts` turns the host's memory, CPU pressure and disk readings into host
-      alerts and Server events (readings are injectable).
+    - `hostMonitor.ts` turns the host's memory, CPU (busy and pressure) and disk readings into
+      host alerts (warning from 70%, error from 90%, which `/api/health` carries as `hostAlerts`
+      for the banners and the top bar's colours) and Server events (readings are injectable).
+    - `utils/alertHold.ts` keeps each SRT interval alert in the payload for 30 s, so the status
+      it sets stays on screen.
     - `healthDiagnostics.ts` trims each pipeline's health for the per-minute snapshot event.
     - `utils/healthVerdicts.ts` works out the verdict (status and issues) of every saved input
       and output for `/api/health`, from the rules in `utils/outputStatus.ts` and
@@ -353,8 +356,10 @@ only for a new module.
   `core/output-advice.ts` is the advice about how an output or pipeline is configured (a
   destination another output uses, audio settings that do not suit the input, a stream key
   two pipelines share): pure, dashboard-only, never part of a status or of the Key Vault report.
-  Every line is one yellow line on the output card only: it tints neither the card nor the dot
-  and reaches no pipeline badge, Status card, Overview row or Problem;
+  Every line is one yellow line on the output card, and a "notice" elsewhere (`adviceByOutput`: a
+  yellow outline round the output's dot on the Status view and the Overview, the lines in its
+  tooltip and Issues cell): it tints neither the card nor a dot's colour and reaches no pipeline
+  badge, count or Problem;
   `core/outputs-filter.ts` has the Outputs list's filter, "Problems" test and summary
   counts (`outputProblem` in `core/problems.ts` says what counts as a problem);
   `core/pending-outputs.ts` keeps an output's Start/Stop button disabled from the click until the
@@ -399,6 +404,9 @@ tool folder.
   diagnostics, deployed version).
 - `write-fail-report` - incident write-ups in `fail-reports/` and the redaction
   checklist for this public repository.
+- `review-dashboard-messages` - screenshot every error, warning and tip the Overview and Status
+  pages can show and publish a review report (what it looks like, when it shows) for the operator
+  to confirm; refresh it after a rule or UI change.
 - `benchmark-sizing` - re-measure output CPU/RAM costs on a private loopback SRS
   pair to refresh `docs/1-getting-started/4-sizing.md`.
 

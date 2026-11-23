@@ -1,0 +1,598 @@
+<title>Bunryu Message Review</title>
+<meta name="claude:viewport-fit-sides" content="cover" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" />
+<style>
+  /* Layout concept: a review sheet. Sticky tool bar on top, one card per message, text left and screenshots right. */
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --line: #dfe3e9;
+    --fg: #1b2330;
+    --muted: #5d6877;
+    --accent: #2f5fd0;
+    --accent-soft: #e6edfb;
+    --warn: #8a5a00;
+    --warn-bg: #fdf1d6;
+    --err: #a3231f;
+    --err-bg: #fbe3e1;
+    --tip: #1d5f8f;
+    --tip-bg: #e0eefa;
+    --ok: #1f6b45;
+    --ok-bg: #dff3e7;
+    --info: #4b5565;
+    --info-bg: #e8ebf0;
+    --shot-bg: #0d0f12;
+    --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bg: #101318;
+      --surface: #171b22;
+      --line: #2a303a;
+      --fg: #e6e9ee;
+      --muted: #9aa4b2;
+      --accent: #8fb0ff;
+      --accent-soft: #1d2740;
+      --warn: #f1c46a;
+      --warn-bg: #3a2f13;
+      --err: #ff9a94;
+      --err-bg: #3d1a19;
+      --tip: #8cc4f0;
+      --tip-bg: #14293b;
+      --ok: #7fd1a1;
+      --ok-bg: #15301f;
+      --info: #b3bcc9;
+      --info-bg: #232a34;
+      --shot-bg: #000;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme='dark'] {
+    --bg: #101318;
+    --surface: #171b22;
+    --line: #2a303a;
+    --fg: #e6e9ee;
+    --muted: #9aa4b2;
+    --accent: #8fb0ff;
+    --accent-soft: #1d2740;
+    --warn: #f1c46a;
+    --warn-bg: #3a2f13;
+    --err: #ff9a94;
+    --err-bg: #3d1a19;
+    --tip: #8cc4f0;
+    --tip-bg: #14293b;
+    --ok: #7fd1a1;
+    --ok-bg: #15301f;
+    --info: #b3bcc9;
+    --info-bg: #232a34;
+    --shot-bg: #000;
+    color-scheme: dark;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0 64px;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  a {
+    color: var(--accent);
+  }
+  header.top {
+    padding: 32px 0 8px;
+  }
+  header.top h1 {
+    font-size: 30px;
+    line-height: 1.2;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  header.top p {
+    margin: 0 0 10px;
+    max-width: 70ch;
+    color: var(--muted);
+  }
+  .how {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin: 18px 0 8px;
+  }
+  .how div {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 14px;
+    min-width: 0;
+  }
+  .how b {
+    display: block;
+    margin-bottom: 2px;
+  }
+  .bar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0;
+    margin: 12px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0 0 auto;
+    height: env(safe-area-inset-top, 0px);
+    z-index: 10;
+    background: var(--bg);
+  }
+  .bar .count {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .bar .count b {
+    color: var(--fg);
+  }
+  .bar button {
+    font: inherit;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  :root[data-theme='dark'] .bar button {
+    color: #0d1117;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .bar button {
+      color: #0d1117;
+    }
+  }
+  .bar button.ghost {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--line);
+  }
+  .bar button:focus-visible,
+  .opt input:focus-visible,
+  .note:focus-visible,
+  .toc a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin-left: auto;
+  }
+  .toc a {
+    font-size: 13px;
+    text-decoration: none;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--fg);
+  }
+  .toc a:hover {
+    border-color: var(--accent);
+  }
+  #fallback {
+    display: none;
+    width: 100%;
+    min-height: 120px;
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--surface);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px;
+  }
+  .sec {
+    margin-top: 44px;
+    scroll-margin-top: 90px;
+  }
+  .sec h2 {
+    font-size: 22px;
+    margin: 0 0 4px;
+    letter-spacing: -0.005em;
+  }
+  .secintro {
+    color: var(--muted);
+    margin: 0 0 16px;
+    max-width: 80ch;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    scroll-margin-top: 90px;
+    border-left-width: 4px;
+  }
+  .sev-error {
+    border-left-color: var(--err);
+  }
+  .sev-warning {
+    border-left-color: var(--warn);
+  }
+  .sev-tip {
+    border-left-color: var(--tip);
+  }
+  .sev-ok {
+    border-left-color: var(--ok);
+  }
+  .sev-info {
+    border-left-color: var(--info);
+  }
+  .sev-obs {
+    border-left-color: var(--accent);
+  }
+  .change {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    scroll-margin-top: 90px;
+  }
+  .change header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+    margin-bottom: 6px;
+  }
+  .change h3 {
+    font-size: 16px;
+    margin: 0;
+    flex: 1 1 320px;
+    min-width: 0;
+    text-wrap: balance;
+  }
+  .change p {
+    margin: 4px 0;
+    max-width: 90ch;
+  }
+  .change .decided {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .card header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+    margin-bottom: 10px;
+  }
+  .card h3 {
+    font-size: 16px;
+    margin: 0;
+    flex: 1 1 320px;
+    min-width: 0;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+  }
+  .code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 2px 7px;
+    border-radius: 5px;
+  }
+  .chip {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .chip-error {
+    background: var(--err-bg);
+    color: var(--err);
+  }
+  .chip-warning {
+    background: var(--warn-bg);
+    color: var(--warn);
+  }
+  .chip-tip {
+    background: var(--tip-bg);
+    color: var(--tip);
+  }
+  .chip-ok {
+    background: var(--ok-bg);
+    color: var(--ok);
+  }
+  .chip-info {
+    background: var(--info-bg);
+    color: var(--info);
+  }
+  .body {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 18px;
+  }
+  .body.one {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .facts {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row dt {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    margin-bottom: 1px;
+  }
+  .row dd {
+    margin: 0;
+    font-size: 14px;
+  }
+  .shots {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .shot {
+    margin: 0;
+    min-width: 0;
+  }
+  .shot img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--shot-bg);
+  }
+  .shot.tall img {
+    max-height: 330px;
+    width: auto;
+    object-fit: cover;
+    object-position: top;
+  }
+  .shot figcaption {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .refs {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 6px 0 0;
+  }
+  .ref {
+    font-family: var(--mono);
+    font-size: 12px;
+    margin-right: 6px;
+  }
+  .review {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+    font-size: 14px;
+  }
+  .opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .note {
+    flex: 1 1 220px;
+    min-width: 0;
+    font: inherit;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 9px;
+  }
+  .card.decided-change {
+    box-shadow: inset 0 0 0 1px var(--warn);
+  }
+  .card.decided-question {
+    box-shadow: inset 0 0 0 1px var(--tip);
+  }
+  .card.decided-ok .review {
+    opacity: 0.8;
+  }
+  @media (max-width: 860px) {
+    .body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .toc {
+      margin-left: 0;
+    }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Bunryu message review</h1>
+    <p>
+      Every error, warning and tip the Overview and Status pages can show, as it looks and when it appears. {{COUNT}} messages, retaken after the
+      changes you asked for ({{OBSCOUNT}} items, listed first). Mark each message Keep as is, Change or Question, add a note, then use Copy my notes
+      and paste the result back to me.
+    </p>
+    <div class="how">
+      <div>
+        <b>How these were captured</b>The real dashboard and control plane from the test stack. States the stack cannot produce on its own (relay
+        legs, SRT alerts, banners) came from real health data edited per case, with the verdicts recomputed by the server’s own status rules. Three
+        cases (timestamp flood, shared encodes) are fully real.
+      </div>
+      <div>
+        <b>Colours</b>Green is OK, yellow a warning, red an error, grey stopped or offline. “Tip” is advice about configuration: a yellow line on the
+        output card, and a yellow outline round the output’s dot on the Status page and the Overview. It never changes a colour or a count.
+      </div>
+      <div>
+        <b>Where messages appear</b>Overview tables list every issue with its hint. The pipeline-list dot lists them on hover. A Status dot lists
+        every issue on hover, like the pipeline list. Error hints on outputs are an ⓘ on the output card. Host alerts are banners.
+      </div>
+    </div>
+  </header>
+
+  <div class="bar">
+    <span class="count" id="count"
+      ><b id="done">0</b> of <b id="total">{{COUNT}}</b> items reviewed, <b id="flag">0</b> marked Change or Question</span
+    >
+    <button type="button" id="copy">Copy my notes</button>
+    <button type="button" id="clear" class="ghost">Clear marks</button>
+    <nav class="toc" aria-label="Sections">{{TOC}}</nav>
+    <textarea id="fallback" readonly aria-label="Notes to copy"></textarea>
+  </div>
+
+  <main>{{OBS}} {{CARDS}}</main>
+</div>
+
+<script>
+  (function () {
+    var KEY = 'bunryu-message-review-v3';
+    var state = {};
+    try {
+      state = JSON.parse(localStorage.getItem(KEY) || '{}') || {};
+    } catch (e) {
+      state = {};
+    }
+    var cards = Array.prototype.slice.call(document.querySelectorAll('article.card'));
+    document.getElementById('total').textContent = cards.length;
+    function save() {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(state));
+      } catch (e) {}
+    }
+    function paint(card) {
+      var s = state[card.dataset.code] || {};
+      card.classList.remove('decided-ok', 'decided-change', 'decided-question');
+      if (s.d) card.classList.add('decided-' + s.d);
+    }
+    function counts() {
+      var done = 0,
+        flag = 0;
+      cards.forEach(function (c) {
+        var s = state[c.dataset.code] || {};
+        if (s.d) done++;
+        if (s.d === 'change' || s.d === 'question') flag++;
+      });
+      document.getElementById('done').textContent = done;
+      document.getElementById('flag').textContent = flag;
+    }
+    cards.forEach(function (card) {
+      var code = card.dataset.code,
+        s = state[code] || {};
+      var radios = card.querySelectorAll('input[type=radio]');
+      Array.prototype.forEach.call(radios, function (r) {
+        if (s.d === r.value) r.checked = true;
+        r.addEventListener('change', function () {
+          state[code] = state[code] || {};
+          state[code].d = r.value;
+          save();
+          paint(card);
+          counts();
+        });
+      });
+      var note = card.querySelector('.note');
+      if (s.n) note.value = s.n;
+      note.addEventListener('input', function () {
+        state[code] = state[code] || {};
+        state[code].n = note.value;
+        save();
+      });
+      paint(card);
+    });
+    counts();
+    var LABEL = { ok: 'Keep as is', change: 'Change', question: 'Question' };
+    function summary() {
+      var lines = [],
+        ok = 0;
+      cards.forEach(function (c) {
+        var s = state[c.dataset.code] || {};
+        if (s.d === 'ok' && !s.n) {
+          ok++;
+          return;
+        }
+        if (!s.d && !s.n) return;
+        lines.push('- ' + c.dataset.code + ' [' + (LABEL[s.d] || 'Note') + '] ' + c.dataset.title + (s.n ? ' :: ' + s.n : ''));
+      });
+      lines.push('', ok + ' marked Keep as is with no note.');
+      return 'Bunryu message review\n' + lines.join('\n');
+    }
+    document.getElementById('copy').addEventListener('click', function () {
+      var text = summary(),
+        fb = document.getElementById('fallback');
+      function show() {
+        fb.style.display = 'block';
+        fb.value = text;
+        fb.focus();
+        fb.select();
+      }
+      try {
+        navigator.clipboard.writeText(text).then(function () {
+          var b = document.getElementById('copy');
+          b.textContent = 'Copied';
+          setTimeout(function () {
+            b.textContent = 'Copy my notes';
+          }, 1800);
+        }, show);
+      } catch (e) {
+        show();
+      }
+    });
+    document.getElementById('clear').addEventListener('click', function () {
+      state = {};
+      save();
+      cards.forEach(function (c) {
+        Array.prototype.forEach.call(c.querySelectorAll('input[type=radio]'), function (r) {
+          r.checked = false;
+        });
+        c.querySelector('.note').value = '';
+        paint(c);
+      });
+      counts();
+    });
+  })();
+</script>
