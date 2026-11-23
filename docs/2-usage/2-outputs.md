@@ -168,8 +168,8 @@ input (or into another pipeline that leads back to it) is added too, with a yell
 its card.
 
 With many outputs, use the bar above the list: the filter box matches an output's name
-or destination as you type, and **Problems** keeps only outputs with an error or a
-warning (the same ones the card colors red or yellow). The badges count the pipeline's
+or destination as you type, and **Problems** keeps only outputs with a line on their card: an error,
+a warning or advice (see below), even the advice that is not counted as a problem. The badges count the pipeline's
 outputs: running and stopped are every output (so they add up to the total), while errors
 and warnings count the outputs with one, stopped or not. "8 of 44" shows how many the
 filter leaves. Drag a card anywhere to reorder the outputs. Its History, Edit and Delete buttons show when you hover the card (a touch screen shows them always). The filter is per browser, starts empty
@@ -187,7 +187,7 @@ which already says after how many attempts: check the link and stream key, updat
 on the **Overview** get a yellow outline (a stopped output is a grey dot with the outline
 instead of the dash), and the lines are listed in the dot's hover text and in the Overview's
 Issues column. It does not tint the card or change a colour, and it is not in the pipeline
-list, a count or **Problems**, because you may do it on purpose (a backup pipeline with the
+list or a count, and is not a Problem (only the card's **Problems** button lists it), because you may do it on purpose (a backup pipeline with the
 same destination as the primary).
 
 ### Overview

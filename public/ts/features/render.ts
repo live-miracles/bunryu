@@ -47,6 +47,7 @@ import { formatOutputName, renderOutputCard } from './output-card.js';
 import {
     duplicateDestinations,
     otherPipelinesOnKey,
+    outputAdvice,
     restreamLoops,
 } from '../core/output-advice.js';
 import { ICON_HISTORY, ICON_PENCIL, ICON_TRASH } from './output-badges.js';
@@ -1579,10 +1580,13 @@ function renderOutputsList(pipeline: PipelineView): void {
         output,
         status,
         severity,
+        // The Problems button also keeps an output whose card only has advice.
+        hasMessage:
+            severity !== null || outputAdvice(output, pipeline.input, dupUrls, loops).length > 0,
     }));
     const { outputsListSearch: query, outputsListProblemsOnly: problemsOnly } = state;
     const visible = rows.filter((row) =>
-        matchesOutputFilter(row.output, row.severity, query, problemsOnly),
+        matchesOutputFilter(row.output, row.hasMessage, query, problemsOnly),
     );
     outputsListFiltered = visible.length !== rows.length || query.trim() !== '' || problemsOnly;
 

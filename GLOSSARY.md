@@ -94,7 +94,7 @@ A hint about how an output or pipeline is configured, such as a destination anot
 _Avoid_: advisory warning
 
 **Problem**:
-An output or input with an error or a warning, as its dot colours it. An output stopped after repeated failures (its status stays off, its error is still current) is not one: it shows as a grey dot with a yellow outline, and its card shows the error as a yellow line. The Problems filter lists exactly the Problems.
+An output or input with an error or a warning, as its dot colours it. An output stopped after repeated failures (its status stays off, its error is still current) is not one: it shows as a grey dot with a yellow outline, and its card shows the error as a yellow line. The Overview and Status filters list exactly the Problems; the Outputs list's Problems button also keeps outputs with advice.
 _Avoid_: issue (that is a GitHub issue)
 
 **Diagnostics**:

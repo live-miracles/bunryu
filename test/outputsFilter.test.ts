@@ -28,26 +28,26 @@ describe('matchesOutputFilter', () => {
     const youtube = { name: 'YouTube EN', url: 'rtmp://a.rtmp.youtube.com/live2/key' };
 
     test('matches the name or the destination, ignoring case', () => {
-        assert.equal(matchesOutputFilter(youtube, null, 'youtube en', false), true);
-        assert.equal(matchesOutputFilter(youtube, null, 'RTMP.YOUTUBE', false), true);
-        assert.equal(matchesOutputFilter(youtube, null, 'twitch', false), false);
+        assert.equal(matchesOutputFilter(youtube, false, 'youtube en', false), true);
+        assert.equal(matchesOutputFilter(youtube, false, 'RTMP.YOUTUBE', false), true);
+        assert.equal(matchesOutputFilter(youtube, false, 'twitch', false), false);
     });
 
     test('an output without a destination is found by name only', () => {
         const rendition = { name: 'Shared', url: null };
-        assert.equal(matchesOutputFilter(rendition, null, 'shared', false), true);
-        assert.equal(matchesOutputFilter(rendition, null, 'null', false), false);
+        assert.equal(matchesOutputFilter(rendition, false, 'shared', false), true);
+        assert.equal(matchesOutputFilter(rendition, false, 'null', false), false);
     });
 
-    test('Problems only drops outputs with neither an error nor a warning', () => {
-        assert.equal(matchesOutputFilter(youtube, null, '', true), false);
-        assert.equal(matchesOutputFilter(youtube, 'warning', '', true), true);
-        assert.equal(matchesOutputFilter(youtube, 'error', '', true), true);
+    test('Problems only drops outputs with nothing on their card, keeps any with a line', () => {
+        assert.equal(matchesOutputFilter(youtube, false, '', true), false);
+        assert.equal(matchesOutputFilter(youtube, true, '', true), true);
+        assert.equal(matchesOutputFilter(youtube, false, '', false), true);
     });
 
     test('Problems only and a query must both match', () => {
-        assert.equal(matchesOutputFilter(youtube, 'error', 'twitch', true), false);
-        assert.equal(matchesOutputFilter(youtube, 'error', 'youtube', true), true);
+        assert.equal(matchesOutputFilter(youtube, true, 'twitch', true), false);
+        assert.equal(matchesOutputFilter(youtube, true, 'youtube', true), true);
     });
 });
 

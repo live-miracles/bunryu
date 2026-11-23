@@ -24,14 +24,15 @@ export function countOutputs(
 }
 
 // The name or the destination contains the query (case-insensitive); with
-// "Problems only" the output must also have an error or a warning.
+// "Problems only" the output must also have something to say on its card: an error, a
+// warning or advice (`hasMessage`; advice is no Problem, but the button finds it too).
 export function matchesOutputFilter(
     output: { name: string; url: string | null },
-    severity: OutputSeverity,
+    hasMessage: boolean,
     query: string,
     problemsOnly: boolean,
 ): boolean {
-    if (problemsOnly && severity === null) return false;
+    if (problemsOnly && !hasMessage) return false;
     return matchesName(query, output.name, output.url ?? '');
 }
 
