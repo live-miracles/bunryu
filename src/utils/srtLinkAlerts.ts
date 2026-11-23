@@ -18,10 +18,18 @@ export interface RelayInputSample {
     forwardedPackets: number;
 }
 
-// One second is a reasonable buffering target for long-distance or bonded
-// SRT, so warn only when the negotiated latency exceeds it with some margin.
-// Sudden latency spikes are still reported independently below.
-export const SRT_HIGH_LATENCY_WARN_MS = 1500;
+// The latency the relay reports is the one negotiated for the connection: the encoder's
+// setting (the larger of the two sides'), fixed for its life, not a measured delay. SRT's
+// guidance is about four times the round trip, so a long or lossy link (a satellite hop,
+// a congested mobile uplink) legitimately needs two seconds or more. Warn only when it is
+// so high that it is probably a mistake on the encoder, such as seconds typed for ms.
+export const SRT_HIGH_LATENCY_WARN_MS = 5000;
+
+// Belated packets are the ones that arrived after their play time. A fixed count means
+// little at different bitrates (100 in an interval is 3 % at about 5 Mb/s and 20 % at 1),
+// so the rule is a share of the packets received, and at least this many.
+const SRT_BELATED_WARN_RATIO = 0.03;
+const SRT_BELATED_MIN_PACKETS = 10;
 
 // An interval is an error rather than a warning from this many dropped packets (or 5 % of
 // those received, the leg rule below), this loss ratio, or this collapse of the bitrate.
@@ -86,6 +94,11 @@ export function anyCounterReset(
     });
 }
 
+// One decimal; a share too small for that keeps its first significant digit (0.001).
+function formatPercent(percent: number): string {
+    return percent < 0.1 ? String(Number(percent.toPrecision(1))) : percent.toFixed(1);
+}
+
 function formatKbps(kbps: number): string {
     return kbps >= 1000 ? `${Number((kbps / 1000).toFixed(1))} Mb/s` : `${Math.round(kbps)} kb/s`;
 }
@@ -128,7 +141,10 @@ export function srtIntervalAlerts(
                     ? 'error'
                     : 'warning',
             code: 'srt-packets-dropped',
-            message: `SRT input dropped ${dropped} packet${dropped === 1 ? '' : 's'} in the last health interval.`,
+            message:
+                received > 0
+                    ? `SRT input packet drops are ${formatPercent((dropped / received) * 100)}% (${dropped} packet${dropped === 1 ? '' : 's'}) in the last health interval.`
+                    : `SRT input dropped ${dropped} packet${dropped === 1 ? '' : 's'} in the last health interval.`,
             sinceMs: now,
         });
     } else if (lossRatio >= 0.01) {
@@ -148,23 +164,23 @@ export function srtIntervalAlerts(
         });
     }
     const belated = growth.belated ?? 0;
-    if (belated > 100) {
-        alerts.push({
-            severity: 'warning',
-            code: 'srt-belated-packets',
-            message: `SRT received ${belated} belated packets in the last health interval.`,
-            sinceMs: now,
-        });
-    }
     if (
-        current.latencyMs !== null &&
-        (current.latencyMs >= SRT_HIGH_LATENCY_WARN_MS ||
-            (previous.latencyMs !== null && current.latencyMs >= previous.latencyMs * 1.5 + 100))
+        received > 0 &&
+        belated >= SRT_BELATED_MIN_PACKETS &&
+        belated / received >= SRT_BELATED_WARN_RATIO
     ) {
         alerts.push({
             severity: 'warning',
-            code: 'srt-latency-spike',
-            message: `SRT latency is high (${Math.round(current.latencyMs)} ms).`,
+            code: 'srt-belated-packets',
+            message: `SRT belated packets are ${formatPercent((belated / received) * 100)}% (${belated} packets) in the last health interval.`,
+            sinceMs: now,
+        });
+    }
+    if (current.latencyMs !== null && current.latencyMs >= SRT_HIGH_LATENCY_WARN_MS) {
+        alerts.push({
+            severity: 'warning',
+            code: 'srt-high-latency',
+            message: `SRT latency is ${Math.round(current.latencyMs)} ms, above ${SRT_HIGH_LATENCY_WARN_MS} ms.`,
             sinceMs: now,
         });
     }
@@ -239,7 +255,7 @@ export function legQualityHealth(
     }
     if (latencyMs !== null && latencyMs >= SRT_HIGH_LATENCY_WARN_MS) {
         health = health === 'error' ? health : 'warn';
-        reason = `${linkNoun} latency is high (${Math.round(latencyMs)} ms).`;
+        reason = `${linkNoun} latency is ${Math.round(latencyMs)} ms, above ${SRT_HIGH_LATENCY_WARN_MS} ms.`;
     }
     return { health, reason };
 }

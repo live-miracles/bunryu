@@ -120,8 +120,21 @@ describe('srtIntervalAlerts', () => {
     test('dropped packets are reported with the count, and outrank loss', () => {
         const one = interval({ recvDropTotal: 1, recvLossTotal: 500 });
         assert.deepEqual(codes(one), ['srt-packets-dropped']);
-        assert.equal(one[0].message, 'SRT input dropped 1 packet in the last health interval.');
-        assert.match(interval({ recvDropTotal: 7 })[0].message, /dropped 7 packets/);
+        assert.equal(
+            one[0].message,
+            'SRT input packet drops are 0.1% (1 packet) in the last health interval.',
+        );
+        assert.match(interval({ recvDropTotal: 7 })[0].message, /drops are 0\.7% \(7 packets\)/);
+        // A share too small for one decimal keeps its first digit; with nothing received there
+        // is no share, so the count stands alone.
+        assert.match(
+            interval({ recvDropTotal: 1, recvUniquePacketsTotal: 110_000 })[0].message,
+            /drops are 0\.001% \(1 packet\)/,
+        );
+        assert.equal(
+            interval({ recvDropTotal: 1, recvUniquePacketsTotal: 10_000 })[0].message,
+            'SRT input dropped 1 packet in the last health interval.',
+        );
     });
 
     test('loss is reported from 1% of the interval, not below', () => {
@@ -136,19 +149,28 @@ describe('srtIntervalAlerts', () => {
         assert.deepEqual(codes(interval({ retransTotal: 50 })), ['srt-retransmissions']);
     });
 
-    test('belated packets are reported above 100 in the interval, and need both counters', () => {
-        assert.deepEqual(interval({ belatedTotal: 100 }), []);
-        assert.deepEqual(codes(interval({ belatedTotal: 101 })), ['srt-belated-packets']);
+    test('belated packets are reported from 3% of those received (and 10), with both counters', () => {
+        // The interval received 1000 packets.
+        assert.deepEqual(interval({ belatedTotal: 29 }), []);
+        const alerts = interval({ belatedTotal: 30 });
+        assert.deepEqual(codes(alerts), ['srt-belated-packets']);
+        assert.equal(
+            alerts[0].message,
+            'SRT belated packets are 3.0% (30 packets) in the last health interval.',
+        );
         assert.deepEqual(interval({ belatedTotal: 5000 }, { belatedTotal: null }), []);
+        // Ten packets at least: 5% of a 100-packet interval is five packets.
+        assert.deepEqual(interval({ belatedTotal: 5, recvUniquePacketsTotal: 100 }), []);
     });
 
-    test('latency: at the 1.5 s target, or 1.5x the last sample plus 100 ms', () => {
-        assert.deepEqual(codes(interval({ latencyMs: 1500 })), ['srt-latency-spike']);
-        assert.deepEqual(interval({ latencyMs: 1499 }, { latencyMs: 1499 }), []);
-        assert.deepEqual(interval({ latencyMs: 399 }, { latencyMs: 200 }), []);
-        assert.deepEqual(codes(interval({ latencyMs: 400 }, { latencyMs: 200 })), [
-            'srt-latency-spike',
-        ]);
+    test('latency: only the negotiated value at 5 s or more, never a change from the last sample', () => {
+        const high = interval({ latencyMs: 5000 });
+        assert.deepEqual(codes(high), ['srt-high-latency']);
+        assert.equal(high[0].message, 'SRT latency is 5000 ms, above 5000 ms.');
+        assert.deepEqual(interval({ latencyMs: 4999 }, { latencyMs: 4999 }), []);
+        // A long or lossy link negotiates 2 s or more on purpose, and a reconnect with another
+        // setting is a new value, not a spike.
+        assert.deepEqual(interval({ latencyMs: 2000 }, { latencyMs: 200 }), []);
         assert.deepEqual(interval({ latencyMs: null }), []);
     });
 
@@ -177,7 +199,7 @@ describe('srtIntervalAlerts', () => {
             { recvDropTotal: 90 },
         );
         assert.deepEqual(codes(alerts), ['srt-packets-dropped']);
-        assert.match(alerts[0].message, /dropped 4 packets/);
+        assert.match(alerts[0].message, /drops are 0\.8% \(4 packets\)/);
     });
 
     test('every alert carries the time it was raised', () => {
@@ -284,11 +306,12 @@ describe('legQualityHealth', () => {
         assert.equal(v.reason, 'Connection retransmissions are 5.0% over the last minute.');
     });
 
-    test('latency at 1.5 s or more is a warning that replaces the reason', () => {
-        assert.equal(verdict({}, 1499).health, 'ok');
-        const v = verdict({ lossPackets: 20 }, 1700);
+    test('latency at 5 s or more is a warning that replaces the reason', () => {
+        assert.equal(verdict({}, 4999).health, 'ok');
+        assert.equal(verdict({}, 2000).health, 'ok');
+        const v = verdict({ lossPackets: 20 }, 5700);
         assert.equal(v.health, 'warn');
-        assert.equal(v.reason, 'Leg latency is high (1700 ms).');
+        assert.equal(v.reason, 'Leg latency is 5700 ms, above 5000 ms.');
         assert.equal(verdict({}, null).health, 'ok');
     });
 

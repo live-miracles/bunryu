@@ -74,10 +74,13 @@ describe('a yellow status dot always says why', () => {
     test('a low bitrate is a warning line and the dot has a tooltip with it', () => {
         const html = render({ bitrateKbps: 58 });
 
-        assert.match(html, /text-xs text-warning[^>]*>Output bitrate is below 200 kb\/s\./);
         assert.match(
             html,
-            /<span class="js-tooltip[^"]*"[^>]*><div aria-label="status"[^>]*><\/div><div class="js-tooltip-content hidden">.*Output bitrate is below 200 kb\/s\./,
+            /text-xs text-warning[^>]*>Output bitrate is 58 kb\/s, below 200 kb\/s\./,
+        );
+        assert.match(
+            html,
+            /<span class="js-tooltip[^"]*"[^>]*><div aria-label="status"[^>]*><\/div><div class="js-tooltip-content hidden">.*Output bitrate is 58 kb\/s, below 200 kb\/s\./,
         );
     });
 

@@ -129,6 +129,18 @@ describe('relayHealth', () => {
             assert.equal(h.input, 'good');
         });
 
+        test('a bonded group with no legs says so once, not also that no packets arrive', () => {
+            const h = health(
+                pipeline({ lastInputPacketAt: STALE }, { bonded: true, expectedLegs: 2, legs: [] }),
+            );
+            assert.equal(h.input, 'error');
+            assert.deepEqual(messages(h, 'input'), ['No bonded legs reporting']);
+            // A plain input still says it.
+            assert.deepEqual(messages(health(pipeline({ lastInputPacketAt: STALE })), 'input'), [
+                'No input packets received recently',
+            ]);
+        });
+
         test('a leg outage and a stalled feed are both listed', () => {
             const h = health(
                 pipeline(
@@ -153,6 +165,24 @@ describe('relayHealth', () => {
     });
 
     describe('output side', () => {
+        test('the forwarding alert replaces the stalled-forwarding reason: it is said once', () => {
+            const alert = {
+                severity: 'warning',
+                code: 'relay-forwarding-stalled',
+                message: 'Relay is receiving SRT packets but forwarding no packets to SRS.',
+                sinceMs: NOW - 5000,
+            } as PipelineAlert;
+            const stalled = pipeline({ lastPacketAt: STALE });
+            stalled.alerts = [alert];
+            const h = health(stalled);
+            assert.equal(h.output, 'warn');
+            assert.deepEqual(messages(h, 'output'), [alert.message]);
+            // Without the alert (the 30 s hold is over) the stale flow still says it.
+            assert.deepEqual(messages(health(pipeline({ lastPacketAt: STALE })), 'output'), [
+                'Media forwarding to SRS has stalled',
+            ]);
+        });
+
         test('a publish conflict is an error, told apart by who holds the key', () => {
             const other = health(pipeline({ publishConflict: true }));
             assert.equal(other.output, 'error');

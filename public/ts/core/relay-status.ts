@@ -87,7 +87,9 @@ export function relayHealth(
         }
     }
     if (baseOutput === 'warn' || baseOutput === 'error') {
-        for (const reason of outputReasons(pipeline, relayProcessRunning, nowMs)) {
+        // The forwarding alert says the same with its own "since" and hint: say it once.
+        const forwardAlerted = pipeline.alerts.some((a) => a.code === 'relay-forwarding-stalled');
+        for (const reason of outputReasons(pipeline, relayProcessRunning, nowMs, forwardAlerted)) {
             issues.push({
                 side: 'output',
                 prefix: 'Output: ',
@@ -190,7 +192,9 @@ function inputReasons(
         } else if (legs.length === 1) reasons.push('Only 1 leg connected — no redundancy');
     }
 
-    if (!hasRecentFlow(pipeline.srtBonding.lastInputPacketAt, nowMs)) {
+    // A bonded group with no legs has no packets to receive: "No bonded legs reporting" says it.
+    const noLegs = bonded && legs.length === 0;
+    if (!noLegs && !hasRecentFlow(pipeline.srtBonding.lastInputPacketAt, nowMs)) {
         reasons.push('No input packets received recently');
     }
 
@@ -202,6 +206,7 @@ function outputReasons(
     pipeline: PipelineView,
     relayProcessRunning: boolean,
     nowMs: number,
+    forwardAlerted: boolean,
 ): string[] {
     if (!relayProcessRunning || !pipeline.srtBonding.inputActive) return [];
     const { srtBonding } = pipeline;
@@ -227,7 +232,7 @@ function outputReasons(
         if (!srtBonding.acceptedBySrs) {
             reasons.push('SRS has not reported this as the active pipeline input');
         }
-        if (!hasRecentFlow(srtBonding.lastPacketAt, nowMs)) {
+        if (!forwardAlerted && !hasRecentFlow(srtBonding.lastPacketAt, nowMs)) {
             reasons.push(
                 srtBonding.forwardedPackets > 0
                     ? 'Media forwarding to SRS has stalled'

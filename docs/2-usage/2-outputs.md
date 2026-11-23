@@ -217,7 +217,7 @@ Overview's Outputs table). The badges are:
   input's (the output copies the video and the input's rate is known), or below 200 kbps.
   Without an input rate to compare with, only the 200 kbps floor applies. Its tooltip says
   which. A copy output at a few dozen kbps from a multi-Mbps input is sending audio only:
-  look at the input's Issues (an interlaced input is one cause).
+  look at the input's Issues.
 - **CPU** (% of a core): always on an output with a video encode, to see what each one costs;
   on an output that copies the video, only from 50% of a core.
 - **Memory**, from 70% of the output's limit (yellow; red from 90%).

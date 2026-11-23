@@ -231,8 +231,8 @@ pipeline page, the status dots and the Overview alike.
 
 Send **progressive** video (`1080p50`, not `1080i25`): the dashboard writes the scan in
 the stream specification, and an interlaced input gets a warning alert, because YouTube
-does not support interlaced video (it warns of artifacts) and an interlaced input has
-also left outputs sending only audio. Set the encoder's output to progressive scan.
+does not support interlaced video (it warns of artifacts). Set the encoder's output to
+progressive scan.
 
 ### Preview
 

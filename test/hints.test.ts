@@ -25,6 +25,7 @@ describe('errorHint', () => {
             'Stopped after 5 failed attempts. Last error: Connection refused',
             /refused the connection/i,
         ],
+        ['Output bitrate is 58 kb/s, below 200 kb/s.', /sends far less than it should/i],
         [
             'Output is running at 0.62x realtime and falling behind live (slow encode)',
             /falling behind|keep up/i,
@@ -54,7 +55,7 @@ describe('alertHint', () => {
             'srt-packet-loss',
             'srt-retransmissions',
             'srt-belated-packets',
-            'srt-latency-spike',
+            'srt-high-latency',
             'input-bitrate-collapse',
             'input-low-framerate',
             'input-no-audio',

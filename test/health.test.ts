@@ -1058,7 +1058,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                     recvDropTotal: 50,
                     retransTotal: 40,
                     belatedTotal: 150,
-                    latencyMs: 1500,
+                    latencyMs: 5000,
                 },
             }),
         );
@@ -1071,7 +1071,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 'srt-packets-dropped',
                 'srt-retransmissions',
                 'srt-belated-packets',
-                'srt-latency-spike',
+                'srt-high-latency',
                 'input-bitrate-collapse',
                 'relay-forwarding-stalled',
             ],
@@ -1765,7 +1765,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
             ],
         );
         assert.equal(episodes[0].pipelineId, 1);
-        assert.match(episodes[0].message, /dropped 5 packets/);
+        assert.match(episodes[0].message, /drops are 0\.6% \(5 packets\)/);
         assert.equal(episodes[1].activePolls, 9, 'two raised polls and the 30 s hold');
 
         service.shutdown();

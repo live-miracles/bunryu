@@ -216,7 +216,9 @@ export function outputHealth(
         }
         if (o.bitrateKbps === null)
             return warn('Output is running but no bitrate is reported yet.');
-        return warn(`Output bitrate is below ${LOW_BITRATE_KBPS} kb/s.`);
+        return warn(
+            `Output bitrate is ${Math.round(o.bitrateKbps)} kb/s, below ${LOW_BITRATE_KBPS} kb/s.`,
+        );
     }
 
     // status === 'stopped' but desiredState === 'running': between retries

@@ -2034,27 +2034,16 @@ problems on hover, and a yellow dot always has a line on the card.
   the video which severely impact the quality". It does not say whether the video is
   shown, deinterlaced or dropped, and RTMP itself carries H.264 without a scan type, so
   the stream is accepted on ingest.
-- **It broke every output on the pipeline without an error.** On 2026-11-15 a 1080i
-  SRT input at 8 to 10 Mb/s reached YouTube as about 58 kb/s on each of three
-  FFmpegs (two outputs and a shared encode): audio only. The FFmpeg arguments map the
-  video with `-map 0:v:0?`, so a video stream FFmpeg cannot use is dropped without
-  failing, and the processes ran at speed 1.0 with `non-existing PPS 0 referenced`
-  in their stderr. The only sign was a yellow dot with no explanation anywhere. The
-  operator found the cause (the encoder was set to interlaced) and switching it to
-  progressive fixed it. We did not reproduce the exact FFmpeg mechanism, so the alert
-  names YouTube's documented effect (artifacts) and the hint mentions the audio-only
-  incident as something that has happened.
 - **A warning matches the other input faults** (keyframe interval, frame rate): an
   encoder setting only the operator can fix, shown on the input where they look.
 - **The yellow dot had no text** because the card listed only the warnings the output
   reported itself, not the verdict behind the dot.
 
 **Not adopted:** de-interlacing in copy mode (it is a video encode, which is the cost
-the copy path avoids); making the video map required (an audio-only input is valid
-and would then never start); refusing the publish (an interlaced input is valid for SRT destinations).
+the copy path avoids); refusing the publish (an interlaced input is valid for SRT destinations).
 
 **Revisit when:** an interlaced input is found that plays fine on YouTube, which would
-make the alert noise, or the cause of the dropped video is pinned down in FFmpeg.
+make the alert noise.
 
 ### Copying a configuration to another server matches by pipeline name, so names are unique
 

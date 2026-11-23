@@ -424,10 +424,7 @@ When ffprobe reports the input's video as interlaced (top or bottom field first,
 as `1080i25tff` in the pipeline panel), the pipeline gets an `input-interlaced`
 warning alert for as long as that publisher is connected. It is reporting only:
 nothing is restarted or converted. YouTube's help page says interlaced video is not
-supported and warns of artifacts. On 2026-11-15 a 1080i SRT input also left every copy
-output of a pipeline sending only audio (about 58 kb/s of a 9 Mb/s input) while the
-FFmpeg processes ran as if healthy and logged `non-existing PPS 0 referenced`; setting
-the encoder to progressive fixed it, but the mechanism was not pinned down. The reason is in the
+supported and warns of artifacts. The reason is in the
 [design decision](../4-reference/3-design-decisions.md#warn-about-interlaced-input-do-not-convert-or-refuse-it).
 
 ## Flapping inputs
@@ -448,6 +445,15 @@ they set its status too: the relay's input half (its forward to SRS for the forw
 turns to a warning, or an error for 5% or 1000 dropped packets in one 5 s interval, 10% loss, or
 a bitrate down to a fifth. They come from one interval, so each stays in the payload for 30 s
 after it was last raised and the status does not blink with every poll.
+
+Two of the thresholds follow from what the counters mean. The latency the relay reports is
+the one **negotiated** for the connection, the encoder's setting, so it neither fluctuates
+nor measures delay; SRT's guidance is about four times the round-trip time, which puts a
+long or lossy link at 2 s or more on purpose. The `srt-high-latency` alert (and a leg's
+"latency is N ms") therefore starts at 5 s, where it is more likely a typing mistake than a
+choice. Belated packets (late for their play time) are judged as a share of the packets
+received in the interval, from 3% and at least 10 packets, because a fixed count means 3% at
+5 Mb/s and 20% at 1 Mb/s.
 
 ## Encoder restarts do not restart outputs
 

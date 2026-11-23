@@ -39,8 +39,8 @@ const ERROR_HINTS: Array<[RegExp, string]> = [
         'The destination format cannot carry this codec. RTMP carries H.264/H.265 video with AAC audio; use an SRT destination or re-encode the audio.',
     ],
     [
-        /output bitrate is below/i,
-        'The output sends far less than it should. If the input’s bitrate is fine, FFmpeg may be dropping the video (for example interlaced input): see the input’s Issues and the output’s History.',
+        /output bitrate is \d+ kb\/s, below/i,
+        'The output sends far less than it should. If the input’s bitrate is fine, FFmpeg may be dropping the video: see the input’s Issues and the output’s History.',
     ],
     [
         /falling behind/i,
@@ -66,7 +66,8 @@ const ALERT_HINTS: Record<string, string> = {
         'Many retransmissions mean a lossy link: raise the encoder’s SRT latency or lower its bitrate.',
     'srt-belated-packets':
         'Packets arrive too late for the latency window: raise the encoder’s SRT latency.',
-    'srt-latency-spike': 'Latency is rising: check the network path to this server.',
+    'srt-high-latency':
+        'This is the latency the encoder asked for, so every picture is that late. About four times the round-trip time is enough: lower it on the encoder unless the link really needs it.',
     'input-bitrate-collapse':
         'The encoder’s bitrate dropped sharply: check the encoder and its uplink.',
     'input-low-framerate': 'The encoder is dropping frames: check its CPU load and its uplink.',
@@ -77,7 +78,7 @@ const ALERT_HINTS: Record<string, string> = {
     'input-keyframe-interval':
         'Set the encoder’s keyframe interval to 2 s (never more than 4 s): platforms may reject the stream with a longer one, and previews start late.',
     'input-interlaced':
-        'Set the encoder’s output to progressive scan (1080p, not 1080i): some platforms, YouTube among them, do not support interlaced video and warn of artifacts. Interlaced input has also left RTMP outputs sending audio only.',
+        'Set the encoder’s output to progressive scan (1080p, not 1080i): some platforms, YouTube among them, do not support interlaced video and warn of artifacts.',
     'input-flapping':
         'Check the encoder (power, crashes, cabling) and its uplink; the pipeline log lists each disconnect.',
     'relay-forwarding-stalled':
