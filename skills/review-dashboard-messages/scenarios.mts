@@ -17,6 +17,7 @@ export type Shot =
     | { kind: 'status-top' }
     | { kind: 'sidebar-dot' }
     | { kind: 'pipeline-input' }
+    | { kind: 'relay-card-dot' }
     | { kind: 'out-card'; out?: number }
     | { kind: 'out-hint'; out: number }
     | { kind: 'status-problems' }
@@ -354,18 +355,25 @@ export const catalog: Entry[] = [
         id: 'in-probe-pending',
         section: 'Input status',
         title: 'Waiting for ffprobe to finish and return the input encoding.',
-        when: 'The publisher is connected but ffprobe has not returned yet (first seconds of a new publisher, or a probe retry). Warning, not an error.',
+        when: 'The publisher is connected but ffprobe has not returned yet (first seconds of a new publisher, or a probe retry). Warning, not an error. “since …” is when the current probe started; the status dots, the Overview and the pipeline page all show it, in the viewer’s own time.',
         clears: 'When ffprobe returns usable media (or fails: next entry).',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
-            inp(c, { mediaOk: null, mediaError: null, video: null, audio: null, audioTracks: [] });
+            inp(c, {
+                mediaOk: null,
+                mediaError: null,
+                mediaProbeStartedAt: now() - 40_000,
+                video: null,
+                audio: null,
+                audioTracks: [],
+            });
         },
     },
     {
         id: 'in-probe-error',
         section: 'Input status',
         title: 'ffprobe did not detect a video stream (probe error)',
-        when: 'ffprobe finished but found no usable video (no stream, no codec, or no dimensions). Error status. The text is ffprobe’s result; how long it has been failing is shown after it (“since 5 min ago”) in the viewer’s own time, like the other relative times. A failed probe wins over the “waiting” state.',
+        when: 'ffprobe finished but found no usable video (no stream, no codec, or no dimensions). Error status. The text is ffprobe’s result; how long it has been failing is shown after it (“since 5 min ago”) in the viewer’s own time, like the other relative times, on the status dots, the Overview and the pipeline page alike. A failed probe wins over the “waiting” state.',
         clears: 'When a later probe succeeds.',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
@@ -381,18 +389,18 @@ export const catalog: Entry[] = [
         id: 'in-not-live',
         section: 'Input status',
         title: 'Input connected, waiting for valid media.',
-        when: 'SRS lists a publisher and ffprobe succeeded, but SRS does not (yet) report the stream as live.',
+        when: 'SRS lists a publisher and ffprobe succeeded, but SRS does not (yet) report the stream as live. “since …” is when ffprobe last returned (the nearest time the server has for this state), shown the same on every surface.',
         clears: 'When the stream becomes live.',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
-            inp(c, { live: false });
+            inp(c, { live: false, mediaCheckedAt: now() - 4 * 60_000 });
         },
     },
     {
         id: 'in-low-bitrate',
         section: 'Input status',
-        title: 'Input bitrate is below 200 kb/s.',
-        when: 'The publisher has been live for 30 s or more (SRS reports 0 until its statistics warm up) and SRS’s receive bitrate is under 200 kb/s.',
+        title: 'Input bitrate is 90 kb/s, below 200 kb/s.',
+        when: 'The publisher has been live for 30 s or more (SRS reports 0 until its statistics warm up) and SRS’s receive bitrate is under 200 kb/s. The warning says the measured bitrate (90 kb/s in this fixture) and the limit.',
         clears: 'When the bitrate is 200 kb/s or more.',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
@@ -456,15 +464,10 @@ export const catalog: Entry[] = [
         id: 'in-interlaced',
         section: 'Input alerts',
         title: 'Input is interlaced (1080i50tff)',
-        when: 'ffprobe reports a field order other than progressive. YouTube does not support interlaced video; a 1080i input also once left copy outputs sending only audio. Alert code input-interlaced.',
+        when: 'ffprobe reports a field order other than progressive. The warning only names the scan; the hint under it says to send progressive video, that some platforms (YouTube among them) do not support interlaced video, and that a 1080i input once left copy outputs sending only audio. Alert code input-interlaced.',
         clears: 'When the publisher sends progressive video.',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
-        apply: (c) =>
-            alert(
-                c,
-                'input-interlaced',
-                'Input is interlaced (1080i50tff). YouTube does not support interlaced video and warns of artifacts.',
-            ),
+        apply: (c) => alert(c, 'input-interlaced', 'Input is interlaced (1080i50tff).'),
     },
     {
         id: 'in-flapping',
@@ -1452,11 +1455,14 @@ const SIDEBAR_SECTIONS = new Set([
     'Output advice',
 ]);
 const INPUT_SECTIONS = new Set(['Input status', 'Input alerts', 'SRT relay', 'SRT relay alerts']);
+const RELAY_SECTIONS = new Set(['SRT relay', 'SRT relay alerts']);
 const OUTPUT_SECTIONS = new Set(['Output status', 'Output warnings']);
 for (const e of catalog) {
     if (e.id === 'card-hints' || !SIDEBAR_SECTIONS.has(e.section)) continue;
     const has = (kind: Shot['kind']) => e.shots.some((s) => s.kind === kind);
     if (!has('sidebar-dot')) e.shots.push({ kind: 'sidebar-dot' });
+    if (RELAY_SECTIONS.has(e.section) && !has('relay-card-dot'))
+        e.shots.push({ kind: 'relay-card-dot' });
     if (INPUT_SECTIONS.has(e.section) && !has('pipeline-input'))
         e.shots.push({ kind: 'pipeline-input' });
     if (OUTPUT_SECTIONS.has(e.section) && !has('out-card'))

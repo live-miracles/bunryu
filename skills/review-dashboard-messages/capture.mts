@@ -202,6 +202,20 @@ async function takeShot(
                 text: await ev(`${stats}.innerText.replace(/\\s+/g,' ').trim()`),
             };
         }
+        case 'relay-card-dot': {
+            // The SRT Relay card's status circle in the second column, with its hover text.
+            await hover(`document.getElementById('srt-bonding-status-dot')`);
+            const r = await rectOf(
+                `document.getElementById('srt-bonding-card'),document.getElementById('hover-tooltip')`,
+            );
+            if (!r || r.w < 2 || r.h < 2) return null;
+            return {
+                file: await clip(name, r),
+                text: await ev(
+                    `document.getElementById('hover-tooltip')?.innerText.replace(/\\s+/g,' ').trim()`,
+                ),
+            };
+        }
         case 'out-card': {
             await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
             await sleep(400);
@@ -281,6 +295,7 @@ async function captureEntry(e: Entry): Promise<void> {
               ? `${APP}/?view=status`
               : e.pipelineView ||
                   shot.kind === 'pipeline-input' ||
+                  shot.kind === 'relay-card-dot' ||
                   shot.kind === 'out-card' ||
                   shot.kind === 'out-hint' ||
                   (shot.kind === 'sidebar-dot' &&
