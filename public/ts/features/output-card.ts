@@ -118,15 +118,13 @@ export function renderOutputCard(
         inlineSink = `<code class="text-xs font-normal text-muted min-w-0 flex-1 basis-24 truncate" title="${escapeHtml(output.url)}">${escapeHtml(display)}</code>`;
     }
 
-    const lastErrorLine = currentErrorLine(output);
-    // The error of a stopped output (a stop after repeated failures) is yellow, like advice:
-    // it is old news to look at, not something happening now, so it neither tints the card nor
-    // counts as a Problem. While the output runs it is red.
+    // A stopped output has no error line: the error it keeps after repeated failed attempts is
+    // old news, so it is one yellow advice line below (core/output-advice.ts), and the time is
+    // in its History. While the output runs the error is red.
+    const lastErrorLine = isStopped ? '' : currentErrorLine(output);
     const tone = errorTone(output);
-    // A stopped output's line has no "4 h ago": the line is the whole message (the count, the
-    // last error) and the time is in its History.
     const lastErrorTs =
-        output.lastErrorAt && !isStopped
+        output.lastErrorAt && lastErrorLine
             ? `<span class="text-xs text-${tone} shrink-0" title="${formatLocalDateTime(output.lastErrorAt)}">${formatAgo(output.lastErrorAt, healthNowMs())}</span>`
             : '';
     const retryBadge =
@@ -143,8 +141,6 @@ export function renderOutputCard(
         retryInSec === null
             ? ''
             : `<span class="text-xs text-error shrink-0 opacity-80">${retryInSec > 0 ? `retry in ${retryInSec} s` : 'retrying now'}</span>`;
-    // A stopped output only has a lastError when it was stopped after repeated
-    // failed attempts (the server clears it when the output starts again).
     const lastErrorHtml = lastErrorLine
         ? `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
                 ${retryBadge}
@@ -192,19 +188,15 @@ export function renderOutputCard(
         .map(
             (message) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
-                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>
+                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${hintIconHtml(errorHint(message))}
            </div>`,
         )
         .join('');
     // The card takes the colour of its most severe current problem: red for an
     // error (a crash being retried), yellow for warnings alone, none otherwise. A stop
-    // after repeated failures is neither: its line is yellow and the card stays plain.
+    // after repeated failures is neither: its advice line is yellow and the card stays plain.
     const tintColor =
-        status === 'error' || (lastErrorLine && !isStopped)
-            ? 'error'
-            : warningsHtml
-              ? 'warning'
-              : null;
+        status === 'error' || lastErrorLine ? 'error' : warningsHtml ? 'warning' : null;
     const cardTint = tintColor
         ? `style="background:color-mix(in oklab, var(--${tintColor === 'error' ? 'dot-bad' : 'dot-warn'}) 12%, var(--panel))"`
         : '';

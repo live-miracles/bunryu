@@ -113,25 +113,20 @@ describe('output stopped after repeated failed attempts', () => {
             ...over,
         });
 
-    test('keeps the error line, in yellow, while the output stays stopped', () => {
-        const html = stoppedAfterFailures();
+    test('has no error line, retry badge or time: one yellow line says it all', () => {
+        const html = stoppedAfterFailures({ failures: 5 });
 
+        const lines = warningLines(html);
+        assert.equal(lines.length, 1);
         assert.match(
-            html,
-            /<span class="text-xs text-warning truncate[^"]*" title="[^"]*">Stopped after 5 failed attempts\. Last error: Connection refused<\/span>/,
+            lines[0],
+            /^Stopped after 5 failed attempts\. Check the link and stream key, update the output, then start it again\. Last error: Connection refused$/,
         );
-        assert.ok(!/just now|\d+ (s|min|h) ago/.test(html), 'no "4 h ago" before the line');
+        assert.ok(!/text-xs text-warning shrink-0|badge-/.test(html), 'no time or retry badge');
+        assert.ok(!/text-xs text-error/.test(html), 'no red line');
         assert.match(html, /text-warning[^>]*data-action="error-info"/);
-        assert.ok(!/text-xs text-error|badge-error/.test(html), 'no red line or retry badge');
-    });
-
-    test('adds advice to check and update the link, without repeating the count', () => {
-        const lines = warningLines(stoppedAfterFailures());
-
-        assert.equal(lines.length, 2, 'the error line, then the advice');
-        assert.match(lines[0], /^Stopped after 5 failed attempts\. Last error/);
-        assert.match(lines[1], /^Check the link and stream key/);
-        assert.ok(lines[1].length < 100, 'short enough for one line');
+        assert.match(html, /Hint: The destination refused the connection/, 'the cause hint');
+        assert.ok(!tinted(html));
     });
 
     test('a plainly stopped output shows no error line', () => {

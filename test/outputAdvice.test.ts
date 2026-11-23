@@ -193,7 +193,7 @@ describe('an output stopped after repeated failed attempts', () => {
     const stopped = (lastError: string | null, lastErrorAt: number | null = 1) =>
         out('1-1', 'YT', 'rtmp://a/x', { desiredState: 'stopped', lastError, lastErrorAt });
 
-    test('says to check and update the link, without repeating the error line', () => {
+    test('is one line: the count, what to do, then the last error', () => {
         const advice = outputAdvice(
             stopped('1\nStopped after 5 failed attempts. Last error: Connection refused'),
             rtmpInput,
@@ -202,14 +202,17 @@ describe('an output stopped after repeated failed attempts', () => {
         assert.equal(advice.length, 1);
         assert.equal(
             advice[0],
-            'Check the link and stream key, update the output, then start it again.',
+            'Stopped after 5 failed attempts. Check the link and stream key, update the output, then start it again. Last error: Connection refused',
         );
     });
 
     test('does not need the input: it is about the destination', () => {
         const off = { connected: false, isSrt: false, audioTracks: [] } as unknown as InputHealth;
         const advice = outputAdvice(stopped('Stopped after 22 failed attempts'), off, none);
-        assert.match(advice[0], /^Check the link and stream key/);
+        assert.equal(
+            advice[0],
+            'Stopped after 22 failed attempts. Check the link and stream key, update the output, then start it again.',
+        );
     });
 
     test('a plain stop, or a running output with an error, gets none', () => {
@@ -223,9 +226,10 @@ describe('an output stopped after repeated failed attempts', () => {
         assert.deepEqual(outputAdvice(running, rtmpInput, none), []);
     });
 
-    test('a message without a count still gets the advice', () => {
+    test('a message without a count still gets the advice, with the message as the error', () => {
         const advice = outputAdvice(stopped('something else'), rtmpInput, none);
-        assert.match(advice[0], /^Check the link and stream key/);
+        assert.match(advice[0], /^Stopped after repeated failures\. Check the link and stream key/);
+        assert.match(advice[0], / Last error: something else$/);
     });
 });
 

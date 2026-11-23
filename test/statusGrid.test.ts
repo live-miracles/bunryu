@@ -282,7 +282,7 @@ describe('buildStatusCards', () => {
         const [card] = cardsOf([pipeline(1, liveInput(), [gaveUp])]);
         assert.equal(card.dots[0].status, 'off');
         assert.deepEqual(card.dots[0].notices, [
-            'Check the link and stream key, update the output, then start it again.',
+            'Stopped after 5 failed attempts. Check the link and stream key, update the output, then start it again. Last error: Connection refused',
         ]);
         assert.equal(card.hasIssue, false);
         assert.equal(card.tally.off, 1);
