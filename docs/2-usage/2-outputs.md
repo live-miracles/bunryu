@@ -183,10 +183,12 @@ publishes back into this pipeline's own input (a loop; it cannot work), a track 
 input cannot supply (an RTMP input has one audio track; an SRT input may have fewer than you
 chose), Track 1 re-encoding the audio (costs CPU), SRT to RTMP with copy audio (can
 jitter), and an output that was stopped after repeated failed attempts (one short line: after how
-many attempts, to check the link and stream key, update the output and start it again). Each is one yellow line on the card and nowhere else: it does not tint the card or
-colour the dot, and it is not in the pipeline list, the Overview, the Status view or
-**Problems**, because you may do it on purpose (a backup pipeline with the same destination
-as the primary).
+many attempts, to check the link and stream key, update the output and start it again). Each is one yellow line on the card. The output's dot on the **Status** view and its status
+on the **Overview** get a yellow outline (a stopped output is a grey dot with the outline
+instead of the dash), and the lines are listed in the dot's hover text and in the Overview's
+Issues column. It does not tint the card or change a colour, and it is not in the pipeline
+list, a count or **Problems**, because you may do it on purpose (a backup pipeline with the
+same destination as the primary).
 
 ### Overview
 
@@ -241,9 +243,10 @@ line, as on the card) with **Show full log** to expand it, and its copy button p
 whole log on the clipboard. After a stop, or with only warnings, the button keeps the normal color. The exception is an
 output you stop after 5 failed attempts in a row: its card keeps a yellow "Stopped
 after 5 failed attempts" line with the last error, and the History button stays yellow,
-until you start the output again. It is a note on that card, not a Problem: the card is not
-tinted, and the pipeline's dot, the Status view, the Overview's Issues and the Problems
-filter ignore it, since a few outputs are always broken.
+until you start the output again. It is a note, not a Problem: the card is not
+tinted, and the pipeline's dot, the counts, the Overview's Issues filter and the Problems
+filter ignore it, since a few outputs are always broken. The Status view and the Overview
+show it as a grey dot with a yellow outline.
 Under a known error or warning (connection refused, a rejected stream key, an
 unresolvable host, a failed SRT handshake, an output falling behind realtime) the card
 adds an info icon to the line; hover or focus it for a "Hint:" with what to check first.
@@ -260,10 +263,13 @@ outputs are restarted.
 The pulse icon in the navbar opens **Status**: every pipeline on one page, without the
 pipeline list. Each pipeline is a card in the sidebar's groups and order, with a large dot
 for its input and a small dot for each of its outputs: green is running, yellow a warning,
-red with a ring failed, and hollow stopped. The input dot also shows the SRT relay's warning
-or error (an unstable or lost leg, or the relay unable to reach SRS), even while no stream
-is live yet. Hover a dot for the output's name and what is
-wrong with it. A card with a warning or an error has a coloured border, and a pipeline with
+red with a ring failed, and hollow stopped. A yellow outline round a dot means the output has
+advice (see above), including one stopped after repeated failures, which is then a filled grey
+dot. The input dot also shows the SRT relay's warning
+or error (an unstable or lost leg, interval alerts such as dropped packets or loss, or the
+relay unable to reach SRS), even while no stream is live yet. Hover a dot for its name and
+every error and warning on it with its hint, as the pipeline list's hover does; the relay's
+forward to SRS is listed under its own heading on the input dot. A card with a warning or an error has a coloured border, and a pipeline with
 many outputs shows them as a block with its warning and failure counts.
 
 When SRS has refused publishers in the last five minutes, one red **Rejected publishers**
@@ -294,9 +300,10 @@ lines), loads when you open the page or press Refresh, and does not update itsel
 The dashboard beeps for 5 s when something goes wrong that needs attention: an output
 crashes or is restarted by a watchdog, an input goes offline while its outputs are
 running, a pipeline raises an error alert, the server, SRS or the SRT relay becomes
-unreachable, or the host runs low on memory or disk space. It beeps when the problem appears, not while it lasts, and an output that
+unreachable, or the host's memory or disk reaches 90%. It beeps when the problem appears, not while it lasts, and an output that
 keeps failing beeps only when it starts failing. Warnings and the host CPU alert do not
-beep; the host alerts are listed in Server Logs under Events.
+beep (nor does a host warning at 70%); the host alerts are banners across the top and rows in
+Server Logs under Events.
 
 The bell in the navbar mutes and unmutes the beeps; hover it for the volume slider.
 Both settings are kept in the browser and shared by tabs on the same site. The dashboard

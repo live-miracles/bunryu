@@ -70,16 +70,15 @@ function parseFrameRate(str: unknown): number | null {
     return Number.isFinite(fps) && fps > 0 ? Number(fps.toFixed(3)) : null;
 }
 
-export function probeError(result: ProbeResult | null, checkedAt: number): string {
-    const d = new Date(checkedAt);
-    const prefix = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-    if (!result) return `${prefix} ffprobe did not detect a readable media stream`;
+// Why a probe result is not usable. No clock time in it: the dashboard shows how long the
+// probe has been failing from `ProbeStatus.failingSince`, in the viewer's own time.
+export function probeError(result: ProbeResult | null): string {
+    if (!result) return 'ffprobe did not detect a readable media stream';
     const video = result.video;
-    if (!video) return `${prefix} ffprobe did not detect a video stream`;
-    if (!video.codec) return `${prefix} ffprobe detected video without codec metadata`;
-    if (video.width <= 0 || video.height <= 0)
-        return `${prefix} ffprobe detected video without dimensions`;
-    return `${prefix} ffprobe media validation failed`;
+    if (!video) return 'ffprobe did not detect a video stream';
+    if (!video.codec) return 'ffprobe detected video without codec metadata';
+    if (video.width <= 0 || video.height <= 0) return 'ffprobe detected video without dimensions';
+    return 'ffprobe media validation failed';
 }
 
 export function runFfprobe(

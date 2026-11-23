@@ -18,9 +18,12 @@ import {
 //   - A Problem is what a list, filter or "has issues" flag picks out: a warning or error
 //     status.
 //
-// Two things are in neither and show on the output's card only: the advice about how an
-// output is configured (core/output-advice.ts), and the error a stopped output keeps after
-// repeated failures (a few outputs are always broken: that must not turn a pipeline red).
+// Two things are in neither: the advice about how an output is configured
+// (core/output-advice.ts, which includes what to do about the error a stopped output keeps
+// after repeated failures; a few outputs are always broken, so that must not turn a
+// pipeline red). They are a "notice": a yellow outline round the output's dot on the Status
+// view and the Overview, the lines in its tooltip and Issues cell, and the whole text on its
+// card. A notice changes no status, count or filter.
 
 type Status = OutStatus | InputStatus;
 
@@ -65,6 +68,11 @@ export interface OutputProblem {
     // The first thing to look at, or '': its verdict's first issue, else its current error
     // (for a stopped output, the one it was stopped after).
     message: string;
+    // Everything wrong with it, for a tooltip: its verdict's issues, else the error line of
+    // `message`.
+    issues: StatusIssue[];
+    // The advice about it (see "notice" above); empty when it has none.
+    notices: string[];
 }
 
 // An output's own error line, which an output keeps while stopped only after repeated
@@ -74,7 +82,7 @@ function hasErrorLine(output: OutputView): boolean {
     return output.lastErrorAt !== null && lastErrorLine(output) !== '';
 }
 
-export function outputProblem(output: OutputView): OutputProblem {
+export function outputProblem(output: OutputView, notices: readonly string[] = []): OutputProblem {
     const status = output.verdict.status;
     const errorLine = hasErrorLine(output);
     const severity: ProblemSeverity | null =
@@ -89,13 +97,22 @@ export function outputProblem(output: OutputView): OutputProblem {
             ? summarizeOutputError(output.lastError, 'Stopped after repeated failures.')
             : '') ||
         '';
-    return { output, status, severity, message };
+    const issues: StatusIssue[] =
+        output.verdict.issues.length > 0
+            ? output.verdict.issues
+            : message
+              ? [{ severity: 'warning', message }]
+              : [];
+    return { output, status, severity, message, issues, notices: [...notices] };
 }
 
 // What a render needs to judge pipelines: whether the relay runs, and the time.
 export interface ProblemContext {
     relayProcessRunning: boolean;
     nowMs: number;
+    // Output id → its advice lines (adviceByOutput in core/output-advice.ts). Left out by a
+    // view that does not show notices.
+    advice?: ReadonlyMap<string, string[]>;
 }
 
 export interface PipelineProblems {
@@ -106,7 +123,16 @@ export interface PipelineProblems {
     // warning or error when the relay is worse. The relay never turns an input that is off
     // into a healthy one. `issues` is the input's and the relay's, for the tooltip, and
     // `message` the one that explains the status.
-    input: { status: InputStatus; issues: StatusIssue[]; message: string };
+    input: {
+        status: InputStatus;
+        issues: StatusIssue[];
+        message: string;
+        // The same issues in two parts, for a tooltip that names where each is: what is wrong
+        // with the input itself or the link to the relay, and what is wrong with the relay's
+        // forward to SRS (without its "Output: " prefix).
+        inputSide: StatusIssue[];
+        forwardSide: StatusIssue[];
+    };
     // One entry per output of the pipeline, in order, and per shared encode (not counted
     // among the outputs).
     outputs: OutputProblem[];
@@ -128,11 +154,19 @@ export function pipelineProblems(pipeline: PipelineView, ctx: ProblemContext): P
         if (isProblem(half)) status = worstStatus(status, half);
     }
     const issues = [...verdict.issues, ...relayIssueList(relay)];
+    const forwardSide = relay.issues.filter((i) => i.side === 'output').map(({ issue }) => issue);
+    const inputSide = [
+        ...verdict.issues,
+        ...relayIssueList({
+            ...relay,
+            issues: relay.issues.filter((i) => i.side === 'input'),
+        }),
+    ];
     const wanted = status === 'error' ? 'error' : 'warning';
     const message = (issues.find((i) => i.severity === wanted) ?? issues[0])?.message ?? '';
 
-    const outputs = pipeline.outs.map(outputProblem);
-    const renditions = pipeline.renditions.map(outputProblem);
+    const outputs = pipeline.outs.map((o) => outputProblem(o, ctx.advice?.get(o.id)));
+    const renditions = pipeline.renditions.map((o) => outputProblem(o));
     const severity =
         status === 'error' || outputs.some((o) => o.severity === 'error')
             ? 'error'
@@ -142,7 +176,7 @@ export function pipelineProblems(pipeline: PipelineView, ctx: ProblemContext): P
     return {
         pipeline,
         relay,
-        input: { status, issues, message },
+        input: { status, issues, message, inputSide, forwardSide },
         outputs,
         renditions,
         tally: tallyStatuses(outputs.map((o) => o.status)),

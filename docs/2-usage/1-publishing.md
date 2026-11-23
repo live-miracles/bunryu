@@ -225,7 +225,8 @@ keyframe interval is measured only once per publisher, so the button does not re
 
 Whatever is wrong with the input (no audio track, a very low bitrate, an alert) is
 listed in yellow under these lines with advice, and in the hover text of the input's
-status dot.
+status dot. A probe error says how long it has been failing ("since 5 min ago"), in your
+time.
 
 Send **progressive** video (`1080p50`, not `1080i25`): the dashboard writes the scan in
 the stream specification, and an interlaced input gets a warning alert, because YouTube

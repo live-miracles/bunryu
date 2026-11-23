@@ -36,6 +36,9 @@ export interface ProcessUsages {
     node: ProcessUsage;
     srs: ProcessUsage;
     relay: ProcessUsage;
+    // The machine's busy percent at the latest sample (the figure of the top bar's CPU),
+    // null before the first one. The host CPU alert reads it.
+    hostCpuPercent: number | null;
 }
 
 export interface MetricSample {
@@ -297,6 +300,11 @@ export function createResourceUsage(options: ResourceUsageOptions): ResourceUsag
         system,
         history: (after) =>
             after === undefined ? [...samples] : samples.filter((s) => s.ts > after),
-        processUsage: () => ({ node: nodeUsage, srs: srsUsage, relay: relayUsage }),
+        processUsage: () => ({
+            node: nodeUsage,
+            srs: srsUsage,
+            relay: relayUsage,
+            hostCpuPercent: samples[samples.length - 1]?.cpu ?? null,
+        }),
     };
 }

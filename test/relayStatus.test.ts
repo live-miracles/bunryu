@@ -250,3 +250,63 @@ describe('leg health', () => {
         assert.notEqual(legHealthColor(leg({ health: 'warn' })), legHealthColor(leg()));
     });
 });
+
+describe('relayHealth with interval alerts', () => {
+    const withAlerts = (alerts: Partial<PipelineAlert>[], over: Partial<SrtBondingStatus> = {}) => {
+        const p = pipeline(over);
+        p.alerts = alerts.map((a) => ({
+            severity: 'warning',
+            code: 'srt-packet-loss',
+            message: 'loss',
+            sinceMs: NOW,
+            ...a,
+        }));
+        return p;
+    };
+
+    test('a warning alert turns the input half to a warning, an error alert to an error', () => {
+        assert.equal(health(withAlerts([{}])).input, 'warn');
+        assert.equal(health(withAlerts([{ severity: 'error' }])).input, 'error');
+        assert.equal(health(withAlerts([{}])).output, 'good', 'the output half is not about loss');
+    });
+
+    test('an alert never lowers a status, and the reasons stay the state own', () => {
+        const stale = withAlerts([{}], { lastInputPacketAt: STALE });
+        const h = health(stale);
+        assert.equal(h.input, 'warn');
+        assert.deepEqual(messages(h, 'input'), ['loss', 'No input packets received recently']);
+        const worse = health(withAlerts([{}], { lastInputPacketAt: STALE, inputActive: true }));
+        assert.equal(worse.input, 'warn');
+    });
+
+    test('a forwarding alert raises the output half', () => {
+        const h = health(withAlerts([{ code: 'relay-forwarding-stalled', severity: 'error' }]));
+        assert.equal(h.output, 'error');
+        assert.equal(h.input, 'good');
+    });
+
+    test('an input that is off stays off', () => {
+        assert.equal(health(withAlerts([{}], { inputActive: false })).input, 'off');
+        assert.equal(relayHealth(withAlerts([{}]), false, NOW).input, 'off');
+    });
+
+    test('a leg-down alert is the one report of the legs down, with no second reason', () => {
+        const p = withAlerts(
+            [{ code: 'bonded-leg-down', message: '1 of 2 bonded legs is down.' }],
+            {},
+        );
+        p.srtBonding.input = {
+            ...p.srtBonding.input,
+            bonded: true,
+            expectedLegs: 2,
+            legs: [leg()],
+        };
+        const h = health(p);
+        assert.deepEqual(
+            messages(h, 'input').filter((m) => /legs/.test(m)),
+            ['1 of 2 bonded legs is down.'],
+        );
+        p.alerts = [];
+        assert.ok(messages(health(p), 'input').some((m) => /1 of 2 bonded legs down/.test(m)));
+    });
+});

@@ -23,6 +23,12 @@ export interface RelayInputSample {
 // Sudden latency spikes are still reported independently below.
 export const SRT_HIGH_LATENCY_WARN_MS = 1500;
 
+// An interval is an error rather than a warning from this many dropped packets (or 5 % of
+// those received, the leg rule below), this loss ratio, or this collapse of the bitrate.
+const SRT_DROPPED_ERROR_PACKETS = 1000;
+const SRT_LOSS_ERROR_RATIO = 0.1;
+const BITRATE_COLLAPSE_ERROR_FRACTION = 0.2;
+
 // How much a counter grew since the last sample. A counter that went down was
 // reset (the relay stream restarted), so its new value is the growth.
 export function counterDelta(
@@ -116,14 +122,18 @@ export function srtIntervalAlerts(
     const forwarded = counterDelta(current.forwardedPackets, previous.forwardedPackets) ?? 0;
     if (dropped !== null && dropped > 0) {
         alerts.push({
-            severity: 'warning',
+            // The same line as a leg's one-minute error: 5 % or 1000 packets of media gone.
+            severity:
+                dropped >= SRT_DROPPED_ERROR_PACKETS || (received > 0 && dropped / received >= 0.05)
+                    ? 'error'
+                    : 'warning',
             code: 'srt-packets-dropped',
             message: `SRT input dropped ${dropped} packet${dropped === 1 ? '' : 's'} in the last health interval.`,
             sinceMs: now,
         });
     } else if (lossRatio >= 0.01) {
         alerts.push({
-            severity: 'warning',
+            severity: lossRatio >= SRT_LOSS_ERROR_RATIO ? 'error' : 'warning',
             code: 'srt-packet-loss',
             message: `SRT input packet loss is ${(lossRatio * 100).toFixed(1)}% in the last health interval.`,
             sinceMs: now,
@@ -165,7 +175,12 @@ export function srtIntervalAlerts(
         current.recvBitrateKbps <= previous.recvBitrateKbps * 0.6
     ) {
         alerts.push({
-            severity: 'warning',
+            // Down to a fifth or less of what it was: close to no media left.
+            severity:
+                current.recvBitrateKbps <=
+                previous.recvBitrateKbps * BITRATE_COLLAPSE_ERROR_FRACTION
+                    ? 'error'
+                    : 'warning',
             code: 'input-bitrate-collapse',
             message: `Input bitrate dropped from ${formatKbps(previous.recvBitrateKbps)} to ${formatKbps(current.recvBitrateKbps)}.`,
             sinceMs: now,

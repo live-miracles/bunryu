@@ -298,3 +298,48 @@ describe('legQualityHealth', () => {
         assert.equal(verdict({}, 2000, down).health, 'error');
     });
 });
+
+describe('srtIntervalAlerts severity', () => {
+    const severityOf = (alerts: PipelineAlert[], code: string) =>
+        alerts.find((a) => a.code === code)?.severity;
+
+    test('dropped packets are an error from 5% of the interval or 1000 packets, else a warning', () => {
+        assert.equal(severityOf(interval({ recvDropTotal: 49 }), 'srt-packets-dropped'), 'warning');
+        assert.equal(severityOf(interval({ recvDropTotal: 50 }), 'srt-packets-dropped'), 'error');
+        const big = interval(
+            { recvDropTotal: 1000, recvUniquePacketsTotal: 1_000_000 },
+            { recvUniquePacketsTotal: 0 },
+        );
+        assert.equal(severityOf(big, 'srt-packets-dropped'), 'error');
+    });
+
+    test('loss is an error from 10% of the interval, a warning from 1%', () => {
+        assert.equal(severityOf(interval({ recvLossTotal: 99 }), 'srt-packet-loss'), 'warning');
+        assert.equal(severityOf(interval({ recvLossTotal: 100 }), 'srt-packet-loss'), 'error');
+    });
+
+    test('a bitrate collapse is an error from a fifth of the previous rate or less', () => {
+        assert.equal(
+            severityOf(interval({ recvBitrateKbps: 3000 }), 'input-bitrate-collapse'),
+            'warning',
+        );
+        assert.equal(
+            severityOf(interval({ recvBitrateKbps: 1200 }), 'input-bitrate-collapse'),
+            'error',
+        );
+    });
+
+    test('the other interval alerts stay warnings', () => {
+        const alerts = interval({
+            retransTotal: 100,
+            belatedTotal: 500,
+            latencyMs: 4000,
+            forwardedPackets: 10_000,
+        });
+        assert.deepEqual(
+            alerts.map((a) => a.severity),
+            alerts.map(() => 'warning'),
+        );
+        assert.ok(alerts.length >= 3);
+    });
+});

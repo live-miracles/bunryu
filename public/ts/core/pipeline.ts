@@ -17,6 +17,7 @@ const EMPTY_INPUT: InputHealth = {
     mediaOk: null,
     mediaProbeStartedAt: null,
     mediaCheckedAt: null,
+    mediaFailingSince: null,
     mediaError: null,
     keyframes: null,
     recvBitrateKbps: null,

@@ -19,6 +19,7 @@ const liveInput = (overrides: Partial<InputHealth> = {}): InputHealth => ({
     mediaOk: true,
     mediaProbeStartedAt: null,
     mediaCheckedAt: null,
+    mediaFailingSince: null,
     mediaError: null,
     keyframes: null,
     recvBitrateKbps: 4000,
@@ -301,6 +302,28 @@ describe('the Inputs table', () => {
         assert.equal(inputs.rows[0].affectedOutputs, 0);
         assert.equal(inputs.problems, 0);
         assert.equal(inputs.active, 0);
+    });
+
+    test('an output with advice carries a notice and is still not a problem', () => {
+        const url = 'rtmp://192.0.2.10/live/same';
+        const gaveUp = output('c', {
+            desiredState: 'stopped',
+            status: 'stopped',
+            pid: null,
+            lastError: 'Stopped after 5 failed attempts. Last error: refused',
+            lastErrorAt: 5,
+        });
+        const pipelines = [
+            pipeline(1, liveInput(), [output('a', { url }), output('b', { url }), gaveUp]),
+        ];
+        const { outputs } = build(pipelines);
+        assert.deepEqual(
+            outputs.rows.map((r) => r.notices.length > 0),
+            [true, true, true],
+        );
+        assert.equal(outputs.problems, 0, 'a notice is not a problem');
+        assert.deepEqual(build(pipelines, { filter: 'problems' }).outputs.rows, []);
+        assert.equal(outputs.rows[2].status, 'off');
     });
 
     test('a live input with a media error is an issue by itself', () => {

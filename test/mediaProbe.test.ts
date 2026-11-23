@@ -4,6 +4,7 @@ import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { probeError } from '../src/services/mediaProbe';
 import type { ProbeFailure } from '../src/services/mediaProbe';
 
 const originalCwd = process.cwd();
@@ -248,5 +249,16 @@ describe('keyframe interval probe', () => {
             failures.map((f) => f.reason),
             ['timeout', 'parse'],
         );
+    });
+});
+
+describe('probeError', () => {
+    test('says why, with no clock time of the server in it', () => {
+        assert.equal(probeError(null), 'ffprobe did not detect a readable media stream');
+        assert.equal(
+            probeError({ video: null, audio: null } as never),
+            'ffprobe did not detect a video stream',
+        );
+        assert.doesNotMatch(probeError(null), /\d\d:\d\d/);
     });
 });

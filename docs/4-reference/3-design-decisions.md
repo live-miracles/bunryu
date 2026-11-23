@@ -1186,7 +1186,7 @@ hides a real fault.
 not there at the previous 5 s poll:
 - the server, SRS or the SRT relay becoming unreachable;
 - an error-level pipeline alert;
-- the host running low on memory or disk space (the host alerts in `hostAlerts`);
+- the host's memory or disk reaching 90% (an error in `hostAlerts`; a warning is silent);
 - an input going offline while its outputs are meant to run;
 - an output crashing or being restarted by a watchdog.
 
@@ -1211,10 +1211,10 @@ live-gallery's alert beeps, so both tools sound alike.
   a phone. The 5 s poll already carries everything needed, so the server is unchanged.
 - **Warnings do not beep** (timestamp floods, falling behind, SRT loss): they are
   frequent and usually recover on their own.
-- **Host memory and disk beep, host CPU does not.** Low memory ends with the kernel
+- **Host memory and disk errors beep, host CPU and warnings do not.** Low memory ends with the kernel
   killing FFmpeg or SRS, and a full disk breaks the database, diagnostics and journal,
   and neither clears on its own. The CPU alert's thresholds come from a desktop
-  measurement, not production (see [Host resource alerts](#host-resource-alerts-cpu-pressure-memory-and-disk)),
+  measurement, not production (see [Host resource alerts](#host-resource-alerts-cpu-memory-and-disk)),
   so a beep on a healthy event would get the bell muted. It still shows in Server events.
 
 **Not adopted:** a "silence for N minutes" button (mute is simpler, and the operator
@@ -1764,29 +1764,39 @@ warning text carries the number).
 **Revisit when:** the warning fires on healthy outputs (then widen the window or
 lower the threshold), or operators want to see the speed continuously.
 
-### Host resource alerts: CPU pressure, memory and disk
+### Host resource alerts: CPU, memory and disk
 
-**Decision (October 2026):** the health poll raises an alert, with a separate end
-threshold, when host CPU pressure, available memory or free disk space crosses a
-line. It is reported (journal, diagnostics events, the dashboard's Server events
-table) and nothing is acted on. The numbers are in
-[Reliability](../3-operations/4-reliability.md#host-resource-alerts).
+**Decision (October 2026, revised November 2026):** the health poll raises an alert with
+two levels, a warning from 70% and an error from 90% of the same percent-used figure the
+dashboard's top bar shows, and ends it only under 65% (warning) or 85% (error). CPU also
+has a pressure error. They are reported (journal, diagnostics events, the dashboard's
+Server events table, a banner and the top bar's colours) and nothing is acted on. The
+numbers are in [Reliability](../3-operations/4-reliability.md#host-resource-alerts).
 
 **Why:**
 - Before this only memory had an alert. A CPU-starved host (the sizing page shows a
   `1080p` encode of a 4K input not keeping up on 4 vCPUs) makes outputs fall behind
   and SRT ingest drop packets, and the operator saw only each symptom per pipeline.
-- Start and end thresholds differ, and the CPU alert also needs the reading to hold
+- The operator keeps production under 65% and wants to hear about it above 70%, well
+  before memory runs out (the first memory alert started at 85% used) or the disk is
+  full. The bar already turned yellow at 70% and red at 90% by a rule of the dashboard's
+  own, which drifted from the server's alerts (a red bar with no alert, an alert under a
+  yellow bar). The rule now lives only on the server, and the dashboard shows its
+  result.
+- Start and end thresholds differ, and the CPU alerts also need the reading to hold
   for 30 s (start) and 60 s (end), so a reading that hovers near the line is one
   episode, not a stream of them. The same idea ends a pipeline alert after six quiet polls.
 
-**CPU uses pressure (PSI), not utilisation:** an encode is meant to use the CPUs (a
-`720p` encode takes about 2 vCPUs), so a host sized for its encodes is near fully busy
-while healthy and a utilisation alert would fire in normal use. Pressure stays near
-zero until something waits for a CPU. It also means no fallback: a kernel without `/proc/pressure/cpu` gets no CPU
-alert, rather than a utilisation guess that would fire on healthy encodes.
+**CPU uses both busy and pressure.** The first version used pressure (PSI) alone,
+because an encode is meant to use the CPUs (a `720p` encode takes about 2 vCPUs) and a
+busy alert looked like it would fire in normal use. The 65% target changes that: a host
+sized for its encodes is meant to have headroom, and a host at 70% busy has little left
+for a second encode or a spike. Busy percent says how much is used, which is what the
+operator sizes against; pressure says whether work is already being starved, which stays
+low until the machine is full, so it is kept as an error on its own. A kernel without
+`/proc/pressure/cpu` gets the busy alert only.
 
-**Evidence for the thresholds (8-CPU development host, busy loops, `some avg10`):**
+**Evidence for the pressure threshold (8-CPU development host, busy loops, `some avg10`):**
 
 | Busy loops | Load | Pressure after 45 s |
 |---|---|---|
@@ -1803,17 +1813,18 @@ unstarved host, so its noise does not hold an alert open. These come from a desk
 production VM.
 
 **Disk:** the filesystem of the database directory (database, diagnostics, HLS
-previews) and the root filesystem (journald, SRS logs), alert under 10% free and end
-at 15%. Diagnostics are size-capped and previews stop when idle, so this catches the
-journal, logs or database growing, or another tenant of the disk.
+previews) and the root filesystem (journald, SRS logs), by percent used. Diagnostics
+are size-capped and previews stop when idle, so this catches the journal, logs or
+database growing, or another tenant of the disk.
 
 **Not adopted:** acting on the alert (stopping outputs, shedding load), which could
-take down streams on a reading that may be harmless; a dashboard banner or beep,
-until the table proves useful (the beep is for pipeline problems).
+take down streams on a reading that may be harmless; a beep for a warning or for CPU
+(the beep is for what needs someone now, see below); a threshold in the dashboard (the
+drift above).
 
 **Revisit when:** a production incident shows the CPU thresholds firing late or on
 healthy load (compare `host.cpuPressure` in the `health-snapshot` with the alert
-times), or operators need these in front of them rather than in Server Logs.
+times), or the 70% warning is noisy on a host that is meant to run hot.
 
 ### Failures that need an operator exit with status 78, which systemd does not restart
 

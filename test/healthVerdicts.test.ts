@@ -75,6 +75,7 @@ const inputEntry = (over: Partial<InputStatusEntry> = {}) => ({
     mediaOk: true,
     mediaProbeStartedAt: null,
     mediaCheckedAt: null,
+    mediaFailingSince: null,
     mediaError: null,
     keyframes: null,
     recvBitrateKbps: 4000,

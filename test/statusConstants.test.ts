@@ -38,6 +38,7 @@ function inputAt(recvBitrateKbps: number, uptimeMs: number): InputHealth {
         mediaOk: true,
         mediaProbeStartedAt: null,
         mediaCheckedAt: null,
+        mediaFailingSince: null,
         mediaError: null,
         keyframes: null,
         recvBitrateKbps,

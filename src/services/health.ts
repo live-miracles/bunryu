@@ -45,10 +45,11 @@ import { createProbeScheduler } from './probeScheduler.js';
 import { createLegTracker } from './legTracker.js';
 import { createInputLifecycle, type PollStaggers } from './inputLifecycle.js';
 import { pipelineDiagnosticsOf } from './healthDiagnostics.js';
+import { createAlertHold, type AlertHold } from '../utils/alertHold.js';
 import { createPipelineMaps } from '../utils/pipelineMaps.js';
 import { createLogThrottle } from '../utils/logThrottle.js';
 import { buildHealthVerdicts, type HealthVerdicts } from '../utils/healthVerdicts.js';
-import { createHostMonitor, type HostAlertKind } from './hostMonitor.js';
+import { createHostMonitor, type HostAlert } from './hostMonitor.js';
 import type { ProcessUsages } from './resourceUsage.js';
 import {
     srtIntervalAlerts,
@@ -82,6 +83,8 @@ export interface InputHealth {
     mediaProbeStartedAt: number | null;
     mediaCheckedAt: number | null;
     mediaError: string | null;
+    // When the probe started failing (ms since epoch); null while it succeeds.
+    mediaFailingSince: number | null;
     // The keyframe check of the current publisher; null until it has run (or when it failed).
     keyframes: (KeyframeStats & { checkedAt: number }) | null;
     recvBitrateKbps: number | null;
@@ -152,7 +155,7 @@ export interface HealthSnapshot {
     srtRelay: SrtRelayStats;
     // Host resource alerts open right now (see the host alert trackers below). The
     // dashboard beeps when memory or disk joins the list.
-    hostAlerts: HostAlertKind[];
+    hostAlerts: HostAlert[];
     // Config revision at snapshot time. Clients compare this against the rev they
     // loaded /api/config at; a mismatch means the config was edited elsewhere and
     // the client should reload. Carried on the health snapshot so it reaches every
@@ -282,6 +285,7 @@ export function createHealthService(
         }
     }
     const relayInputSamples = pipelineMaps.map<RelayInputSample>();
+    const srtAlertHolds = pipelineMaps.map<AlertHold>();
     const legTracker = createLegTracker({
         historyMaxSamples: LEG_HISTORY_MAX_SAMPLES,
         pollIntervalMs: POLL_INTERVAL_MS,
@@ -353,8 +357,11 @@ export function createHealthService(
     function topCpuConsumers(limit: number): { name: string; cpuPercent: number }[] {
         const consumers: { name: string; cpuPercent: number }[] = [];
         const usage = getProcessUsage?.();
-        for (const [name, entry] of Object.entries(usage ?? {})) {
-            if (entry.cpuPercent != null) consumers.push({ name, cpuPercent: entry.cpuPercent });
+        if (usage) {
+            for (const name of ['node', 'srs', 'relay'] as const) {
+                const { cpuPercent } = usage[name];
+                if (cpuPercent != null) consumers.push({ name, cpuPercent });
+            }
         }
         for (const [pipelineId, pipeline] of Object.entries(snapshot.pipelines)) {
             for (const [outputId, output] of Object.entries(pipeline.outputs)) {
@@ -374,6 +381,7 @@ export function createHealthService(
         record: (type, message) => pushSrsEvent('host', type, message),
         topCpuConsumers,
         diagnostics,
+        readers: { cpuPercent: () => getProcessUsage?.().hostCpuPercent ?? null },
     });
 
     const pollFailures = createLoopFailureReporter('health-poll', diagnostics);
@@ -568,8 +576,16 @@ export function createHealthService(
                 },
                 now,
             );
-            if (previousRelaySample && rawBondingStatus.inputActive) {
-                alerts.push(...srtIntervalAlerts(previousRelaySample, currentRelaySample, now));
+            // Held for 30 s so the status they set stays on screen (see utils/alertHold.ts).
+            const intervalHold = srtAlertHolds.get(pipeline.id) ?? createAlertHold();
+            srtAlertHolds.set(pipeline.id, intervalHold);
+            if (rawBondingStatus.inputActive) {
+                const fresh = previousRelaySample
+                    ? srtIntervalAlerts(previousRelaySample, currentRelaySample, now)
+                    : [];
+                alerts.push(...intervalHold.apply(fresh));
+            } else {
+                intervalHold.clear();
             }
             const {
                 expectedLegs,

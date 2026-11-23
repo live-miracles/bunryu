@@ -75,7 +75,7 @@ A condition the health poll raises on a pipeline, such as a lost leg or an input
 _Avoid_: incident (that is a written fail report)
 
 **Host alert**:
-A resource condition of the whole machine: CPU pressure, low memory or low disk.
+A resource condition of the whole machine: CPU busy or starved, memory or disk used. A warning from 70% and an error from 90%, worked out by the server; the dashboard shows each as a banner and colours the top bar from it.
 
 **Resource usage**:
 What the host and the three managed processes (this server, SRS and the relay) are using of CPU, RAM, disk and network, sampled on timers. The Overview's charts and System usage table and the diagnostics snapshot show the same samples.
@@ -90,11 +90,11 @@ The status of an input or output (good, warn, error or off) and the problems beh
 _Avoid_: health (alone), state
 
 **Advice**:
-A hint about how an output or pipeline is configured, such as a destination another output also uses or audio settings that do not suit the input. The dashboard shows it as one yellow line on the output's card and nowhere else; it is not part of a verdict, it is not a Problem, it never changes a status dot, and Key Vault never sees it.
+A hint about how an output or pipeline is configured, such as a destination another output also uses or audio settings that do not suit the input. The dashboard shows it as one yellow line on the output's card, and marks the output on the Status view and the Overview with a yellow outline round its dot and the lines in its tooltip and Issues cell; it is not part of a verdict, it is not a Problem, it never changes a status colour or count, and Key Vault never sees it.
 _Avoid_: advisory warning
 
 **Problem**:
-An output or input with an error or a warning, as its dot colours it. An output stopped after repeated failures (its status stays off, its error is still current) is not one: its card shows the error as a yellow line only. The Problems filter lists exactly the Problems.
+An output or input with an error or a warning, as its dot colours it. An output stopped after repeated failures (its status stays off, its error is still current) is not one: it shows as a grey dot with a yellow outline, and its card shows the error as a yellow line. The Problems filter lists exactly the Problems.
 _Avoid_: issue (that is a GitHub issue)
 
 **Diagnostics**:

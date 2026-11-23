@@ -1,5 +1,6 @@
 import type { ActivityEvent, PipelineGroup, PipelineView, RejectedPublish } from '../types.js';
-import type { InputStatus, OutStatus } from './status.js';
+import type { InputStatus, OutStatus, StatusIssue } from './status.js';
+import { adviceByOutput } from './output-advice.js';
 import { isProblem, pipelineProblems, type StatusTally } from './problems.js';
 
 // The Status view: one card per pipeline with a dot for every output. Pure functions that
@@ -11,6 +12,11 @@ export interface StatusDot {
     status: OutStatus;
     // The first thing wrong with it, or '': a problem with its status, else its current error.
     message: string;
+    // Everything wrong with it, for the tooltip (empty when nothing is).
+    issues: StatusIssue[];
+    // The advice about it: the dot gets a yellow outline and the tooltip lists these. Not a
+    // problem, so no status, count or filter changes.
+    notices: string[];
 }
 
 export interface StatusCard {
@@ -21,6 +27,11 @@ export interface StatusCard {
     type: string;
     inputStatus: InputStatus;
     inputMessage: string;
+    // The input dot's tooltip: what is wrong with the input and the link in, and what is
+    // wrong with the relay's forward to SRS and its status.
+    inputIssues: StatusIssue[];
+    forwardIssues: StatusIssue[];
+    forwardStatus: OutStatus;
     dots: StatusDot[];
     tally: StatusTally;
     // The card belongs in the Issues view (see PipelineProblems.hasProblem in core/problems.ts).
@@ -41,7 +52,7 @@ export interface RelayContext {
 }
 
 export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext): StatusCard[] {
-    const ctx = relay;
+    const ctx = { ...relay, advice: adviceByOutput(pipelines) };
     return pipelines.map((p) => {
         const rolled = pipelineProblems(p, ctx);
         return {
@@ -51,12 +62,17 @@ export function buildStatusCards(pipelines: PipelineView[], relay: RelayContext)
             type: inputTypeLabel(p),
             inputStatus: rolled.input.status,
             inputMessage: rolled.input.message,
+            inputIssues: rolled.input.inputSide,
+            forwardIssues: rolled.input.forwardSide,
+            forwardStatus: rolled.relay.output,
             dots: rolled.outputs.map(
-                ({ output, status, message }): StatusDot => ({
+                ({ output, status, message, issues, notices }): StatusDot => ({
                     id: output.id,
                     name: output.name,
                     status,
                     message,
+                    issues,
+                    notices,
                 }),
             ),
             tally: rolled.tally,

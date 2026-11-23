@@ -149,6 +149,8 @@ describe('probe scheduler', () => {
         await settle();
         assert.equal(scheduler.status(1)?.ok, false);
         assert.equal(scheduler.status(1)?.failedAttempts, 1);
+        const failingSince = scheduler.status(1)?.failingSince;
+        assert.equal(typeof failingSince, 'number');
         assert.deepEqual(
             logs.map((l) => l.event),
             ['probe_failed'],
@@ -168,6 +170,7 @@ describe('probe scheduler', () => {
         ffprobe.calls[1].finish(UNUSABLE);
         await settle();
         assert.equal(scheduler.status(1)?.failedAttempts, 2);
+        assert.equal(scheduler.status(1)?.failingSince, failingSince, 'since the first failure');
         assert.equal(logs.length, 1, 'a persistently bad input does not flood the pipeline log');
 
         t.mock.timers.tick(30_000);
@@ -177,6 +180,7 @@ describe('probe scheduler', () => {
         ffprobe.calls[2].finish(USABLE);
         await settle();
         assert.equal(scheduler.status(1)?.failedAttempts, 0);
+        assert.equal(scheduler.status(1)?.failingSince, null);
         assert.deepEqual(
             logs.map((l) => l.event),
             ['probe_failed', 'probe_recovered'],

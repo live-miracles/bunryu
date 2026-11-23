@@ -11,7 +11,9 @@ import { parsePipelines } from '../core/pipeline.js';
 import { state } from '../core/state.js';
 import { renderPipelines, renderMetrics } from './render.js';
 import { refreshKeyVaultStatus } from './key-vault-status.js';
-import { getUrlParam } from '../core/utils.js';
+import { escapeHtml, getUrlParam } from '../core/utils.js';
+import { hostAlertBanners, hostAlertKindsToBeep } from '../core/host-alerts.js';
+import type { HostAlert } from '../types.js';
 import { noteDashboardSnapshot } from './sound-alerts.js';
 
 let refreshLoop: Promise<void> | null = null;
@@ -34,6 +36,24 @@ export function refreshDashboard(): Promise<void> {
         refreshLoop = null;
     });
     return refreshLoop;
+}
+
+// One banner for each open host alert (CPU, memory, disk), errors first. Drawn only when the
+// alerts changed, so a banner does not flicker on every poll.
+const HOST_ALERT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>`;
+let hostAlertBannersHtml = '';
+function renderHostAlertBanners(alerts: readonly HostAlert[]): void {
+    const container = document.getElementById('host-alert-banners');
+    if (!container) return;
+    const html = hostAlertBanners(alerts)
+        .map(
+            (a) =>
+                `<div class="banner ${a.severity === 'error' ? 'banner-bad' : ''} flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold" data-host-alert="${a.kind}">${HOST_ALERT_ICON}<span>${escapeHtml(a.message)}</span></div>`,
+        )
+        .join('');
+    if (html === hostAlertBannersHtml) return;
+    hostAlertBannersHtml = html;
+    container.innerHTML = html;
 }
 
 let configStale = true;
@@ -138,6 +158,7 @@ async function fetchAndRender(): Promise<void> {
     const publicHostBanner = document.getElementById('public-host-banner');
     publicHostBanner?.classList.toggle('hidden', !showPublicHostBanner);
     publicHostBanner?.classList.toggle('flex', showPublicHostBanner);
+    renderHostAlertBanners(isServerUnreachable() ? [] : (state.health.hostAlerts ?? []));
     if (rejectedResult) {
         state.rejectedPublishes = rejectedResult.rejected;
         state.rejectedOmitted = rejectedResult.omitted;
@@ -157,7 +178,7 @@ async function fetchAndRender(): Promise<void> {
         serverUnreachable: isServerUnreachable(),
         srsReachable: state.health.srsReachable,
         relayDown: !!state.health.srtRelay && state.health.srtRelay.status !== 'running',
-        hostAlerts: state.health.hostAlerts ?? [],
+        hostAlerts: hostAlertKindsToBeep(state.health.hostAlerts ?? []),
         pipelines: state.pipelines,
     });
 }

@@ -1747,7 +1747,9 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         await sleep(20);
 
         // Drops on two polls with one clean poll between: one episode.
-        for (const drops of [5, 0, 5, 0, 0, 0, 0, 0, 0, 0]) {
+        // The interval alert is held in the payload for 30 s (six polls) after the last drop,
+        // and the episode ends after six more polls without it.
+        for (const drops of [5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) {
             received += 900;
             dropped += drops;
             relay.setStatus(status());
@@ -1764,7 +1766,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         );
         assert.equal(episodes[0].pipelineId, 1);
         assert.match(episodes[0].message, /dropped 5 packets/);
-        assert.equal(episodes[1].activePolls, 2);
+        assert.equal(episodes[1].activePolls, 9, 'two raised polls and the 30 s hold');
 
         service.shutdown();
     });
@@ -2915,7 +2917,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         );
     }
 
-    test('logs host-memory-low/recovered transitions with top processes, with hysteresis', async (t) => {
+    test('logs host-memory transitions with top processes, with hysteresis', async (t) => {
         const state: HostState = { availableKb: 400_000 }; // 39% of 1000MB: healthy
         mockHostMemory(t, state);
         t.mock.method(globalThis, 'fetch', async (url: unknown) => {
@@ -2942,35 +2944,41 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         await sleep(20);
         assert.deepEqual(memoryEvents(), [], 'no event while memory is healthy');
 
-        state.availableKb = 100_000; // ~10% < 15%
+        state.availableKb = 100_000; // ~90% used: an error
         await tickPoll(t);
-        assert.equal(memoryEvents().length, 1);
-        assert.equal(memoryEvents()[0].event, 'host-memory-low');
+        assert.equal(memoryEvents().length, 1, 'one event although the warning level opened too');
+        assert.equal(memoryEvents()[0].event, 'host-memory-critical');
         assert.equal(memoryEvents()[0].availableMb, 98);
         assert.equal(memoryEvents()[0].totalMb, 1000);
         assert.equal(
             memoryEvents()[0].message,
-            'Memory low: 98MB of 1000MB available; top: ffmpeg(77)=97MB',
+            'Memory critical: 90% used (98MB of 1000MB available); top: ffmpeg(77)=97MB',
         );
         assert.deepEqual(memoryEvents()[0].topProcesses, [{ pid: 77, name: 'ffmpeg', rssMb: 97 }]);
 
-        state.availableKb = 150_000; // ~14.6%: still low, must not flap
+        state.availableKb = 150_000; // ~85.4% used: under the error line, over its end line
         await tickPoll(t);
-        state.availableKb = 190_000; // ~18.6% < 20% recovery threshold
-        await tickPoll(t);
-        assert.equal(memoryEvents().length, 1, 'no repeat events while still below recovery');
+        assert.equal(memoryEvents().length, 1, 'no repeat events while still above the end line');
 
-        state.availableKb = 300_000; // ~29%
+        state.availableKb = 190_000; // ~81% used: the error ends, the warning stays open
+        await tickPoll(t);
+        assert.equal(memoryEvents().length, 2);
+
+        state.availableKb = 400_000; // ~61% used: under 65%
         await tickPoll(t);
         assert.deepEqual(
-            memoryEvents().map((e) => e.event),
-            ['host-memory-low', 'host-memory-recovered'],
+            memoryEvents().map((e) => [e.event, e.severity]),
+            [
+                ['host-memory-critical', 'error'],
+                ['host-memory-recovered', 'error'],
+                ['host-memory-recovered', 'warning'],
+            ],
         );
 
         service.shutdown();
     });
 
-    test('logs host-cpu-high/recovered with hysteresis and shows both in the Server events table', async (t) => {
+    test('logs host-cpu-saturated/recovered with hysteresis and shows both in the Server events table', async (t) => {
         const state: HostState = { availableKb: 400_000, cpuSome10: 20 };
         mockHostMemory(t, state);
         t.mock.method(globalThis, 'fetch', async (url: unknown) => {
@@ -2990,6 +2998,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 node: { cpuPercent: 4, ramBytes: 1 },
                 srs: { cpuPercent: 31.5, ramBytes: 1 },
                 relay: { cpuPercent: null, ramBytes: null },
+                hostCpuPercent: null,
             }),
         );
         const cpuEvents = () => diagnostics.events.filter((e) => e.event.startsWith('host-cpu-'));
@@ -3006,7 +3015,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         assert.deepEqual(cpuEvents(), [], 'not sustained long enough yet');
         await tickPoll(t);
         assert.equal(cpuEvents().length, 1);
-        assert.equal(cpuEvents()[0].event, 'host-cpu-high');
+        assert.equal(cpuEvents()[0].event, 'host-cpu-saturated');
         assert.equal(cpuEvents()[0].pressure10, 60);
         assert.equal(cpuEvents()[0].thresholdPercent, 50);
         assert.deepEqual(cpuEvents()[0].topConsumers, [
@@ -3028,7 +3037,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         await tickPoll(t);
         assert.deepEqual(
             cpuEvents().map((e) => e.event),
-            ['host-cpu-high', 'host-cpu-recovered'],
+            ['host-cpu-saturated', 'host-cpu-pressure-recovered'],
         );
         assert.equal(cpuEvents()[1].peakPressure10, 60);
         assert.equal(hostRows().length, 2);
@@ -3037,7 +3046,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         service.shutdown();
     });
 
-    test('logs host-disk-low/recovered per filesystem, once for a shared device', async (t) => {
+    test('logs host-disk transitions per filesystem, once for a shared device', async (t) => {
         const state: HostState = { availableKb: 400_000, diskFreeRatio: 0.5 };
         mockHostMemory(t, state);
         t.mock.method(globalThis, 'fetch', async (url: unknown) => {
@@ -3063,35 +3072,39 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         await sleep(20);
         assert.deepEqual(diskEvents(), []);
 
-        const hostAlerts = async () => (await getSnapshot(app)).hostAlerts;
+        const hostAlerts = async () =>
+            (await getSnapshot(app)).hostAlerts.map((a) => `${a.kind}:${a.severity}`);
         assert.deepEqual(await hostAlerts(), []);
 
-        state.diskFreeRatio = 0.08; // under 10%
+        state.diskFreeRatio = 0.08; // 92% used: an error
         await tickPoll(t);
-        assert.deepEqual(await hostAlerts(), ['disk'], 'the snapshot lists the open alert');
+        assert.deepEqual(await hostAlerts(), ['disk:error'], 'the snapshot lists the open alert');
         assert.equal(diskEvents().length, 1, 'data dir and / are one device: one event');
-        assert.equal(diskEvents()[0].event, 'host-disk-low');
+        assert.equal(diskEvents()[0].event, 'host-disk-critical');
         assert.equal(diskEvents()[0].path, tempDir);
         assert.equal(diskEvents()[0].availableMb, 80);
         assert.equal(diskEvents()[0].totalMb, 1000);
 
-        state.diskFreeRatio = 0.12; // above the start line, below the 15% recovery line
+        state.diskFreeRatio = 0.12; // 88% used: under the error line, over its end line
         await tickPoll(t);
         assert.equal(diskEvents().length, 1, 'no flapping inside the band');
+        assert.deepEqual(await hostAlerts(), ['disk:error'], 'still open inside the band');
 
-        assert.deepEqual(await hostAlerts(), ['disk'], 'still open inside the band');
+        state.diskFreeRatio = 0.3; // 70% used: the error ends, the warning stays
+        await tickPoll(t);
+        assert.deepEqual(await hostAlerts(), ['disk:warning']);
 
-        state.diskFreeRatio = 0.3;
+        state.diskFreeRatio = 0.5;
         await tickPoll(t);
         assert.deepEqual(await hostAlerts(), []);
         assert.deepEqual(
             diskEvents().map((e) => e.event),
-            ['host-disk-low', 'host-disk-recovered'],
+            ['host-disk-critical', 'host-disk-recovered', 'host-disk-recovered'],
         );
         const rows = service.getSrsEvents().filter((e) => e.source === 'host');
         assert.deepEqual(
             rows.map((e) => e.type),
-            ['problem', 'recovered'],
+            ['problem', 'recovered', 'recovered'],
         );
 
         // A separate data device is checked on its own, alongside '/'.
@@ -3100,7 +3113,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
         await tickPoll(t);
         assert.deepEqual(
             diskEvents()
-                .slice(2)
+                .slice(3)
                 .map((e) => e.path),
             [tempDir, '/'],
         );
@@ -3128,6 +3141,7 @@ describe('createHealthService diagnostics and bonded-leg alerts', () => {
                 node: { cpuPercent: 7, ramBytes: 1 }, // node RSS is read fresh, not from here
                 srs: { cpuPercent: 12, ramBytes: 48 * MB },
                 relay: { cpuPercent: null, ramBytes: 10 * MB },
+                hostCpuPercent: null,
             }),
         );
 

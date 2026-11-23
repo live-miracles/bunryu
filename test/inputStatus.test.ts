@@ -54,6 +54,17 @@ describe('inputHealth', () => {
         );
     });
 
+    test('a failed probe says since when, for the dashboard to show in the viewer time', () => {
+        const v = inputHealth(
+            input({ mediaOk: false, mediaError: 'ffprobe failed', mediaFailingSince: 5000 }),
+        );
+        assert.equal(v.issues[0].sinceMs, 5000);
+        assert.equal(
+            inputHealth(input({ mediaOk: false, mediaError: 'x' })).issues[0].sinceMs,
+            undefined,
+        );
+    });
+
     test('waiting for the first probe, or for media, warns', () => {
         assert.match(
             inputHealth(input({ mediaOk: null })).issues[0].message,

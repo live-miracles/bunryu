@@ -25,6 +25,7 @@ const liveInput = (overrides: Partial<InputHealth> = {}): InputHealth => ({
     mediaOk: true,
     mediaProbeStartedAt: null,
     mediaCheckedAt: null,
+    mediaFailingSince: null,
     mediaError: null,
     keyframes: null,
     recvBitrateKbps: 4000,
@@ -258,6 +259,87 @@ describe('buildStatusCards', () => {
         );
         assert.equal(card.severity, 'error');
         assert.equal(card.hasIssue, true);
+    });
+
+    test('a dot lists every issue of the output, not only the first', () => {
+        const [card] = cardsOf([pipeline(1, liveInput(), [failed('a')])]);
+        assert.equal(card.dots[0].issues.length, 1);
+        assert.equal(card.dots[0].issues[0].message, card.dots[0].message);
+        const [sibling] = cardsOf([
+            pipeline(1, liveInput(), [output('a', { bitrateKbps: 100 }), failed('b')]),
+        ]);
+        assert.ok(sibling.dots[0].issues.length >= 1, 'the low bitrate has its own line');
+    });
+
+    test('an output stopped after repeated failures gets a notice, not a problem', () => {
+        const gaveUp = output('a', {
+            desiredState: 'stopped',
+            status: 'stopped',
+            pid: null,
+            lastError: 'Stopped after 5 failed attempts. Last error: Connection refused',
+            lastErrorAt: 5,
+        });
+        const [card] = cardsOf([pipeline(1, liveInput(), [gaveUp])]);
+        assert.equal(card.dots[0].status, 'off');
+        assert.deepEqual(card.dots[0].notices, [
+            'Stopped after 5 attempts: check the link and stream key, update the output, then start it again.',
+        ]);
+        assert.equal(card.hasIssue, false);
+        assert.equal(card.tally.off, 1);
+        assert.equal(card.severity, 'none');
+    });
+
+    test('advice about the configuration is a notice on the dot and changes no status or count', () => {
+        const url = 'rtmp://192.0.2.10/live/same';
+        const [card] = cardsOf([
+            pipeline(1, liveInput(), [output('a', { url }), output('b', { url }), output('c')]),
+        ]);
+        assert.deepEqual(
+            card.dots.map((d) => d.notices.length > 0),
+            [true, true, false],
+        );
+        assert.match(card.dots[0].notices[0], /^Same destination as Pipeline 1 → Out b/);
+        assert.deepEqual(
+            card.dots.map((d) => d.status),
+            ['good', 'good', 'good'],
+        );
+        assert.equal(card.hasIssue, false);
+        assert.equal(card.severity, 'none');
+    });
+
+    test('the input dot keeps the relay forward to SRS apart from the input and the link in', () => {
+        const [card] = cardsOf([
+            relayPipeline([okLeg('a'), okLeg('b')], {
+                outputConnected: false,
+                lastError: 'refused',
+            }),
+        ]);
+        assert.equal(card.forwardStatus, 'error');
+        assert.deepEqual(
+            card.forwardIssues.map((i) => i.message),
+            ['Relay output reconnecting: refused'],
+        );
+        assert.deepEqual(card.inputIssues, []);
+    });
+
+    test('an SRT interval alert makes the card a warning or an error by its severity', () => {
+        const alertOf = (severity: 'warning' | 'error') => [
+            { severity, code: 'srt-packet-loss', message: 'loss', sinceMs: NOW },
+        ];
+        const warn = cardsOf([
+            relayPipeline([okLeg('a'), okLeg('b')], {}, { alerts: alertOf('warning') }),
+        ])[0];
+        assert.equal(warn.inputStatus, 'warn');
+        assert.equal(warn.hasIssue, true);
+        assert.deepEqual(
+            warn.inputIssues.map((i) => i.message),
+            ['loss'],
+        );
+        const bad = cardsOf([
+            relayPipeline([okLeg('a'), okLeg('b')], {}, { alerts: alertOf('error') }),
+        ])[0];
+        assert.equal(bad.inputStatus, 'error');
+        assert.equal(bad.severity, 'error');
     });
 
     test('a stopped output is neither a problem nor healthy', () => {

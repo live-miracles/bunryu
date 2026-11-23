@@ -18,6 +18,8 @@ import {
     type StatusDot,
 } from '../core/status-grid.js';
 import type { ActivityEvent } from '../types.js';
+import type { OutStatus, StatusIssue } from '../core/status.js';
+import { issueLinesHtml } from './status-tooltip.js';
 import { CHART_WINDOW_MS, drawChart } from './dashboard-charts.js';
 
 // The Status view: every pipeline as a card with a dot per output, the host graphs and the
@@ -39,29 +41,56 @@ const DOT_STYLE: Record<StatusDot['status'], string> = {
     error: 'background-color:var(--dot-bad);box-shadow:0 0 0 2px color-mix(in oklab,var(--dot-bad) 35%,transparent)',
     off: 'box-shadow:inset 0 0 0 2px var(--dot-off)',
 };
+// A yellow outline round a dot: the output has advice (see core/output-advice.ts), which is
+// not a problem. A stopped output with advice is a filled grey circle, so the outline has
+// something to surround.
+const NOTICE_OUTLINE = ';outline:2px solid var(--dot-warn);outline-offset:1px';
+const STOPPED_WITH_NOTICE = 'background-color:var(--dot-off)';
 const STATUS_WORD: Record<StatusDot['status'], string> = {
     good: 'running',
     warn: 'warning',
     error: 'failed',
     off: 'stopped',
 };
+const INPUT_WORD: Record<StatusCard['inputStatus'], string> = {
+    good: 'live',
+    warn: 'warning',
+    error: 'error',
+    off: 'offline',
+};
 
 // The hover text is the dashboard's own tooltip (see initHoverTooltips in render.ts), the same
-// as the pipeline list's, not the browser's title text.
-function tooltipHtml(heading: string, detail: string): string {
-    const line = detail
-        ? `<div class="text-warning text-xs leading-snug">${escapeHtml(detail)}</div>`
-        : '';
-    return `<div class="text-xs leading-snug font-semibold">${escapeHtml(heading)}</div>${line}`;
+// as the pipeline list's, not the browser's title text. A heading, then every issue with its
+// hint, then the advice, as the pipeline list's tooltip lists them.
+function tooltipHtml(heading: string, issues: StatusIssue[], notices: string[] = []): string {
+    const advice = notices
+        .map((n) => `<div class="text-warning text-xs leading-snug">${escapeHtml(n)}</div>`)
+        .join('');
+    return `<div class="text-xs leading-snug font-semibold">${escapeHtml(heading)}</div>${issueLinesHtml(issues)}${advice}`;
 }
 
 function dotHtml(
     status: StatusDot['status'],
-    heading: string,
-    detail: string,
+    tooltip: string,
     sizeClass: string,
+    notice = false,
 ): string {
-    return `<span class="js-tooltip inline-flex shrink-0" tabindex="0"><span class="${sizeClass} inline-block rounded-full" style="${DOT_STYLE[status]}"></span><div class="js-tooltip-content hidden">${tooltipHtml(heading, detail)}</div></span>`;
+    const style =
+        notice && status === 'off'
+            ? STOPPED_WITH_NOTICE + NOTICE_OUTLINE
+            : DOT_STYLE[status] + (notice ? NOTICE_OUTLINE : '');
+    return `<span class="js-tooltip inline-flex shrink-0" tabindex="0"><span class="${sizeClass} inline-block rounded-full" style="${style}"></span><div class="js-tooltip-content hidden">${tooltip}</div></span>`;
+}
+
+// The input dot: the input and the link in under "Input", and the relay's forward to SRS under
+// its own heading, so an output-side problem is not listed under "Input".
+function inputTooltipHtml(c: StatusCard): string {
+    const word = (status: OutStatus): string => INPUT_WORD[status];
+    let html = tooltipHtml(`Input: ${word(c.inputStatus)}`, c.inputIssues);
+    if (c.forwardIssues.length > 0) {
+        html += `<div class="mt-1">${tooltipHtml(`Relay to SRS: ${word(c.forwardStatus)}`, c.forwardIssues)}</div>`;
+    }
+    return html;
 }
 
 function badge(count: number, cls: string, label: string, tooltip = ''): string {
@@ -74,10 +103,14 @@ function cardHtml(c: StatusCard): string {
     const edge =
         c.severity === 'error' ? 'var(--dot-bad)' : c.severity === 'warn' ? 'var(--dot-warn)' : '';
     const style = edge ? ` style="border-color:color-mix(in oklab,${edge} 70%,transparent)"` : '';
-    const inputState = c.inputStatus === 'good' ? 'live' : c.inputStatus === 'off' ? 'offline' : '';
     const dots = c.dots
         .map((d) =>
-            dotHtml(d.status, `${d.name}: ${STATUS_WORD[d.status]}`, d.message, 'h-2.5 w-2.5'),
+            dotHtml(
+                d.status,
+                tooltipHtml(`${d.name}: ${STATUS_WORD[d.status]}`, d.issues, d.notices),
+                'h-2.5 w-2.5',
+                d.notices.length > 0,
+            ),
         )
         .join('');
     // A few outputs sit on the name's line; many wrap into a block under it.
@@ -89,15 +122,15 @@ function cardHtml(c: StatusCard): string {
         ? `<span class="badge badge-xs badge-outline shrink-0">${escapeHtml(c.type)}</span>`
         : '';
     const body = inline
-        ? `<span class="ml-auto flex shrink-0 flex-wrap items-center gap-1">${dots || '<span class="text-muted text-xs">no outputs</span>'}</span>`
+        ? `<span class="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">${dots || '<span class="text-muted text-xs">no outputs</span>'}</span>`
         : '';
     return `<a href="/?p=${encodeURIComponent(c.id)}" data-pipeline-id="${escapeHtml(c.id)}" class="border-base-content/10 bg-base-100/50 hover:border-primary mb-2 block break-inside-avoid rounded-xl border px-3 py-2"${style}>
         <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            ${dotHtml(c.inputStatus, `Input: ${inputState || c.inputStatus}`, inputState ? '' : c.inputMessage, 'h-3.5 w-3.5')}
+            ${dotHtml(c.inputStatus, inputTooltipHtml(c), 'h-3.5 w-3.5')}
             <span class="min-w-0 truncate font-semibold">${escapeHtml(c.name)}</span>
             ${summary}${inline ? typeBadge : ''}${body}
         </span>
-        ${inline ? '' : `<span class="mt-1.5 flex flex-wrap gap-1">${dots}</span>`}
+        ${inline ? '' : `<span class="mt-1.5 flex flex-wrap gap-1.5">${dots}</span>`}
     </a>`;
 }
 
@@ -107,7 +140,7 @@ function rejectedCardHtml(count: number): string {
     if (count === 0) return '';
     return `<div class="columns-[19rem] gap-2"><a href="/" data-open-overview class="border-base-content/10 bg-base-100/50 hover:border-primary mb-2 block break-inside-avoid rounded-xl border px-3 py-2" style="border-color:color-mix(in oklab,var(--dot-bad) 70%,transparent)">
         <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            ${dotHtml('error', 'Rejected publishers', 'SRS refused these. Nothing is being forwarded from them.', 'h-3.5 w-3.5')}
+            ${dotHtml('error', tooltipHtml('Rejected publishers', [{ severity: 'warning', message: 'SRS refused these. Nothing is being forwarded from them.' }]), 'h-3.5 w-3.5')}
             <span class="min-w-0 truncate font-semibold">Rejected publishers</span>
             <span class="badge badge-sm badge-error">${count}</span>
             <span class="text-muted ml-auto text-xs">Open the Overview to see them</span>

@@ -27,13 +27,26 @@ export interface RelayHealth {
     issues: RelayIssue[];
 }
 
+// An alert raises the half it is about to its own severity: the SRT interval alerts (dropped
+// packets, loss, retransmissions, latency, a bitrate collapse) and a leg's alerts are about
+// the link from the encoder, a relay that receives but forwards nothing is about the
+// forward to SRS. The server holds an interval alert for 30 s, so the status does not blink.
+const alertStatus = (severity: StatusIssue['severity']): OutStatus =>
+    severity === 'error' ? 'error' : 'warn';
+const worseOf = (a: OutStatus, b: OutStatus): OutStatus =>
+    a === 'error' || b === 'error' ? 'error' : a === 'warn' || b === 'warn' ? 'warn' : a;
+
 export function relayHealth(
     pipeline: PipelineView,
     relayProcessRunning: boolean,
     nowMs: number,
 ): RelayHealth {
-    const input = inputStatus(pipeline, relayProcessRunning, nowMs);
-    const output = outputStatus(pipeline, relayProcessRunning, nowMs);
+    // What the relay's own state says; the alerts below can only raise it, and the reasons
+    // listed under it are the ones behind this state, not behind the alerts.
+    const baseInput = inputStatus(pipeline, relayProcessRunning, nowMs);
+    const baseOutput = outputStatus(pipeline, relayProcessRunning, nowMs);
+    let input = baseInput;
+    let output = baseOutput;
     const issues: RelayIssue[] = [];
     for (const alert of pipeline.alerts) {
         // The leg-specific version below includes the address and the precise
@@ -43,8 +56,16 @@ export function relayHealth(
         }
         // Input alerts are shown with the input (see the input's verdict).
         if (INPUT_ALERT_CODES.has(alert.code)) continue;
+        const side = alert.code === 'relay-forwarding-stalled' ? 'output' : 'input';
+        // An alert only exists while the relay is up and the input is active, so a half
+        // that is off stays off.
+        if (side === 'output') {
+            if (output !== 'off') output = worseOf(output, alertStatus(alert.severity));
+        } else if (input !== 'off') {
+            input = worseOf(input, alertStatus(alert.severity));
+        }
         issues.push({
-            side: alert.code === 'relay-forwarding-stalled' ? 'output' : 'input',
+            side,
             prefix: '',
             issue: {
                 severity: alert.severity,
@@ -54,22 +75,24 @@ export function relayHealth(
             },
         });
     }
-    if (input === 'warn' || input === 'error') {
-        for (const reason of inputReasons(pipeline, relayProcessRunning, nowMs)) {
+    if (baseInput === 'warn' || baseInput === 'error') {
+        // A bonded group's legs down are already an alert with its own "since": say it once.
+        const legsAlerted = pipeline.alerts.some((a) => a.code === 'bonded-leg-down');
+        for (const reason of inputReasons(pipeline, relayProcessRunning, nowMs, legsAlerted)) {
             issues.push({
                 side: 'input',
                 prefix: 'Input: ',
-                issue: { severity: input === 'error' ? 'error' : 'warning', message: reason },
+                issue: { severity: baseInput === 'error' ? 'error' : 'warning', message: reason },
             });
         }
     }
-    if (output === 'warn' || output === 'error') {
+    if (baseOutput === 'warn' || baseOutput === 'error') {
         for (const reason of outputReasons(pipeline, relayProcessRunning, nowMs)) {
             issues.push({
                 side: 'output',
                 prefix: 'Output: ',
                 issue: {
-                    severity: output === 'error' ? 'error' : 'warning',
+                    severity: baseOutput === 'error' ? 'error' : 'warning',
                     message: summarizeOutputError(reason, reason),
                 },
             });
@@ -147,6 +170,7 @@ function inputReasons(
     pipeline: PipelineView,
     relayProcessRunning: boolean,
     nowMs: number,
+    legsDownAlerted: boolean,
 ): string[] {
     if (!relayProcessRunning || !pipeline.srtBonding.inputActive) return [];
     const { bonded, legs, expectedLegs } = pipeline.srtBonding.input;
@@ -161,8 +185,9 @@ function inputReasons(
 
     if (bonded) {
         if (legs.length === 0) reasons.push('No bonded legs reporting');
-        else if (down > 0) reasons.push(`${down} of ${expectedLegs} bonded legs down`);
-        else if (legs.length === 1) reasons.push('Only 1 leg connected — no redundancy');
+        else if (down > 0) {
+            if (!legsDownAlerted) reasons.push(`${down} of ${expectedLegs} bonded legs down`);
+        } else if (legs.length === 1) reasons.push('Only 1 leg connected — no redundancy');
     }
 
     if (!hasRecentFlow(pipeline.srtBonding.lastInputPacketAt, nowMs)) {

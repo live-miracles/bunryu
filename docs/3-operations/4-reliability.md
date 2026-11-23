@@ -186,37 +186,45 @@ slow or rejecting reports cannot affect an input, an output or the dashboard.
 ## Host resource alerts
 
 The health poll (every 5 s) watches the host itself, because an overloaded or full host
-degrades every pipeline at once and no single output's error explains it. Each alert
-has a start and an end threshold that differ, so a reading hovering near the line is
-one episode, and each start and end is written three ways: a journal line
-(`[host] ...`), a diagnostics event with the numbers, and a row in the **Events**
-table of the dashboard's Server Logs view (the last 200 host and service rows, kept in
-memory, so the diagnostics are the record that survives a restart).
+degrades every pipeline at once and no single output's error explains it. CPU, memory
+and disk each have two levels on the same figure the dashboard's top bar shows (percent
+used): a **warning from 70%** and an **error from 90%**. Production is meant to stay under
+65%, so a warning ends only once the figure is back under 65% and an error once it is
+under 85%; in between an open alert stays open, so a reading hovering near a line is one
+episode. Each start and end is written three ways: a journal line (`[host] ...`), a
+diagnostics event with the numbers, and a row in the **Events** table of the dashboard's
+Server Logs view (the last 200 host and service rows, kept in memory, so the diagnostics
+are the record that survives a restart).
 
-| Alert | Starts when | Ends when | Events |
+| Alert | Warning / error when | Ends when | Events |
 |---|---|---|---|
-| CPU | CPU pressure (10 s average) is 50% or more for 30 s | below 30% for 60 s | `host-cpu-high`, `host-cpu-recovered` |
-| Memory | available memory under 15% of total | back at 20% | `host-memory-low`, `host-memory-recovered` |
-| Disk | free space under 10% of the filesystem | back at 15% | `host-disk-low`, `host-disk-recovered` |
+| CPU | the host is 70% / 90% busy for 30 s | under 65% / 85% for 60 s | `host-cpu-high`, `host-cpu-critical`, `host-cpu-recovered` |
+| CPU saturated | CPU pressure (10 s average) is 50% or more for 30 s (error) | below 30% for 60 s | `host-cpu-saturated`, `host-cpu-pressure-recovered` |
+| Memory | 70% / 90% of total memory used | under 65% / 85% | `host-memory-high`, `host-memory-critical`, `host-memory-recovered` |
+| Disk | 70% / 90% of the filesystem used | under 65% / 85% | `host-disk-high`, `host-disk-critical`, `host-disk-recovered` |
 
-- **CPU pressure** is the share of the last 10 s in which a runnable task waited for a
-  CPU (`/proc/pressure/cpu`, "some"). It measures starvation, not busyness: a host that
-  runs its encodes at 100% with nothing waiting reads low, which is healthy. The start
-  event names the busiest managed processes (SRS, the control plane, the outputs'
-  FFmpeg); the end event has the peak and how long it lasted. On a kernel without PSI
-  there is no CPU alert.
-- **Memory** is `MemAvailable` (free plus reclaimable cache). The start event names the
-  five largest processes by RSS.
+- **CPU** has two signals. *Busy* is the share of the machine in use, what the top bar
+  shows and what the 65% target is measured against. *Pressure* is the share of the last
+  10 s in which a runnable task waited for a CPU (`/proc/pressure/cpu`, "some"): it
+  measures starvation and stays low until the machine is full, so it is the error that
+  says work is already being held back. The start event names the busiest managed
+  processes (SRS, the control plane, the outputs' FFmpeg); the end event has the peak and
+  how long it lasted. On a kernel without PSI there is only the busy alert.
+- **Memory** is used = total minus `MemAvailable` (free plus reclaimable cache). The start
+  event names the five largest processes by RSS.
 - **Disk** checks the filesystem holding the database (which also holds the
   diagnostics and HLS previews) and the root filesystem (journald, SRS logs), once
   each when they are the same one. The event carries the path, so it says which filled.
   The navbar's Disk figure is the fuller of the same two filesystems.
 
-The open alerts are listed in `/api/health` as `hostAlerts`, and the dashboard beeps
-once when the memory or disk alert opens (not CPU, whose thresholds are not yet proven
-on production, so a beep on a healthy event would get the sound muted). They are
-reporting only: nothing is stopped or restarted for them. Why these
-thresholds: [Host resource alerts](../4-reference/3-design-decisions.md#host-resource-alerts-cpu-pressure-memory-and-disk).
+The open alerts are listed in `/api/health` as `hostAlerts`. The dashboard shows each as a
+banner and colours the top bar's CPU, RAM and Disk from them (yellow for a warning, red for
+an error), so the bar, the banner and the events always agree. The CPU colour therefore
+appears after the 30 s the alert needs, not on a single busy sample. The dashboard beeps
+once when a memory or disk **error** opens (a warning is silent), not for CPU, whose
+thresholds are not yet proven on production. The alerts are reporting only: nothing is
+stopped or restarted for them. Why these thresholds:
+[Host resource alerts](../4-reference/3-design-decisions.md#host-resource-alerts-cpu-memory-and-disk).
 
 ## Falling behind realtime
 
@@ -435,7 +443,11 @@ Input alerts (`input-flapping`, `input-low-framerate`, `input-high-framerate`,
 to the input itself, so they show on every input, RTMP included: the pipeline's
 status icon and the Inputs table's status and Issues column turn to warning, with the
 time the alert began. The SRT link-quality alerts (loss, drops, retransmissions,
-latency, forwarding) stay with the SRT relay views.
+belated packets, latency, a bitrate collapse, forwarding) stay with the SRT relay views, and
+they set its status too: the relay's input half (its forward to SRS for the forwarding alert)
+turns to a warning, or an error for 5% or 1000 dropped packets in one 5 s interval, 10% loss, or
+a bitrate down to a fifth. They come from one interval, so each stays in the payload for 30 s
+after it was last raised and the status does not blink with every poll.
 
 ## Encoder restarts do not restart outputs
 

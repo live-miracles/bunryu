@@ -202,6 +202,7 @@ export function buildPipelineHealth(r: PipelineReadings): {
             : null,
         mediaCheckedAt: connected ? (probe.status?.checkedAt ?? null) : null,
         mediaError: connected ? (probe.status?.error ?? null) : null,
+        mediaFailingSince: connected ? (probe.status?.failingSince ?? null) : null,
         keyframes: connected ? probe.keyframes : null,
         recvBitrateKbps: s?.kbps?.recv_30s ?? null,
         sendBitrateKbps: s?.kbps?.send_30s ?? null,

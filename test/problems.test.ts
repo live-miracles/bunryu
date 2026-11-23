@@ -41,6 +41,7 @@ const rtmpInput = (over: Partial<InputHealth> = {}): Partial<InputHealth> => ({
     mediaOk: true,
     mediaProbeStartedAt: null,
     mediaCheckedAt: null,
+    mediaFailingSince: null,
     mediaError: null,
     keyframes: null,
     recvBitrateKbps: 4000,

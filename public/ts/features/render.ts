@@ -231,29 +231,41 @@ function memorySeverityClass(percent: number | null): string {
     return '';
 }
 
-function setMetricSeverity(id: string, percent: number | null): void {
+function setMetricSeverity(id: string, severity: 'warning' | 'error' | null): void {
     const el = document.getElementById(id);
     if (!el) return;
 
-    const isError = percent !== null && percent >= METRIC_ERROR_PERCENT;
-    const isWarning =
-        percent !== null && percent >= METRIC_WARN_PERCENT && percent < METRIC_ERROR_PERCENT;
+    const isError = severity === 'error';
+    const isWarning = severity === 'warning';
 
     el.classList.toggle('text-error', isError);
     el.classList.toggle('text-warning', isWarning);
     el.classList.toggle('font-semibold', isError || isWarning);
 }
 
-function overviewStatusBadge(st: InputStatus | OutStatus): string {
-    if (st === 'error') return '<span class="badge badge-sm badge-error">ERROR</span>';
-    if (st === 'warn') return '<span class="badge badge-sm badge-warning">WARNING</span>';
-    if (st === 'off') return '<span class="tabular-nums text-xs text-muted">—</span>';
-    return '<span class="badge badge-sm badge-success">OK</span>';
+// An output with advice (see core/output-advice.ts) gets a yellow outline, as its dot does on
+// the Status view; a stopped one is a grey circle with the outline instead of the dash.
+const NOTICE_OUTLINE = 'outline:2px solid var(--dot-warn);outline-offset:1px';
+
+function overviewStatusBadge(st: InputStatus | OutStatus, notices: string[] = []): string {
+    const outline = notices.length > 0 ? ` style="${NOTICE_OUTLINE}"` : '';
+    if (st === 'error') return `<span class="badge badge-sm badge-error"${outline}>ERROR</span>`;
+    if (st === 'warn') return `<span class="badge badge-sm badge-warning"${outline}>WARNING</span>`;
+    if (st === 'off') {
+        return notices.length > 0
+            ? `<span class="inline-block h-2.5 w-2.5 rounded-full align-middle" style="background-color:var(--dot-off);${NOTICE_OUTLINE}" title="Stopped. See the Issues column."></span>`
+            : '<span class="tabular-nums text-xs text-muted">—</span>';
+    }
+    return `<span class="badge badge-sm badge-success"${outline}>OK</span>`;
 }
 
-function renderOverviewIssues(issues: OverviewIssue[]): string {
-    if (issues.length === 0) return '<span class="text-muted">—</span>';
-    return issueLinesHtml(issues);
+// The issues, then the advice (yellow lines that are not issues: they do not count).
+function renderOverviewIssues(issues: OverviewIssue[], notices: string[] = []): string {
+    if (issues.length === 0 && notices.length === 0) return '<span class="text-muted">—</span>';
+    const advice = notices
+        .map((n) => `<div class="text-warning text-xs leading-snug">${escapeHtml(n)}</div>`)
+        .join('');
+    return issueLinesHtml(issues) + advice;
 }
 
 function selectedAudioTrack(
@@ -915,20 +927,23 @@ function renderOverview(): void {
     );
 
     // ── Outputs ───────────────────────────────────────────
-    const outputRows = tableRows(model.outputs, 9, ({ pipeline: p, output: o, status: st }) => {
-        const isOn = o.status === 'running';
-        const media = isOn ? deriveOutputMedia(p.input, o) : null;
-        const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
-        const errorBadge =
-            o.failures > 0
-                ? `<span class="text-${errorTone(o)} inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
-                : '';
-        const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
-        const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
-        return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
+    const outputRows = tableRows(
+        model.outputs,
+        9,
+        ({ pipeline: p, output: o, status: st, notices }) => {
+            const isOn = o.status === 'running';
+            const media = isOn ? deriveOutputMedia(p.input, o) : null;
+            const outUptimeMs = o.startedAtMs !== null ? Date.now() - o.startedAtMs : null;
+            const errorBadge =
+                o.failures > 0
+                    ? `<span class="text-${errorTone(o)} inline-flex items-center align-middle" title="${o.failures} error${o.failures === 1 ? '' : 's'} since this output was last started">${ICON_ERROR}</span>`
+                    : '';
+            const protocolLabel = o.url ? (o.url.startsWith('srt://') ? 'SRT' : 'RTMP') : null;
+            const spec = streamSpec(media?.video ?? null, null, media?.audio ?? null);
+            return `<tr class="hover" ${statusBg(st === 'error', st === 'warn')}>
             <td class="overview-name-col cursor-pointer hover:underline js-select-pipeline" data-id="${p.id}" title="${escapeHtml(o.name)}"><span class="text-muted text-xs">${escapeHtml(p.name)} ·</span> ${escapeHtml(formatOutputName(o.name))} ${errorBadge}</td>
-            <td>${overviewStatusBadge(st)}</td>
-            <td>${renderOverviewIssues(o.verdict.issues)}</td>
+            <td>${overviewStatusBadge(st, notices)}</td>
+            <td>${renderOverviewIssues(o.verdict.issues, notices)}</td>
             <td class="tabular-nums text-xs">${outUptimeMs !== null ? formatUptime(outUptimeMs) : '—'}</td>
             ${td(formatBitrate(o.bitrateKbps))}
             <td class="tabular-nums text-xs">${o.cpuPercent != null ? formatCpuPercent(o.cpuPercent) : '—'}</td>
@@ -936,7 +951,8 @@ function renderOverview(): void {
             <td>${typeBadge(protocolLabel)}</td>
             <td class="font-mono text-xs">${spec}</td>
         </tr>`;
-    });
+        },
+    );
 
     // ── Shared encodes ────────────────────────────────────
     const encodeRows = tableRows(

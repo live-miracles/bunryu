@@ -15,6 +15,7 @@ import {
     pipelineProblems,
     type OutputProblem,
 } from './problems.js';
+import { adviceByOutput } from './output-advice.js';
 import { sharedEncodeLabel } from './renditions.js';
 import type { OverviewFilter } from './state.js';
 
@@ -52,6 +53,9 @@ export interface OutputRow {
     pipeline: PipelineView;
     output: OutputView;
     status: OutStatus;
+    // Advice about the output (see core/output-advice.ts): a yellow outline and lines in the
+    // Issues cell, never a problem.
+    notices: string[];
 }
 
 // One System usage figure per column. null is "not reported", drawn as a dash.
@@ -198,7 +202,11 @@ const legRateKbps = (leg: SrtBondingLeg): number | null =>
 export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
     const { pipelines, metrics: m, filter } = input;
 
-    const ctx = { relayProcessRunning: input.relayProcessRunning, nowMs: input.nowMs };
+    const ctx = {
+        relayProcessRunning: input.relayProcessRunning,
+        nowMs: input.nowMs,
+        advice: adviceByOutput(pipelines),
+    };
     const rolled = pipelines.map((pipeline) => pipelineProblems(pipeline, ctx));
 
     const relayPipelines = pipelines.filter(isRelayActive);
@@ -264,6 +272,7 @@ export function buildOverviewModel(input: OverviewModelInput): OverviewModel {
             pipeline,
             output: found.output,
             status: found.status,
+            notices: found.notices,
         },
         problem: found.severity !== null,
         offline: isOffline(found.status),

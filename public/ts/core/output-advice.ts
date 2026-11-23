@@ -7,10 +7,11 @@ import { lastErrorLine } from './status.js';
 // the dashboard shows it and its wording is the dashboard's to change; what is happening
 // (the verdict) is the server's. None of it changes a status dot, and Key Vault never sees it.
 //
-// It is one yellow line on the output's card and nowhere else: it does not tint the card,
-// colour the dot, or count in the pipeline list, the Status view, the Overview or the Problems
-// filter. An operator may do these on purpose (a backup pipeline with the same destination as
-// the primary), so they must not turn amber elsewhere.
+// It is one yellow line on the output's card. The Status view and the Overview mark the
+// output with a yellow outline round its dot and list the lines in its tooltip and Issues
+// cell. It does not tint the card, colour the dot, or count in the pipeline list, the Status
+// view, the Overview or the Problems filter. An operator may do these on purpose (a backup
+// pipeline with the same destination as the primary), so they must not turn amber.
 
 // outputId lets an output leave itself out of its own duplicate list.
 export type DupRef = { pipelineName: string; outputName?: string; outputId?: string };
@@ -212,4 +213,19 @@ export function outputAdvice(
         ...stoppedAdvice(output),
         ...encodingAdvice(output, input),
     ];
+}
+
+// Output id → its advice lines, for the outputs that have any: what the Status view and the
+// Overview mark with a yellow outline and list in their tooltip and Issues cell.
+export function adviceByOutput(pipelines: readonly PipelineView[]): Map<string, string[]> {
+    const dupUrls = duplicateDestinations(pipelines);
+    const loops = restreamLoops(pipelines);
+    const byOutput = new Map<string, string[]>();
+    for (const p of pipelines) {
+        for (const o of p.outs) {
+            const lines = outputAdvice(o, p.input, dupUrls, loops);
+            if (lines.length > 0) byOutput.set(o.id, lines);
+        }
+    }
+    return byOutput;
 }

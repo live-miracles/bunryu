@@ -41,6 +41,8 @@ export interface ProbeStatus {
     error: string | null;
     // Consecutive failed probes for this publisher; reset by a success.
     failedAttempts: number;
+    // When the first of those failed probes finished; null while the probe succeeds.
+    failingSince: number | null;
 }
 
 export type KeyframeResult = KeyframeStats & { checkedAt: number };
@@ -328,8 +330,9 @@ export function createProbeScheduler({
             if (generationOf(pipelineId) !== generation) return;
             const ok = isProbeUsable(result);
             const checkedAt = Date.now();
-            const previousFailures = results.get(pipelineId)?.failedAttempts ?? 0;
-            const error = ok ? null : probeError(result, checkedAt);
+            const previous = results.get(pipelineId);
+            const previousFailures = previous?.failedAttempts ?? 0;
+            const error = ok ? null : probeError(result);
             results.set(pipelineId, {
                 result,
                 startedAt: probeStartedAt,
@@ -337,6 +340,7 @@ export function createProbeScheduler({
                 ok,
                 error,
                 failedAttempts: ok ? 0 : previousFailures + 1,
+                failingSince: ok ? null : (previous?.failingSince ?? checkedAt),
             });
             if (ok && result) onUsableProbe(pipelineId, result);
             recordProbeOutcome(pipelineId, protocol, {

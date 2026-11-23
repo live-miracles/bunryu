@@ -293,6 +293,7 @@ export interface InputHealth {
     mediaProbeStartedAt: number | null;
     mediaCheckedAt: number | null;
     mediaError: string | null;
+    mediaFailingSince: number | null;
     keyframes: KeyframeStats | null;
     recvBitrateKbps: number | null;
     sendBitrateKbps: number | null;
@@ -391,12 +392,20 @@ export interface StatusVerdict {
 
 export type OutputStatusVerdict = StatusVerdict & { withoutInput?: StatusVerdict };
 
+export interface HostAlert {
+    kind: 'cpu' | 'memory' | 'disk';
+    severity: 'warning' | 'error';
+    // One sentence with the latest reading.
+    message: string;
+    sinceMs: number;
+}
+
 export interface HealthData {
     generatedAt: string;
     srsReachable: boolean;
     srtRelay: SrtRelayStatus;
-    // Host resource alerts open right now: 'cpu' | 'memory' | 'disk'.
-    hostAlerts?: string[];
+    // Host resource alerts open right now (the server's rules, src/services/hostMonitor.ts).
+    hostAlerts?: HostAlert[];
     configRev: number;
     pipelines: Record<string, PipelineHealth>;
     verdicts: HealthVerdicts;

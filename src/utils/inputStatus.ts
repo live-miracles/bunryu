@@ -32,6 +32,8 @@ export interface InputStatusEntry {
     live: boolean;
     mediaOk: boolean | null;
     mediaError: string | null;
+    // When the probe started failing; the error's "since".
+    mediaFailingSince?: number | null;
     recvBitrateKbps: number | null;
     uptimeMs: number | null;
     audioTracks: readonly unknown[];
@@ -87,7 +89,13 @@ export function inputHealth(
     if (input.mediaOk === false || input.mediaError) {
         return {
             status: 'error',
-            issues: [{ severity: 'error', message: inputStatusMessage(input) }],
+            issues: [
+                {
+                    severity: 'error',
+                    message: inputStatusMessage(input),
+                    ...(input.mediaFailingSince ? { sinceMs: input.mediaFailingSince } : {}),
+                },
+            ],
         };
     }
     // A connected publisher is not ready until ffprobe has returned its media details.
@@ -115,6 +123,8 @@ export function inputHealth(
             message: `Input bitrate is below ${LOW_BITRATE_KBPS} kb/s.`,
         });
     }
+    // Deliberate: every stream this server forwards is meant to have audio, so a video-only
+    // input is a warning, not a normal case, and there is no way to silence it.
     if (input.audioTracks.length === 0 && input.audio === null) {
         issues.push({ severity: 'warning', message: 'No audio track detected in input.' });
     }

@@ -73,9 +73,9 @@ from `/proc/pressure/cpu`, null where the kernel has none) and the kernel's UDP 
 snapshot, and the receive queue and drops of the SRS and relay SRT ingest sockets).
 The snapshot also records the free space of the filesystem holding the database
 (`dataDisk`). Separately, the host resource alerts are logged on transition (see
-[Host resource alerts](4-reliability.md#host-resource-alerts)): `host-memory-low` /
-`host-memory-recovered`, `host-cpu-high` / `host-cpu-recovered` and
-`host-disk-low` / `host-disk-recovered`.
+[Host resource alerts](4-reliability.md#host-resource-alerts)): `host-memory-high` / `host-memory-critical`,
+`host-cpu-high` / `host-cpu-critical` / `host-cpu-saturated`, `host-disk-high` /
+`host-disk-critical`, and their recoveries.
 
 Other things the diagnostics record so an incident can be pieced together:
 
