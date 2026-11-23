@@ -27,9 +27,10 @@ as data.
   `clears`, the `shots` to take, and `apply`, which edits the payloads). Shot kinds: `banner`,
   `topbar`, `ov-inputs|outputs|relay|shared` (Overview tables), `status-dot` (hover on the input
   dot or an output's dot), `status-card`, `status-top`, `sidebar-dot`, `out-card`, `out-hint`,
-  `pipeline-input` (the input's stats and SRT legs on the pipeline page), `status-problems`,
+  `pipeline-input` (the input's stats on the pipeline page), `relay-card-dot` (the SRT Relay card with
+  the hover text of its status circle), `status-problems`,
   `sidebar-rejected`. The end of `scenarios.mts` adds `sidebar-dot` to every input, relay, output
-  and advice entry, `pipeline-input` to input and relay ones and `out-card` to output ones.
+  and advice entry, `relay-card-dot` to relay ones, `pipeline-input` to input ones and `out-card` to output ones.
 - `capture.mts` drives headless Chrome over CDP (9333): per entry it sets the scenario, loads the
   page, hovers where needed and writes clipped PNGs to `$REVIEW_DIR/shots/` and the text it saw to
   `$REVIEW_DIR/manifest.json`.
@@ -102,6 +103,10 @@ what is a fixture and what is real wording.
   gets "SRT-to-RTMP output should not use copy audio" and a yellow outline on every dot, so
   `relay()` gives the outputs a track. After a change to the fixtures, look at the outlines in the
   Status-page shots of the healthy entries.
+- The stack's fake output FFmpeg reports a fixed 4000 kb/s, so `neutralise()` sets each live
+  input to 4000 kb/s too; otherwise every copy output gets the yellow bitrate badge (it shows when
+  the output is under 60 % or over 140 % of the input). A scenario that needs another input rate
+  sets it in `apply`, after `neutralise()`.
 - The proxy's `neutralise()` first clears the developer machine's own host alerts and metrics,
   so nothing of the host leaks into a shot. Keep it when adding scenarios.
 - The catalogue ages with the dashboard. When the rules or the wording change, the `when` text

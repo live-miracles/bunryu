@@ -464,7 +464,7 @@ export const catalog: Entry[] = [
         id: 'in-interlaced',
         section: 'Input alerts',
         title: 'Input is interlaced (1080i50tff)',
-        when: 'ffprobe reports a field order other than progressive. The warning only names the scan; the hint under it says to send progressive video, that some platforms (YouTube among them) do not support interlaced video, and that a 1080i input once left copy outputs sending only audio. Alert code input-interlaced.',
+        when: 'ffprobe reports a field order other than progressive. The warning only names the scan; the hint under it says to send progressive video, and that some platforms (YouTube among them) do not support interlaced video. Alert code input-interlaced.',
         clears: 'When the publisher sends progressive video.',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => alert(c, 'input-interlaced', 'Input is interlaced (1080i50tff).'),
@@ -533,7 +533,7 @@ export const catalog: Entry[] = [
         id: 'relay-no-legs',
         section: 'SRT relay',
         title: 'No bonded legs reporting',
-        when: 'A bonded group that had legs now has none. Total input failure: Input half = error (worse than reduced redundancy).',
+        when: 'A bonded group that had legs now has none. Total input failure: Input half = error (worse than reduced redundancy). It is the only reason listed: “No input packets received recently” is left out, because with no legs there is nothing to receive from.',
         shots: [{ kind: 'ov-relay' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
             relay(c, { lastInputPacketAt: now() - 60_000 }, [], 2);
@@ -581,8 +581,8 @@ export const catalog: Entry[] = [
     {
         id: 'relay-leg-quality-warn',
         section: 'SRT relay',
-        title: 'Leg packet quality is degraded / retransmissions / latency is high (warning)',
-        when: 'Over the last minute with at least 100 packets: loss or drop of 1 % or more (or 100+ packets), or retransmissions of 5 % or more → warn. Latency at or above 1500 ms → warn. For a plain (non-bonded) SRT input the word is “Connection” instead of “Leg”.',
+        title: 'Leg packet quality is degraded / retransmissions / latency is N ms (warning)',
+        when: 'Over the last minute with at least 100 packets: loss or drop of 1 % or more (or 100+ packets), or retransmissions of 5 % or more → warn. Latency at or above 5000 ms → warn (“Leg latency is 5700 ms, above 5000 ms.”). For a plain (non-bonded) SRT input the word is “Connection” instead of “Leg”.',
         shots: [{ kind: 'ov-relay' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
             relay(c, {}, [
@@ -678,7 +678,7 @@ export const catalog: Entry[] = [
         id: 'relay-forward-stalled',
         section: 'SRT relay',
         title: 'Media forwarding to SRS has stalled / No media has been forwarded to SRS yet',
-        when: 'The relay is connected but no packet was forwarded to SRS for more than 15 s: “stalled” if it had forwarded before, “No media has been forwarded yet” if never. Output half = warning. The interval alert relay-forwarding-stalled (“Relay is receiving SRT packets but forwarding no packets to SRS.”) usually accompanies it.',
+        when: 'The relay is connected but no packet was forwarded to SRS for more than 15 s: “stalled” if it had forwarded before, “No media has been forwarded yet” if never. Output half = warning. While the interval alert relay-forwarding-stalled (“Relay is receiving SRT packets but forwarding no packets to SRS.”, with its own “since” and hint) is open, it replaces this line, so the same fault is not listed twice; once the alert has ended (30 s after it was last raised) this line shows alone.',
         shots: [{ kind: 'ov-relay' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
             relay(c, { lastPacketAt: now() - 40_000 });
@@ -692,7 +692,7 @@ export const catalog: Entry[] = [
     {
         id: 'relay-alert-dropped',
         section: 'SRT relay alerts',
-        title: 'SRT input dropped N packets in the last health interval.',
+        title: 'SRT input packet drops are N% (N packets) in the last health interval.',
         when: 'Any packets were dropped on the SRT input between two 5 s health polls (packets that arrived too late, or never, even after retransmission). Takes precedence over the loss alert. Warning; an error from 5 % of the interval’s packets or 1000 packets. It raises the relay’s Input half to the same severity, so it counts in Issues and colours the dots.',
         clears: 'It stays for 30 s after the last interval that raised it, so the status does not blink.',
         shots: [{ kind: 'ov-relay' }, { kind: 'status-dot', dot: 'input' }],
@@ -701,7 +701,7 @@ export const catalog: Entry[] = [
             alert(
                 c,
                 'srt-packets-dropped',
-                'SRT input dropped 37 packets in the last health interval.',
+                'SRT input packet drops are 0.4% (37 packets) in the last health interval.',
                 5000,
             );
         },
@@ -709,7 +709,7 @@ export const catalog: Entry[] = [
     {
         id: 'relay-alert-dropped-error',
         section: 'SRT relay alerts',
-        title: 'SRT input dropped N packets (error: 5 % or 1000 packets)',
+        title: 'SRT input packet drops are N% (error: 5 % or 1000 packets)',
         when: 'The same alert when the drops are heavy: 5 % of the interval’s packets or 1000 packets or more. Error: the relay’s Input half is red, the pipeline dot is red and the Issues view counts it.',
         clears: '30 s after the last interval that raised it.',
         shots: [
@@ -722,7 +722,7 @@ export const catalog: Entry[] = [
             alert(
                 c,
                 'srt-packets-dropped',
-                'SRT input dropped 1450 packets in the last health interval.',
+                'SRT input packet drops are 12.1% (1450 packets) in the last health interval.',
                 5000,
                 'error',
             );
@@ -801,8 +801,8 @@ export const catalog: Entry[] = [
     {
         id: 'relay-alert-belated',
         section: 'SRT relay alerts',
-        title: 'SRT received N belated packets in the last health interval.',
-        when: 'More than 100 packets arrived after their latency window in the interval. Warning. Raises the relay’s Input half.',
+        title: 'SRT belated packets are N% (N packets) in the last health interval.',
+        when: 'Packets that arrived after their latency window were 3 % or more of those received in the interval (and at least 10). A share, not a count, because a fixed number means 3 % at 5 Mb/s and 20 % at 1 Mb/s. Warning. Raises the relay’s Input half.',
         clears: '30 s after the last interval that raised it.',
         shots: [{ kind: 'ov-relay' }],
         apply: (c) => {
@@ -810,7 +810,7 @@ export const catalog: Entry[] = [
             alert(
                 c,
                 'srt-belated-packets',
-                'SRT received 240 belated packets in the last health interval.',
+                'SRT belated packets are 3.6% (240 packets) in the last health interval.',
                 5000,
             );
         },
@@ -818,13 +818,13 @@ export const catalog: Entry[] = [
     {
         id: 'relay-alert-latency',
         section: 'SRT relay alerts',
-        title: 'SRT latency is high (N ms).',
-        when: 'The negotiated latency is 1500 ms or more, or it rose by more than 1.5× + 100 ms since the previous poll. Warning. Raises the relay’s Input half.',
+        title: 'SRT latency is N ms, above 5000 ms.',
+        when: 'The negotiated latency (the encoder’s setting, fixed for the connection; not a measured delay) is 5000 ms or more. A long or lossy link needs about four times its round-trip time, so 2 s or more is normal there and does not warn; there is no rule on a change from the previous poll. Warning, with a hint to lower it unless the link needs it. Raises the relay’s Input half.',
         clears: '30 s after the last interval that raised it.',
         shots: [{ kind: 'ov-relay' }],
         apply: (c) => {
             relay(c);
-            alert(c, 'srt-latency-spike', 'SRT latency is high (1820 ms).', 5000);
+            alert(c, 'srt-high-latency', 'SRT latency is 6000 ms, above 5000 ms.', 5000);
         },
     },
     {
@@ -929,8 +929,8 @@ export const catalog: Entry[] = [
     {
         id: 'out-low-bitrate',
         section: 'Output status',
-        title: 'Output bitrate is below 200 kb/s.',
-        when: 'Running with a reported bitrate under 200 kb/s. Hint: if the input’s bitrate is fine, FFmpeg may be dropping video (for example interlaced input).',
+        title: 'Output bitrate is 58 kb/s, below 200 kb/s.',
+        when: 'Running with a reported bitrate under 200 kb/s; the warning says the measured bitrate (58 kb/s in this fixture) and the limit, like the input’s. Hint: if the input’s bitrate is fine, FFmpeg may be dropping video: look at the input’s Issues and the output’s History.',
         shots: [{ kind: 'ov-outputs' }, { kind: 'status-dot', dot: 0 }],
         apply: (c) => out(c, '1-1', { bitrateKbps: 58 }),
     },
@@ -1443,8 +1443,9 @@ export const catalog: Entry[] = [
 ];
 
 // Every input, relay and output entry also shows the pipeline list (the sidebar's dot and its
-// hover text) and the pipeline page: the input's stats for an input or relay message, the first
-// output's card for an output message. An entry that lists its own shot of one keeps it.
+// hover text) and the pipeline page: the input's stats for an input message, the SRT Relay card
+// with the hover text of its status circle for a relay message (the input's stats add nothing
+// there), the first output's card for an output message. An entry that lists its own shot of one keeps it.
 const SIDEBAR_SECTIONS = new Set([
     'Input status',
     'Input alerts',
@@ -1454,7 +1455,7 @@ const SIDEBAR_SECTIONS = new Set([
     'Output warnings',
     'Output advice',
 ]);
-const INPUT_SECTIONS = new Set(['Input status', 'Input alerts', 'SRT relay', 'SRT relay alerts']);
+const INPUT_SECTIONS = new Set(['Input status', 'Input alerts']);
 const RELAY_SECTIONS = new Set(['SRT relay', 'SRT relay alerts']);
 const OUTPUT_SECTIONS = new Set(['Output status', 'Output warnings']);
 for (const e of catalog) {

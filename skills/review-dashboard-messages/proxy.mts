@@ -64,6 +64,12 @@ function neutralise(ctx: Ctx): void {
             o.url = `rtmp://192.0.2.${10 + i}/live/test`;
         }
     });
+    // The stack's fake output FFmpeg reports 4000 kb/s whatever the input is, while its test stream
+    // runs at about 0.9 Mb/s: every copy output would get the yellow "bitrate: input is ..." badge.
+    // Give each live input the outputs' rate, as a real copy output would send.
+    for (const p of Object.values<any>(h.pipelines)) {
+        if (p.input?.live && p.input.recvBitrateKbps) p.input.recvBitrateKbps = 4000;
+    }
     ctx.config.publicHost = 'live.example.test';
     ctx.config.srtPassphrasePending = false;
     ctx.metrics.cpu.percent = 24;
