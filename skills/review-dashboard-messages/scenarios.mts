@@ -1219,7 +1219,7 @@ export const catalog: Entry[] = [
         id: 'side-mixed',
         section: 'Pipeline list (sidebar)',
         title: 'Sidebar dot: input and outputs together',
-        when: 'The pipeline list’s two-half dot (left = input incl. relay, right = outputs) lists every issue of both halves on hover, with hints for alerts. The Status page’s dots now list every issue too, with the same hints.',
+        when: 'The pipeline list’s two-half dot (left = input incl. relay, right = outputs) lists every issue of both halves on hover, without hints (the hints are behind the ⓘ on the pipeline page). The Status page’s dots list every issue too, the same way.',
         shots: [{ kind: 'sidebar-dot' }, { kind: 'status-card' }],
         apply: (c) => {
             inp(c, { recvBitrateKbps: 90, uptimeMs: 120_000, audio: null, audioTracks: [] });
@@ -1390,7 +1390,7 @@ export const catalog: Entry[] = [
         id: 'card-hints',
         section: 'Output advice',
         title: 'Error and warning “Hint:” lines on the output card',
-        when: 'Known FFmpeg errors and warnings get a one-line “Hint:” on the output card (connection refused, timed out, DNS, login rejected, SRT passphrase, closed while sending, codec not supported in RTMP, low output bitrate, falling behind, destination stopped accepting data). The Overview and Status pages show the same error text without the hint.',
+        when: 'Known FFmpeg errors and warnings get a one-line “Hint:” on the output card (connection refused, timed out, DNS, login rejected, SRT passphrase, closed while sending, codec not supported in RTMP, low output bitrate, falling behind, destination stopped accepting data). The input’s and the SRT Relay card’s problem lines on the pipeline page get the same ⓘ. The Overview and Status pages show the same error text without the hint.',
         shots: [
             { kind: 'out-hint', out: 0 },
             { kind: 'out-hint', out: 1 },
