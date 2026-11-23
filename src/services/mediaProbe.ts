@@ -211,11 +211,13 @@ export function keyframeIntervalTooLong(stats: KeyframeStats): boolean {
 
 // One sentence for the alert and the pipeline log.
 export function keyframeSummary(stats: KeyframeStats): string {
+    // The measurement only: the limit and what to set are in the dashboard's hint
+    // (`input-keyframe-interval` in public/ts/core/hints.ts), so the two do not repeat.
     const window = `${stats.windowSec} s`;
     if (stats.keyframes < 2) {
-        return `${stats.keyframes === 0 ? 'no keyframe' : 'only one keyframe'} in ${window} of video (platforms need one at least every 4 s, 2 s is recommended).`;
+        return `${stats.keyframes === 0 ? 'no keyframe' : 'only one keyframe'} in ${window} of video.`;
     }
-    return `the longest gap in ${window} of video is ${stats.maxGapSec.toFixed(1)} s (platforms need at most 4 s, 2 s is recommended).`;
+    return `the longest gap in ${window} of video is ${stats.maxGapSec.toFixed(1)} s.`;
 }
 
 // Reads the input's video packets for KEYFRAME_WINDOW_SEC and measures the gaps

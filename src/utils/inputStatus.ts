@@ -126,7 +126,11 @@ export function inputHealth(
     // Deliberate: every stream this server forwards is meant to have audio, so a video-only
     // input is a warning, not a normal case, and there is no way to silence it.
     if (input.audioTracks.length === 0 && input.audio === null) {
-        issues.push({ severity: 'warning', message: 'No audio track detected in input.' });
+        issues.push({
+            severity: 'warning',
+            message: 'No audio track detected in input.',
+            code: 'input-no-audio',
+        });
     }
     for (const alert of alerts) {
         if (!INPUT_ALERT_CODES.has(alert.code)) continue;

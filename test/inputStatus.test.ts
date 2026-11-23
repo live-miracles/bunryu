@@ -93,6 +93,7 @@ describe('inputHealth', () => {
         const v = inputHealth(input({ audioTracks: [], audio: null }));
         assert.equal(v.status, 'warn');
         assert.equal(v.issues[0].message, 'No audio track detected in input.');
+        assert.equal(v.issues[0].code, 'input-no-audio');
         assert.equal(
             inputHealth(input({ audioTracks: [], audio: { codec: 'aac' } })).status,
             'good',

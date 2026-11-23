@@ -302,6 +302,11 @@ describe('input lifecycle: alerts', () => {
             alerts({ keyframes }).map((a) => a.code),
             ['input-keyframe-interval'],
         );
+        // The measurement only: the limit and what to set are the dashboard's hint.
+        assert.equal(
+            alerts({ keyframes })[0].message,
+            'Input keyframes are too far apart: only one keyframe in 10 s of video.',
+        );
         assert.deepEqual(alerts({ keyframes, connected: false }), []);
     });
 

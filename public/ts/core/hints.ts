@@ -72,8 +72,10 @@ const ALERT_HINTS: Record<string, string> = {
     'input-low-framerate': 'The encoder is dropping frames: check its CPU load and its uplink.',
     'input-high-framerate':
         'The input is arriving faster than its nominal rate: check the encoder’s frame rate setting and clock.',
+    'input-no-audio':
+        'Platforms usually reject a stream without audio or mute it. Check that the encoder’s audio is on and its source is connected.',
     'input-keyframe-interval':
-        'Set the encoder’s keyframe interval to 2 s (never more than 4 s); with a longer one platforms may reject the stream and previews start late.',
+        'Set the encoder’s keyframe interval to 2 s (never more than 4 s): platforms may reject the stream with a longer one, and previews start late.',
     'input-interlaced':
         'Set the encoder’s output to progressive scan (1080p, not 1080i). Interlaced input has also left RTMP outputs sending audio only.',
     'input-flapping':
