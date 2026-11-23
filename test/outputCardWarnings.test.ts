@@ -127,6 +127,7 @@ describe('output stopped after repeated failed attempts', () => {
         assert.match(html, /text-warning[^>]*data-action="error-info"/);
         assert.match(html, /Hint: The destination refused the connection/, 'the cause hint');
         assert.ok(!tinted(html));
+        assert.match(html, /aria-label="status"[^>]*outline:2px solid var\(--dot-warn\)/);
     });
 
     test('a plainly stopped output shows no error line', () => {
@@ -161,6 +162,20 @@ describe('duplicate destination', () => {
         );
         assert.deepEqual(warningLines(html), ['Same destination as Other → YT, Main']);
         assert.ok(!tinted(html));
+    });
+
+    test('a name that looks like a known error gets no hint: only the stop line has one', () => {
+        const named = new Map([
+            [url, [{ pipelineName: 'Backup (connection refused)', outputName: 'Forbidden' }]],
+        ]);
+        const html = card(
+            withVerdict(output({ url }), rtmpInput),
+            withInputVerdict(rtmpInput),
+            named,
+            deps,
+        );
+        assert.equal(warningLines(html).length, 1);
+        assert.doesNotMatch(html, /Hint:/);
     });
 
     test('leaves the output itself out of the list', () => {
@@ -230,6 +245,16 @@ describe('warnings and advice share one style', () => {
         const both = render({ audioEncoding: '0', warningReason: 'High memory usage' });
         assert.equal(warningLines(both).length, 2);
         assert.ok(tinted(both));
+    });
+
+    test('advice gives the status dot a yellow outline, and a plain output has none', () => {
+        const dotStyle = (html: string) =>
+            /aria-label="status"[^>]*style="([^"]*)"/.exec(html)?.[1];
+        assert.match(
+            dotStyle(render({ audioEncoding: '0' })) ?? '',
+            /outline:2px solid var\(--dot-warn\)/,
+        );
+        assert.doesNotMatch(dotStyle(render({})) ?? '', /outline/);
     });
 
     test('the status dot has no text for advice, only for warnings', () => {

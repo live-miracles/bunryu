@@ -182,8 +182,8 @@ happening to the stream: the same destination as another output, a destination t
 publishes back into this pipeline's own input (a loop; it cannot work), a track selection the
 input cannot supply (an RTMP input has one audio track; an SRT input may have fewer than you
 chose), Track 1 re-encoding the audio (costs CPU), SRT to RTMP with copy audio (can
-jitter), and an output that was stopped after repeated failed attempts (the one line such an output shows: after how many attempts, to check the link and stream key, update the output and start it again, then its last error; it has no red error line and no time, which are in its History). Each is one yellow line on the card. The output's dot on the **Status** view and its status
-on the **Overview** get a yellow outline (a stopped output is a grey dot with the outline
+jitter), and an output that was stopped after repeated failed attempts (the one line such an output shows: after how many attempts, to check the link and stream key, update the output and start it again, then its last error; it has no red error line and no time, which are in its History). Each is one yellow line on the card. The output's dot on its card and on the **Status** view, and its status
+on the **Overview**, get a yellow outline (a stopped output is a grey dot with the outline
 instead of the dash), and the lines are listed in the dot's hover text and in the Overview's
 Issues column. It does not tint the card or change a colour, and it is not in the pipeline
 list or a count, and is not a Problem (only the card's **Problems** button lists it), because you may do it on purpose (a backup pipeline with the
@@ -252,7 +252,7 @@ adds an info icon to the line; hover or focus it for a "Hint:" with what to chec
 The input's and the relay's problems on the pipeline page, and the Overview's Issues column, get the same info icon. An error
 it has no advice for is shown as is.
 The card's status dot says the same on hover: every error and warning on the card,
-without the advice. A yellow dot always has a line on the card (for example "Output bitrate is
+without the advice (the dot only gets the yellow outline). A yellow dot always has a line on the card (for example "Output bitrate is
 below 200 kb/s."); a healthy output's dot has no hover text.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.

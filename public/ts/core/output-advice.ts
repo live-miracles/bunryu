@@ -93,7 +93,7 @@ const STOPPED_NEXT_STEP = 'Check the link and stream key, update the output, the
 // after 5 failed attempts. Last error: ..."). A stopped output shows no error line, so this
 // one yellow line carries all of it: the count, what to do, then the last error last, since
 // the card cuts a long line at its end. A plain stop has no error, so it gets none.
-function stoppedAdvice(output: OutputView): string[] {
+export function stoppedAdvice(output: OutputView): string[] {
     if (output.desiredState !== 'stopped' || output.lastErrorAt === null) return [];
     const line = lastErrorLine(output);
     if (!line) return [];

@@ -13,7 +13,7 @@ import {
 } from './output-badges.js';
 import { errorHint } from '../core/hints.js';
 import type { PendingOutputs } from '../core/pending-outputs.js';
-import { outputAdvice, type DupRef } from '../core/output-advice.js';
+import { outputAdvice, stoppedAdvice, type DupRef } from '../core/output-advice.js';
 import { errorTone, lastErrorLine, statusColor, type StatusIssue } from '../core/status.js';
 import { hintIconHtml, issueLinesHtml } from './status-tooltip.js';
 
@@ -167,7 +167,11 @@ export function renderOutputCard(
             sinceMs: sinceMs ?? undefined,
         })),
     ];
-    const statusDot = `<div aria-label="status" class="status status-lg mx-1 shrink-0" style="background-color: ${statusHex}"></div>`;
+    // Advice gives the dot a yellow outline, as on the Status view and the Overview: it does
+    // not change the dot's colour.
+    const noticeOutline =
+        advice.length > 0 ? ';outline:2px solid var(--dot-warn);outline-offset:1px' : '';
+    const statusDot = `<div aria-label="status" class="status status-lg mx-1 shrink-0" style="background-color: ${statusHex}${noticeOutline}"></div>`;
     const statusDotHtml =
         dotIssues.length > 0
             ? `<span class="js-tooltip shrink-0 inline-flex" tabindex="0">${statusDot}<div class="js-tooltip-content hidden">${issueLinesHtml(dotIssues)}</div></span>`
@@ -183,12 +187,15 @@ export function renderOutputCard(
            </div>`,
         )
         .join('');
-    // Advice looks like a warning line but is not one: it never tints the card or the dot.
+    // Advice looks like a warning line but is not one: it never tints the card or the dot. Only
+    // the stop's line has a hint, taken from its stored error: the other lines name outputs and
+    // pipelines you typed, which must never be matched against the known errors.
+    const stoppedLine = stoppedAdvice(output)[0];
     const adviceHtml = advice
         .map(
             (message) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
-                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${hintIconHtml(errorHint(message))}
+                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${message === stoppedLine ? hintIconHtml(errorHint(currentErrorLine(output))) : ''}
            </div>`,
         )
         .join('');
