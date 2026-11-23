@@ -282,7 +282,7 @@ export function createInputLifecycle({
                 alerts.push({
                     severity: 'warning',
                     code: 'input-interlaced',
-                    message: `Input is interlaced (${scan}). YouTube does not support interlaced video and warns of artifacts.`,
+                    message: `Input is interlaced (${scan}).`,
                     sinceMs: now,
                 });
             }

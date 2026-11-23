@@ -77,7 +77,7 @@ const ALERT_HINTS: Record<string, string> = {
     'input-keyframe-interval':
         'Set the encoder’s keyframe interval to 2 s (never more than 4 s): platforms may reject the stream with a longer one, and previews start late.',
     'input-interlaced':
-        'Set the encoder’s output to progressive scan (1080p, not 1080i). Interlaced input has also left RTMP outputs sending audio only.',
+        'Set the encoder’s output to progressive scan (1080p, not 1080i): some platforms, YouTube among them, do not support interlaced video and warn of artifacts. Interlaced input has also left RTMP outputs sending audio only.',
     'input-flapping':
         'Check the encoder (power, crashes, cabling) and its uplink; the pipeline log lists each disconnect.',
     'relay-forwarding-stalled':

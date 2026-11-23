@@ -134,6 +134,24 @@ describe('renderInputStats', () => {
         assert.match(html, /title="When ffprobe last read the input: \d/);
     });
 
+    test('the pipeline page says since when for a failed probe and for each waiting state', () => {
+        const ago = Date.now() - 4 * 60_000;
+        const failed = renderInputStats(
+            input({ mediaOk: false, mediaError: 'no video stream', mediaFailingSince: ago }),
+            {},
+        );
+        assert.match(failed, /no video stream <span[^>]*>since 4 min ago<\/span>/);
+        const waiting = renderInputStats(input({ mediaOk: null, mediaProbeStartedAt: ago }), {});
+        assert.match(waiting, /Waiting for ffprobe[^<]*<span[^>]*>since 4 min ago<\/span>/);
+        const notLive = renderInputStats(input({ live: false, mediaCheckedAt: ago }), {});
+        assert.match(notLive, /waiting for valid media\. <span[^>]*>since 4 min ago<\/span>/);
+        // No time known: how far ffprobe got, as before.
+        assert.match(
+            renderInputStats(input({ live: false, mediaCheckedAt: null }), {}),
+            /Input connected, waiting for valid media\. <span class="text-muted">ffprobe not run yet/,
+        );
+    });
+
     test('shows the measured keyframe interval, in warning colour when it raised the alert', () => {
         const keyframes = {
             windowSec: 12,
@@ -181,7 +199,7 @@ describe('renderInputStats', () => {
         assert.match(noAudio, /text-warning[^>]*>No audio track detected in input\./);
         assert.match(
             renderInputStats(input({ recvBitrateKbps: 150, uptimeMs: 60_000 }), {}),
-            />Input bitrate is below 200 kb\/s\./,
+            />Input bitrate is 150 kb\/s, below 200 kb\/s\./,
         );
     });
 

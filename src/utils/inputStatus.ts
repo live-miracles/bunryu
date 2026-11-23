@@ -34,6 +34,10 @@ export interface InputStatusEntry {
     mediaError: string | null;
     // When the probe started failing; the error's "since".
     mediaFailingSince?: number | null;
+    // When the current probe started, and when one last returned: the "since" of the two
+    // waiting states, so every surface says how long the input has been waiting.
+    mediaProbeStartedAt?: number | null;
+    mediaCheckedAt?: number | null;
     recvBitrateKbps: number | null;
     uptimeMs: number | null;
     audioTracks: readonly unknown[];
@@ -72,6 +76,15 @@ function inputStatusMessage(input: InputStatusEntry): string {
     return 'Input connected, waiting for valid media.';
 }
 
+// A waiting state's issue, with how long it has been waiting when that is known.
+function waitingIssue(input: InputStatusEntry, sinceMs: number | null | undefined): InputIssue {
+    return {
+        severity: 'warning',
+        message: inputStatusMessage(input),
+        ...(sinceMs ? { sinceMs } : {}),
+    };
+}
+
 // SRS reports a zero receive bitrate until its rolling statistics are populated; that
 // startup placeholder is not a low bitrate.
 function inputBitrateStatsReady(input: InputStatusEntry): boolean {
@@ -102,13 +115,13 @@ export function inputHealth(
     if (input.mediaOk === null) {
         return {
             status: 'warn',
-            issues: [{ severity: 'warning', message: inputStatusMessage(input) }],
+            issues: [waitingIssue(input, input.mediaProbeStartedAt)],
         };
     }
     if (!input.live) {
         return {
             status: 'warn',
-            issues: [{ severity: 'warning', message: inputStatusMessage(input) }],
+            issues: [waitingIssue(input, input.mediaCheckedAt ?? input.mediaProbeStartedAt)],
         };
     }
 
@@ -120,7 +133,7 @@ export function inputHealth(
     ) {
         issues.push({
             severity: 'warning',
-            message: `Input bitrate is below ${LOW_BITRATE_KBPS} kb/s.`,
+            message: `Input bitrate is ${Math.round(input.recvBitrateKbps)} kb/s, below ${LOW_BITRATE_KBPS} kb/s.`,
         });
     }
     // Deliberate: every stream this server forwards is meant to have audio, so a video-only

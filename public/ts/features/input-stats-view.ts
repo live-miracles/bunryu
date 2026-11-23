@@ -5,6 +5,7 @@ import {
     escapeHtml,
     formatAgo,
     formatBitrate,
+    formatLocalDateTime,
     formatLocalTime,
 } from '../core/utils.js';
 import { displayInputBitrateKbps } from '../core/status.js';
@@ -37,10 +38,15 @@ const REPROBE_BUTTON = `<button class="btn btn-xs btn-square btn-ghost shrink-0"
 
 function renderMediaProbeNotice(input: PipelineView['input']): string {
     // Shown only while the input is not good yet, so the verdict's first issue is why.
-    const message = input.verdict.issues[0]?.message ?? '';
+    const issue = input.verdict.issues[0];
+    const message = issue?.message ?? '';
     const toneClass = input.mediaError ? 'text-error' : input.live ? 'text-muted' : 'text-warning';
-    const probeStatus = input.mediaError ? null : formatMediaProbeStatus(input);
-    return `<div class="mt-2 flex items-start justify-between gap-2"><p class="text-xs ${toneClass}">${escapeHtml(message)}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>${REPROBE_BUTTON}</div>`;
+    // The same "since" the status dots and the Overview show; without one, how far ffprobe got.
+    const probeStatus = issue?.sinceMs || input.mediaError ? null : formatMediaProbeStatus(input);
+    const since = issue?.sinceMs
+        ? ` <span class="text-muted" title="${formatLocalDateTime(issue.sinceMs)}">since ${formatAgo(issue.sinceMs, healthNowMs())}</span>`
+        : '';
+    return `<div class="mt-2 flex items-start justify-between gap-2"><p class="text-xs ${toneClass}">${escapeHtml(message)}${since}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>${REPROBE_BUTTON}</div>`;
 }
 
 function renderDirectSrtNotice(relayPort: number | undefined): string {

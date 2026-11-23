@@ -76,6 +76,22 @@ describe('inputHealth', () => {
         );
     });
 
+    test('each waiting state says since when it began, from the timestamps the probe has', () => {
+        assert.equal(
+            inputHealth(input({ mediaOk: null, mediaProbeStartedAt: 7000 })).issues[0].sinceMs,
+            7000,
+        );
+        assert.equal(inputHealth(input({ mediaOk: null })).issues[0].sinceMs, undefined);
+        const notLive = inputHealth(
+            input({ live: false, mediaCheckedAt: 9000, mediaProbeStartedAt: 8000 }),
+        );
+        assert.equal(notLive.issues[0].sinceMs, 9000);
+        assert.equal(
+            inputHealth(input({ live: false, mediaProbeStartedAt: 8000 })).issues[0].sinceMs,
+            8000,
+        );
+    });
+
     test('a healthy input is good', () => {
         assert.deepEqual(inputHealth(input()), { status: 'good', issues: [] });
     });
@@ -86,7 +102,7 @@ describe('inputHealth', () => {
         assert.equal(inputHealth(input({ recvBitrateKbps: 0, uptimeMs: 29_999 })).status, 'good');
         const low = inputHealth(input({ recvBitrateKbps: 0, uptimeMs: 30_000 }));
         assert.equal(low.status, 'warn');
-        assert.match(low.issues[0].message, /Input bitrate is below 200 kb\/s/);
+        assert.equal(low.issues[0].message, 'Input bitrate is 0 kb/s, below 200 kb/s.');
     });
 
     test('no audio track warns', () => {
