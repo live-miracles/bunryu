@@ -250,7 +250,7 @@ show it as a grey dot with a yellow outline.
 Under a known error or warning (connection refused, a rejected stream key, an
 unresolvable host, a failed SRT handshake, an output falling behind realtime) the card
 adds an info icon to the line; hover or focus it for a "Hint:" with what to check first.
-The input's and the relay's problems on the pipeline page get the same info icon. An error
+The input's and the relay's problems on the pipeline page, and the Overview's Issues column, get the same info icon. An error
 it has no advice for is shown as is.
 The card's status dot says the same on hover: every error and warning on the card,
 without the advice. A yellow dot always has a line on the card (for example "Output bitrate is

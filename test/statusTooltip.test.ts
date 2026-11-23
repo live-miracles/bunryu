@@ -64,19 +64,13 @@ describe('status dot tooltip', () => {
     test('a card puts the hint behind an info icon', () => {
         const html = issueLinesHtml(
             [{ severity: 'warning', message: 'm', hint: 'try <this>' }],
-            'icon',
+            true,
         );
         assert.match(html, /js-tooltip[^]*Hint: try &lt;this&gt;/);
         assert.equal(
-            issueLinesHtml([{ severity: 'warning', message: 'm' }], 'icon').includes('js-tooltip'),
+            issueLinesHtml([{ severity: 'warning', message: 'm' }], true).includes('js-tooltip'),
             false,
         );
-    });
-
-    test('the Overview shows the hint as a muted line', () => {
-        const html = issueLinesHtml([{ severity: 'error', message: 'm', hint: 'h' }], 'inline');
-        assert.match(html, /text-muted">Hint: h</);
-        assert.doesNotMatch(html, /js-tooltip/);
     });
 });
 

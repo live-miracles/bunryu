@@ -87,7 +87,7 @@ export function renderInputStats(input: PipelineView['input'], options: InputSta
     // alerts), each with its hint behind an info icon, so a warning is never only in a tooltip.
     const issues = input.verdict.issues;
     const issuesHtml =
-        issues.length > 0 ? `<div class="mt-2">${issueLinesHtml(issues, 'icon')}</div>` : '';
+        issues.length > 0 ? `<div class="mt-2">${issueLinesHtml(issues, true)}</div>` : '';
     const row = (label: string, value: string) =>
         `<span class="text-muted">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;
 

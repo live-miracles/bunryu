@@ -18,26 +18,17 @@ export function hintIconHtml(hint: string | null | undefined): string {
         : '';
 }
 
-// Where an issue's hint goes. The hover text of a status dot has none (it is for what is
-// wrong); a card shows it in the info icon, the Overview's Issues cell as a muted line.
-export type HintStyle = 'none' | 'icon' | 'inline';
-
-export function issueLinesHtml(issues: StatusIssue[], hints: HintStyle = 'none'): string {
+// `withHints`: each issue's hint behind an info icon at the end of its line. The hover text of
+// a status dot has none (it is for what is wrong); a card and the Overview's Issues cell do.
+export function issueLinesHtml(issues: StatusIssue[], withHints = false): string {
     return issues
         .map((issue) => {
             const cls = issue.severity === 'error' ? 'text-error' : 'text-warning';
-            const hint =
-                hints === 'inline' && issue.hint
-                    ? `<div class="text-xs leading-snug text-muted">Hint: ${escapeHtml(issue.hint)}</div>`
-                    : '';
-            const icon = hints === 'icon' ? hintIconHtml(issue.hint) : '';
             const since = issue.sinceMs
                 ? ` <span class="text-muted" title="${formatLocalDateTime(issue.sinceMs)}">since ${formatAgo(issue.sinceMs, healthNowMs())}</span>`
                 : '';
-            const line = `${escapeHtml(issue.message)}${since}`;
-            return hints === 'icon'
-                ? `<div class="${cls} text-xs leading-snug">${line} ${icon}</div>`
-                : `<div class="${cls} text-xs leading-snug">${line}</div>${hint}`;
+            const icon = withHints && issue.hint ? ` ${hintIconHtml(issue.hint)}` : '';
+            return `<div class="${cls} text-xs leading-snug">${escapeHtml(issue.message)}${since}${icon}</div>`;
         })
         .join('');
 }

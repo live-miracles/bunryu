@@ -1064,7 +1064,7 @@ service worker and a cache policy that keeps deploys from going stale.
 or one muted line, "OK" or why it is off. A switched-off encode shows a single "Idle"
 line. The gradient comes from one helper too. The hover says what is wrong and has no
 advice: the advice is an info icon on the line where the problem is listed on the pipeline
-page (the output card, the input's stats, the SRT Relay card). The SRT Relay card has
+page (the output card, the input's stats, the SRT Relay card) and in the Overview's Issues column. The SRT Relay card has
 no hover: it lists its problems in the card, as the input does, and its circle is only
 the colour.
 

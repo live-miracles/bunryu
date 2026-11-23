@@ -266,7 +266,7 @@ function renderOverviewIssues(issues: OverviewIssue[], notices: string[] = []): 
     const advice = notices
         .map((n) => `<div class="text-warning text-xs leading-snug">${escapeHtml(n)}</div>`)
         .join('');
-    return issueLinesHtml(issues, 'inline') + advice;
+    return issueLinesHtml(issues, true) + advice;
 }
 
 function selectedAudioTrack(
@@ -1360,7 +1360,7 @@ function renderPipelineInfo(selectedId: string | null): void {
         );
         // The relay's problems are listed in the card, like the input's in its own, each with
         // its hint behind an info icon; a healthy relay lists nothing.
-        if (bondingIssues) bondingIssues.innerHTML = issueLinesHtml(indicator.issues, 'icon');
+        if (bondingIssues) bondingIssues.innerHTML = issueLinesHtml(indicator.issues, true);
         bondingIssues?.classList.toggle('hidden', indicator.issues.length === 0);
     }
     if (bondingStats) {
