@@ -27,7 +27,9 @@ as data.
   `clears`, the `shots` to take, and `apply`, which edits the payloads). Shot kinds: `banner`,
   `topbar`, `ov-inputs|outputs|relay|shared` (Overview tables), `status-dot` (hover on the input
   dot or an output's dot), `status-card`, `status-top`, `sidebar-dot`, `out-card`, `out-hint`,
-  `status-problems`, `sidebar-rejected`.
+  `pipeline-input` (the input's stats and SRT legs on the pipeline page), `status-problems`,
+  `sidebar-rejected`. The end of `scenarios.mts` adds `sidebar-dot` to every input, relay, output
+  and advice entry, `pipeline-input` to input and relay ones and `out-card` to output ones.
 - `capture.mts` drives headless Chrome over CDP (9333): per entry it sets the scenario, loads the
   page, hovers where needed and writes clipped PNGs to `$REVIEW_DIR/shots/` and the text it saw to
   `$REVIEW_DIR/manifest.json`.
@@ -96,6 +98,10 @@ what is a fixture and what is real wording.
 - Shots clip to an element's box plus padding; a page taller than the 1500x2200 viewport is cut.
 - Some states are transient on the real stack (a shared encode restarts in seconds), so the
   Overview and Status shots of one entry can be a moment apart; say so in the entry.
+- A fixture can provoke real advice: an SRT input over the stack's RTMP outputs with copy audio
+  gets "SRT-to-RTMP output should not use copy audio" and a yellow outline on every dot, so
+  `relay()` gives the outputs a track. After a change to the fixtures, look at the outlines in the
+  Status-page shots of the healthy entries.
 - The proxy's `neutralise()` first clears the developer machine's own host alerts and metrics,
   so nothing of the host leaks into a shot. Keep it when adding scenarios.
 - The catalogue ages with the dashboard. When the rules or the wording change, the `when` text

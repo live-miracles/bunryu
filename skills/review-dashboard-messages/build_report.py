@@ -54,7 +54,7 @@ captions = {
     'ov-inputs': 'Overview → Inputs table', 'ov-outputs': 'Overview → Outputs table',
     'ov-relay': 'Overview → SRT Relay table', 'ov-shared': 'Overview → Shared encodes table',
     'status-card': 'Status page → pipeline card', 'status-top': 'Status page → top',
-    'sidebar-dot': 'Pipeline list → hover on the dot', 'out-card': 'Pipeline page → output card',
+    'sidebar-dot': 'Pipeline list → hover on the dot', 'pipeline-input': 'Pipeline page → the input', 'out-card': 'Pipeline page → output card',
     'out-hint': 'Pipeline page → hover on the ⓘ next to the error',
     'status-problems': 'Status page → Recent problems', 'sidebar-rejected': 'Overview → sidebar, below the pipelines',
 }

@@ -189,7 +189,22 @@ async function takeShot(
                   }
                 : null;
         }
+        case 'pipeline-input': {
+            await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+            await sleep(400);
+            // The input's stats, and the SRT legs under them when the input is bonded.
+            const stats = `document.getElementById('input-stats-container')`;
+            const legs = `(document.getElementById('srt-bonding-stats')?.offsetHeight ? document.getElementById('srt-bonding-stats') : null)`;
+            const r = await rectOf(`${stats},${legs}`);
+            if (!r || r.w < 2 || r.h < 2) return null;
+            return {
+                file: await clip(name, r),
+                text: await ev(`${stats}.innerText.replace(/\\s+/g,' ').trim()`),
+            };
+        }
         case 'out-card': {
+            await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+            await sleep(400);
             const sel = `document.querySelectorAll('#outputs-list [data-output-card]')[${shot.out ?? 0}]`;
             const r = await rectOf(sel);
             if (!r) return null;
@@ -264,7 +279,12 @@ async function captureEntry(e: Entry): Promise<void> {
             ? `${APP}/`
             : shot.kind.startsWith('status')
               ? `${APP}/?view=status`
-              : e.pipelineView
+              : e.pipelineView ||
+                  shot.kind === 'pipeline-input' ||
+                  shot.kind === 'out-card' ||
+                  shot.kind === 'out-hint' ||
+                  (shot.kind === 'sidebar-dot' &&
+                      e.shots.some((s) => s.kind === 'pipeline-input' || s.kind === 'out-card'))
                 ? `${APP}/?p=1`
                 : `${APP}/`;
         groups.set(url, [...(groups.get(url) ?? []), shot]);

@@ -16,6 +16,7 @@ export type Shot =
     | { kind: 'status-card' }
     | { kind: 'status-top' }
     | { kind: 'sidebar-dot' }
+    | { kind: 'pipeline-input' }
     | { kind: 'out-card'; out?: number }
     | { kind: 'out-hint'; out: number }
     | { kind: 'status-problems' }
@@ -98,6 +99,10 @@ function relay(
     expected = 2,
 ): void {
     srtInput(c);
+    // The stack's outputs are RTMP with copy audio, which the dashboard advises against on an
+    // SRT input ("should not use copy audio": a yellow outline round the dot). Give them a track,
+    // as a real SRT pipeline's would, so a relay shot shows only what its scenario provokes.
+    for (const o of c.config.outputs) if (o.audioEncoding === 'copy') o.audioEncoding = '0';
     const l = legs ?? [leg('198.51.100.11'), leg('198.51.100.12')];
     Object.assign(P(c).srtBonding, {
         inputActive: true,
@@ -398,7 +403,7 @@ export const catalog: Entry[] = [
         id: 'in-no-audio',
         section: 'Input status',
         title: 'No audio track detected in input.',
-        when: 'ffprobe found no audio track at all (neither a track list nor a single audio stream). Warning, because a platform will usually reject or mute a stream without audio.',
+        when: "ffprobe found no audio track at all (neither a track list nor a single audio stream). It is a warning with a hint (alert code input-no-audio): platforms usually reject or mute a stream without audio, so check that the encoder's audio is on and its source connected.",
         clears: 'When the encoder sends audio.',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) => {
@@ -437,14 +442,14 @@ export const catalog: Entry[] = [
         id: 'in-keyframe',
         section: 'Input alerts',
         title: 'Input keyframes are too far apart',
-        when: 'Once per publisher, ffprobe reads 12 s of video packets (it needs at least 10 s of span to judge); the alert shows when the longest gap between keyframes is above 4.25 s (or there is no/one keyframe). Platforms need one at least every 4 s; 2 s is recommended. Alert code input-keyframe-interval; also written to the pipeline log.',
+        when: 'Once per publisher, ffprobe reads 12 s of video packets (it needs at least 10 s of span to judge); the alert shows when the longest gap between keyframes is above 4.25 s (or there is no/one keyframe). The warning states only the measurement; the hint under it says what to do (2 s, never more than 4 s) and why, so the two do not repeat. Alert code input-keyframe-interval; also written to the pipeline log.',
         clears: 'When a new publisher with a good keyframe interval connects (the check runs once per publisher).',
         shots: [{ kind: 'ov-inputs' }, { kind: 'status-dot', dot: 'input' }],
         apply: (c) =>
             alert(
                 c,
                 'input-keyframe-interval',
-                'Input keyframes are too far apart: the longest gap in 12 s of video is 9.8 s (platforms need at most 4 s, 2 s is recommended).',
+                'Input keyframes are too far apart: the longest gap in 12 s of video is 9.8 s.',
             ),
     },
     {
@@ -1217,7 +1222,7 @@ export const catalog: Entry[] = [
             alert(
                 c,
                 'input-keyframe-interval',
-                'Input keyframes are too far apart: the longest gap in 12 s of video is 9.8 s (platforms need at most 4 s, 2 s is recommended).',
+                'Input keyframes are too far apart: the longest gap in 12 s of video is 9.8 s.',
             );
             out(c, '1-1', {
                 status: 'stopped',
@@ -1433,6 +1438,30 @@ export const catalog: Entry[] = [
         ],
     },
 ];
+
+// Every input, relay and output entry also shows the pipeline list (the sidebar's dot and its
+// hover text) and the pipeline page: the input's stats for an input or relay message, the first
+// output's card for an output message. An entry that lists its own shot of one keeps it.
+const SIDEBAR_SECTIONS = new Set([
+    'Input status',
+    'Input alerts',
+    'SRT relay',
+    'SRT relay alerts',
+    'Output status',
+    'Output warnings',
+    'Output advice',
+]);
+const INPUT_SECTIONS = new Set(['Input status', 'Input alerts', 'SRT relay', 'SRT relay alerts']);
+const OUTPUT_SECTIONS = new Set(['Output status', 'Output warnings']);
+for (const e of catalog) {
+    if (e.id === 'card-hints' || !SIDEBAR_SECTIONS.has(e.section)) continue;
+    const has = (kind: Shot['kind']) => e.shots.some((s) => s.kind === kind);
+    if (!has('sidebar-dot')) e.shots.push({ kind: 'sidebar-dot' });
+    if (INPUT_SECTIONS.has(e.section) && !has('pipeline-input'))
+        e.shots.push({ kind: 'pipeline-input' });
+    if (OUTPUT_SECTIONS.has(e.section) && !has('out-card'))
+        e.shots.push({ kind: 'out-card', out: 0 });
+}
 
 export const scenarios: Record<string, { down?: boolean; apply?: (c: Ctx) => void }> = {
     baseline: {},
