@@ -53,12 +53,30 @@ describe('status dot tooltip', () => {
         assert.doesNotMatch(html, />Input<|>Outputs</);
     });
 
-    test('escapes text and shows a hint', () => {
+    test('escapes text, and a status dot’s hover text has no hint', () => {
         const html = issueLinesHtml([
             { severity: 'warning', message: '<b>x</b>', hint: 'try <this>' },
         ]);
         assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
-        assert.match(html, /Hint: try &lt;this&gt;/);
+        assert.doesNotMatch(html, /Hint|try/);
+    });
+
+    test('a card puts the hint behind an info icon', () => {
+        const html = issueLinesHtml(
+            [{ severity: 'warning', message: 'm', hint: 'try <this>' }],
+            'icon',
+        );
+        assert.match(html, /js-tooltip[^]*Hint: try &lt;this&gt;/);
+        assert.equal(
+            issueLinesHtml([{ severity: 'warning', message: 'm' }], 'icon').includes('js-tooltip'),
+            false,
+        );
+    });
+
+    test('the Overview shows the hint as a muted line', () => {
+        const html = issueLinesHtml([{ severity: 'error', message: 'm', hint: 'h' }], 'inline');
+        assert.match(html, /text-muted">Hint: h</);
+        assert.doesNotMatch(html, /js-tooltip/);
     });
 });
 

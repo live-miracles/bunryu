@@ -15,7 +15,7 @@ import { errorHint } from '../core/hints.js';
 import type { PendingOutputs } from '../core/pending-outputs.js';
 import { outputAdvice, type DupRef } from '../core/output-advice.js';
 import { errorTone, lastErrorLine, statusColor, type StatusIssue } from '../core/status.js';
-import { issueLinesHtml } from './status-tooltip.js';
+import { hintIconHtml, issueLinesHtml } from './status-tooltip.js';
 
 type OutputCardDeps = {
     pendingOutputs: PendingOutputs;
@@ -23,7 +23,6 @@ type OutputCardDeps = {
     loops?: ReadonlyMap<string, string>;
 };
 
-const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 const ICON_WARN = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
 
 // The watch link as an icon next to the name. Only an http(s) link becomes one, whatever the
@@ -49,14 +48,6 @@ function restreamSinkLabel(url: string): string | null {
 function sinceHtml(sinceMs: number | null | undefined): string {
     return sinceMs
         ? `<span class="text-xs text-muted shrink-0" title="${formatLocalDateTime(sinceMs)}">since ${formatAgo(sinceMs, healthNowMs())}</span>`
-        : '';
-}
-
-// An info icon at the end of an error or warning line; the advice (see
-// core/hints.ts) is in its hover/focus tooltip so it does not make the card taller.
-function hintHtml(hint: string | null): string {
-    return hint
-        ? `<span class="js-tooltip inline-flex shrink-0 opacity-50 hover:opacity-100" tabindex="0" aria-label="Hint: ${escapeHtml(hint)}">${ICON_INFO}<div class="js-tooltip-content hidden"><div class="max-w-xs text-xs leading-snug whitespace-normal">Hint: ${escapeHtml(hint)}</div></div></span>`
         : '';
 }
 
@@ -156,7 +147,7 @@ export function renderOutputCard(
                 ${retryBadge}
                 ${lastErrorTs}
                 ${retryInHtml}
-                <span class="text-xs text-${tone} truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>${hintHtml(errorHint(lastErrorLine))}
+                <span class="text-xs text-${tone} truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(lastErrorLine)}">${escapeHtml(lastErrorLine)}</span>${hintIconHtml(errorHint(lastErrorLine))}
            </div>`
         : '';
     // Coloured only while the latest record is a crash (red) or a stop after repeated
@@ -174,7 +165,6 @@ export function renderOutputCard(
         ...warnings.map(({ message, sinceMs }) => ({
             severity: 'warning' as const,
             message,
-            hint: errorHint(message) ?? undefined,
             sinceMs: sinceMs ?? undefined,
         })),
     ];
@@ -190,7 +180,7 @@ export function renderOutputCard(
                 sinceMs,
             }) => `<div class="flex items-center max-lg:items-start gap-2 pl-2 min-w-0">
                 <span class="text-warning shrink-0">${ICON_WARN}</span>
-                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${hintHtml(errorHint(message))}${sinceHtml(sinceMs)}
+                <span class="text-xs text-warning truncate max-lg:whitespace-normal max-lg:break-words" title="${escapeHtml(message)}">${escapeHtml(message)}</span>${hintIconHtml(errorHint(message))}${sinceHtml(sinceMs)}
            </div>`,
         )
         .join('');

@@ -27,10 +27,11 @@ as data.
   `clears`, the `shots` to take, and `apply`, which edits the payloads). Shot kinds: `banner`,
   `topbar`, `ov-inputs|outputs|relay|shared` (Overview tables), `status-dot` (hover on the input
   dot or an output's dot), `status-card`, `status-top`, `sidebar-dot`, `out-card`, `out-hint`,
-  `pipeline-input` (the input's stats on the pipeline page), `relay-card-dot` (the SRT Relay card with
-  the hover text of its status circle), `status-problems`,
+  `pipeline-input` (the input's stats on the pipeline page), `relay-card` (the SRT Relay card: its
+  problems are listed in it, the circle has no hover), `card-hint` (the hint behind the ⓘ on the
+  first problem line of the input's or the relay's card; skipped when there is none), `status-problems`,
   `sidebar-rejected`. The end of `scenarios.mts` adds `sidebar-dot` to every input, relay, output
-  and advice entry, `relay-card-dot` to relay ones, `pipeline-input` to input ones and `out-card` to output ones.
+  and advice entry, `relay-card` and `card-hint` to relay ones, `pipeline-input` and `card-hint` to input ones and `out-card` to output ones.
 - `capture.mts` drives headless Chrome over CDP (9333): per entry it sets the scenario, loads the
   page, hovers where needed and writes clipped PNGs to `$REVIEW_DIR/shots/` and the text it saw to
   `$REVIEW_DIR/manifest.json`.

@@ -8,17 +8,36 @@ export type { StatusIssue };
 // card and a shared encode row, so all three read the same way: each half has a
 // heading, then what is wrong with it, or why nothing is.
 
-export function issueLinesHtml(issues: StatusIssue[]): string {
+export const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+
+// An info icon at the end of an error or warning line; the advice (see core/hints.ts) is in
+// its hover/focus tooltip, so it does not make the card taller.
+export function hintIconHtml(hint: string | null | undefined): string {
+    return hint
+        ? `<span class="js-tooltip inline-flex shrink-0 opacity-50 hover:opacity-100" tabindex="0" aria-label="Hint: ${escapeHtml(hint)}">${ICON_INFO}<div class="js-tooltip-content hidden"><div class="max-w-xs text-xs leading-snug whitespace-normal">Hint: ${escapeHtml(hint)}</div></div></span>`
+        : '';
+}
+
+// Where an issue's hint goes. The hover text of a status dot has none (it is for what is
+// wrong); a card shows it in the info icon, the Overview's Issues cell as a muted line.
+export type HintStyle = 'none' | 'icon' | 'inline';
+
+export function issueLinesHtml(issues: StatusIssue[], hints: HintStyle = 'none'): string {
     return issues
         .map((issue) => {
             const cls = issue.severity === 'error' ? 'text-error' : 'text-warning';
-            const hint = issue.hint
-                ? `<div class="text-xs leading-snug text-muted">Hint: ${escapeHtml(issue.hint)}</div>`
-                : '';
+            const hint =
+                hints === 'inline' && issue.hint
+                    ? `<div class="text-xs leading-snug text-muted">Hint: ${escapeHtml(issue.hint)}</div>`
+                    : '';
+            const icon = hints === 'icon' ? hintIconHtml(issue.hint) : '';
             const since = issue.sinceMs
                 ? ` <span class="text-muted" title="${formatLocalDateTime(issue.sinceMs)}">since ${formatAgo(issue.sinceMs, healthNowMs())}</span>`
                 : '';
-            return `<div class="${cls} text-xs leading-snug">${escapeHtml(issue.message)}${since}</div>${hint}`;
+            const line = `${escapeHtml(issue.message)}${since}`;
+            return hints === 'icon'
+                ? `<div class="${cls} text-xs leading-snug">${line} ${icon}</div>`
+                : `<div class="${cls} text-xs leading-snug">${line}</div>${hint}`;
         })
         .join('');
 }

@@ -250,10 +250,10 @@ show it as a grey dot with a yellow outline.
 Under a known error or warning (connection refused, a rejected stream key, an
 unresolvable host, a failed SRT handshake, an output falling behind realtime) the card
 adds an info icon to the line; hover or focus it for a "Hint:" with what to check first.
-The pipeline alerts show their hint as a muted line. An error it has no advice for is
-shown as is.
-The card's status dot says the same on hover: every error and warning on the card, with
-the hint. A yellow dot always has a line on the card (for example "Output bitrate is
+The input's and the relay's problems on the pipeline page get the same info icon. An error
+it has no advice for is shown as is.
+The card's status dot says the same on hover: every error and warning on the card,
+without the advice. A yellow dot always has a line on the card (for example "Output bitrate is
 below 200 kb/s."); a healthy output's dot has no hover text.
 See [Reliability](../3-operations/4-reliability.md) for what is detected and when
 outputs are restarted.
@@ -268,7 +268,7 @@ advice (see above), including one stopped after repeated failures, which is then
 dot. The input dot also shows the SRT relay's warning
 or error (an unstable or lost leg, interval alerts such as dropped packets or loss, or the
 relay unable to reach SRS), even while no stream is live yet. Hover a dot for its name and
-every error and warning on it with its hint, as the pipeline list's hover does; the relay's
+every error and warning on it, as the pipeline list's hover does; the relay's
 forward to SRS is listed under its own heading on the input dot. A card with a warning or an error has a coloured border, and a pipeline with
 many outputs shows them as a block with its warning and failure counts.
 

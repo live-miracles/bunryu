@@ -218,7 +218,9 @@ describe('renderInputStats', () => {
             {},
         );
         assert.match(html, />Input is interlaced \(1080i25tff\)\./);
-        assert.match(html, /Hint: Set the encoder/);
+        // The hint is behind an info icon on the line, not a line of its own.
+        assert.match(html, /js-tooltip[^]*>Hint: Set the encoder/);
+        assert.doesNotMatch(html, /text-muted">Hint:/);
         assert.match(html, /since 1 min ago/);
     });
 

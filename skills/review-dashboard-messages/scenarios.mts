@@ -17,7 +17,8 @@ export type Shot =
     | { kind: 'status-top' }
     | { kind: 'sidebar-dot' }
     | { kind: 'pipeline-input' }
-    | { kind: 'relay-card-dot' }
+    | { kind: 'relay-card' }
+    | { kind: 'card-hint'; card: 'input' | 'relay' }
     | { kind: 'out-card'; out?: number }
     | { kind: 'out-hint'; out: number }
     | { kind: 'status-problems' }
@@ -1462,10 +1463,11 @@ for (const e of catalog) {
     if (e.id === 'card-hints' || !SIDEBAR_SECTIONS.has(e.section)) continue;
     const has = (kind: Shot['kind']) => e.shots.some((s) => s.kind === kind);
     if (!has('sidebar-dot')) e.shots.push({ kind: 'sidebar-dot' });
-    if (RELAY_SECTIONS.has(e.section) && !has('relay-card-dot'))
-        e.shots.push({ kind: 'relay-card-dot' });
+    // The hint shot is skipped by capture.mts when the line has no hint icon.
+    if (RELAY_SECTIONS.has(e.section) && !has('relay-card'))
+        e.shots.push({ kind: 'relay-card' }, { kind: 'card-hint', card: 'relay' });
     if (INPUT_SECTIONS.has(e.section) && !has('pipeline-input'))
-        e.shots.push({ kind: 'pipeline-input' });
+        e.shots.push({ kind: 'pipeline-input' }, { kind: 'card-hint', card: 'input' });
     if (OUTPUT_SECTIONS.has(e.section) && !has('out-card'))
         e.shots.push({ kind: 'out-card', out: 0 });
 }

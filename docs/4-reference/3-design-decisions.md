@@ -1058,16 +1058,22 @@ service worker and a cache policy that keeps deploys from going stale.
 
 ### Every two-half status dot has the same hover
 
-**Decision:** the pipeline list, the SRT Relay card and a shared encode row share one
-renderer (`public/ts/features/status-tooltip.ts`). The hover has a heading per half
-(pipeline: Input, Outputs; relay: SRT input, Forward to SRS; shared encode: FFmpeg,
-SRS input), then that half's problems or one muted line, "OK" or why it is off. A
-switched-off encode shows a single "Idle" line. The gradient comes from one helper too.
+**Decision:** the pipeline list and a shared encode row share one renderer
+(`public/ts/features/status-tooltip.ts`). The hover has a heading per half
+(pipeline: Input, Outputs; shared encode: FFmpeg, SRS input), then that half's problems
+or one muted line, "OK" or why it is off. A switched-off encode shows a single "Idle"
+line. The gradient comes from one helper too. The hover says what is wrong and has no
+advice: the advice is an info icon on the line where the problem is listed on the pipeline
+page (the output card, the input's stats, the SRT Relay card). The SRT Relay card has
+no hover: it lists its problems in the card, as the input does, and its circle is only
+the colour.
 
 **Why:** the three had grown apart: the pipeline dot listed problems in one mixed list
 and showed nothing when healthy, the relay dot listed problems or one sentence, and the
 shared encode dot had headed halves. With the same dot shape on all three, a reader
-expects the same hover, and a mixed list does not say which half to look at.
+expects the same hover, and a mixed list does not say which half to look at. The advice
+left the hover (November 2026) because it made it long and the line it belongs to is
+where somebody acts on it.
 
 **In the pipeline's hover** the relay's problems sit under Input, because the dot's left
 half already takes the relay's colour; the outputs sit under Outputs.

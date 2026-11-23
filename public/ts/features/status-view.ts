@@ -60,8 +60,8 @@ const INPUT_WORD: Record<StatusCard['inputStatus'], string> = {
 };
 
 // The hover text is the dashboard's own tooltip (see initHoverTooltips in render.ts), the same
-// as the pipeline list's, not the browser's title text. A heading, then every issue with its
-// hint, then the advice, as the pipeline list's tooltip lists them.
+// as the pipeline list's, not the browser's title text. A heading, then every issue (no hints:
+// they are on the pipeline page), then the advice, as the pipeline list's tooltip lists them.
 function tooltipHtml(heading: string, issues: StatusIssue[], notices: string[] = []): string {
     const advice = notices
         .map((n) => `<div class="text-warning text-xs leading-snug">${escapeHtml(n)}</div>`)

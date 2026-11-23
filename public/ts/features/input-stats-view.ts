@@ -84,9 +84,10 @@ export function renderInputStats(input: PipelineView['input'], options: InputSta
     const keyframes = input.keyframes;
     const keyframesTooLong = (input.alerts ?? []).some((a) => a.code === 'input-keyframe-interval');
     // The same issues the status dot lists on hover (no audio, a low bitrate, the input
-    // alerts with their hints), so a warning is never only in a tooltip.
+    // alerts), each with its hint behind an info icon, so a warning is never only in a tooltip.
     const issues = input.verdict.issues;
-    const issuesHtml = issues.length > 0 ? `<div class="mt-2">${issueLinesHtml(issues)}</div>` : '';
+    const issuesHtml =
+        issues.length > 0 ? `<div class="mt-2">${issueLinesHtml(issues, 'icon')}</div>` : '';
     const row = (label: string, value: string) =>
         `<span class="text-muted">${label}</span><div class="min-w-0 font-mono break-words">${value}</div>`;
 

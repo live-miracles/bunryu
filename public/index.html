@@ -667,11 +667,11 @@
           <div id="srt-bonding-card" class="border-base-content/10 bg-base-100/50 hidden rounded-lg border p-2.5">
             <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-2">
-                <div class="js-tooltip shrink-0" id="srt-bonding-status-tooltip">
-                  <div id="srt-bonding-status-dot" aria-label="status" class="border-base-content/15 h-5 w-5 overflow-hidden rounded-full border">
-                    <div id="srt-bonding-status-fill" class="h-full w-full rounded-full"></div>
-                  </div>
-                  <div id="srt-bonding-status-tooltip-content" class="js-tooltip-content hidden"></div>
+                <div
+                  id="srt-bonding-status-dot"
+                  aria-label="status"
+                  class="border-base-content/15 h-5 w-5 shrink-0 overflow-hidden rounded-full border">
+                  <div id="srt-bonding-status-fill" class="h-full w-full rounded-full"></div>
                 </div>
                 <span class="text-muted text-xs font-semibold">SRT Relay</span>
               </div>
@@ -725,6 +725,7 @@
             </div>
             <div class="mt-1 min-w-0" id="srt-bonding-stats"></div>
             <div class="mt-2" id="srt-bonding-legs"></div>
+            <div class="mt-2 hidden" id="srt-bonding-issues"></div>
             <div class="mt-2 hidden" id="srt-bonding-last-error-wrap">
               <div class="flex min-w-0 items-center gap-2">
                 <span class="text-error shrink-0 text-xs" id="srt-bonding-last-error-ts"></span>

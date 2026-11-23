@@ -202,12 +202,28 @@ async function takeShot(
                 text: await ev(`${stats}.innerText.replace(/\\s+/g,' ').trim()`),
             };
         }
-        case 'relay-card-dot': {
-            // The SRT Relay card's status circle in the second column, with its hover text.
-            await hover(`document.getElementById('srt-bonding-status-dot')`);
-            const r = await rectOf(
-                `document.getElementById('srt-bonding-card'),document.getElementById('hover-tooltip')`,
-            );
+        case 'relay-card': {
+            // The SRT Relay card in the second column: its problems are listed in it (no hover).
+            await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+            await sleep(400);
+            const card = `document.getElementById('srt-bonding-card')`;
+            const r = await rectOf(card);
+            if (!r || r.w < 2 || r.h < 2) return null;
+            return {
+                file: await clip(name, r),
+                text: await ev(`${card}.innerText.replace(/\\s+/g,' ').trim()`),
+            };
+        }
+        case 'card-hint': {
+            // The hint behind the ⓘ on the first problem line of the input's or the relay's card.
+            const card =
+                shot.card === 'relay'
+                    ? `document.getElementById('srt-bonding-card')`
+                    : `document.getElementById('input-stats-container')`;
+            const icon = `${card}?.querySelector('[aria-label^="Hint"]')`;
+            if (!(await ev(`!!(${icon})`))) return null;
+            await hover(icon);
+            const r = await rectOf(`${card},document.getElementById('hover-tooltip')`);
             if (!r || r.w < 2 || r.h < 2) return null;
             return {
                 file: await clip(name, r),
@@ -295,7 +311,8 @@ async function captureEntry(e: Entry): Promise<void> {
               ? `${APP}/?view=status`
               : e.pipelineView ||
                   shot.kind === 'pipeline-input' ||
-                  shot.kind === 'relay-card-dot' ||
+                  shot.kind === 'relay-card' ||
+                  shot.kind === 'card-hint' ||
                   shot.kind === 'out-card' ||
                   shot.kind === 'out-hint' ||
                   (shot.kind === 'sidebar-dot' &&

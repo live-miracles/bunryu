@@ -54,6 +54,10 @@ At the top of the dialog each leg has its own loss and drop charts, each with it
 leg with far larger counts does not flatten the others. The axis spans the counts in the
 window, not zero up, so a new drop stands out even after hours of accumulated ones. A leg's two
 charts sit side by side when the dialog is wide enough.
+What is wrong with the link or the forward to SRS (a leg down, dropped packets, no media
+reaching SRS) is listed in the card under the legs, with an info icon for the advice, as
+the input's problems are above; a healthy relay lists nothing. The card's circle only
+shows the colour: the left half is the SRT input, the right half the forward to SRS.
 
 The card's **L / R / D** figures (packets lost, retransmitted and dropped) count the
 **last 10 minutes**, not the whole session; the label shows the window (less than 10 min
@@ -224,8 +228,9 @@ press the refresh button next to **probed ... ago** to read the input again. The
 keyframe interval is measured only once per publisher, so the button does not repeat it.
 
 Whatever is wrong with the input (no audio track, a very low bitrate, an alert) is
-listed in yellow under these lines with advice, and in the hover text of the input's
-status dot. A probe error and the two waiting states (ffprobe still running, media not
+listed in yellow under these lines, and in the hover text of the input's status dot
+(without the advice). The info icon at the end of a line shows what to do about it
+when you hover or focus it. A probe error and the two waiting states (ffprobe still running, media not
 yet valid) say how long they have lasted ("since 5 min ago"), in your time, on the
 pipeline page, the status dots and the Overview alike.
 

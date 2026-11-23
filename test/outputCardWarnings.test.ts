@@ -423,6 +423,14 @@ describe('hints on the output card', () => {
         });
         assert.match(html, /Hint:/);
     });
+
+    test('the hint is in the info icon only, not in the status dot’s hover text', () => {
+        const html = render({
+            warningReason:
+                'Output is running at 0.62x realtime and falling behind live (slow encode or destination, or the input is delivering slowly).',
+        });
+        assert.equal(html.match(/>Hint: /g)?.length, 1);
+    });
 });
 
 describe('when a warning started', () => {

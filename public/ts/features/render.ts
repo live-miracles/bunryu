@@ -104,7 +104,8 @@ type OverviewIssue = StatusIssue;
 type BondingIndicator = {
     leftColor: string;
     rightColor: string;
-    tooltip: string;
+    // What is wrong with the relay path, listed in its card.
+    issues: OverviewIssue[];
 };
 
 type OutputVideoResolution = { width: number; height: number };
@@ -265,7 +266,7 @@ function renderOverviewIssues(issues: OverviewIssue[], notices: string[] = []): 
     const advice = notices
         .map((n) => `<div class="text-warning text-xs leading-snug">${escapeHtml(n)}</div>`)
         .join('');
-    return issueLinesHtml(issues) + advice;
+    return issueLinesHtml(issues, 'inline') + advice;
 }
 
 function selectedAudioTrack(
@@ -390,53 +391,15 @@ function getBondingIndicator(
     pipeline: PipelineView,
     relayProcessRunning: boolean,
 ): BondingIndicator {
-    const tooltip = (
-        inputIssues: OverviewIssue[],
-        outputIssues: OverviewIssue[],
-        idle?: string,
-    ): string =>
-        renderStatusTooltip(
-            {
-                label: 'SRT input',
-                issues: inputIssues,
-                active: true,
-                ok: `${pipeline.srtBonding.input.bonded ? 'Bonded SRT input' : 'SRT input via relay'} receiving.`,
-                off: '',
-            },
-            {
-                label: 'Forward to SRS',
-                issues: outputIssues,
-                active: true,
-                ok: 'Forwarding to SRS.',
-                off: '',
-            },
-            idle,
-        );
-
-    if (!relayProcessRunning) {
-        return {
-            leftColor: STATUS_COLOR_OFF,
-            rightColor: STATUS_COLOR_OFF,
-            tooltip: tooltip([], [], 'SRT relay is not running; relay SRT input unavailable.'),
-        };
-    }
-
-    if (!pipeline.srtBonding.inputActive) {
-        return {
-            leftColor: STATUS_COLOR_OFF,
-            rightColor: STATUS_COLOR_OFF,
-            tooltip: tooltip([], [], 'No relay SRT input for this stream key.'),
-        };
+    if (!relayProcessRunning || !pipeline.srtBonding.inputActive) {
+        return { leftColor: STATUS_COLOR_OFF, rightColor: STATUS_COLOR_OFF, issues: [] };
     }
 
     const health = relayHealth(pipeline, relayProcessRunning, healthNowMs());
-    const onSide = (side: 'input' | 'output'): OverviewIssue[] =>
-        health.issues.filter((i) => i.side === side).map(({ issue }) => issue);
-
     return {
         leftColor: statusColor(health.input),
         rightColor: statusColor(health.output),
-        tooltip: tooltip(onSide('input'), onSide('output')),
+        issues: relayIssueList(health),
     };
 }
 
@@ -1346,7 +1309,7 @@ function renderPipelineInfo(selectedId: string | null): void {
     const bondingCard = document.getElementById('srt-bonding-card');
     const bondingDot = document.getElementById('srt-bonding-status-dot');
     const bondingDotFill = document.getElementById('srt-bonding-status-fill');
-    const bondingTooltipContent = document.getElementById('srt-bonding-status-tooltip-content');
+    const bondingIssues = document.getElementById('srt-bonding-issues');
     const bondingStats = document.getElementById('srt-bonding-stats');
     const bondingLegs = document.getElementById('srt-bonding-legs');
     const bondingErrWrap = document.getElementById('srt-bonding-last-error-wrap');
@@ -1395,7 +1358,10 @@ function renderPipelineInfo(selectedId: string | null): void {
             indicator.leftColor,
             indicator.rightColor,
         );
-        if (bondingTooltipContent) bondingTooltipContent.innerHTML = indicator.tooltip;
+        // The relay's problems are listed in the card, like the input's in its own, each with
+        // its hint behind an info icon; a healthy relay lists nothing.
+        if (bondingIssues) bondingIssues.innerHTML = issueLinesHtml(indicator.issues, 'icon');
+        bondingIssues?.classList.toggle('hidden', indicator.issues.length === 0);
     }
     if (bondingStats) {
         bondingStats.innerHTML = renderBondingStats(pipeline.srtBonding, relayProcessRunning);
