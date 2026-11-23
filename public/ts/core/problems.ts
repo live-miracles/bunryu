@@ -91,9 +91,12 @@ export function outputProblem(output: OutputView, notices: readonly string[] = [
             : status === 'warn' || output.warningReason
               ? 'warning'
               : null;
+    // The stop after repeated failures is already one of the notices (stoppedAdvice in
+    // core/output-advice.ts), so a view that shows notices does not list it as an issue too.
+    const stopIsNotice = errorLine && output.desiredState === 'stopped' && notices.length > 0;
     const message =
         output.verdict.issues[0]?.message ||
-        (errorLine
+        (errorLine && !stopIsNotice
             ? summarizeOutputError(output.lastError, 'Stopped after repeated failures.')
             : '') ||
         '';

@@ -284,6 +284,7 @@ describe('buildStatusCards', () => {
         assert.deepEqual(card.dots[0].notices, [
             'Stopped after 5 failed attempts. Check the link and stream key, update the output, then start it again. Last error: Connection refused',
         ]);
+        assert.deepEqual(card.dots[0].issues, [], 'the stop is the notice, not also an issue');
         assert.equal(card.hasIssue, false);
         assert.equal(card.tally.off, 1);
         assert.equal(card.severity, 'none');
