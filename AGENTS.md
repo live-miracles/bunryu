@@ -461,19 +461,26 @@ for understanding an incident). If a real secret is committed and pushed
 anyway, treat it as compromised: rotate it, and don't rely on a history
 rewrite alone to undo the exposure.
 
-Test effort should be proportional to the change. A change that only touches
-documentation, comments or cosmetic styling skips the full test suite: run just
-the checks that apply (the format check, the docs link checker for docs, lint
-for code). Any other change must run the full test suite immediately before
-committing, and the results must be checked to ensure existing behavior has not
-been broken. Substantial changes should run it during implementation as well.
+Keep local checks fast: GitHub CI runs the full test suite on every push, so do not
+run `npm test` before committing, and never the long or expensive tests (the real-FFmpeg
+ones, `scripts/test-faults.mjs`) unless the change is a major migration (a runtime, an
+FFmpeg or SRS version, the schema). Test effort should be proportional to the change:
+
+- Documentation, comments or cosmetic styling: only the checks that apply (the format
+  check, the docs link checker for docs, lint for code).
+- Any other change: the format check, `npm run lint`, `npm run typecheck`, and just the
+  test files for the code you changed
+  (`node --require tsx/cjs --test test/<name>.test.ts`; add the neighbours that use it).
+  Check their results to ensure existing behavior has not been broken.
+
+If CI then fails, fix it in a follow-up commit.
 
 ## Development expectations
 
 The backend uses Node.js 26+ and TypeScript. Before completing a change,
-run the narrowest relevant tests and type/build checks, then expand validation
-for changes that affect process management, media handling, persistence, or
-the API. New features should be covered by meaningful tests that exercise
+run the narrowest relevant tests and type/build checks (see Pre-commit checks); CI
+runs the rest. For changes that affect process management, media handling,
+persistence, or the API, add the tests of every module that touches the same state. New features should be covered by meaningful tests that exercise
 their important behavior, failure cases, and relevant integration points. A
 strict test-driven-development workflow is not required, but the test suite
 should remain comprehensive enough to catch regressions and give confidence in

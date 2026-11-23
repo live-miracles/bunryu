@@ -120,16 +120,17 @@ describe('output stopped after repeated failed attempts', () => {
             html,
             /<span class="text-xs text-warning truncate[^"]*" title="[^"]*">Stopped after 5 failed attempts\. Last error: Connection refused<\/span>/,
         );
+        assert.ok(!/just now|\d+ (s|min|h) ago/.test(html), 'no "4 h ago" before the line');
         assert.match(html, /text-warning[^>]*data-action="error-info"/);
         assert.ok(!/text-xs text-error|badge-error/.test(html), 'no red line or retry badge');
     });
 
-    test('adds advice with the attempt count, to check and update the link', () => {
+    test('adds advice to check and update the link, without repeating the count', () => {
         const lines = warningLines(stoppedAfterFailures());
 
         assert.equal(lines.length, 2, 'the error line, then the advice');
         assert.match(lines[0], /^Stopped after 5 failed attempts\. Last error/);
-        assert.match(lines[1], /^Stopped after 5 attempts: check the link and stream key/);
+        assert.match(lines[1], /^Check the link and stream key/);
         assert.ok(lines[1].length < 100, 'short enough for one line');
     });
 

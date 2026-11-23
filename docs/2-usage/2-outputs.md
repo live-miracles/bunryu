@@ -182,8 +182,8 @@ happening to the stream: the same destination as another output, a destination t
 publishes back into this pipeline's own input (a loop; it cannot work), a track selection the
 input cannot supply (an RTMP input has one audio track; an SRT input may have fewer than you
 chose), Track 1 re-encoding the audio (costs CPU), SRT to RTMP with copy audio (can
-jitter), and an output that was stopped after repeated failed attempts (one short line: after how
-many attempts, to check the link and stream key, update the output and start it again). Each is one yellow line on the card. The output's dot on the **Status** view and its status
+jitter), and an output that was stopped after repeated failed attempts (one short line under the error line,
+which already says after how many attempts: check the link and stream key, update the output and start it again). Each is one yellow line on the card. The output's dot on the **Status** view and its status
 on the **Overview** get a yellow outline (a stopped output is a grey dot with the outline
 instead of the dash), and the lines are listed in the dot's hover text and in the Overview's
 Issues column. It does not tint the card or change a colour, and it is not in the pipeline

@@ -193,7 +193,7 @@ describe('an output stopped after repeated failed attempts', () => {
     const stopped = (lastError: string | null, lastErrorAt: number | null = 1) =>
         out('1-1', 'YT', 'rtmp://a/x', { desiredState: 'stopped', lastError, lastErrorAt });
 
-    test('says how many attempts failed and to check and update the link', () => {
+    test('says to check and update the link, without repeating the error line', () => {
         const advice = outputAdvice(
             stopped('1\nStopped after 5 failed attempts. Last error: Connection refused'),
             rtmpInput,
@@ -202,14 +202,14 @@ describe('an output stopped after repeated failed attempts', () => {
         assert.equal(advice.length, 1);
         assert.equal(
             advice[0],
-            'Stopped after 5 attempts: check the link and stream key, update the output, then start it again.',
+            'Check the link and stream key, update the output, then start it again.',
         );
     });
 
     test('does not need the input: it is about the destination', () => {
         const off = { connected: false, isSrt: false, audioTracks: [] } as unknown as InputHealth;
         const advice = outputAdvice(stopped('Stopped after 22 failed attempts'), off, none);
-        assert.match(advice[0], /^Stopped after 22 attempts:/);
+        assert.match(advice[0], /^Check the link and stream key/);
     });
 
     test('a plain stop, or a running output with an error, gets none', () => {
@@ -225,7 +225,7 @@ describe('an output stopped after repeated failed attempts', () => {
 
     test('a message without a count still gets the advice', () => {
         const advice = outputAdvice(stopped('something else'), rtmpInput, none);
-        assert.match(advice[0], /^Stopped after repeated failures: check the link/);
+        assert.match(advice[0], /^Check the link and stream key/);
     });
 });
 

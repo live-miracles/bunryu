@@ -88,17 +88,14 @@ function encodingAdvice(output: OutputView, input: InputHealth): string[] {
 }
 
 // An output the server stopped after repeated failed attempts keeps its last error (the
-// card's red-less line says what it was); this says what to do about it. The count is in the
-// server's message ("Stopped after 5 failed attempts. Last error: ..."). A stopped output
-// has no error line otherwise, so a plain stop gets none.
+// card's red-less line says what it was, with the attempt count: "Stopped after 5 failed
+// attempts. Last error: ..."); this says only what to do about it, so the two do not repeat
+// each other. A stopped output has no error line otherwise, so a plain stop gets none.
 function stoppedAdvice(output: OutputView): string[] {
     if (output.desiredState !== 'stopped' || output.lastErrorAt === null) return [];
     const line = lastErrorLine(output);
     if (!line) return [];
-    const attempts = /^Stopped after (\d+) failed attempts/.exec(line)?.[1];
-    return [
-        `Stopped after ${attempts ? `${attempts} attempts` : 'repeated failures'}: check the link and stream key, update the output, then start it again.`,
-    ];
+    return ['Check the link and stream key, update the output, then start it again.'];
 }
 
 // The protocol, host, port and stream key of a destination that publishes to a pipeline

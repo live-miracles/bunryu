@@ -123,9 +123,12 @@ export function renderOutputCard(
     // it is old news to look at, not something happening now, so it neither tints the card nor
     // counts as a Problem. While the output runs it is red.
     const tone = errorTone(output);
-    const lastErrorTs = output.lastErrorAt
-        ? `<span class="text-xs text-${tone} shrink-0" title="${formatLocalDateTime(output.lastErrorAt)}">${formatAgo(output.lastErrorAt, healthNowMs())}</span>`
-        : '';
+    // A stopped output's line has no "4 h ago": the line is the whole message (the count, the
+    // last error) and the time is in its History.
+    const lastErrorTs =
+        output.lastErrorAt && !isStopped
+            ? `<span class="text-xs text-${tone} shrink-0" title="${formatLocalDateTime(output.lastErrorAt)}">${formatAgo(output.lastErrorAt, healthNowMs())}</span>`
+            : '';
     const retryBadge =
         output.failures > 0
             ? `<span class="badge badge-sm badge-${tone} gap-1 shrink-0" title="${output.failures} retr${output.failures === 1 ? 'y' : 'ies'}">${ICON_ITERATION_CW}${output.failures}</span>`
