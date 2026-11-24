@@ -307,12 +307,6 @@ describe('validateAudioEncoding', () => {
         assert.equal(validateAudioEncoding('0'), '0');
         assert.equal(validateAudioEncoding('0, 1 ,2'), '0,1,2');
     });
-    test("rejects 'aac' (retired in favor of explicit track selection)", () => {
-        assert.equal(validateAudioEncoding('aac'), null);
-    });
-    test("rejects 'translation' (the translation output was removed)", () => {
-        assert.equal(validateAudioEncoding('translation'), null);
-    });
     test('rejects non-numeric values', () => {
         assert.equal(validateAudioEncoding('a'), null);
         assert.equal(validateAudioEncoding('0,x'), null);

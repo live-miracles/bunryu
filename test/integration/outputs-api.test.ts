@@ -101,13 +101,13 @@ describe('Outputs API integration', () => {
             assert.equal(harness.db.listOutputsForPipeline(p.id).length, 1);
         });
 
-        test('rejects the removed translation audio encoding, one at a time and in bulk', async () => {
+        test('rejects an invalid audioEncoding, one at a time and in bulk', async () => {
             const harness = createHarness();
             const p = harness.db.createPipeline();
             const item = {
                 name: 'T',
                 url: 'rtmp://a.rtmp.youtube.com/live2/key',
-                audioEncoding: 'translation',
+                audioEncoding: 'not-a-track',
             };
             const single = await harness.request('POST', `/api/pipelines/${p.id}/outputs`, item);
             assert.equal(single.status, 400);

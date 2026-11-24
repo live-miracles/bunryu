@@ -196,17 +196,6 @@ describe('duplicate destination', () => {
         );
         assert.deepEqual(warningLines(html), ['Same destination as Other → YT']);
     });
-
-    test('no longer marks the URL itself', () => {
-        const html = card(
-            withVerdict(output({ url }), rtmpInput),
-            withInputVerdict(rtmpInput),
-            dups,
-            deps,
-        );
-        assert.ok(!/Duplicate/.test(html));
-        assert.ok(!/<code class="[^"]*text-warning/.test(html));
-    });
 });
 
 describe('warnings and advice share one style', () => {

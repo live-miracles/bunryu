@@ -122,7 +122,6 @@ function setup({ fetchFn, options = FAST, config = CONFIG, db }: SetupOptions = 
                     videoEncoding: 'copy',
                     url: DESTINATION,
                     audioEncoding: 'copy',
-                    translation: null,
                     lastError: null,
                     hasErrorHistory: false,
                 },
