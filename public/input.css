@@ -257,11 +257,16 @@
         background: transparent;
     }
 
-    /* The selected segment is filled with the accent: a panel-coloured one merged with the card. */
+    /* The selected segment is a soft accent tint with accent text, a step stronger than a lone
+       soft button so it stands out from the track (a panel-coloured one merged with the card). */
     .join .join-item.btn-accent.btn-soft {
-        background: var(--accent);
-        color: var(--on-accent);
+        background: color-mix(in oklab, var(--accent) 22%, transparent);
+        color: var(--accent);
         font-weight: 600;
+    }
+
+    .join .join-item.btn-accent.btn-soft:hover {
+        background: color-mix(in oklab, var(--accent) 28%, transparent);
     }
 
     /* ── Badges ────────────────────────────────────────────── */
