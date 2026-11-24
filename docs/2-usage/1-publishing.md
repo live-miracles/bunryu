@@ -4,8 +4,9 @@ A **pipeline** is one live input. Creating a pipeline assigns it a stream key;
 the pipeline panel's **Publish to this input** card shows one input mode at a
 time (**RTMP** or **SRT**), chosen with the buttons at its top. It
 follows the encoder: when a publisher connects the card switches to the mode it is
-using (marked with a green dot), and until the mode changes again a mode you picked
-stays. Each row shows a value, shortened with an ellipsis if it is long, and a
+using (marked with a green dot; an encoder sending SRT straight to SRS opens the SRT mode
+without the dot, since the card does not offer that port), and until the mode changes
+again a mode you picked stays. Each row shows a value, shortened with an ellipsis if it is long, and a
 copy button (two overlapping squares): server URL, key, stream ID or passphrase separately for encoders
 that ask for them in separate fields, and the full publish URL (SRT has two: **Single-link URL** for an ordinary encoder, and **Bonded URL** for one that sends over several links). The stream key and
 stream ID are masked after their `keyNN_` prefix (`key01_••••••••`) and the passphrase

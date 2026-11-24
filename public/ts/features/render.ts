@@ -21,6 +21,7 @@ import {
 import { healthNowMs, saveCollapsedGroups, state } from '../core/state.js';
 import {
     PUBLISH_MODES,
+    liveDotMode,
     livePublishMode,
     publishRows,
     type PublishMode,
@@ -1440,6 +1441,7 @@ function renderPublishCard(
 ): PublishMode {
     publishCardPipelineId = pipeline.id;
     const live = livePublishMode(pipeline);
+    const dotMode = liveDotMode(pipeline);
     if (live && live !== publishModeLive.get(pipeline.id)) publishModeChoice.set(pipeline.id, live);
     publishModeLive.set(pipeline.id, live);
     const mode = publishModeChoice.get(pipeline.id) ?? 'rtmp';
@@ -1479,7 +1481,7 @@ function renderPublishCard(
         modesEl,
         PUBLISH_MODES.map(({ mode: m, label }) => {
             const dot =
-                m === live
+                m === dotMode
                     ? `<div aria-label="live" class="status mr-1 shrink-0" style="background-color: ${STATUS_COLOR_GOOD}"></div>`
                     : '';
             return `<button type="button" role="tab" aria-selected="${m === mode}" data-mode="${m}" class="btn btn-xs join-item ${m === mode ? 'btn-accent btn-soft' : ''}">${dot}${label}</button>`;

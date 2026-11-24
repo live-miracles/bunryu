@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
     MASK,
+    liveDotMode,
     livePublishMode,
     maskKey,
     maskSecrets,
@@ -34,15 +35,18 @@ const pipeline = (connected: boolean, isSrt: boolean, relayActive = false) => ({
 });
 
 describe('livePublishMode', () => {
-    test('follows the protocol of the connected input; SRT sent straight to SRS is on no tab', () => {
+    test('follows the protocol of the connected input; SRT sent straight to SRS opens the SRT tab without a dot', () => {
         assert.equal(livePublishMode(pipeline(false, false)), null);
         assert.equal(livePublishMode(pipeline(true, false)), 'rtmp');
-        assert.equal(livePublishMode(pipeline(true, true)), null);
+        assert.equal(livePublishMode(pipeline(true, true)), 'srt');
+        assert.equal(liveDotMode(pipeline(true, false)), 'rtmp');
+        assert.equal(liveDotMode(pipeline(true, true)), null);
     });
 
     test('an input arriving through the relay is the SRT mode, even before SRS accepts it', () => {
         assert.equal(livePublishMode(pipeline(false, false, true)), 'srt');
         assert.equal(livePublishMode(pipeline(true, true, true)), 'srt');
+        assert.equal(liveDotMode(pipeline(true, true, true)), 'srt');
     });
 });
 

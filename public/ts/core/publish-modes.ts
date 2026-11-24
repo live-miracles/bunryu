@@ -43,12 +43,20 @@ interface LiveInput {
     srtBonding: { inputActive: boolean };
 }
 
-// The mode the encoder is publishing on right now, or null while nothing is, and for SRT
-// sent straight to SRS (no tab offers that port; the input's card says so).
+// The tab the connected input belongs to, or null while nothing is connected: SRT sent
+// straight to SRS opens the SRT tab too, since that is where its input card points.
 export function livePublishMode(pipeline: LiveInput): PublishMode | null {
     if (pipeline.srtBonding.inputActive) return 'srt';
-    if (!pipeline.input.connected || pipeline.input.isSrt) return null;
-    return 'rtmp';
+    if (!pipeline.input.connected) return null;
+    return pipeline.input.isSrt ? 'srt' : 'rtmp';
+}
+
+// The tab that gets the green "live" dot: the same, except for SRT sent straight to SRS,
+// which is not the SRT mode the tab offers (the relay).
+export function liveDotMode(pipeline: LiveInput): PublishMode | null {
+    return pipeline.input.isSrt && !pipeline.srtBonding.inputActive
+        ? null
+        : livePublishMode(pipeline);
 }
 
 // A stream key with everything after its `keyNN_` prefix masked.
