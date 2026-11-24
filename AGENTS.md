@@ -491,3 +491,11 @@ run it to confirm it fails for the intended reason before fixing the code.
 Preserve existing behavior unless the change explicitly
 requires a behavioral adjustment, and document any known limitation or
 operational tradeoff.
+
+Keep the test suite lean as behavior changes. When a change removes an element or
+alters existing behavior, update the existing tests to match; do not add a test (or a
+"no longer has X" assertion) whose only job is to prove something is gone, and delete
+one you find. Such a check runs on every build for no lasting value, and the old
+assertions it replaces already cover what remains. Add a new test only when it guards
+something meaningful on its own: a rule, a failure case, an ordering the code relies
+on. Prefer folding a one-line check into an existing test over a new `test(...)`.
