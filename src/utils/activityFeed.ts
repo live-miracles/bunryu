@@ -51,6 +51,31 @@ const SERVER_SOURCE_LABEL: Record<SrsEvent['source'], string> = {
     host: 'Host',
 };
 
+// A crash whose first line is only an exit status ("exit=0", "Shared encode X failed:
+// exit=224") hides its cause in the FFmpeg stderr below, which the table shows only when
+// expanded. Put the first line of that stderr that names a failure after the status; the
+// trailer FFmpeg prints on every shutdown is skipped. A message that already says why
+// (a watchdog, a policy stop) is left as it is. The URL's path is cut: it may hold a stream key.
+const STATUS_ONLY = /exit=\S+$/;
+const SHUTDOWN_NOISE = /failed to update header|last message repeated/i;
+const FAILURE_WORDS =
+    /error|fail|refused|timed out|broken|reset by peer|breaking connection|unauthorized|forbidden|not found|invalid/i;
+
+export function withCrashCause(message: string): string {
+    const [first = '', ...rest] = message.split(/\r?\n/);
+    if (!STATUS_ONLY.test(first)) return message;
+    const cause = rest
+        .map((line) => line.replace(/\s+/g, ' ').trim())
+        .find((line) => line && !SHUTDOWN_NOISE.test(line) && FAILURE_WORDS.test(line));
+    if (!cause) return message;
+    // Up to the end of the URL, not the ":" or "." that closes the sentence after it.
+    const safe = cause.replace(
+        /(\b[a-z][a-z0-9+.-]*:\/\/[^\s/]+)\S*?(?=[:;,.]?(?:\s|$))/gi,
+        '$1/...',
+    );
+    return [`${first}: ${safe}`, ...rest].join('\n');
+}
+
 function outputEvents(output: OutputHistory, pipelineName: string): ActivityEvent[] {
     const base = {
         source: 'output' as const,
@@ -69,7 +94,7 @@ function outputEvents(output: OutputHistory, pipelineName: string): ActivityEven
                 ts,
                 severity: 'error',
                 label: 'crash',
-                message: `${record.message}${times}`,
+                message: `${withCrashCause(record.message)}${times}`,
             });
             if (record.recoveredTs !== undefined) {
                 events.push({

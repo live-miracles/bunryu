@@ -1295,6 +1295,12 @@ pipeline log lines, each output's History and the Server events when it is asked
 Nothing new is stored. The page loads it when it opens and on Refresh, and does not
 refresh itself.
 
+A crash that is only an exit status (`exit=0`) gets the first failure line of its FFmpeg
+stderr added to the row's first line, with the URL's path cut (it may hold a stream key).
+The table shows only that line until the row is expanded, and an `exit=0` from SRT input
+that broke under CPU overload told the operator nothing. The History keeps the message
+as stored.
+
 **Why:**
 
 - **"What just happened" meant opening each pipeline's History and each output's.** At 50

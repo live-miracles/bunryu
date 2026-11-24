@@ -149,6 +149,38 @@ describe('buildActivityFeed', () => {
             assert.equal(e.message, 'Broken pipe (4 times)');
         });
 
+        test('a crash that is only an exit status gets its cause from the stderr below it', () => {
+            const crash = (message: string) =>
+                outputEvents([{ ts: 1, kind: 'crash', message }])[0].message;
+            const stderr = [
+                'No room to store incoming packet',
+                '[in#0/mpegts @ 0x1] Error during demuxing: Input/output error',
+                '[flv @ 0x2] Failed to update header with correct filesize.',
+            ].join('\n');
+            assert.equal(
+                crash(`exit=0\n${stderr}`).split('\n')[0],
+                'exit=0: [in#0/mpegts @ 0x1] Error during demuxing: Input/output error',
+            );
+            assert.equal(
+                crash(`Shared encode T1 failed: exit=224\n${stderr}`).split('\n')[0],
+                'Shared encode T1 failed: exit=224: [in#0/mpegts @ 0x1] Error during demuxing: Input/output error',
+            );
+            // The key in the destination URL is not shown.
+            assert.equal(
+                crash(
+                    'exit=251\nError opening output rtmp://live.example.com/app/secretkey: Input/output error',
+                ).split('\n')[0],
+                'exit=251: Error opening output rtmp://live.example.com/...: Input/output error',
+            );
+            // Nothing to add: only the shutdown trailer, or a message that already says why.
+            const bare = 'exit=0\n[flv @ 0x2] Failed to update header with correct duration.';
+            assert.equal(crash(bare), bare);
+            assert.equal(
+                crash('watchdog: output progress stalled\nError x'),
+                'watchdog: output progress stalled\nError x',
+            );
+        });
+
         test('a recovered crash adds a recovery event', () => {
             const events = outputEvents([
                 { ts: 1000, kind: 'crash', message: 'Broken pipe', recoveredTs: 9000 },
