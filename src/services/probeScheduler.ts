@@ -32,6 +32,12 @@ const KEYFRAME_MAX_CONCURRENT = 4;
 // result is shown until the publisher changes. Measured once, so a bad first
 // window cannot be corrected later.
 const KEYFRAME_DELAY_MS = 60_000;
+// An output's watchdog found its input stuck while the input's one probe still says it is
+// fine: an encoder whose source is gone keeps sending at the same bitrate with nothing
+// decodable in it, which only a new probe shows. A destination that hangs (not the input)
+// gets the same watchdog, so this is bounded: at most one such probe per pipeline per window,
+// however many of its outputs retry.
+const SUSPECT_REPROBE_COOLDOWN_MS = 5 * 60_000;
 
 export interface ProbeStatus {
     result: ProbeResult | null;
@@ -66,6 +72,12 @@ export interface ProbeScheduler {
     // when one is already queued or running, which will refresh the result anyway,
     // or after shutdown. The keyframe check is not repeated: it runs once per publisher.
     reprobe(pipelineId: number, streamKey: string, protocol: InputProtocol): boolean;
+    // An output's watchdog found its input stuck. Probes the publisher again now when its
+    // last probe passed, at most once per SUSPECT_REPROBE_COOLDOWN_MS; a failing result
+    // then shows on the input, and the 30 s retry above watches for its recovery. Does
+    // nothing (false) when the input is not probed yet or is already failing (the retry
+    // covers it), when a probe is running, or inside the cooldown.
+    suspect(pipelineId: number, streamKey: string, protocol: InputProtocol): boolean;
     // The publisher changed, the input went away or the pipeline was removed:
     // cancels its timers and kills its ffprobe children, drops its results, and
     // makes anything still in flight discard its result when it lands.
@@ -110,6 +122,8 @@ export function createProbeScheduler({
     // Bumped by clear(): a probe or queued keyframe check that started under an
     // older generation belongs to a publisher that is gone and drops its result.
     const generations = new Map<number, number>();
+    // When each pipeline's last suspect() probe was requested, for its cooldown.
+    const suspectedAt = new Map<number, number>();
     // Keyframe check per pipeline: once per publisher, KEYFRAME_DELAY_MS after its first successful probe.
     const keyframeResults = new Map<number, KeyframeResult>();
     // Pipelines whose current publisher has had its check queued (it runs once, so
@@ -151,6 +165,7 @@ export function createProbeScheduler({
         keyframeChildren.delete(pipelineId);
         keyframeScheduled.delete(pipelineId);
         keyframeResults.delete(pipelineId);
+        suspectedAt.delete(pipelineId);
         generations.set(pipelineId, generationOf(pipelineId) + 1);
     }
 
@@ -415,6 +430,21 @@ export function createProbeScheduler({
         reprobe(pipelineId, streamKey, protocol) {
             if (stopped || timers.has(pipelineId) || inFlight.has(pipelineId)) return false;
             diagnostics?.event('media-probe-requested', { pipelineId, protocol });
+            scheduleFfprobe(pipelineId, streamKey, protocol, 0);
+            return true;
+        },
+
+        suspect(pipelineId, streamKey, protocol) {
+            if (stopped || timers.has(pipelineId) || inFlight.has(pipelineId)) return false;
+            if (!results.get(pipelineId)?.ok) return false;
+            const last = suspectedAt.get(pipelineId);
+            if (last !== undefined && Date.now() - last < SUSPECT_REPROBE_COOLDOWN_MS) return false;
+            suspectedAt.set(pipelineId, Date.now());
+            diagnostics?.event('media-probe-requested', {
+                pipelineId,
+                protocol,
+                reason: 'output-watchdog',
+            });
             scheduleFfprobe(pipelineId, streamKey, protocol, 0);
             return true;
         },

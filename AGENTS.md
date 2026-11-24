@@ -205,7 +205,8 @@ only for a new module.
   service wiring, graceful shutdown.
 - `src/services/outputs.ts` - one FFmpeg process per output: start/stop/retry,
   stall/socket/memory watchdogs (a socket or stall restart first reads the input's
-  SRS stream into the History and event), timestamp-warning bursts and warning
+  SRS stream into the History and event, and a no-input or stall restart notes an input
+  fault that the health poll takes with `takeInputFault`), timestamp-warning bursts and warning
   episodes, output History writes (including a manual Start); shared-encode readiness, dependents' restart on a
   rendition failure, `restart()` and `retire()` (stop for good before a row is deleted).
   `outputSockets.ts` parses `ss` for
@@ -229,8 +230,9 @@ only for a new module.
       `inputState`. A new publisher whose probed format differs from the last one restarts
       the running outputs.
     - `probeScheduler.ts` owns each publisher's ffprobe lifecycle: when to probe, the
-      retries, the once-per-publisher keyframe check, and cancelling it all when the
-      publisher changes (`mediaProbe.ts` is the runner and parser).
+      retries, the once-per-publisher keyframe check, the one re-probe an output watchdog asks
+      for (`suspect()`, read from `outputs.ts`'s `takeInputFault` by `inputLifecycle.ts`), and
+      cancelling it all when the publisher changes (`mediaProbe.ts` is the runner and parser).
     - `inputState.ts` holds per-input readiness and protocol and builds the pull URL
       outputs read.
     - `legTracker.ts` keeps each pipeline's SRT legs between polls (the group's size, which

@@ -881,6 +881,82 @@ describe('output watchdog', () => {
         service.shutdown();
     });
 
+    // The health poll asks whether a watchdog found an output's input stuck, so it can
+    // re-check the input's media (an encoder that keeps sending after its source is gone).
+    test('a no-input-data restart is recorded as an input fault, once', async (t) => {
+        const proc = new FakeFfmpeg();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 1e9,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput: INPUT_ONLY_SS,
+            fetchStreams: async () => [SRS_STREAM],
+        });
+        const service = createOutputService(makeDb(), makeReadyInputState());
+
+        assert.equal(service.takeInputFault(1), false, 'nothing before a watchdog fires');
+        await service.start('out1');
+        await sleep(100);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.equal(service.takeInputFault(2), false, 'another pipeline has none');
+        assert.equal(service.takeInputFault(1), true);
+        assert.equal(service.takeInputFault(1), false, 'taking it clears it');
+
+        service.shutdown();
+    });
+
+    test('a progress stall restart is recorded as an input fault', async (t) => {
+        const proc = new FakeFfmpeg();
+        const createOutputService = loadOutputService(t, proc);
+        const service = createOutputService(makeDb(), makeReadyInputState());
+
+        await service.start('out1');
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
+        await sleep(80);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.equal(service.takeInputFault(1), true);
+
+        service.shutdown();
+    });
+
+    test('a destination socket restart is not an input fault', async (t) => {
+        const proc = new FakeFfmpeg();
+        const createOutputService = loadOutputService(t, proc, {
+            progressStallMs: 500,
+            socketWarmupMs: 10,
+            socketGraceMs: 20,
+            ssOutput:
+                'CLOSE-WAIT 57 0 10.160.0.30:47178 192.178.174.134:1935 users:(("ffmpeg",pid=1234,fd=6))\n',
+        });
+        const service = createOutputService(makeDb(), makeReadyInputState());
+
+        await service.start('out1');
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
+        await sleep(80);
+
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+        assert.equal(service.takeInputFault(1), false);
+
+        service.shutdown();
+    });
+
+    test('an input fault older than 30 s is dropped, not acted on at the next connect', async (t) => {
+        const proc = new FakeFfmpeg();
+        const createOutputService = loadOutputService(t, proc);
+        const service = createOutputService(makeDb(), makeReadyInputState());
+
+        await service.start('out1');
+        proc.stdout.write('total_size=4096\nout_time_ms=1000000\nbitrate=3200.0kbits/s\n');
+        await sleep(80);
+        assert.deepEqual(proc.killSignals, ['SIGTERM']);
+
+        t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 31_000 });
+        assert.equal(service.takeInputFault(1), false);
+        service.shutdown();
+    });
+
     test('ignores local RTMP outputs in socket watchdog', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();

@@ -191,6 +191,126 @@ describe('probe scheduler', () => {
         );
     });
 
+    // An output's watchdog found its input stuck while the input still looks fine (an
+    // encoder that keeps sending after its source is gone): look at the media again.
+    describe('suspect()', () => {
+        async function probed(t: TestContext) {
+            const ctx = setup(t);
+            ctx.scheduler.ensure(1, 'key01', 'srt', 0);
+            t.mock.timers.tick(0);
+            await ctx.settle();
+            ctx.ffprobe.calls[0].finish(USABLE);
+            await ctx.settle();
+            assert.equal(ctx.scheduler.status(1)?.ok, true);
+            return ctx;
+        }
+
+        test('re-probes a healthy input at once and a failing result turns it bad', async (t) => {
+            t.mock.method(console, 'warn', () => {});
+            const { scheduler, ffprobe, events, logs, settle } = await probed(t);
+
+            assert.equal(scheduler.suspect(1, 'key01', 'srt'), true);
+            t.mock.timers.tick(0);
+            await settle();
+            assert.equal(ffprobe.calls.length, 2, 'no stagger');
+            assert.deepEqual(
+                events.filter((e) => e.event === 'media-probe-requested'),
+                [
+                    {
+                        event: 'media-probe-requested',
+                        pipelineId: 1,
+                        protocol: 'srt',
+                        reason: 'output-watchdog',
+                    },
+                ],
+            );
+
+            ffprobe.calls[1].finish(UNUSABLE);
+            await settle();
+            assert.equal(scheduler.status(1)?.ok, false);
+            assert.deepEqual(
+                logs.map((l) => l.event),
+                ['probe_failed'],
+            );
+
+            // From here the ordinary 30 s retry watches for the input to recover.
+            t.mock.timers.tick(30_000);
+            scheduler.ensure(1, 'key01', 'srt', 0);
+            t.mock.timers.tick(0);
+            await settle();
+            assert.equal(ffprobe.calls.length, 3);
+        });
+
+        test('a probe that still passes leaves the input as it was', async (t) => {
+            const { scheduler, ffprobe, logs, settle } = await probed(t);
+
+            scheduler.suspect(1, 'key01', 'srt');
+            t.mock.timers.tick(0);
+            await settle();
+            ffprobe.calls[1].finish(USABLE);
+            await settle();
+
+            assert.equal(scheduler.status(1)?.ok, true);
+            assert.deepEqual(logs, []);
+        });
+
+        test('at most one re-probe per 5 minutes, however often outputs fault', async (t) => {
+            const { scheduler, ffprobe, settle } = await probed(t);
+
+            assert.equal(scheduler.suspect(1, 'key01', 'srt'), true);
+            t.mock.timers.tick(0);
+            await settle();
+            ffprobe.calls[1].finish(USABLE);
+            await settle();
+
+            t.mock.timers.tick(299_000);
+            assert.equal(scheduler.suspect(1, 'key01', 'srt'), false);
+            t.mock.timers.tick(1_000);
+            assert.equal(scheduler.suspect(1, 'key01', 'srt'), true);
+            t.mock.timers.tick(0);
+            await settle();
+            assert.equal(ffprobe.calls.length, 3);
+        });
+
+        test('does nothing while a probe is running, failing or not yet done', async (t) => {
+            const { scheduler, ffprobe, settle } = setup(t);
+
+            assert.equal(scheduler.suspect(1, 'key01', 'srt'), false, 'never probed');
+            scheduler.ensure(1, 'key01', 'srt', 0);
+            t.mock.timers.tick(0);
+            await settle();
+            assert.equal(scheduler.suspect(1, 'key01', 'srt'), false, 'first probe running');
+
+            t.mock.method(console, 'warn', () => {});
+            ffprobe.calls[0].finish(UNUSABLE);
+            await settle();
+            assert.equal(
+                scheduler.suspect(1, 'key01', 'srt'),
+                false,
+                'already failing: it retries',
+            );
+            assert.equal(ffprobe.calls.length, 1);
+        });
+
+        test("a new publisher starts without the old one's cooldown", async (t) => {
+            const { scheduler, ffprobe, settle } = await probed(t);
+
+            scheduler.suspect(1, 'key01', 'srt');
+            t.mock.timers.tick(0);
+            await settle();
+            ffprobe.calls[1].finish(USABLE);
+            await settle();
+
+            scheduler.clear(1);
+            scheduler.ensure(1, 'key01', 'srt', 0);
+            t.mock.timers.tick(0);
+            await settle();
+            ffprobe.calls[2].finish(USABLE);
+            await settle();
+            assert.equal(scheduler.suspect(1, 'key01', 'srt'), true);
+        });
+    });
+
     test('clear() cancels a pending launch', async (t) => {
         const { scheduler, ffprobe, settle } = setup(t);
 

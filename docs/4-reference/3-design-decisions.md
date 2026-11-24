@@ -2025,6 +2025,47 @@ the outputs (neither carries keyframe flags).
 settle, or the 4-at-a-time queue makes the result arrive too late on a very large
 reconnect.
 
+### Re-probe an input when an output's watchdog finds it stuck, not on a timer
+
+**Decision (November 2026):** an input is probed once per publisher, and again only when
+one of its outputs is killed by the "no input data" or "output progress stalled"
+watchdog while the input's last probe passed. The output service records the kill
+(`takeInputFault`), the health poll takes it, and the probe scheduler runs one ffprobe at
+once (`suspect()`), at most once per pipeline per 5 minutes. A failing result turns the
+input red (`probe_failed` in the pipeline log, `media-probe-failed` and a
+`media-probe-requested` event with `reason: "output-watchdog"`), and the ordinary 30 s
+retry then watches for its recovery. Outputs are not gated on the result: they keep
+retrying as before, so they come back on their own as soon as the input does.
+
+**Why:** an SDI encoder whose source is switched off keeps sending constant-bitrate SRT
+with nothing decodable in it. On 2026-11-24 the Tamil input stayed green (`mediaOk: true`
+from the probe made when it connected) for over 30 minutes while its YouTube output failed
+34 times with "No input data". SRS read 50 MB in 48 s into that output's FFmpeg, which
+found streams with no codec parameters; a manual ffprobe pull returned nothing in 20 s.
+
+**Evidence:** on a test pipeline through the SRT relay, the minutes before and after the
+source was removed were identical at the SRT level: 51.76k to 51.77k packets per minute
+before, 51.76k after, 1316 bytes each, a 9.3 Mbps receive rate, leg health `ok`. So
+neither the input bitrate, SRS's counters (`frames` and the codecs are always 0 or null for SRT)
+nor the relay's statistics (SRT counters only; it does not read the TS) can tell. The
+three outputs of that pipeline were killed by the watchdogs, two for no input data and one
+for a progress stall, within a minute of each other. Unit tests cover which kills count,
+that a fault is taken once and dropped after 30 s, the 5 minute limit, a probe that
+is running, failing or not done yet, and the poll's call.
+
+**Not adopted:** a periodic ffprobe of every input (removed in July for its CPU and SRT
+play churn; a period short enough to be useful costs the most on the many healthy
+inputs, and a long one detects late); counting TS packets per PID in the relay (cheap in C,
+and it would detect within seconds, but only for relay inputs, and what this encoder sends on
+signal loss is not known yet); gating output starts on the probe (a probe that fails on a
+good input would leave an output that should be running down).
+
+**Limits:** it needs a running output, so an input with none stays green; a stall caused by
+the destination also triggers one probe, which passes and changes nothing.
+
+**Revisit when:** a source is found that loses its payload while its outputs keep making
+progress, or detection after about one watchdog window (50 to 60 s) is too slow.
+
 ### Warn about interlaced input, do not convert or refuse it
 
 **Decision (November 2026):** when ffprobe reports the publisher's video as interlaced

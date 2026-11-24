@@ -56,6 +56,10 @@ const STABLE_RUN_MS = 60_000;
 // incident and must come back on its own when it returns. While the input/SRS is
 // not ready we only re-check (no ffmpeg spawned), so an idle retry is cheap.
 const RECHECK_DELAY_MS = 5000;
+// How long a watchdog's finding that an input is stuck waits for the health poll (every
+// 5 s) to pick it up. An older one is dropped, so it cannot trigger a probe of an input
+// that has since reconnected.
+const INPUT_FAULT_TTL_MS = 30_000;
 // A shared output waits for its rendition (a local process a few seconds from
 // ready after it starts), so it polls faster than one waiting for an input.
 const RENDITION_RECHECK_DELAY_MS = 1000;
@@ -267,6 +271,11 @@ export interface OutputService {
     // How many running outputs are reading this shared encode right now.
     readersOf(renditionId: string): number;
     restartPipelineOutputs(pipelineId: number, staggerBase?: number): number;
+    // Whether a watchdog killed one of this pipeline's outputs for getting no data from its
+    // input, or for an output that stopped progressing, within the last 30 s. Reading it
+    // clears it. The health poll uses it to look at the input's media again, since an
+    // encoder that lost its source keeps sending and looks fine until then.
+    takeInputFault(pipelineId: number): boolean;
     // Stops the output for good, ahead of deleting its row: marks it
     // desired-stopped first (or its close handler respawns it), waits for the
     // process to exit, then drops any retry its exit left behind. Safe to call
@@ -323,6 +332,8 @@ export function createOutputService(
     const watchdogKills = new Set<string>();
     // Outputs whose watchdog restart is waiting for the input source's state.
     const watchdogRestarting = new Set<string>();
+    // When a watchdog last found each pipeline's input stuck (see takeInputFault).
+    const inputFaultAt = new Map<number, number>();
     // Why a watchdog killed a process; explains the failure to a rendition's
     // dependents and goes on the ffmpeg-exited event.
     const watchdogReasons = new Map<string, string>();
@@ -1306,6 +1317,9 @@ export function createOutputService(
                     ...eventFields,
                     inputSource: source.fields,
                 });
+                if (isNoInputDataWarning(reason) || reason === 'output progress stalled') {
+                    inputFaultAt.set(output.pipelineId, Date.now());
+                }
                 noteWatchdogKill(outputId, reason);
                 void killProcess(outputId, proc, false);
             } finally {
@@ -1988,6 +2002,12 @@ export function createOutputService(
                 scheduled++;
             }
             return scheduled;
+        },
+
+        takeInputFault(pipelineId: number): boolean {
+            const at = inputFaultAt.get(pipelineId);
+            inputFaultAt.delete(pipelineId);
+            return at !== undefined && Date.now() - at <= INPUT_FAULT_TTL_MS;
         },
 
         restartPipelineOutputs(pipelineId: number, staggerBase = 0): number {

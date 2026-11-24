@@ -50,9 +50,12 @@ function inputFormatOf(result: ProbeResult): string {
 
 export interface InputLifecycleDeps {
     db: Pick<Db, 'appendPipelineLog'>;
-    outputService: Pick<OutputService, 'restartPipelineOutputs' | 'restartRunningOutputs'>;
+    outputService: Pick<
+        OutputService,
+        'restartPipelineOutputs' | 'restartRunningOutputs' | 'takeInputFault'
+    >;
     inputState: InputState;
-    probes: Pick<ProbeScheduler, 'ensure' | 'clear'>;
+    probes: Pick<ProbeScheduler, 'ensure' | 'clear' | 'suspect'>;
     diagnostics?: DiagnosticsLogger;
 }
 
@@ -191,6 +194,11 @@ export function createInputLifecycle({
                 if (nowProtocol) {
                     if (probes.ensure(id, pipeline.streamKey, nowProtocol, staggers.ffprobe)) {
                         staggers.ffprobe++;
+                    }
+                    // An output's watchdog found this input stuck: probe its media again if
+                    // the last probe passed (the scheduler bounds how often).
+                    if (outputService.takeInputFault(id)) {
+                        probes.suspect(id, pipeline.streamKey, nowProtocol);
                     }
                 }
             } else if (!nowConnected) {

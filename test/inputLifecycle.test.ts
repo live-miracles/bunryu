@@ -64,6 +64,8 @@ function setup(t: TestContext) {
     const formatRestarts: FormatRestart[] = [];
     // What the fake probe scheduler answers: whether the call scheduled an ffprobe.
     const launches = { next: true };
+    // Pipelines whose outputs' watchdogs found their input stuck since the last poll.
+    const inputFaults = new Set<number>();
     const inputState = createInputState();
     const lifecycle = createInputLifecycle({
         db: {
@@ -79,6 +81,7 @@ function setup(t: TestContext) {
                 formatRestarts.push({ id, why, since });
                 return 3;
             },
+            takeInputFault: (id) => inputFaults.delete(id),
         },
         inputState,
         probes: {
@@ -88,6 +91,10 @@ function setup(t: TestContext) {
             },
             clear: (id: number) => {
                 probeCalls.push(['clear', id]);
+            },
+            suspect: (...args: Parameters<ProbeScheduler['suspect']>) => {
+                probeCalls.push(['suspect', ...args]);
+                return true;
             },
         },
         diagnostics: {
@@ -124,6 +131,7 @@ function setup(t: TestContext) {
         formatRestarts,
         staggers,
         launches,
+        inputFaults,
         observe,
         alerts,
         tick,
@@ -226,6 +234,44 @@ describe('input lifecycle: transitions', () => {
         lifecycle.keepOnly(new Set());
         observe(stream({ publish: { active: true, cid: 'cid-2' } }));
         assert.equal(events.filter((e) => e.event === 'input-publisher-transition').length, 0);
+    });
+});
+
+describe('input lifecycle: output watchdog faults', () => {
+    test('a connected input whose output watchdog fired is re-probed, once per fault', (t) => {
+        const { observe, probeCalls, inputFaults } = setup(t);
+        observe(stream());
+        probeCalls.length = 0;
+
+        inputFaults.add(1);
+        observe(stream());
+        assert.deepEqual(
+            probeCalls.map((c) => c.slice(0, 2)),
+            [
+                ['ensure', 1],
+                ['suspect', 1],
+            ],
+        );
+        assert.deepEqual(probeCalls[1], ['suspect', 1, 'key01', 'rtmp']);
+
+        probeCalls.length = 0;
+        observe(stream());
+        assert.deepEqual(
+            probeCalls.map((c) => c[0]),
+            ['ensure'],
+            'the fault was taken: the next poll asks for nothing',
+        );
+    });
+
+    test('a fault on a pipeline that is not connected is left to expire', (t) => {
+        const { observe, probeCalls, inputFaults } = setup(t);
+
+        inputFaults.add(1);
+        observe(undefined);
+        assert.equal(
+            probeCalls.some((c) => c[0] === 'suspect'),
+            false,
+        );
     });
 });
 
