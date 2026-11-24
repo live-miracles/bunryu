@@ -146,8 +146,8 @@ async function fetchAndRender(): Promise<void> {
     if (srtRelayBannerText) {
         srtRelayBannerText.textContent =
             state.health.srtRelay?.lastError && state.health.srtRelay.status !== 'running'
-                ? `SRT relay is not responding (${state.health.srtRelay.lastError}) — inputs on the bonded SRT port may be down; RTMP and direct SRT are unaffected`
-                : 'SRT relay is not running — inputs on the bonded SRT port are down; RTMP and direct SRT are unaffected';
+                ? `SRT relay is not responding (${state.health.srtRelay.lastError}) — SRT inputs sent through the relay may be down; RTMP and direct SRT are unaffected`
+                : 'SRT relay is not running — SRT inputs sent through the relay are down; RTMP and direct SRT are unaffected';
     }
     const showSrtPassphraseBanner = !isServerUnreachable() && !!state.config.srtPassphrasePending;
     const srtPassphraseBanner = document.getElementById('srt-passphrase-banner');

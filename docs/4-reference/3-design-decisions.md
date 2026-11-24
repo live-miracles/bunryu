@@ -184,28 +184,43 @@ timeout is not triggered by an empty publisher at boot.
 **Revisit when:** SRS accepts SRT groups natively (filed upstream as ossrs/srs#4771),
 which would make the relay unnecessary.
 
-### Plain SRT goes directly to SRS by default; the relay also accepts it
+### The dashboard offers SRT through the relay only; SRS's own SRT port stays open
 
-**Decision:** encoders publish plain SRT to SRS's SRT port by default. The
-relay's listener accepts a plain single-link SRT caller as well as a bonded
-group, so an operator can choose to send plain SRT through the relay. The
-dashboard shows such an input as a single link with the encoder's address
-(`input.peer` in the relay's `/status`), without the bonded-leg redundancy
-warnings.
+**Decision (November 2026):** the Publish card has two modes, **RTMP** and **SRT**, and
+SRT is the relay's port (`10081`) with a single-link and a bonded URL. The direct
+SRT port of SRS (`10080`) is no longer offered in the dashboard. It is still open
+and accepts publishers (an encoder already pointed at it keeps working, and its input
+card says it has no link statistics and which mode to use for them); nothing in SRS's
+or the control plane's configuration changed. Before this, the card offered three modes
+and direct SRT was the default.
 
-**Why direct stays the default, and what choosing the relay costs:**
+The relay's listener accepts a plain single-link SRT caller as well as a bonded
+group, and the dashboard shows such an input as a single link with the encoder's address
+(`input.peer` in the relay's `/status`), without the bonded-leg redundancy warnings.
+
+**Why the relay is the one offered:** only through it does an SRT input have loss,
+retransmit and drop statistics, per-leg health and the link alerts (SRS exposes none for
+an SRT publisher; see the next decision), and offering both left operators choosing
+between a stream they can watch and one they cannot.
+
+**What choosing the relay costs, accepted:**
 - SRS's SRT is also libsrt, so a bad network is handled by the same retransmission
   code either way.
-- Through the relay, SRS would only see `127.0.0.1`. That hides the encoder's IP
-  from the publish hook, the dashboard and rejected-publish tracking, and turns
-  SRS's per-client SRT stats into stats of the loopback hop.
-- It would add ~200 ms of latency and a second process every SRT input depends on;
-  a relay restart would drop all SRT inputs instead of only the bonded ones.
+- Through the relay, SRS only sees `127.0.0.1`. That hides the encoder's IP
+  from the publish hook, the dashboard's SRS-side views and rejected-publish tracking, and
+  turns SRS's per-client SRT stats into stats of the loopback hop. The relay's own status
+  carries the encoder's address, which is what the dashboard shows.
+- It adds ~200 ms of latency and a second process every SRT input depends on;
+  a relay restart drops all SRT inputs instead of only the bonded ones.
+
+**Revisit when:** the relay's extra hop or its being a single point of failure for every
+SRT input causes an incident, or SRS exposes SRT link statistics (ossrs/srs#4769), which
+would make the direct port as visible as the relay.
 
 ### Link stats for a direct SRT input are not read from SRS's log
 
 **Decision:** not implemented. A direct SRT input (port 10080) has no loss, retransmit
-or drop stats or alerts, and its card says to use the SRT relay port for them. The
+or drop stats or alerts, and its card says to use the SRT mode of the Publish card for them. The
 only source in SRS 6.0 is its log, which would need `srs_log_level trace`, and that
 is too risky for the journal.
 

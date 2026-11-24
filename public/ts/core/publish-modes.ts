@@ -1,16 +1,17 @@
-// The "Publish to this input" card: one input mode (RTMP, SRT or SRT Relay) is shown at
-// a time, each as rows of "label, value, copy". The value is shown shortened where
+// The "Publish to this input" card: one input mode (RTMP or SRT) is shown at a time, each
+// as rows of "label, value, copy". The value is shown shortened where
 // it is long, and masked where it is a secret (stream key, stream ID, passphrase);
 // copying always gives the real value, and the dashboard can reveal a secret row for a
 // few seconds. A stream key keeps its `keyNN_` prefix visible (not secret, and it says
 // which key it is); the passphrase is masked whole.
 
-export type PublishMode = 'rtmp' | 'srt' | 'relay';
+// SRT means the SRT relay (single link or bonded): it gives link statistics and alerts,
+// which SRT sent straight to SRS cannot, so that port is not offered here.
+export type PublishMode = 'rtmp' | 'srt';
 
 export const PUBLISH_MODES: { mode: PublishMode; label: string }[] = [
     { mode: 'rtmp', label: 'RTMP' },
     { mode: 'srt', label: 'SRT' },
-    { mode: 'relay', label: 'SRT Relay' },
 ];
 
 export const MASK = '••••••••';
@@ -28,12 +29,11 @@ export interface PublishRow {
 
 export interface PublishContext {
     rtmpUrl: string;
-    srtUrl: string;
     streamKey: string;
     passphrase: string;
     relayPort: number;
-    // The SRT Relay publish URL for a single link, and for a bonded group (it adds
-    // `grouptype=broadcast`).
+    // The SRT publish URL (through the relay) for a single link, and for a bonded group (it
+    // adds `grouptype=broadcast`).
     relayUrl: string;
     relayBondedUrl: string;
 }
@@ -43,11 +43,12 @@ interface LiveInput {
     srtBonding: { inputActive: boolean };
 }
 
-// The mode the encoder is publishing on right now, or null while nothing is.
+// The mode the encoder is publishing on right now, or null while nothing is, and for SRT
+// sent straight to SRS (no tab offers that port; the input's card says so).
 export function livePublishMode(pipeline: LiveInput): PublishMode | null {
-    if (pipeline.srtBonding.inputActive) return 'relay';
-    if (!pipeline.input.connected) return null;
-    return pipeline.input.isSrt ? 'srt' : 'rtmp';
+    if (pipeline.srtBonding.inputActive) return 'srt';
+    if (!pipeline.input.connected || pipeline.input.isSrt) return null;
+    return 'rtmp';
 }
 
 // A stream key with everything after its `keyNN_` prefix masked.
@@ -89,15 +90,10 @@ function row(
     };
 }
 
-// `srt://host:port?...` into host and port.
-function srtHostPort(url: string): { host: string; port: string } {
+// The host of an `srt://host:port?...` URL.
+function srtHost(url: string): string {
     const hostStart = 'srt://'.length;
-    const colon = url.indexOf(':', hostStart);
-    const end = url.indexOf('?', colon);
-    return {
-        host: url.slice(hostStart, colon),
-        port: url.slice(colon + 1, end > -1 ? end : undefined),
-    };
+    return url.slice(hostStart, url.indexOf(':', hostStart));
 }
 
 export function publishRows(mode: PublishMode, ctx: PublishContext): PublishRow[] {
@@ -112,23 +108,18 @@ export function publishRows(mode: PublishMode, ctx: PublishContext): PublishRow[
             row('Full URL', ctx.rtmpUrl, secrets, { primary: true }),
         ];
     }
-    const { host, port } = srtHostPort(ctx.srtUrl);
     const streamId = `#!::r=live/${ctx.streamKey},m=publish`;
     const maskedStreamId = { value: streamId, masked: maskSecrets(streamId, secrets) };
     const rows = [
-        row('Host', host, secrets),
-        row('Port', mode === 'relay' ? String(ctx.relayPort) : port, secrets),
+        row('Host', srtHost(ctx.relayUrl), secrets),
+        row('Port', String(ctx.relayPort), secrets),
         row('Stream ID', streamId, secrets, { secret: maskedStreamId }),
     ];
     if (ctx.passphrase)
         rows.push(row('Passphrase', ctx.passphrase, secrets, { secret: passphrase }));
-    if (mode === 'relay') {
-        rows.push(
-            row('Bonded URL', ctx.relayBondedUrl, secrets, { primary: true }),
-            row('Single-link URL', ctx.relayUrl, secrets, { primary: true }),
-        );
-    } else {
-        rows.push(row('Full URL', ctx.srtUrl, secrets, { primary: true }));
-    }
+    rows.push(
+        row('Single-link URL', ctx.relayUrl, secrets, { primary: true }),
+        row('Bonded URL', ctx.relayBondedUrl, secrets, { primary: true }),
+    );
     return rows;
 }

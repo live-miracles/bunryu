@@ -51,7 +51,7 @@ function renderMediaProbeNotice(input: PipelineView['input']): string {
 
 function renderDirectSrtNotice(relayPort: number | undefined): string {
     const port = relayPort ? ` (port ${relayPort})` : '';
-    return `<p class="text-xs text-muted mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Send plain SRT to the SRT relay input${port} to get them.</p>`;
+    return `<p class="text-xs text-muted mt-2">Sent straight to SRS: no packet loss or retransmit stats or alerts. Publish with the SRT mode of the Publish card${port} to get them.</p>`;
 }
 
 export function renderInputStats(input: PipelineView['input'], options: InputStatsOptions): string {

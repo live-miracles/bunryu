@@ -248,7 +248,7 @@ describe('renderInputStats', () => {
             relayPort: 10081,
         });
         assert.match(html, /Sent straight to SRS: no packet loss or retransmit stats/);
-        assert.match(html, /SRT relay input \(port 10081\)/);
+        assert.match(html, /SRT mode of the Publish card \(port 10081\)/);
     });
 
     test('shows no direct-SRT hint otherwise', () => {

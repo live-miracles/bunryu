@@ -1488,7 +1488,6 @@ function renderPublishCard(
 
     const rows = publishRows(mode, {
         rtmpUrl: pipeline.rtmpPublishUrl,
-        srtUrl: pipeline.srtPublishUrl,
         streamKey: pipeline.streamKey,
         ...relay,
     });

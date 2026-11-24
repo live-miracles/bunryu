@@ -12,7 +12,6 @@ import {
 
 const ctx = {
     rtmpUrl: 'rtmp://live.example.org:1935/live/key01_abcdef',
-    srtUrl: 'srt://live.example.org:10080?streamid=#!::r=live/key01_abcdef,m=publish&passphrase=pass%20phrase%2B1&pbkeylen=16',
     streamKey: 'key01_abcdef',
     passphrase: 'pass phrase+1',
     relayPort: 10081,
@@ -35,15 +34,15 @@ const pipeline = (connected: boolean, isSrt: boolean, relayActive = false) => ({
 });
 
 describe('livePublishMode', () => {
-    test('follows the protocol of the connected input', () => {
+    test('follows the protocol of the connected input; SRT sent straight to SRS is on no tab', () => {
         assert.equal(livePublishMode(pipeline(false, false)), null);
         assert.equal(livePublishMode(pipeline(true, false)), 'rtmp');
-        assert.equal(livePublishMode(pipeline(true, true)), 'srt');
+        assert.equal(livePublishMode(pipeline(true, true)), null);
     });
 
-    test('an input arriving through the relay is the relay mode, even before SRS accepts it', () => {
-        assert.equal(livePublishMode(pipeline(false, false, true)), 'relay');
-        assert.equal(livePublishMode(pipeline(true, true, true)), 'relay');
+    test('an input arriving through the relay is the SRT mode, even before SRS accepts it', () => {
+        assert.equal(livePublishMode(pipeline(false, false, true)), 'srt');
+        assert.equal(livePublishMode(pipeline(true, true, true)), 'srt');
     });
 });
 
@@ -81,16 +80,17 @@ describe('publishRows', () => {
         assert.equal(rows[2].primary, true);
     });
 
-    test('SRT: host, port, masked stream ID and passphrase, masked full URL', () => {
+    test('SRT uses the relay port and has a single-link and a bonded URL, in that order', () => {
         const rows = publishRows('srt', ctx);
         assert.deepEqual(
             rows.map((r) => [r.label, r.value]),
             [
                 ['Host', 'live.example.org'],
-                ['Port', '10080'],
+                ['Port', '10081'],
                 ['Stream ID', '#!::r=live/key01_abcdef,m=publish'],
                 ['Passphrase', 'pass phrase+1'],
-                ['Full URL', ctx.srtUrl],
+                ['Single-link URL', ctx.relayUrl],
+                ['Bonded URL', ctx.relayBondedUrl],
             ],
         );
         assert.equal(rows[2].shown, `#!::r=live/key01_${MASK},m=publish`);
@@ -98,24 +98,9 @@ describe('publishRows', () => {
         const shown = rows.map((r) => r.shown).join('\n');
         assert.ok(!shown.includes('key01_abcdef'));
         assert.ok(!shown.includes('phrase+1') && !shown.includes('phrase%2B1'));
-        assert.match(
-            rows[4].shown,
-            /^srt:\/\/live\.example\.org:10080\?streamid=#!::r=live\/key01_••••••••,m=publish&passphrase=••••••••&pbkeylen=16$/,
-        );
-    });
-
-    test('SRT Relay uses the relay port and has a bonded and a single-link URL', () => {
-        const rows = publishRows('relay', ctx);
-        assert.equal(row(rows, 'Port').value, '10081');
-        const bonded = row(rows, 'Bonded URL');
-        const single = row(rows, 'Single-link URL');
-        assert.equal(bonded.value, ctx.relayBondedUrl);
-        assert.equal(single.value, ctx.relayUrl);
-        assert.ok(bonded.value.includes('grouptype=broadcast'));
-        assert.ok(!single.value.includes('grouptype'));
-        assert.ok(!bonded.shown.includes('abcdef') && !single.shown.includes('abcdef'));
-        assert.ok(!rows.some((r) => r.label === 'Full URL'));
-        const bare = publishRows('relay', { ...ctx, passphrase: '' });
+        assert.ok(row(rows, 'Bonded URL').value.includes('grouptype=broadcast'));
+        assert.ok(!row(rows, 'Single-link URL').value.includes('grouptype'));
+        const bare = publishRows('srt', { ...ctx, passphrase: '' });
         assert.ok(!bare.some((r) => r.label === 'Passphrase'));
     });
 });

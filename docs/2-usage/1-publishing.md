@@ -2,12 +2,12 @@
 
 A **pipeline** is one live input. Creating a pipeline assigns it a stream key;
 the pipeline panel's **Publish to this input** card shows one input mode at a
-time (**RTMP**, **SRT** or **SRT Relay**), chosen with the buttons at its top. It
+time (**RTMP** or **SRT**), chosen with the buttons at its top. It
 follows the encoder: when a publisher connects the card switches to the mode it is
 using (marked with a green dot), and until the mode changes again a mode you picked
 stays. Each row shows a value, shortened with an ellipsis if it is long, and a
 copy button (two overlapping squares): server URL, key, stream ID or passphrase separately for encoders
-that ask for them in separate fields, and the full publish URL (SRT Relay has two: **Bonded URL** for an encoder that sends over several links, and **Single-link URL** for an ordinary one). The stream key and
+that ask for them in separate fields, and the full publish URL (SRT has two: **Single-link URL** for an ordinary encoder, and **Bonded URL** for one that sends over several links). The stream key and
 stream ID are masked after their `keyNN_` prefix (`key01_••••••••`) and the passphrase
 entirely; the eye button beside each shows the real value for 15 s, for typing it
 into an encoder by hand. Copy always copies the real value. When another pipeline uses the
@@ -17,9 +17,8 @@ only one of them can publish at a time.
 | Protocol | Port | URL shape |
 |----------|------|-----------|
 | RTMP | 21935/tcp | `rtmp://<public-host>:21935/live/<stream-key>` |
-| SRT | 10080/udp | `srt://<public-host>:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
-| SRT via relay | 10081/udp | `srt://<public-host>:10081?mode=caller&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
-| Bonded SRT | 10081/udp | `srt://<public-host>:10081?mode=caller&grouptype=broadcast&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
+| SRT (single link) | 10081/udp | `srt://<public-host>:10081?mode=caller&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
+| SRT (bonded) | 10081/udp | `srt://<public-host>:10081?mode=caller&grouptype=broadcast&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16` |
 
 `<public-host>` is the **Public Host** set in Settings. It is empty on a new install:
 the dashboard shows a banner asking for it, and the publish URLs use `localhost` until
@@ -36,16 +35,15 @@ bonded SRT for encoders that send the same stream over several network links
 ([Goryu](https://github.com/live-miracles/goryu))
 merges the links before SRS sees the stream.
 
-The relay port also accepts an ordinary single-link SRT connection: use the
-relay URL without `grouptype=broadcast`. The dashboard then shows it as an
-"SRT input via relay" with the encoder's IP, instead of a bonded group. This is
-optional. Plain SRT sent straight to port 10080 avoids the relay's extra hop
-(about 200 ms) and keeps the stream independent of the relay process; see
+SRT goes through the relay in both cases. For an ordinary encoder use the
+single-link URL; the dashboard shows it as an "SRT input via relay" with the encoder's IP,
+instead of a bonded group. SRS's own SRT port (10080) is not offered in the
+dashboard, because SRS does not expose packet loss, retransmit or drop counters for an SRT
+publisher: a stream sent straight to it has no link statistics or loss alerts (its input
+card says so and points to the SRT mode), while through the relay you get them. An
+encoder already publishing to 10080 keeps working. The relay adds about 200 ms and a
+second process that SRT inputs depend on; see
 [SRT ingest](../4-reference/3-design-decisions.md#srt-ingest).
-The trade-off is visibility: SRS does not expose packet loss, retransmit or drop
-counters for an SRT publisher, so a stream sent straight to 10080 has no link
-statistics or loss alerts in the dashboard (its input card says so). Through the
-relay you get them, so use the bonded port when you want to watch the link.
 While an encoder is publishing through the relay, the pipeline shows the SRT Relay card
 under the input's video and audio details, whichever Publish mode is selected. It keeps a compact summary
 visible; select the **Detailed stats** icon (bars) in the card's top right corner to open a dialog sized to its
@@ -180,18 +178,8 @@ ffmpeg -re -stream_loop -1 -i video.mp4 \
   -f flv rtmp://localhost:21935/live/<stream-key>
 ```
 
-SRT (if the passphrase check is disabled, drop
-`&passphrase=<passphrase>&pbkeylen=16`):
-
-```bash
-ffmpeg -re -stream_loop -1 -i video.mp4 \
-  -c:v libx264 -preset veryfast -b:v 2500k -x264-params "repeat-headers=1" \
-  -c:a aac -b:a 128k \
-  -f mpegts 'srt://localhost:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16'
-```
-
-For a normal single-link SRT connection through the relay, use port 10081 without
-`grouptype=broadcast`:
+SRT, single link, through the relay (if the passphrase check is disabled, drop
+`&passphrase=<passphrase>&pbkeylen=16`; for a bonded group add `grouptype=broadcast`):
 
 ```bash
 ffmpeg -re -stream_loop -1 -i video.mp4 \
@@ -209,7 +197,7 @@ ffmpeg -re -stream_loop -1 -i video.mp4 \
   -x264-params "repeat-headers=1" \
   -force_key_frames 'expr:gte(t,n_forced*2)' -g 60 -keyint_min 60 -sc_threshold 0 \
   -c:a aac -b:a 128k \
-  -f mpegts 'srt://localhost:10080?streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16'
+  -f mpegts 'srt://localhost:10081?mode=caller&streamid=#!::r=live/<stream-key>,m=publish&passphrase=<passphrase>&pbkeylen=16'
 ```
 
 ## Checking the input
