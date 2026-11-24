@@ -165,6 +165,7 @@ function makeFakeOutputService() {
             formatRestarts.push({ pipelineId, why, startedBeforeMs });
             return 3;
         },
+        takeInputFault: () => false,
     } as unknown as OutputService & {
         restarts: typeof restarts;
         formatRestarts: typeof formatRestarts;
