@@ -2,7 +2,7 @@ import { healthNowMs } from '../core/state.js';
 import { escapeHtml, formatAgo, formatLocalDateTime, formatUptime } from '../core/utils.js';
 import { lastErrorLine, statusColor } from '../core/status.js';
 import type { StatusIssue } from '../core/status.js';
-import { renderStatusTooltip, splitDotGradient } from './status-tooltip.js';
+import { issueLinesHtml, splitDotGradient } from './status-tooltip.js';
 import {
     ICON_HISTORY,
     ICON_ITERATION_CW,
@@ -62,39 +62,32 @@ function plural(n: number, one: string, many: string): string {
     return `${n} ${n === 1 ? one : many}`;
 }
 
-// The two-half dot and the tooltip that says what each half means.
-function renderStatusDot(rendition: OutputView, input: PipelineView['input']): string {
+// The two-half dot, and under the row the problems behind each half (or that the encode is
+// idle), like the SRT Relay card: the text is on the card, not in a hover.
+function renderStatus(
+    rendition: OutputView,
+    input: PipelineView['input'],
+): { dot: string; issues: string } {
     // The encode's own verdict leaves out "the input is not live": the other half says it.
     const indicator = sharedEncodeIndicator(
         rendition,
         rendition.verdict.withoutInput ?? rendition.verdict,
         input.verdict,
     );
-    const tooltip = renderStatusTooltip(
-        {
-            label: 'FFmpeg',
-            issues: indicator.ffmpeg.issues,
-            active: indicator.ffmpeg.status !== 'off',
-            ok: 'Encoding normally.',
-            off: 'Not running.',
-        },
-        {
-            label: 'SRS input',
-            issues: indicator.input.issues,
-            active: indicator.input.status !== 'off',
-            ok: 'Input is live.',
-            off: 'No input on this stream key.',
-        },
-        indicator.idle ? 'Idle: it starts with the first output that uses it.' : undefined,
-    );
     const gradient = splitDotGradient(
         statusColor(indicator.ffmpeg.status),
         statusColor(indicator.input.status),
     );
-    return `<span class="js-tooltip shrink-0 mx-1" tabindex="0">
-        <div aria-label="status" class="border-base-content/15 h-5 w-5 overflow-hidden rounded-full border" style="background-image: ${gradient}"></div>
-        <div class="js-tooltip-content hidden">${tooltip}</div>
-    </span>`;
+    const dot = `<div aria-label="status" title="Left half: this encode's FFmpeg. Right half: the pipeline's input in SRS." class="split-dot border-base-content/15 mx-1 h-5 w-5 shrink-0 overflow-hidden rounded-full border" style="background-image: ${gradient}"></div>`;
+    const lines = indicator.idle
+        ? '<div class="text-xs leading-snug text-muted">Idle: it starts with the first output that uses it.</div>'
+        : issueLinesHtml([...indicator.ffmpeg.issues, ...indicator.input.issues], true);
+    return {
+        dot,
+        issues: lines
+            ? `<div class="pl-2 mt-0.5 min-w-0" data-shared-encode-issues>${lines}</div>`
+            : '',
+    };
 }
 
 function renderRow(
@@ -143,6 +136,7 @@ function renderRow(
     const canRestart = rendition.status === 'running' && !deps.restartLocked(rendition.id);
     // Square icon button like the Start/Stop button of an output card.
     const restartBtn = `<button class="btn btn-xs btn-square btn-warning btn-outline" data-action="restart-shared" data-out-id="${escapeHtml(rendition.id)}" title="Restart this shared encode; its outputs reconnect" aria-label="Restart"${canRestart ? '' : ' disabled'}>${ICON_RESTART}</button>`;
+    const status = renderStatus(rendition, input);
     const dependentLines = rendition.dependents.length
         ? rendition.dependents
               .map((d) => `<div class="text-xs leading-snug">${escapeHtml(d.name)}</div>`)
@@ -157,7 +151,7 @@ function renderRow(
     <div class="bg-base-100 px-2.5 py-1.5 border border-base-content/10 rounded-lg w-full min-w-0 space-y-0" data-shared-encode="${escapeHtml(rendition.id)}">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <div class="flex items-center gap-2 shrink-0 font-semibold">
-                ${renderStatusDot(rendition, input)}
+                ${status.dot}
                 ${restartBtn}
             </div>
             <span class="js-tooltip inline-flex items-center gap-2" tabindex="0">
@@ -171,6 +165,7 @@ function renderRow(
                 ${historyBtn}
             </div>
         </div>
+        ${status.issues}
         ${errorHtml}
     </div>`;
 }

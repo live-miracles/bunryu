@@ -471,11 +471,9 @@ describe('Shared encodes card', () => {
 
     describe('status dot', () => {
         const dot = (html: string) => firstMatch(html, /<div aria-label="status"[^>]*>/)[0];
-        const tooltip = (html: string) =>
-            firstMatch(
-                html,
-                /aria-label="status"[\s\S]*?<div class="js-tooltip-content hidden">([\s\S]*?)<\/div>\s*<\/span>/,
-            )[1];
+        // The text of the problems, on the row under the dot.
+        const issues = (html: string) =>
+            firstMatch(html, /data-shared-encode-issues>((?:<div[^>]*>[^<]*<\/div>)+)<\/div>/)[1];
 
         test('is split: the left half is FFmpeg, the right half is the SRS input', () => {
             const html = renderSharedEncodeRows(
@@ -491,7 +489,7 @@ describe('Shared encodes card', () => {
             );
         });
 
-        test('the tooltip lists each side under its own heading', () => {
+        test('lists the problems of both halves on the row, with no tooltip', () => {
             const html = renderSharedEncodeRows(
                 withSides(pipelineWith(), {
                     ffmpeg: side('error', [{ severity: 'error', message: 'enc died' }]),
@@ -499,25 +497,20 @@ describe('Shared encodes card', () => {
                 }),
                 deps(),
             );
-            const tip = tooltip(html);
+            const text = issues(html);
+            assert.match(text, /<div class="text-error text-xs leading-snug">enc died<\/div>/);
             assert.match(
-                tip,
-                /FFmpeg<\/div><div class="text-error text-xs leading-snug">enc died<\/div>/,
+                text,
+                /<div class="text-warning text-xs leading-snug">no keyframes<\/div>/,
             );
-            assert.match(
-                tip,
-                /SRS input<\/div><div class="text-warning text-xs leading-snug">no keyframes<\/div>/,
-            );
+            assert.ok(text.indexOf('enc died') < text.indexOf('no keyframes'), 'FFmpeg first');
+            assert.ok(!/aria-label="status"[^>]*js-tooltip/.test(html));
         });
 
-        test('a healthy side says so, and a side that is off says why', () => {
-            const ok = tooltip(renderSharedEncodeRows(pipelineWith(), deps()));
-            assert.match(ok, /Encoding normally\./);
-            assert.match(ok, /Input is live\./);
-            const noInput = tooltip(
-                renderSharedEncodeRows(withSides(pipelineWith(), { input: side('off') }), deps()),
+        test('a healthy encode lists nothing', () => {
+            assert.ok(
+                !/data-shared-encode-issues/.test(renderSharedEncodeRows(pipelineWith(), deps())),
             );
-            assert.match(noInput, /No input on this stream key\./);
         });
 
         test('an encode nobody uses is grey on both sides and says it is idle', () => {
@@ -535,7 +528,8 @@ describe('Shared encodes card', () => {
                 dot(html),
                 /var\(--dot-off\) 0 45%, transparent 45% 55%, var\(--dot-off\) 55% 100%/,
             );
-            assert.match(tooltip(html), /Idle: it starts with the first output that uses it\./);
+            assert.match(issues(html), /Idle: it starts with the first output that uses it\./);
+            assert.ok(!/>z</.test(html), 'the input problem is not listed while idle');
         });
     });
 

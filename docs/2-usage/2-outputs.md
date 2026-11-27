@@ -106,8 +106,8 @@ are not counted among your outputs.
 
 **In the dashboard.** The pipeline's side column has a **Shared encodes** card
 with one row per encode, laid out like an output card: a status dot split like the SRT
-Relay's (the left half is the encode's FFmpeg, the right half the pipeline's SRS input;
-hover for what is wrong on each side, and it is grey while no output uses the encode), a restart button
+Relay's (the left half is the encode's FFmpeg, the right half the pipeline's SRS input; what is
+wrong on either side is listed under the row, and the dot is grey, with a note, while no output uses the encode), a restart button
 (after a confirmation; its outputs reconnect), the encoding as badges (the video
 encoding unless it is `copy`, and the audio track as `T1`, `T2`, …, where `T1` is
 track 0), its uptime, how many outputs use it and how many are reading it now ("2 outs · 1

@@ -374,8 +374,8 @@ only for a new module.
   operation and its refresh end, however they end (`whilePending`);
   `core/alert-sound.ts` decides which changes between polls beep;
   `features/sound-alerts.ts` is the navbar bell and volume and plays the beeps.
-  `features/status-tooltip.ts` is the hover text and gradient of every two-half
-  status dot (pipeline list, relay card, shared encode row).
+  `features/status-tooltip.ts` is the gradient of every two-half status dot and the hover text
+  of the pipeline list's (the relay card and a shared encode row list their problems on the card).
   `core/hints.ts` maps known FFmpeg errors, warnings and alert codes to the
   one-line "Hint:" advice under them.
 - `test/*.test.ts` unit tests and `test/integration/` API tests (`npm test`). They are

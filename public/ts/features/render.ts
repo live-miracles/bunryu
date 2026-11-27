@@ -502,7 +502,7 @@ function renderPipelineList(): void {
         return `<li data-pipeline-id="${p.id}" data-group-key="${groupKey}" draggable="true" class="cursor-grab" title="Drag to reorder">
             <div class="group/pipe flex items-center gap-2 ${selected} cursor-pointer js-select-pipeline" data-id="${p.id}">
                 <div class="js-tooltip shrink-0">
-                    <div class="rounded-box h-5 w-5" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
+                    <div class="split-dot rounded-box h-5 w-5" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
                     <div class="js-tooltip-content hidden">${statusTooltip}</div>
                 </div>
                 ${statusBadge(outGood, 'badge-success')}
@@ -731,7 +731,7 @@ function renderGroupHeader(
     const outColor = statusColor(problems.output);
 
     const summary = collapsed
-        ? `<div class="rounded-box h-5 w-5 shrink-0" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
+        ? `<div class="split-dot rounded-box h-5 w-5 shrink-0" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
            ${statusBadge(outs.good, 'badge-success')}
            ${statusBadge(outs.warn, 'badge-warning')}
            ${statusBadge(outs.error, 'badge-error')}

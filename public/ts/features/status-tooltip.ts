@@ -4,9 +4,9 @@ import type { StatusIssue } from '../core/status.js';
 
 export type { StatusIssue };
 
-// The hover text of a two-half status dot, shared by the pipeline list, the SRT Relay
-// card and a shared encode row, so all three read the same way: each half has a
-// heading, then what is wrong with it, or why nothing is.
+// The hover text of the pipeline list's two-half status dot: each half has a heading, then
+// what is wrong with it, or why nothing is. The SRT Relay card and a shared encode row list
+// their problems on the card instead.
 
 export const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 
