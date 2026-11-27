@@ -145,6 +145,17 @@ describe('renderInputStats', () => {
         assert.match(html, /title="When ffprobe last read the input: \d/);
     });
 
+    test('the probe again button spins and is disabled while a probe is pending', () => {
+        for (const over of [{}, { mediaOk: null }]) {
+            const idle = renderInputStats(input(over), {});
+            assert.match(idle, /data-action="reprobe" title="Probe the input again"/);
+            assert.doesNotMatch(idle, /loading-xs/);
+            const pending = renderInputStats(input(over), { reprobing: true });
+            assert.match(pending, /data-action="reprobe" disabled title="Probing the input…"/);
+            assert.match(pending, /loading-xs/);
+        }
+    });
+
     test('the pipeline page says since when for a failed probe and for each waiting state', () => {
         const ago = Date.now() - 4 * 60_000;
         const failed = renderInputStats(

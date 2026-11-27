@@ -20,6 +20,9 @@ type InputStatsOptions = {
     // loss/retransmit counters for it, so the card says so and where to get them.
     directSrt?: boolean;
     relayPort?: number;
+    // A probe was asked for and its result has not landed yet: the button is disabled
+    // and spins, so the click is seen and a second one cannot land.
+    reprobing?: boolean;
 };
 
 function formatMediaProbeStatus(input: InputHealth): string | null {
@@ -34,9 +37,12 @@ function formatMediaProbeStatus(input: InputHealth): string | null {
 }
 
 // Asks the server for a fresh ffprobe of the connected input; render.ts handles the click.
-const REPROBE_BUTTON = `<button class="btn btn-xs btn-square btn-ghost shrink-0" data-action="reprobe" title="Probe the input again" aria-label="Probe the input again">${ICON_RESTART}</button>`;
+function reprobeButton(reprobing: boolean | undefined): string {
+    const label = reprobing ? 'Probing the input…' : 'Probe the input again';
+    return `<button class="btn btn-xs btn-square btn-ghost shrink-0" data-action="reprobe"${reprobing ? ' disabled' : ''} title="${label}" aria-label="${label}">${reprobing ? '<span class="loading loading-xs"></span>' : ICON_RESTART}</button>`;
+}
 
-function renderMediaProbeNotice(input: PipelineView['input']): string {
+function renderMediaProbeNotice(input: PipelineView['input'], reprobing?: boolean): string {
     // Shown only while the input is not good yet, so the verdict's first issue is why.
     const issue = input.verdict.issues[0];
     const message = issue?.message ?? '';
@@ -46,7 +52,7 @@ function renderMediaProbeNotice(input: PipelineView['input']): string {
     const since = issue?.sinceMs
         ? ` <span class="text-muted" title="${formatLocalDateTime(issue.sinceMs)}">since ${formatAgo(issue.sinceMs, healthNowMs())}</span>`
         : '';
-    return `<div class="mt-2 flex items-start justify-between gap-2"><p class="text-xs ${toneClass}">${escapeHtml(message)}${since}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>${REPROBE_BUTTON}</div>`;
+    return `<div class="mt-2 flex items-start justify-between gap-2"><p class="text-xs ${toneClass}">${escapeHtml(message)}${since}${probeStatus ? ` <span class="text-muted">${escapeHtml(probeStatus)}</span>` : ''}</p>${reprobeButton(reprobing)}</div>`;
 }
 
 function renderDirectSrtNotice(relayPort: number | undefined): string {
@@ -63,7 +69,7 @@ export function renderInputStats(input: PipelineView['input'], options: InputSta
     // SRT inputs never populate that fallback (srt_to_rtmp is off), which is
     // why this only ever masked errors on RTMP-sourced pipelines.
     if (!input.live || input.mediaError || input.mediaOk === null) {
-        return renderMediaProbeNotice(input);
+        return renderMediaProbeNotice(input, options.reprobing);
     }
 
     const v = videoSpec(input.video);
@@ -80,7 +86,7 @@ export function renderInputStats(input: PipelineView['input'], options: InputSta
     const probed = input.mediaCheckedAt
         ? `<span class="text-muted shrink-0" title="When ffprobe last read the input: ${formatLocalTime(input.mediaCheckedAt)}">probed ${formatAgo(input.mediaCheckedAt, healthNowMs())}</span>`
         : '';
-    const probedWithButton = `<span class="flex shrink-0 items-center gap-1">${probed}${REPROBE_BUTTON}</span>`;
+    const probedWithButton = `<span class="flex shrink-0 items-center gap-1">${probed}${reprobeButton(options.reprobing)}</span>`;
     const keyframes = input.keyframes;
     const keyframesTooLong = (input.alerts ?? []).some((a) => a.code === 'input-keyframe-interval');
     // The same issues the status dot lists on hover (no audio, a low bitrate, the input

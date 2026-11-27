@@ -133,6 +133,12 @@ const OUTPUT_VIDEO_PRESETS: Record<string, OutputVideoDisplayPreset> = {
 };
 
 const pendingOutputs: PendingOutputs = new Set();
+// Pipelines whose Probe again was clicked, with the probe time the card showed then. The card
+// is redrawn every poll, so the click is remembered here: the button stays disabled until
+// the health shows a newer probe, or REPROBE_PENDING_MAX_MS passes (a probe can take 20 s to
+// time out, and one the server refused or that never lands must not leave it disabled).
+const REPROBE_PENDING_MAX_MS = 15_000;
+const reprobing = new Map<string, { checkedAt: number | null; until: number }>();
 const METRIC_WARN_PERCENT = 70;
 const METRIC_ERROR_PERCENT = 90;
 
@@ -1217,6 +1223,37 @@ export function renderSrtPassphraseReset(): void {
         'A new one applies after the server or container restarts, and it can only be reset while nothing is live or running.';
 }
 
+function isReprobing(pipeline: PipelineView): boolean {
+    const click = reprobing.get(pipeline.id);
+    if (!click) return false;
+    if (pipeline.input.mediaCheckedAt !== click.checkedAt || Date.now() >= click.until) {
+        reprobing.delete(pipeline.id);
+        return false;
+    }
+    return true;
+}
+
+async function startReprobe(pipeline: PipelineView): Promise<void> {
+    reprobing.set(pipeline.id, {
+        checkedAt: pipeline.input.mediaCheckedAt,
+        until: Date.now() + REPROBE_PENDING_MAX_MS,
+    });
+    renderPipelines();
+    // The expiry is checked when drawing, so this only draws once more at the end.
+    setTimeout(renderPipelines, REPROBE_PENDING_MAX_MS);
+    // The API shows its own error and answers null when it refuses (nothing connected, a
+    // probe already running).
+    let accepted = false;
+    try {
+        accepted = (await reprobeInput(pipeline.id)) !== null;
+    } finally {
+        if (!accepted) {
+            reprobing.delete(pipeline.id);
+            renderPipelines();
+        }
+    }
+}
+
 function renderPipelineInfo(selectedId: string | null): void {
     const pipeline = selectedId ? state.pipelines.find((p) => p.id === selectedId) : null;
     const col = document.getElementById('pipe-info-col');
@@ -1298,13 +1335,14 @@ function renderPipelineInfo(selectedId: string | null): void {
         sourceIp: relaySourceIp(pipeline),
         directSrt: pipeline.input.isSrt && !pipeline.srtBonding.acceptedBySrs,
         relayPort: state.health.srtRelay?.port,
+        reprobing: isReprobing(pipeline),
     });
     if (statsContainer) statsContainer.classList.toggle('hidden', !pipeline.input.connected);
     if (statsEl) {
         statsEl.innerHTML = inputHtml;
         statsEl.onclick = (e) => {
             const btn = (e.target as Element).closest('[data-action="reprobe"]');
-            if (btn) void reprobeInput(pipeline.id);
+            if (btn && !isReprobing(pipeline)) void startReprobe(pipeline);
         };
     }
     renderSharedEncodes(pipeline);
