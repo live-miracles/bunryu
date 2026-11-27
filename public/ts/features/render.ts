@@ -502,7 +502,7 @@ function renderPipelineList(): void {
         return `<li data-pipeline-id="${p.id}" data-group-key="${groupKey}" draggable="true" class="cursor-grab" title="Drag to reorder">
             <div class="group/pipe flex items-center gap-2 ${selected} cursor-pointer js-select-pipeline" data-id="${p.id}">
                 <div class="js-tooltip shrink-0">
-                    <div class="split-dot rounded-box h-5 w-5" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
+                    <div class="split-dot" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
                     <div class="js-tooltip-content hidden">${statusTooltip}</div>
                 </div>
                 ${statusBadge(outGood, 'badge-success')}
@@ -731,7 +731,7 @@ function renderGroupHeader(
     const outColor = statusColor(problems.output);
 
     const summary = collapsed
-        ? `<div class="split-dot rounded-box h-5 w-5 shrink-0" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
+        ? `<div class="split-dot" style="background-image:${splitDotGradient(inColor, outColor)}"></div>
            ${statusBadge(outs.good, 'badge-success')}
            ${statusBadge(outs.warn, 'badge-warning')}
            ${statusBadge(outs.error, 'badge-error')}
@@ -1348,7 +1348,6 @@ function renderPipelineInfo(selectedId: string | null): void {
     renderSharedEncodes(pipeline);
     const bondingCard = document.getElementById('srt-bonding-card');
     const bondingDot = document.getElementById('srt-bonding-status-dot');
-    const bondingDotFill = document.getElementById('srt-bonding-status-fill');
     const bondingIssues = document.getElementById('srt-bonding-issues');
     const bondingStats = document.getElementById('srt-bonding-stats');
     const bondingLegs = document.getElementById('srt-bonding-legs');
@@ -1391,10 +1390,9 @@ function renderPipelineInfo(selectedId: string | null): void {
     // Shown whenever relay input is arriving, whichever Publish mode is selected.
     bondingCard?.classList.toggle('hidden', !bondingInputActive);
     bondingCard?.classList.remove('text-muted');
-    if (bondingDot && bondingDotFill) {
+    if (bondingDot) {
         const indicator = getBondingIndicator(pipeline, relayProcessRunning);
-        bondingDotFill.style.backgroundColor = 'transparent';
-        bondingDotFill.style.backgroundImage = splitDotGradient(
+        bondingDot.style.backgroundImage = splitDotGradient(
             indicator.leftColor,
             indicator.rightColor,
         );

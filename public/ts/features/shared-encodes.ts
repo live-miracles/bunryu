@@ -78,7 +78,7 @@ function renderStatus(
         statusColor(indicator.ffmpeg.status),
         statusColor(indicator.input.status),
     );
-    const dot = `<div aria-label="status" title="Left half: this encode's FFmpeg. Right half: the pipeline's input in SRS." class="split-dot border-base-content/15 mx-1 h-5 w-5 shrink-0 overflow-hidden rounded-full border" style="background-image: ${gradient}"></div>`;
+    const dot = `<div aria-label="status" title="Left half: this encode's FFmpeg. Right half: the pipeline's input in SRS." class="split-dot mx-1" style="background-image: ${gradient}"></div>`;
     const lines = indicator.idle
         ? '<div class="text-xs leading-snug text-muted">Idle: it starts with the first output that uses it.</div>'
         : issueLinesHtml([...indicator.ffmpeg.issues, ...indicator.input.issues], true);

@@ -495,10 +495,17 @@
         cursor: pointer;
     }
 
-    /* A two-half status dot's gradient (splitDotGradient): painted once over the whole box.
-       The default repeat tiles it into a dot's 1px border, which then shows the other half's
+    /* The two-half status dot of a pipeline, the SRT Relay and a shared encode: a circle
+       whose background-image is splitDotGradient. The gradient is painted once over the whole
+       box: the default repeat tiles it into the 1px border, which then shows the other half's
        colour at the edge (a sliver of the right half's yellow on the left). */
     .split-dot {
+        width: 1.25rem;
+        height: 1.25rem;
+        flex-shrink: 0;
+        overflow: hidden;
+        border-radius: 9999px;
+        border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
         background-repeat: no-repeat;
         background-origin: border-box;
     }
