@@ -97,7 +97,7 @@ export function renderInputStats(input: PipelineView['input'], options: InputSta
         <div class="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-0.5 text-xs">
             <span class="text-muted">Source</span>
             <div class="flex min-w-0 justify-between gap-2"><span class="font-mono">${source}</span>${probedWithButton}</div>
-            ${row('Video', v ? escapeHtml(v) : '—')}
+            ${row('Video', v ?? '—')}
             ${audioLines.length > 0 ? row('Audio', audioLines.join('<br>')) : ''}
             ${keyframes ? row('Keyframes', `<span class="${keyframesTooLong ? 'text-warning' : ''}" title="Measured over ${keyframes.windowSec} s of video about a minute after the publisher connected. Platforms need a keyframe at least every 4 s; 2 s is recommended.">${escapeHtml(keyframeSpec(keyframes))}</span>`) : ''}
         </div>

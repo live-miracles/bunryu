@@ -38,6 +38,11 @@ describe('videoSpec', () => {
         );
     });
 
+    test('escapes the codec, profile and level, which come from ffprobe and SRS', () => {
+        const spec = videoSpec({ ...video, codec: '<b>', profile: '"x"', level: '<i>' });
+        assert.equal(spec, '&lt;b&gt; 1920x1080p50 &quot;x&quot; L&lt;i&gt;');
+    });
+
     test('is null until the size is known', () => {
         assert.equal(videoSpec({ ...video, width: 0 }), null);
         assert.equal(videoSpec(null), null);
@@ -100,6 +105,12 @@ describe('audioSpecLines', () => {
         assert.deepEqual(audioSpecLines([track({ pid: 257 })], null), [
             'Track 1: aac LC 2ch 48kHz',
         ]);
+    });
+
+    test('escapes the codec and profile', () => {
+        const lines = audioSpecLines([track({ codec: '<img src=x>', profile: '"><svg>' })], null);
+        assert.ok(!lines[0].includes('<img') && !lines[0].includes('<svg'));
+        assert.match(lines[0], /&lt;img src=x&gt; &quot;&gt;&lt;svg&gt;/);
     });
 
     test('falls back to the single SRS audio when there are no tracks', () => {

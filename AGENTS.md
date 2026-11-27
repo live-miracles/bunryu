@@ -159,6 +159,11 @@ find every doc page that describes it and update it in the same change. Search
 - **`docs/3-operations/`**:
   - security, configuration (`bunryu.json` keys), reliability (watchdogs and
     recovery);
+  - the [security review](docs/3-operations/6-security-review.md), the document
+    handed to security reviewers: when a change adds, weakens or removes a control, or
+    accepts a new risk (a default, an open port, a trust assumption), update its tables
+    and its "Points a review may raise" section, and keep it professional: reasons and
+    mitigations, no change history;
   - known issues: add workarounds, and remove entries that no longer apply.
 - **`docs/4-reference/1-api.md`** for any added or changed route, request body or
   response.
@@ -281,7 +286,8 @@ only for a new module.
   `rejectedPublishes.ts`.
   `src/utils/logThrottle.ts` is the shared "log the first, count the rest" rule (rejected
   publishes, cross-protocol refusals, shared-encode reconcile errors).
-- `src/api/*` - REST routes; `errors.ts` is the JSON error handler (also on the hook app). `events.ts`
+- `src/api/*` - REST routes; `errors.ts` is the JSON error handler (also on the hook app). `securityHeaders.ts` has the
+  response headers on every dashboard answer and the refusal of cross-site writes. `events.ts`
   serves the Logs page's Events table, which `utils/activityFeed.ts` merges on request from the
   pipeline log lines, each output's History and the Server events. `srs.ts` has the SRS `on_publish`/`on_play` hooks
   and journal log tails; `auth.ts` login/sessions.

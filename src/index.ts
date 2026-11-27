@@ -37,6 +37,7 @@ import { EXIT_NEEDS_OPERATOR } from './utils/configCheck.js';
 import { createDiagnosticsLogger, runLogged } from './utils/diagnostics.js';
 import { checkFfmpeg } from './utils/ffmpegCheck.js';
 import { jsonErrorHandler } from './api/errors.js';
+import { rejectCrossSiteWrites, securityHeaders } from './api/securityHeaders.js';
 import { createRenditionReconciler } from './services/renditions.js';
 import { enforceDestinationPolicy } from './services/destinationPolicy.js';
 import { readSrsConfigValues } from './utils/srsConfig.js';
@@ -48,15 +49,8 @@ const PORT = readAppConfig().port;
 const HOOK_PORT = readAppConfig().hookPort;
 app.disable('x-powered-by');
 if (readAppConfig().trustProxy > 0) app.set('trust proxy', readAppConfig().trustProxy);
-// Baseline hardening headers. A full CSP is not possible yet (the dashboard
-// still uses inline event handlers); framing and sniffing are closed off.
-app.use((_req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    next();
-});
+app.use(securityHeaders);
+app.use(rejectCrossSiteWrites);
 
 // gzip responses. The /api/config and /api/health JSON for dozens of inputs and
 // hundreds of outputs is large and re-fetched by every dashboard client on the 5s poll;

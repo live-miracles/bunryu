@@ -24,8 +24,14 @@ Hardening that is on by default:
 - **Login rate limit:** 5 failures per minute per client, grouped per IPv6 /64.
   Behind a proxy set `trust_proxy`, or every user shares the proxy's address.
 - **Headers:** `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`,
-  `Referrer-Policy: no-referrer`. A full CSP is not possible until the dashboard's
-  inline event handlers are removed.
+  `Referrer-Policy: no-referrer`, a `Permissions-Policy` that turns off camera,
+  microphone, location and payment, `Cross-Origin-Resource-Policy: same-origin`,
+  `Strict-Transport-Security` when the request came over TLS, and `Cache-Control:
+  no-store` on every `/api` answer (they carry stream keys and the SRT passphrase). A
+  full CSP is not possible until the dashboard's inline event handlers are removed.
+- **Cross-site writes:** a `POST`/`DELETE` that the browser marks `Sec-Fetch-Site:
+  cross-site` or `same-site` is refused with 403, on top of the `SameSite=Strict`
+  cookie. Requests without that header (scripts, `curl`) are unaffected.
 - **Logs are not redacted:** journald, the diagnostics files, the output History
   and the dashboard keep FFmpeg's stderr as-is, including full
   destination URLs, stream keys and SRT passphrases. They are private to the

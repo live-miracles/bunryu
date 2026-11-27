@@ -16,6 +16,7 @@
 ## Operations
 
 - [Security](3-operations/1-security.md): authentication, hardening, ingest protection
+- [Security review](3-operations/6-security-review.md): trust boundaries, controls, and the points a reviewer may raise with the reason each is accepted
 - [Remote access](3-operations/2-remote-access.md): Cloudflare Tunnel for the dashboard
 - [Configuration](3-operations/3-configuration.md): `bunryu.json`, diagnostics, environment overrides
 - [Reliability](3-operations/4-reliability.md): watchdogs and how failures are detected and recovered

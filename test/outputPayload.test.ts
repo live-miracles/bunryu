@@ -128,6 +128,13 @@ describe('ansiLineToHtml', () => {
         assert.equal(ansiLineToHtml('\x1b[33mwarn'), '<span class="text-warning">warn</span>');
     });
 
+    test('closes every span a multi-colour sequence opened', () => {
+        assert.equal(
+            ansiLineToHtml('\x1b[31;33mx'),
+            '<span class="text-error"><span class="text-warning">x</span></span>',
+        );
+    });
+
     test('escapes the text and ignores codes it has no colour for', () => {
         assert.equal(ansiLineToHtml('\x1b[1m<b>&</b>'), '&lt;b&gt;&amp;&lt;/b&gt;');
     });

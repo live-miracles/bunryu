@@ -81,6 +81,15 @@ describe('checkOutputDestination', () => {
         assert.match(await refusal('rtmp://example.com@127.0.0.1:8080/live/k'), /loopback/);
     });
 
+    // FFmpeg starts the host after the LAST '@' of the authority.
+    test('several @ in the authority cannot hide the real host either', async () => {
+        assert.match(await refusal('rtmp://a@b@169.254.169.254/live/k'), /link-local/);
+        assert.match(await refusal('rtmps://a:b@c@d@127.0.0.1:8080/live/k'), /loopback/);
+        assert.match(await refusal('srt://a@b@169.254.169.254:80?mode=caller'), /link-local/);
+        assert.match(await refusal('rtmp://a@b@[::1]:8080/live/k'), /loopback/);
+        assert.equal(await check('rtmp://a@b@192.168.1.50:1935/live/k'), null);
+    });
+
     test('loopback is allowed only on the server’s own RTMP and SRT ports', async () => {
         assert.equal(await check('rtmp://127.0.0.1:21935/live/key01_x'), null);
         assert.equal(await check('rtmp://localhost:21935/live/key01_x'), null);
@@ -212,6 +221,7 @@ describe('isInternalAppDestination', () => {
             'rtmp://2130706433:21935/internal/x',
             'rtmp://[::1]:21935/internal/x',
             'rtmp://u:p@127.0.0.1/internal/x',
+            'rtmp://a@b@127.0.0.1:21935/internal/x',
             'rtmps://127.0.0.1/internal/x',
         ]) {
             assert.equal(await is(url), true, url);

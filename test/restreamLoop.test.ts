@@ -41,6 +41,8 @@ describe('ownIngestKey', () => {
         assert.equal(await key('rtmp://127.0.0.1:21935/live/key01_abc'), 'key01_abc');
         assert.equal(await key('rtmp://localhost:21935/live/key01_abc?x=1'), 'key01_abc');
         assert.equal(await key('rtmp://user:pw@127.0.0.1:21935/live/key01_abc'), 'key01_abc');
+        // FFmpeg starts the host after the last '@', so this still publishes into this server.
+        assert.equal(await key('rtmp://a@b@127.0.0.1:21935/live/key01_abc'), 'key01_abc');
         assert.equal(await key('rtmp://2130706433:21935/live/key01_abc'), 'key01_abc');
         assert.equal(
             await key('srt://127.0.0.1:10080?streamid=#!::r=live/key01_abc,m=publish'),

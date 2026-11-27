@@ -23,25 +23,28 @@ const ANSI_SGR_REGEX = /\x1b\[([0-9;]*)m/g;
 export function ansiLineToHtml(line: string): string {
     let html = '';
     let lastIndex = 0;
-    let openSpan = false;
+    // One sequence can name several colours (`31;33`) and each opens a span, so count them:
+    // an unclosed span would colour the lines that follow in the same <pre>.
+    let openSpans = 0;
+    const closeSpans = (): void => {
+        html += '</span>'.repeat(openSpans);
+        openSpans = 0;
+    };
     ANSI_SGR_REGEX.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = ANSI_SGR_REGEX.exec(line))) {
         html += escapeHtml(line.slice(lastIndex, match.index));
         lastIndex = ANSI_SGR_REGEX.lastIndex;
-        if (openSpan) {
-            html += '</span>';
-            openSpan = false;
-        }
+        closeSpans();
         for (const code of match[1].split(';')) {
             const cls = ANSI_FG_CLASS[code];
             if (cls) {
                 html += `<span class="${cls}">`;
-                openSpan = true;
+                openSpans++;
             }
         }
     }
     html += escapeHtml(line.slice(lastIndex));
-    if (openSpan) html += '</span>';
+    closeSpans();
     return html;
 }

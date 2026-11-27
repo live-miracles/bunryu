@@ -57,8 +57,12 @@ export async function resolveAddresses(host: string): Promise<string[]> {
     }
 }
 
+// The `user:pass@` prefix of an authority in these patterns runs to the LAST '@', because
+// that is where FFmpeg's URL parser (av_url_split) starts the host: for
+// `rtmp://a@b@10.0.0.1/x` it connects to 10.0.0.1. Stopping at the first '@' would read
+// `b@10.0.0.1` as the host, which resolves to nothing and would pass every check here.
 function parseDestination(url: string): { host: string; port: number | null } | null {
-    const m = /^(rtmps?|srt):\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::(\d+))?/i.exec(url);
+    const m = /^(rtmps?|srt):\/\/(?:[^/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::(\d+))?/i.exec(url);
     if (!m) return null;
     const scheme = m[1].toLowerCase();
     const port = m[3] ? Number(m[3]) : scheme === 'rtmp' ? 1935 : scheme === 'rtmps' ? 443 : null;
@@ -98,7 +102,7 @@ export async function checkOutputDestination(url: string): Promise<string | null
 // stream. Deliberately separate from checkOutputDestination: that one also runs
 // over existing rows at boot and must keep passing the renditions themselves.
 export async function isInternalAppDestination(url: string): Promise<boolean> {
-    const m = /^rtmps?:\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::\d+)?(\/[^?#]*)?/i.exec(url);
+    const m = /^rtmps?:\/\/(?:[^/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::\d+)?(\/[^?#]*)?/i.exec(url);
     if (!m || !(m[2] ?? '').startsWith(`/${RENDITION_APP}/`)) return false;
     const addresses = await resolveAddresses(m[1]);
     return addresses.some((address) => classifyAddress(address) === 'loopback');

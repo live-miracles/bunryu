@@ -24,7 +24,8 @@ export function fmtScanFps(
     return fpsNum != null ? `${fpsNum}fps` : '';
 }
 
-// e.g. "h264 1920x1080p50 High L4.2". Null when the size is not known yet.
+// e.g. "h264 1920x1080p50 High L4.2". Null when the size is not known yet. Returns HTML:
+// the codec, profile and level come from ffprobe and SRS, so they are escaped here.
 export function videoSpec(
     video: Pick<
         VideoInfo,
@@ -38,7 +39,12 @@ export function videoSpec(
             ? `${video.width}x${video.height} ${scanFps}`
             : `${video.width}x${video.height}${scanFps}`
         : `${video.width}x${video.height}`;
-    return [video.codec || '—', res, video.profile || null, video.level ? `L${video.level}` : null]
+    return [
+        escapeHtml(video.codec || '—'),
+        res,
+        video.profile ? escapeHtml(video.profile) : null,
+        video.level ? escapeHtml(`L${video.level}`) : null,
+    ]
         .filter(Boolean)
         .join(' ');
 }
@@ -63,7 +69,9 @@ export function audioSpec(
     sampleRate: number | null | undefined,
     labelHtml?: string,
 ): string {
-    const codecLabel = [codec || '—', codec ? profile || null : null].filter(Boolean).join(' ');
+    const codecLabel = escapeHtml(
+        [codec || '—', codec ? profile || null : null].filter(Boolean).join(' '),
+    );
     const sr = sampleRate ? fmtHz(sampleRate) : null;
     return `${codecLabel} ${channels ? `${channels}ch` : '—'}${sr ? ` ${sr}` : ''}${labelHtml ? ` <span class="text-muted">${labelHtml}</span>` : ''}`;
 }
