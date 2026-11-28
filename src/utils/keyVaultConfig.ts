@@ -93,7 +93,8 @@ function checkUrl(value: unknown): string | { error: string } {
 }
 
 // Checks what the operator sent. A secret that is left empty keeps the saved one (the
-// dashboard never shows it), so it is only required the first time.
+// dashboard never shows it), so it is only required the first time, and again for another
+// origin: otherwise a stolen session could send the saved token to a host of its own.
 export function parseKeyVaultInput(
     input: unknown,
     existing: KeyVaultConfig | null,
@@ -109,6 +110,9 @@ export function parseKeyVaultInput(
     if (typeof secret !== 'string') return secret;
     if (!secret) {
         if (!existing) return { error: 'secret is required' };
+        if (new URL(url).origin !== new URL(existing.url).origin) {
+            return { error: 'the url points to another host; enter the secret again' };
+        }
         return { config: { ...existing, url } };
     }
     // It becomes a MAC key, and printable ASCII leaves no doubt about the bytes both

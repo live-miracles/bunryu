@@ -107,6 +107,20 @@ describe('checkOutputDestination', () => {
 
     test('an SRT listener output has no remote host to check and is left alone', async () => {
         assert.equal(await check('srt://0.0.0.0:9000?mode=listener'), null);
+        assert.equal(await check('srt://0.0.0.0:9000?latency=200&mode=listener'), null);
+    });
+
+    // FFmpeg takes the first "mode" option after the first '?', matched exactly, and only
+    // for SRT: anything else connects out and must be checked.
+    test('only a mode FFmpeg would read as listener skips the check', async () => {
+        for (const url of [
+            'srt://169.254.169.254:80?mode=caller&mode=listener',
+            'srt://169.254.169.254:80?MODE=listener',
+            'srt://169.254.169.254:80?streamid=x?mode=listener',
+            'rtmp://169.254.169.254/live?mode=listener/k',
+        ]) {
+            assert.match(await refusal(url), /link-local/, url);
+        }
     });
 
     test('a name that does not resolve is not blocked (FFmpeg fails the same way)', async () => {
@@ -223,6 +237,9 @@ describe('isInternalAppDestination', () => {
             'rtmp://u:p@127.0.0.1/internal/x',
             'rtmp://a@b@127.0.0.1:21935/internal/x',
             'rtmps://127.0.0.1/internal/x',
+            // FFmpeg keeps the query in the app and SRS drops it: the app is still internal.
+            'rtmp://127.0.0.1:21935/internal?vhost=__defaultVhost__/x',
+            'rtmp://127.0.0.1:21935/internal?/x',
         ]) {
             assert.equal(await is(url), true, url);
         }

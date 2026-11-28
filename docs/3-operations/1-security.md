@@ -21,7 +21,8 @@ Hardening that is on by default:
   the cookie gets `Secure` when the request came over TLS (directly or via
   `X-Forwarded-Proto: https`). Logins, logouts and password changes are logged
   with the client IP.
-- **Login rate limit:** 5 failures per minute per client, grouped per IPv6 /64.
+- **Login rate limit:** 5 failures per minute per client, grouped per IPv6 /64. A wrong current
+  password on a password change counts as a failure too.
   Behind a proxy set `trust_proxy`, or every user shares the proxy's address.
 - **Headers:** `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`,
   `Referrer-Policy: no-referrer`, a `Permissions-Policy` that turns off camera,

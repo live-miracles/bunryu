@@ -87,7 +87,7 @@ export function renderOutputCard(
     const badges: string[] = [];
     if (output.videoEncoding !== 'copy') {
         badges.push(
-            `<span class="badge badge-sm badge-accent badge-soft whitespace-nowrap">${output.videoEncoding}</span>`,
+            `<span class="badge badge-sm badge-accent badge-soft whitespace-nowrap">${escapeHtml(output.videoEncoding)}</span>`,
         );
     }
     if (output.audioEncoding !== 'copy') {

@@ -504,12 +504,23 @@ describe('Key Vault settings API', () => {
         await harness.request('POST', '/api/settings/key-vault', LINK);
 
         const kept = await harness.request('POST', '/api/settings/key-vault', {
-            url: 'https://203.0.113.6/ingest',
+            url: 'https://203.0.113.5/ingest',
             secret: '',
         });
         assert.equal(kept.status, 200);
         assert.deepEqual(storedJson(harness.db, 'keyVault'), {
+            url: 'https://203.0.113.5/ingest',
+            ...DERIVED,
+        });
+
+        // Another host gets the token only with the secret typed again.
+        const moved = await harness.request('POST', '/api/settings/key-vault', {
             url: 'https://203.0.113.6/ingest',
+            secret: '',
+        });
+        assert.equal(moved.status, 400);
+        assert.deepEqual(storedJson(harness.db, 'keyVault'), {
+            url: 'https://203.0.113.5/ingest',
             ...DERIVED,
         });
 

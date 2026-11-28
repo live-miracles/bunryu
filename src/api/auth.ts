@@ -237,10 +237,24 @@ export function registerAuthApi(app: Express, db: Db): void {
                 .status(400)
                 .json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters` });
         }
+        // A wrong current password counts against the login limit, so a stolen session
+        // cannot be used to guess the password (which outlives the session) at full speed.
+        const ip = clientIp(req);
+        const limiterKey = loginLimiterKey(ip);
+        const retryAfterSec = loginBlockedForSeconds(limiterKey);
+        if (retryAfterSec > 0) {
+            res.setHeader('Retry-After', String(retryAfterSec));
+            return res
+                .status(429)
+                .json({ error: `Too many wrong passwords. Try again in ${retryAfterSec}s.` });
+        }
         const hash = db.getSetting('dashboardPasswordHash');
+        noteLoginFailure(limiterKey);
         if (!hash || !(await verifyPassword(currentPassword, hash))) {
+            console.warn(`[auth] client_ip=${ip} rejected password change: incorrect password`);
             return res.status(403).json({ error: 'Current password is incorrect' });
         }
+        loginFailures.delete(limiterKey);
         db.setSetting('dashboardPasswordHash', await hashPassword(newPassword));
         // A password change is the usual response to a suspected compromise, so
         // every other session (including a stolen one) must stop working. The
@@ -253,9 +267,7 @@ export function registerAuthApi(app: Express, db: Db): void {
             db.deleteSession(hashed);
             revoked++;
         }
-        console.log(
-            `[auth] client_ip=${clientIp(req)} password changed, ${revoked} other session(s) revoked`,
-        );
+        console.log(`[auth] client_ip=${ip} password changed, ${revoked} other session(s) revoked`);
         return res.json({ ok: true });
     });
 }

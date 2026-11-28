@@ -249,6 +249,22 @@ describe('auth session integration', () => {
         assert.equal(stillWorks.status, 200);
     });
 
+    // A stolen session must not be a way to guess the password at full speed: wrong
+    // current passwords count against the same per-client limit as failed logins.
+    test('change-password shares the login rate limit', async () => {
+        const harness = await createHarness();
+        const cookie = sessionCookieFrom(await harness.login('admin'));
+
+        for (let i = 0; i < 5; i++) {
+            const res = await harness.changePassword('wrong-current', 'new-secure-pw', cookie);
+            assert.equal(res.status, 403);
+        }
+        const blocked = await harness.changePassword('admin', 'new-secure-pw', cookie);
+        assert.equal(blocked.status, 429);
+        assert.ok(Number(blocked.headers['retry-after']) > 0);
+        assert.equal((await harness.login('admin')).status, 429);
+    });
+
     test('change-password rejects an empty new password', async () => {
         const harness = await createHarness();
         const login = await harness.login('admin');

@@ -145,7 +145,8 @@ One secret is all the link needs: Bunryu derives from it the bearer token it sen
 way Key Vault does, so the two always agree.
 
 A wrong value is refused when you save it, so the saved link always works as far as its
-format goes. The secret is never shown again: leave it empty to keep the saved one, and
+format goes. The secret is never shown again: leave it empty to keep the saved one (a link to
+another host needs it again, so the token is never sent to a host it was not entered for), and
 clear the link to turn the reports off (this also forgets it). The token and hash secret
 derived from it are stored in the database, like the server name (the secret itself is
 not), and the dashboard and [API](../4-reference/1-api.md) return only whether it is set.

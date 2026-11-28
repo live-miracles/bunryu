@@ -75,15 +75,27 @@ describe('parseKeyVaultInput', () => {
         }
     });
 
-    test('an empty secret falls back to the saved one only', () => {
+    // The saved token goes only to the origin it was entered for: a session holder must not
+    // be able to send it to a host of their own.
+    test('an empty secret falls back to the saved one only, and only on the same origin', () => {
         const empty = { ...INPUT, secret: '' };
         assert.match(errorOf(parseKeyVaultInput(empty, null)), /secret is required/);
         assert.deepEqual(parseKeyVaultInput(empty, GOOD), { config: GOOD });
-        const moved = parseKeyVaultInput(
-            { ...empty, url: 'https://other.example.invalid/in' },
-            GOOD,
-        );
-        assert.deepEqual(moved, { config: { ...GOOD, url: 'https://other.example.invalid/in' } });
+        const samePath = 'https://kv.example.invalid/functions/v1/other';
+        assert.deepEqual(parseKeyVaultInput({ ...empty, url: samePath }, GOOD), {
+            config: { ...GOOD, url: samePath },
+        });
+        for (const url of [
+            'https://other.example.invalid/functions/v1/ingest',
+            'https://kv.example.invalid:8443/functions/v1/ingest',
+            'http://localhost/functions/v1/ingest',
+        ]) {
+            assert.match(
+                errorOf(parseKeyVaultInput({ ...empty, url }, GOOD)),
+                /enter the secret again/,
+                url,
+            );
+        }
     });
 });
 

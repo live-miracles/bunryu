@@ -69,8 +69,37 @@ function parseDestination(url: string): { host: string; port: number | null } | 
     return { host: m[2], port };
 }
 
+// Read as FFmpeg's libsrt reads it (av_find_info_tag): the options after the first '?',
+// the first "mode" tag wins, names and values compared exactly. Any other reading would
+// let "?mode=caller&mode=listener" or "?MODE=listener" skip the host check while FFmpeg
+// connects out.
 function isSrtListener(url: string): boolean {
-    return /[?&]mode=listener(?:&|$)/i.test(url);
+    if (!/^srt:/i.test(url)) return false;
+    const query = url.indexOf('?');
+    if (query < 0) return false;
+    for (const pair of url.slice(query + 1).split('&')) {
+        const eq = pair.indexOf('=');
+        if ((eq < 0 ? pair : pair.slice(0, eq)) === 'mode') {
+            return eq >= 0 && pair.slice(eq + 1) === 'listener';
+        }
+    }
+    return false;
+}
+
+// The app SRS files an RTMP publish under, or null when FFmpeg would publish no stream.
+// FFmpeg (rtmp_open) splits the path into app and stream: the app keeps any "?query"
+// and a path of three or more segments gives a two-level app. SRS drops the query from
+// the app. Leading slashes are dropped too, to err on the side of the reserved app.
+function srsRtmpApp(url: string): string | null {
+    const path = /^rtmps?:\/\/[^/?#]*(.*)$/i.exec(url)?.[1] ?? '';
+    const next = path.slice(1);
+    const p = next.indexOf('/');
+    if (p < 0) return null;
+    const rest = next.slice(p + 1);
+    const slash = rest.indexOf('/');
+    const colon = rest.indexOf(':');
+    const appEnd = slash < 0 || (colon >= 0 && colon < slash) ? p : p + 1 + slash;
+    return next.slice(0, appEnd).split('?')[0].replace(/^\/+/, '');
 }
 
 // Returns a human-readable reason when an output destination must not be used,
@@ -102,9 +131,9 @@ export async function checkOutputDestination(url: string): Promise<string | null
 // stream. Deliberately separate from checkOutputDestination: that one also runs
 // over existing rows at boot and must keep passing the renditions themselves.
 export async function isInternalAppDestination(url: string): Promise<boolean> {
-    const m = /^rtmps?:\/\/(?:[^/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::\d+)?(\/[^?#]*)?/i.exec(url);
-    if (!m || !(m[2] ?? '').startsWith(`/${RENDITION_APP}/`)) return false;
-    const addresses = await resolveAddresses(m[1]);
+    const dest = /^rtmps?:/i.test(url) ? parseDestination(url) : null;
+    if (!dest || srsRtmpApp(url) !== RENDITION_APP) return false;
+    const addresses = await resolveAddresses(dest.host);
     return addresses.some((address) => classifyAddress(address) === 'loopback');
 }
 
