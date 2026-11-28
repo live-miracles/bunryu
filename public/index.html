@@ -12,14 +12,8 @@
     <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <link rel="stylesheet" type="text/css" href="output.css" />
-    <script>
-      // Apply the theme before first paint: the stored choice, else dark (see features/theme.ts).
-      let t = null;
-      try {
-        t = localStorage.getItem('bunryu.theme');
-      } catch {}
-      document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
-    </script>
+    <!-- Applies the stored theme before first paint (see features/theme.ts). -->
+    <script src="js/features/theme-init.js"></script>
     <!-- Vendored (hls.js 1.7.3, Apache-2.0): the dashboard is an ops tool that
          must work without internet access to a CDN, and an unpinned CDN script
          is third-party code running on the streaming server's control panel. -->
@@ -34,14 +28,14 @@
           id="overview-nav-btn"
           class="btn btn-ghost brand-text gap-2 px-2 text-lg font-semibold tracking-tight"
           title="Overview"
-          onclick="selectPipeline(null)">
+          data-click="show-overview">
           <img src="logo.png" class="h-8 w-8" alt="" />
           <span id="server-name-display">Bunryu</span>
         </button>
         <button
           id="status-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"
-          onclick="openStatusBtn()"
+          data-click="open-status"
           title="Status: every pipeline and output at a glance"
           aria-label="Status">
           <svg
@@ -59,7 +53,7 @@
         <button
           id="settings-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"
-          onclick="openSettingsBtn()"
+          data-click="open-settings"
           title="Settings"
           aria-label="Settings">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -73,7 +67,7 @@
         <button
           id="srs-logs-nav-btn"
           class="btn btn-square btn-sm btn-ghost opacity-70"
-          onclick="openSrsLogsBtn()"
+          data-click="open-logs"
           title="Server Logs"
           aria-label="Server Logs">
           <svg
@@ -182,7 +176,7 @@
       </svg>
       <span>
         Public Host is not set — publish URLs show localhost.
-        <button type="button" class="link font-semibold" onclick="openSettingsBtn()">Set it in Settings</button>
+        <button type="button" class="link font-semibold" data-click="open-settings">Set it in Settings</button>
       </span>
     </div>
 
@@ -235,13 +229,7 @@
           <div class="flex flex-wrap items-end gap-3">
             <fieldset class="fieldset">
               <legend class="fieldset-legend">Pipeline Name</legend>
-              <input
-                type="text"
-                id="pipe-name-input"
-                autocomplete="off"
-                class="input w-48"
-                placeholder="My Stream"
-                oninput="this.classList.remove('input-error')" />
+              <input type="text" id="pipe-name-input" autocomplete="off" class="input w-48" placeholder="My Stream" data-clear-error="input-error" />
             </fieldset>
             <fieldset class="fieldset">
               <legend class="fieldset-legend">Stream Key</legend>
@@ -256,7 +244,7 @@
         <div class="modal-action">
           <form method="dialog">
             <button class="btn mx-2">Cancel</button>
-            <button type="button" class="btn btn-accent" onclick="pipeFormBtn(this)">Save</button>
+            <button type="button" class="btn btn-accent" data-click="pipeline-form">Save</button>
           </form>
         </div>
       </div>
@@ -276,18 +264,13 @@
             class="input w-full"
             placeholder="Main"
             maxlength="80"
-            oninput="this.classList.remove('input-error')"
-            onkeydown="
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                pipelineGroupFormBtn(document.getElementById('pipe-group-save-btn'));
-              }
-            " />
+            data-clear-error="input-error"
+            data-enter="pipe-group-save-btn" />
         </fieldset>
         <div class="modal-action">
           <form method="dialog">
             <button class="btn mx-2">Cancel</button>
-            <button id="pipe-group-save-btn" type="button" class="btn btn-accent" onclick="pipelineGroupFormBtn(this)">Save</button>
+            <button id="pipe-group-save-btn" type="button" class="btn btn-accent" data-click="pipeline-group-form">Save</button>
           </form>
         </div>
       </div>
@@ -306,7 +289,7 @@
               id="out-copy-btn"
               type="button"
               class="btn btn-xs btn-ghost ml-2"
-              onclick="outCopyBtn()"
+              data-click="output-copy"
               title="Copy output to clipboard"
               aria-label="Copy output to clipboard">
               <svg
@@ -327,7 +310,7 @@
               id="out-paste-btn"
               type="button"
               class="btn btn-xs btn-ghost"
-              onclick="outPasteBtn()"
+              data-click="output-paste"
               title="Paste output from clipboard"
               aria-label="Paste output from clipboard">
               <svg
@@ -353,13 +336,7 @@
           <div class="flex flex-wrap items-end gap-3">
             <fieldset class="fieldset flex-1 max-sm:w-full">
               <legend class="fieldset-legend">Output Name</legend>
-              <input
-                type="text"
-                id="out-name-input"
-                autocomplete="off"
-                class="input w-full"
-                placeholder="YouTube"
-                oninput="this.classList.remove('input-error')" />
+              <input type="text" id="out-name-input" autocomplete="off" class="input w-full" placeholder="YouTube" data-clear-error="input-error" />
             </fieldset>
             <fieldset class="fieldset max-sm:w-full">
               <legend class="fieldset-legend">Video Encoding</legend>
@@ -385,13 +362,13 @@
               autocomplete="off"
               class="input w-full"
               placeholder="https://www.youtube.com/watch?v=..."
-              oninput="this.classList.remove('input-error')" />
+              data-clear-error="input-error" />
           </fieldset>
         </div>
         <div class="modal-action flex-col items-end gap-2">
           <form method="dialog">
             <button class="btn mx-2">Cancel</button>
-            <button type="button" id="out-save-btn" class="btn btn-accent" onclick="outFormBtn(this)">Save</button>
+            <button type="button" id="out-save-btn" class="btn btn-accent" data-click="output-form">Save</button>
           </form>
         </div>
       </div>
@@ -440,7 +417,7 @@
                 <div
                   class="badge badge-sm badge-warning hidden cursor-pointer px-2"
                   id="pipe-warns"
-                  onclick="showProblemsOverviewBtn()"
+                  data-click="show-problems"
                   title="Warnings — click to view problems"></div>
                 <div class="badge badge-sm badge-neutral hidden px-2" id="pipe-offs" title="Offline"></div>
               </div>
@@ -452,24 +429,24 @@
                 <div
                   class="badge badge-sm badge-warning hidden cursor-pointer px-2"
                   id="out-warns"
-                  onclick="showProblemsOverviewBtn()"
+                  data-click="show-problems"
                   title="Low bitrate — click to view problems"></div>
                 <div
                   class="badge badge-sm badge-error hidden cursor-pointer px-2"
                   id="out-errors"
-                  onclick="showProblemsOverviewBtn()"
+                  data-click="show-problems"
                   title="Failed — click to view problems"></div>
                 <div class="badge badge-sm badge-neutral hidden px-2" id="out-offs" title="Stopped"></div>
               </div>
             </div>
           </div>
           <div class="flex shrink-0 flex-col items-center gap-1">
-            <button class="btn btn-xs btn-square btn-accent btn-soft" onclick="addPipeBtn(this)" title="Add Pipeline" aria-label="Add Pipeline">
+            <button class="btn btn-xs btn-square btn-accent btn-soft" data-click="add-pipeline" title="Add Pipeline" aria-label="Add Pipeline">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
               </svg>
             </button>
-            <button class="btn btn-xs btn-square btn-ghost" onclick="addPipelineGroupBtn()" title="Add Group" aria-label="Add Group">
+            <button class="btn btn-xs btn-square btn-ghost" data-click="add-pipeline-group" title="Add Group" aria-label="Add Group">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -512,8 +489,8 @@
               <div class="mb-2 flex items-center justify-between">
                 <span class="text-muted text-xs font-semibold">PREVIEW</span>
                 <div class="flex items-center gap-2">
-                  <select id="preview-audio-select" class="select select-xs hidden max-w-44" onchange="previewTrackChange()"></select>
-                  <button id="preview-stop-btn" class="btn btn-xs btn-ghost" onclick="previewToggleBtn()">
+                  <select id="preview-audio-select" class="select select-xs hidden max-w-44" data-change="preview-track"></select>
+                  <button id="preview-stop-btn" class="btn btn-xs btn-ghost" data-click="preview-toggle">
                     <svg
                       id="preview-btn-play-icon"
                       xmlns="http://www.w3.org/2000/svg"
@@ -542,7 +519,7 @@
                   <button
                     id="preview-mute-btn"
                     title="Unmute"
-                    onclick="previewMuteBtn()"
+                    data-click="preview-mute"
                     class="btn btn-square btn-ghost btn-xs"
                     disabled
                     aria-label="Unmute">
@@ -582,7 +559,7 @@
                   <button
                     id="preview-reload-btn"
                     title="Reload"
-                    onclick="previewReloadBtn()"
+                    data-click="preview-reload"
                     class="btn btn-square btn-ghost btn-xs"
                     disabled
                     aria-label="Reload">
@@ -605,7 +582,7 @@
                   <button
                     id="preview-maximize-btn"
                     title="Maximize"
-                    onclick="previewMaximizeBtn()"
+                    data-click="preview-maximize"
                     class="btn btn-square btn-ghost btn-xs"
                     disabled
                     aria-label="Maximize">
@@ -752,7 +729,7 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <h2 class="text-lg font-bold">Outputs</h2>
-                <button class="btn btn-xs btn-square btn-accent btn-soft" onclick="addOutBtn()" title="Add Output" aria-label="Add Output">
+                <button class="btn btn-xs btn-square btn-accent btn-soft" data-click="add-output" title="Add Output" aria-label="Add Output">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="14"
@@ -769,7 +746,7 @@
                 <button
                   id="outputs-copy-btn"
                   class="btn btn-xs btn-ghost"
-                  onclick="outputsCopyBtn()"
+                  data-click="outputs-copy"
                   title="Copy outputs to clipboard"
                   aria-label="Copy outputs to clipboard">
                   <svg
@@ -789,7 +766,7 @@
                 <button
                   id="outputs-paste-btn"
                   class="btn btn-xs btn-ghost"
-                  onclick="outputsPasteBtn()"
+                  data-click="outputs-paste"
                   title="Add the outputs on the clipboard to this pipeline"
                   aria-label="Add the outputs on the clipboard to this pipeline">
                   <svg
@@ -814,7 +791,7 @@
                 <button
                   id="outputs-start-all-btn"
                   class="btn btn-xs btn-ghost"
-                  onclick="outputsStartAllBtn()"
+                  data-click="outputs-start-all"
                   title="Start all outputs"
                   aria-label="Start all outputs">
                   <svg
@@ -833,7 +810,7 @@
                 <button
                   id="outputs-stop-all-btn"
                   class="btn btn-xs btn-ghost"
-                  onclick="outputsStopAllBtn()"
+                  data-click="outputs-stop-all"
                   title="Stop all outputs"
                   aria-label="Stop all outputs">
                   <svg
@@ -859,14 +836,14 @@
                 placeholder="Filter outputs"
                 aria-label="Filter outputs by name or destination"
                 autocomplete="off"
-                oninput="outputsSearchInput(this.value)" />
+                data-input="outputs-search" />
               <button
                 id="outputs-problems-btn"
                 type="button"
                 class="btn btn-xs btn-outline"
                 aria-pressed="false"
                 title="Show only outputs with an error or a warning"
-                onclick="outputsProblemsToggle()">
+                data-click="outputs-problems">
                 Problems
               </button>
               <div id="outputs-summary" class="ml-auto flex flex-wrap items-center gap-1 text-xs"></div>
@@ -891,7 +868,7 @@
               id="srs-logs-refresh"
               type="button"
               class="btn btn-sm btn-ghost btn-square inline-flex items-center justify-center leading-none"
-              onclick="refreshSrsLogsBtn()"
+              data-click="refresh-logs"
               title="Refresh server logs"
               aria-label="Refresh server logs">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="block h-4 w-4 shrink-0 fill-current" aria-hidden="true">
@@ -996,7 +973,7 @@
                     autocomplete="off"
                     class="input w-full"
                     placeholder="Bunryu"
-                    oninput="this.classList.remove('input-error')" />
+                    data-clear-error="input-error" />
                 </fieldset>
                 <fieldset class="fieldset min-w-0 flex-1">
                   <legend class="fieldset-legend">Public Host</legend>
@@ -1023,7 +1000,7 @@
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </span>
-                <button type="button" class="btn btn-sm btn-accent" onclick="settingsGeneralFormBtn(this)">Save</button>
+                <button type="button" class="btn btn-sm btn-accent" data-click="settings-general-form">Save</button>
               </div>
             </div>
 
@@ -1031,7 +1008,7 @@
                  Chrome does not pair the secret with the form-less text inputs elsewhere on the page. The
                  secret is a text box masked by CSS, not a password field: Chrome ignores autocomplete="off"
                  on a password field and fills it (and the Link before it) with a saved login. -->
-            <form class="border-base-content/10 space-y-2 border-t pt-3" autocomplete="off" onsubmit="return false;">
+            <form class="border-base-content/10 space-y-2 border-t pt-3" autocomplete="off" data-no-submit>
               <div>
                 <p class="text-sm font-medium">Key Vault</p>
                 <p class="text-xs opacity-70">
@@ -1049,7 +1026,7 @@
                     autocomplete="off"
                     class="input w-full font-mono text-sm"
                     placeholder="https://&lt;project&gt;.supabase.co/functions/v1/ingest"
-                    oninput="this.classList.remove('input-error')" />
+                    data-clear-error="input-error" />
                 </fieldset>
                 <fieldset class="fieldset min-w-0 flex-1">
                   <legend class="fieldset-legend">Secret</legend>
@@ -1062,11 +1039,12 @@
                       autocapitalize="off"
                       data-mask
                       class="input secret-mask w-full pr-10 font-mono text-sm"
-                      oninput="this.classList.remove('input-error')" />
+                      data-clear-error="input-error" />
                     <button
                       type="button"
                       class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-                      onclick="togglePwVisibility('settings-key-vault-secret-input', this)"
+                      data-click="toggle-secret"
+                      data-target="settings-key-vault-secret-input"
                       tabindex="-1"
                       aria-label="Toggle secret visibility">
                       <svg
@@ -1119,13 +1097,13 @@
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </span>
-                <button type="button" class="btn btn-sm btn-accent" onclick="settingsKeyVaultFormBtn(this)">Save</button>
+                <button type="button" class="btn btn-sm btn-accent" data-click="settings-key-vault-form">Save</button>
               </div>
             </form>
 
             <!-- Change Password: its own form, so the browser pairs these password fields with the
                  username below and not with the other text inputs on the page. -->
-            <form class="space-y-2" onsubmit="return false;">
+            <form class="space-y-2" data-no-submit>
               <input type="text" name="username" value="admin" autocomplete="username" readonly tabindex="-1" aria-hidden="true" class="sr-only" />
               <div class="flex gap-3">
                 <fieldset class="fieldset min-w-0 flex-1">
@@ -1137,11 +1115,12 @@
                       class="input w-full pr-10"
                       placeholder="Current"
                       autocomplete="current-password"
-                      oninput="this.classList.remove('input-error')" />
+                      data-clear-error="input-error" />
                     <button
                       type="button"
                       class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-                      onclick="togglePwVisibility('current-password-input', this)"
+                      data-click="toggle-secret"
+                      data-target="current-password-input"
                       tabindex="-1"
                       aria-label="Toggle password visibility">
                       <svg
@@ -1185,14 +1164,13 @@
                       class="input w-full pr-10"
                       placeholder="New"
                       autocomplete="new-password"
-                      oninput="
-                        this.classList.remove('input-error');
-                        document.getElementById('confirm-password-input').classList.remove('input-error');
-                      " />
+                      data-clear-error="input-error"
+                      data-clear-error-also="confirm-password-input" />
                     <button
                       type="button"
                       class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-                      onclick="togglePwVisibility('new-password-input', this)"
+                      data-click="toggle-secret"
+                      data-target="new-password-input"
                       tabindex="-1"
                       aria-label="Toggle password visibility">
                       <svg
@@ -1236,11 +1214,12 @@
                       class="input w-full pr-10"
                       placeholder="Confirm"
                       autocomplete="new-password"
-                      oninput="this.classList.remove('input-error')" />
+                      data-clear-error="input-error" />
                     <button
                       type="button"
                       class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-                      onclick="togglePwVisibility('confirm-password-input', this)"
+                      data-click="toggle-secret"
+                      data-target="confirm-password-input"
                       tabindex="-1"
                       aria-label="Toggle password visibility">
                       <svg
@@ -1293,7 +1272,7 @@
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                   </span>
-                  <button type="button" class="btn btn-sm btn-accent" onclick="settingsPasswordFormBtn(this)">Save</button>
+                  <button type="button" class="btn btn-sm btn-accent" data-click="settings-password-form">Save</button>
                 </div>
               </div>
             </form>
@@ -1308,8 +1287,8 @@
                 </p>
               </div>
               <div class="flex shrink-0 gap-2">
-                <button type="button" class="btn btn-sm btn-outline" onclick="copyConfigBtn()">Copy</button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="pasteConfigBtn(this)">Paste</button>
+                <button type="button" class="btn btn-sm btn-outline" data-click="copy-config">Copy</button>
+                <button type="button" class="btn btn-sm btn-outline" data-click="paste-config">Paste</button>
               </div>
             </div>
 
@@ -1319,7 +1298,7 @@
                 <p class="text-sm font-medium">Stream Keys</p>
                 <p id="regen-stream-keys-hint" class="hidden text-xs opacity-70">Remove all pipelines before regenerating.</p>
               </div>
-              <button id="regen-stream-keys-btn" type="button" class="btn btn-sm btn-warning shrink-0" onclick="regenerateStreamKeysBtn(this)">
+              <button id="regen-stream-keys-btn" type="button" class="btn btn-sm btn-warning shrink-0" data-click="regenerate-stream-keys">
                 Regenerate All
               </button>
             </div>
@@ -1332,7 +1311,7 @@
                   A new one applies after the server or container restarts, and it can only be reset while nothing is live or running.
                 </p>
               </div>
-              <button id="reset-srt-passphrase-btn" type="button" class="btn btn-sm btn-warning shrink-0" onclick="resetSrtPassphraseBtn(this)">
+              <button id="reset-srt-passphrase-btn" type="button" class="btn btn-sm btn-warning shrink-0" data-click="reset-srt-passphrase">
                 Reset
               </button>
             </div>
@@ -1343,7 +1322,7 @@
                 <p class="text-sm font-medium">Session</p>
                 <p class="text-xs opacity-70">Sign out of this dashboard. Pipelines and outputs keep running.</p>
               </div>
-              <button type="button" class="btn btn-sm btn-outline btn-error shrink-0" onclick="logoutBtn()">Log out</button>
+              <button type="button" class="btn btn-sm btn-outline btn-error shrink-0" data-click="logout">Log out</button>
             </div>
           </div>
         </div>
@@ -1357,22 +1336,5 @@
       popover="manual"
       class="rounded-field fixed inset-auto z-50 m-0 hidden max-w-[40rem] px-2 py-1 text-left shadow-lg"
       style="pointer-events: none"></div>
-
-    <script>
-      function togglePwVisibility(inputId, btn) {
-        const input = document.getElementById(inputId);
-        let show;
-        if (input.hasAttribute('data-mask')) {
-          // A text box masked by CSS (.secret-mask), so Chrome does not take it for a password.
-          show = input.classList.contains('secret-mask');
-          input.classList.toggle('secret-mask', !show);
-        } else {
-          show = input.type === 'password';
-          input.type = show ? 'text' : 'password';
-        }
-        btn.children[0].classList.toggle('hidden', show);
-        btn.children[1].classList.toggle('hidden', !show);
-      }
-    </script>
   </body>
 </html>

@@ -1,8 +1,8 @@
 // The navbar's light/dark toggle. The page is dark until the toggle is clicked (the CSS
 // tokens are light-dark() pairs, so data-theme on <html> only pins color-scheme); a click
-// pins the opposite of what is showing, and the choice is kept per browser. The inline
-// script in index.html's head applies the stored choice, or dark, before first paint so the
-// page does not flash.
+// pins the opposite of what is showing, and the choice is kept per browser. theme-init.ts,
+// loaded in the head of both pages, applies the stored choice, or dark, before first paint so
+// the page does not flash.
 
 type Theme = 'light' | 'dark';
 

@@ -389,7 +389,7 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
         return fieldsetHtml(
             'Pipeline',
             'flex-1',
-            `<select id="out-sink-key-input" name="sinkKey" class="select select-sm w-full js-sink-key" onchange="this.classList.remove('select-error')">${restreamPipelineOpts(key)}</select>`,
+            `<select id="out-sink-key-input" name="sinkKey" class="select select-sm w-full js-sink-key" data-clear-error="select-error">${restreamPipelineOpts(key)}</select>`,
         );
     }
     if (server === 'custom-srt') {
@@ -398,7 +398,7 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
             fieldsetHtml(
                 'Type',
                 '',
-                `<select id="out-srt-mode-input" name="srtMode" class="select select-sm w-28 max-sm:w-full js-srt-mode" onchange="srtModeChange()">
+                `<select id="out-srt-mode-input" name="srtMode" class="select select-sm w-28 max-sm:w-full js-srt-mode" data-change="srt-mode">
                     <option value="caller"${srt.mode === 'caller' ? ' selected' : ''}>Caller</option>
                     <option value="listener"${srt.mode === 'listener' ? ' selected' : ''}>Listener</option>
                 </select>`,
@@ -406,22 +406,22 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
             fieldsetHtml(
                 'Hostname',
                 '',
-                `<input type="text" id="out-srt-host-input" autocomplete="off" name="srtHost" class="input input-sm w-40 max-sm:w-full font-mono text-xs js-srt-host" placeholder="xxx.xxx.xxx.xxx" value="${escapeHtml(srt.host)}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="text" id="out-srt-host-input" autocomplete="off" name="srtHost" class="input input-sm w-40 max-sm:w-full font-mono text-xs js-srt-host" placeholder="xxx.xxx.xxx.xxx" value="${escapeHtml(srt.host)}" data-clear-error="input-error" />`,
             ),
             fieldsetHtml(
                 'Port',
                 '',
-                `<input type="number" min="1" max="65535" id="out-srt-port-input" autocomplete="off" name="srtPort" class="input input-sm w-20 max-sm:w-full font-mono text-xs js-srt-port" placeholder="10000" value="${srt.port ?? ''}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="number" min="1" max="65535" id="out-srt-port-input" autocomplete="off" name="srtPort" class="input input-sm w-20 max-sm:w-full font-mono text-xs js-srt-port" placeholder="10000" value="${srt.port ?? ''}" data-clear-error="input-error" />`,
             ),
             fieldsetHtml(
                 'Latency (ms)',
                 '',
-                `<input type="number" min="1" step="1" id="out-srt-latency-input" autocomplete="off" name="srtLatency" class="input input-sm w-28 max-sm:w-full font-mono text-xs js-srt-latency" placeholder="240" value="${srt.latencyMs ?? ''}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="number" min="1" step="1" id="out-srt-latency-input" autocomplete="off" name="srtLatency" class="input input-sm w-28 max-sm:w-full font-mono text-xs js-srt-latency" placeholder="240" value="${srt.latencyMs ?? ''}" data-clear-error="input-error" />`,
             ),
             fieldsetHtml(
                 'Passphrase',
                 '',
-                `<input type="text" id="out-srt-passphrase-input" autocomplete="off" name="srtPassphrase" class="input input-sm w-56 max-sm:w-full font-mono text-xs js-srt-passphrase" placeholder="Passphrase" pattern=".{10,79}" title="10 to 79 characters, or empty for none" value="${escapeHtml(srt.passphrase)}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="text" id="out-srt-passphrase-input" autocomplete="off" name="srtPassphrase" class="input input-sm w-56 max-sm:w-full font-mono text-xs js-srt-passphrase" placeholder="Passphrase" pattern=".{10,79}" title="10 to 79 characters, or empty for none" value="${escapeHtml(srt.passphrase)}" data-clear-error="input-error" />`,
             ),
             fieldsetHtml(
                 'Key Length',
@@ -436,7 +436,7 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
             fieldsetHtml(
                 'Stream ID',
                 '',
-                `<input type="text" id="out-srt-streamid-input" autocomplete="off" name="srtStreamId" class="input input-sm w-80 max-sm:w-full font-mono text-xs js-srt-streamid" placeholder="Stream ID" value="${escapeHtml(srt.streamId)}" oninput="this.classList.remove('input-error')" />`,
+                `<input type="text" id="out-srt-streamid-input" autocomplete="off" name="srtStreamId" class="input input-sm w-80 max-sm:w-full font-mono text-xs js-srt-streamid" placeholder="Stream ID" value="${escapeHtml(srt.streamId)}" data-clear-error="input-error" />`,
             ),
         ].join('');
     }
@@ -446,7 +446,7 @@ function sinkKeyFieldHtml(server: ServerId, key: string): string {
         'flex-1',
         `<input type="text" id="out-sink-key-input" autocomplete="off" name="sinkKey" class="input input-sm w-full font-mono text-xs js-sink-key"
                placeholder="${s.placeholder}" value="${escapeHtml(key)}"${server === 'custom-rtmp' ? ' pattern="rtmps?://.+" title="Starts with rtmp:// or rtmps://"' : ''}
-               oninput="this.classList.remove('input-error')" onpaste="onSinkKeyPaste(event)" />`,
+               data-clear-error="input-error" data-paste="sink-key" />`,
     );
 }
 
@@ -509,7 +509,7 @@ function sinkRowHtmlForServer(server: ServerId, key = ''): string {
     const serverField = fieldsetHtml(
         'Server',
         '',
-        `<select class="select select-sm w-40 max-sm:w-full" id="out-server-input" onchange="outServerChange(this)">${serverOptionsHtml(server)}</select>`,
+        `<select class="select select-sm w-40 max-sm:w-full" id="out-server-input" data-change="out-server">${serverOptionsHtml(server)}</select>`,
     );
     return `<div class="js-sink-row flex flex-wrap items-end gap-2 rounded-box bg-base-200 px-2 py-2">${serverField}${sinkKeyFieldHtml(server, key)}</div>`;
 }

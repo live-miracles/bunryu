@@ -43,7 +43,7 @@ interrupt a live stream.
 | Authentication | scrypt password hash (the password is never stored in a file), 12-character minimum when set or changed, 7-day sessions stored as SHA-256 hashes, revoked on password change and logout | [Security](1-security.md#authentication) |
 | Brute force | 5 failures a minute per client (IPv6 grouped by /64), then a 5-minute block; scrypt runs off the event loop | [Security](1-security.md) |
 | Cross-site requests | `SameSite=Strict` cookie, JSON-only bodies, and a browser-declared cross-site write is refused | [Security](1-security.md) |
-| Browser hardening | Frame, sniffing, referrer, device-feature and cross-origin-embedding headers; HSTS over TLS; API answers are `no-store`; the dashboard escapes everything it renders | [Security](1-security.md) |
+| Browser hardening | A Content-Security-Policy that runs only the dashboard's own scripts; frame, sniffing, referrer, device-feature and cross-origin-embedding headers; HSTS over TLS; API answers are `no-store`; the dashboard escapes everything it renders | [Security](1-security.md) |
 | Input validation | Bounded names, URLs and counts; destination schemes limited to `rtmp`, `rtmps` and `srt`; arguments passed to FFmpeg as an argument list, never through a shell | [Security](1-security.md) |
 | Outbound policy | Link-local, unspecified and loopback destinations refused by what the host resolves to, with the same host parsing FFmpeg uses; the reserved `internal` app refused; restream loops marked on the output card (SRS refuses the second publisher) | [Security](1-security.md) |
 | Process isolation | FFmpeg gets a minimal environment; the three services run as an unprivileged user; the application tree is root-owned | [Security](1-security.md) |
@@ -76,14 +76,15 @@ of it, and the session cookie gets `Secure` and HSTS is sent when the request ar
 TLS. A direct exposure of port 8080 without a proxy would send the password in clear text,
 which is why the installer does not open it and the documentation says to keep it closed.
 
-### No script Content-Security-Policy
+### The Content-Security-Policy allows inline style attributes
 
-The dashboard uses inline event handlers in its static markup, so `script-src` cannot yet
-exclude inline script. Mitigations: every value from the server (names, URLs, FFmpeg and
-SRS log lines, publisher addresses, codec names) goes through an escaping helper before it
-reaches HTML, none is placed in an inline handler, there is no `eval`, and secrets are
-not stored in browser storage. The handlers carry only fixed strings. Moving them to
-listeners and adding a CSP is planned as hardening, not a known hole.
+The dashboard runs only its own script files: the policy refuses inline script, inline
+event handlers and `eval`, and any other origin for scripts, API calls or media, and a test
+fails the build if an inline handler or script reappears in the pages or in the markup the
+dashboard builds. Inline `style` attributes stay allowed (`style-src-attr`), because the
+markup sets a few and a style cannot run script; `blob:` is allowed only for the preview
+player's media and worker. Every value from the server is still escaped before it reaches
+HTML, so the policy is a second line of defence, not the only one.
 
 ### Defaults in the repository
 
@@ -168,19 +169,19 @@ relay comes from loopback, so the play check would let it through. The relay onl
 streams into SRS, never out, and connecting to it needs the SRT passphrase, so no stream
 can be read through it.
 
-### Services share one user and the units are lightly hardened
+### The dashboard and FFmpeg share one user
 
-SRS, the relay and the dashboard run as the same unprivileged user, with
-`NoNewPrivileges`, `ProtectSystem=full`, `PrivateTmp` and write access limited to the data
-and configuration directories. SRS and Goryu parse network input, so a flaw in either would
-give an attacker that user's files, including the database and `bunryu.json`. This is
-accepted for the first release because the three services must share the diagnostics
-and configuration files, the binaries are pinned by checksum and run at the version the
-installer was tested with, and the host is dedicated to this application. Splitting users
-and adding further systemd restrictions (capability bounding, kernel and namespace
-restrictions, system call filtering) would need testing on a production host with every
-media component and is the planned next step. The service user can also read the system
-journal, which is how the dashboard shows the three services' logs.
+SRS and Goryu parse traffic from the internet before any stream key is checked, so they run
+as their own user, `bunryu-media`, which can read only their two configuration files. Their
+units hide the data directory, drop every capability, allow only ordinary system calls and
+make the rest of the system read-only; Goryu is also refused memory that is both writable
+and executable, which the official SRS build needs for its thread stacks. The dashboard and
+the FFmpeg processes it starts run as `bunryu`, which owns the database. FFmpeg parses the
+media a publisher sends, but only after SRS has accepted its stream key. The dashboard's
+unit has `NoNewPrivileges`, `ProtectSystem=full`, `PrivateTmp` and write access limited to
+the data and configuration directories; restricting it further would need testing with
+every FFmpeg path. The service user can also read the system journal, which is how the
+dashboard shows the three services' logs.
 
 ### The installer runs as root and trusts what it fetches
 
@@ -216,14 +217,6 @@ The remote-access guide sets `trust_proxy` for the tunnel.
 A session is valid for seven days from login so an operator is not signed out during a
 multi-day event. Sessions are stored only as hashes, are revoked by logout and by a
 password change, and the cookie is `HttpOnly` and `SameSite=Strict`.
-
-### `no-store` is matched on the exact `/api/` path
-
-API answers carry `Cache-Control: no-store`, matched on a path starting with `/api/`.
-Express routes case-insensitively, so `/API/...` reaches the same handlers without that
-header. Such a request still needs a session, and its answer goes only to that signed-in
-browser, so the effect is at most a private cached copy of a response the user could
-already read.
 
 ### The database is not encrypted
 

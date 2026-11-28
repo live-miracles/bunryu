@@ -1,25 +1,48 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
-// Baseline hardening for the dashboard port. A script CSP is not possible yet (the
-// dashboard still uses inline event handlers); framing, sniffing, referrers, device
-// features and cross-origin embedding are closed off.
+// Baseline hardening for the dashboard port: framing, sniffing, referrers, device features
+// and cross-origin embedding are closed off, and the Content-Security-Policy runs only the
+// dashboard's own script files (the pages have no inline script or event handlers).
 //
 // - `/api/*` answers carry stream keys, the SRT passphrase and logs, so no browser or
-//   proxy may keep a copy (`no-store`).
+//   proxy may keep a copy (`no-store`). Matched without case, as Express routes.
 // - HSTS is sent only when the request came over TLS, which the app never terminates
 //   itself: directly, or through a proxy that says so. Without `includeSubDomains`, so
 //   it never reaches other sites on the same parent domain.
+//
+// The Content-Security-Policy:
+// - Scripts, styles, API calls and HLS playlists come only from this origin.
+// - Style attributes stay allowed (`style-src-attr`): the markup sets a few, and a style
+//   cannot run script. Stylesheets themselves are this origin's only.
+// - `data:` images: the select arrow in the stylesheet is an inline SVG.
+// - `blob:` media and workers: hls.js plays through a MediaSource object URL and runs its
+//   transmuxer in a worker made from a blob.
+export const CONTENT_SECURITY_POLICY = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "style-src-attr 'unsafe-inline'",
+    "img-src 'self' data:",
+    "media-src 'self' blob:",
+    'worker-src blob:',
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+].join('; ');
+
 export const securityHeaders: RequestHandler = (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     }
-    if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
+    if (req.path.toLowerCase().startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
     next();
 };
 

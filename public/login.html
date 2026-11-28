@@ -12,14 +12,9 @@
     <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <link rel="stylesheet" type="text/css" href="output.css" />
-    <script>
-      // Apply the theme before first paint: the stored choice, else dark (see features/theme.ts).
-      let t = null;
-      try {
-        t = localStorage.getItem('bunryu.theme');
-      } catch {}
-      document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
-    </script>
+    <!-- Applies the stored theme before first paint (see features/theme.ts). -->
+    <script src="js/features/theme-init.js"></script>
+    <script type="module" src="js/features/login.js"></script>
   </head>
   <body class="text-base-content flex h-screen flex-col items-center justify-center p-4">
     <div class="login-crest" aria-hidden="true"></div>
@@ -42,12 +37,11 @@
               class="input w-full pr-10"
               placeholder="Enter password"
               autocomplete="current-password"
-              autofocus
-              onkeydown="if (event.key === 'Enter') loginBtn();" />
+              autofocus />
             <button
               type="button"
+              id="password-toggle"
               class="absolute top-1/2 right-2 -translate-y-1/2 opacity-50 hover:opacity-100"
-              onclick="togglePasswordVisibility()"
               tabindex="-1"
               aria-label="Toggle password visibility">
               <svg
@@ -85,45 +79,8 @@
           </div>
         </fieldset>
         <p id="login-error" class="text-error hidden text-sm"></p>
-        <button class="btn btn-accent w-full" id="login-btn" onclick="loginBtn()">Sign In</button>
+        <button class="btn btn-accent w-full" id="login-btn">Sign In</button>
       </div>
     </div>
-    <script>
-      function togglePasswordVisibility() {
-        const input = document.getElementById('password-input');
-        const eyeIcon = document.getElementById('eye-icon');
-        const eyeOffIcon = document.getElementById('eye-off-icon');
-        const show = input.type === 'password';
-        input.type = show ? 'text' : 'password';
-        eyeIcon.classList.toggle('hidden', show);
-        eyeOffIcon.classList.toggle('hidden', !show);
-      }
-      async function loginBtn() {
-        const password = document.getElementById('password-input').value;
-        const btn = document.getElementById('login-btn');
-        const errorEl = document.getElementById('login-error');
-        btn.disabled = true;
-        errorEl.classList.add('hidden');
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password }),
-          });
-          if (res.ok) {
-            window.location.href = '/';
-          } else {
-            const data = await res.json();
-            errorEl.textContent = data.error || 'Login failed';
-            errorEl.classList.remove('hidden');
-          }
-        } catch {
-          errorEl.textContent = 'Request failed';
-          errorEl.classList.remove('hidden');
-        } finally {
-          btn.disabled = false;
-        }
-      }
-    </script>
   </body>
 </html>

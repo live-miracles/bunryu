@@ -312,8 +312,12 @@ only for a new module.
 - `public/input.css` - the dashboard's design tokens (`light-dark()` pairs, in the style of
   Linear) and its few components (`btn`, `badge`, `input`, `modal`, `tabs`, `table`, `banner`),
   compiled by Tailwind to untracked `public/output.css`; there is no component library.
-  `public/ts/features/theme.ts` is the navbar's light/dark toggle.
-- `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`.
+  `public/ts/features/theme.ts` is the navbar's light/dark toggle (`theme-init.ts` applies it
+  before first paint; `login.ts` is the login page).
+- `public/ts/` - dashboard TypeScript, compiled to untracked `public/js/`. The
+  Content-Security-Policy allows no inline script or handlers: markup names its handler in a
+  `data-click`, `data-input`, `data-change` or `data-paste` attribute, wired in
+  `features/dashboard-entry.ts`.
   `core/status.ts` shows the server's verdict on an output or input (`toStatusVerdict` adds the
   hints to what `/api/health` sends; there are no rules in the dashboard) and has the display
   helpers (colour, error line, bitrate to show); the Overview, the pipeline panel, the output

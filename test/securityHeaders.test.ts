@@ -4,6 +4,8 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { securityHeaders, rejectCrossSiteWrites } from '../src/api/securityHeaders';
 
 let server: Server;
@@ -28,7 +30,16 @@ describe('securityHeaders', () => {
         const res = await fetch(`${base}/page`);
         assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
         assert.equal(res.headers.get('x-frame-options'), 'DENY');
-        assert.equal(res.headers.get('content-security-policy'), "frame-ancestors 'none'");
+        const csp = res.headers.get('content-security-policy') ?? '';
+        for (const directive of [
+            "script-src 'self'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "frame-ancestors 'none'",
+        ]) {
+            assert.ok(csp.split('; ').includes(directive), directive);
+        }
+        assert.doesNotMatch(csp, /script-src[^;]*'unsafe-(inline|eval)'/);
         assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
         assert.match(res.headers.get('permissions-policy') ?? '', /microphone=\(\)/);
         assert.equal(res.headers.get('cross-origin-resource-policy'), 'same-origin');
@@ -36,6 +47,8 @@ describe('securityHeaders', () => {
 
     test('API answers are never cached; pages are left to their own rules', async () => {
         assert.equal((await fetch(`${base}/api/x`)).headers.get('cache-control'), 'no-store');
+        // Express routes case-insensitively, so /API/x reaches the same handler.
+        assert.equal((await fetch(`${base}/API/x`)).headers.get('cache-control'), 'no-store');
         assert.equal((await fetch(`${base}/page`)).headers.get('cache-control'), null);
     });
 
@@ -72,5 +85,32 @@ describe('rejectCrossSiteWrites', () => {
     test('never blocks reads', async () => {
         const res = await fetch(`${base}/api/x`, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
         assert.equal(res.status, 200);
+    });
+});
+
+// The policy refuses inline script, so the pages and the markup the dashboard builds must
+// have none: an inline handler or <script> body would just stop working in the browser.
+describe('dashboard markup', () => {
+    const publicDir = path.join(__dirname, '..', 'public');
+    const files = (dir: string): string[] =>
+        fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+            const p = path.join(dir, e.name);
+            return e.isDirectory() ? files(p) : [p];
+        });
+
+    test('has no inline event handlers or inline script', () => {
+        const sources = [
+            ...fs
+                .readdirSync(publicDir)
+                .filter((f) => f.endsWith('.html'))
+                .map((f) => path.join(publicDir, f)),
+            ...files(path.join(publicDir, 'ts')),
+        ];
+        for (const file of sources) {
+            const text = fs.readFileSync(file, 'utf8');
+            assert.doesNotMatch(text, /\son[a-z]+\s*=\s*["'`$]/, file);
+            assert.doesNotMatch(text, /<script(?![^>]*\ssrc=)[^>]*>/, file);
+            assert.doesNotMatch(text, /javascript:\s*[a-z(]/i, file);
+        }
     });
 });

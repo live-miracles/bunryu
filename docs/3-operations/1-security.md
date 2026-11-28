@@ -29,7 +29,8 @@ Hardening that is on by default:
   microphone, location and payment, `Cross-Origin-Resource-Policy: same-origin`,
   `Strict-Transport-Security` when the request came over TLS, and `Cache-Control:
   no-store` on every `/api` answer (they carry stream keys and the SRT passphrase). A
-  full CSP is not possible until the dashboard's inline event handlers are removed.
+  Content-Security-Policy runs only the dashboard's own script files: no inline script,
+  inline event handlers or `eval`, and no other origin for scripts, API calls or media.
 - **Cross-site writes:** a `POST`/`DELETE` that the browser marks `Sec-Fetch-Site:
   cross-site` or `same-site` is refused with 403, on top of the `SameSite=Strict`
   cookie. Requests without that header (scripts, `curl`) are unaffected.
@@ -81,6 +82,10 @@ Hardening that is on by default:
   root write. It names any file there not owned by the service user (one edited
   with `sudo` and saved as a new file, say) instead of taking it over.
   `server-set-password.sh` also signs out every existing session.
+- **SRS and Goryu run as their own user** (`bunryu-media`), which can read only their
+  two config files: the units hide the data directory (database, diagnostics), drop
+  every capability and allow only ordinary system calls. A flaw in either cannot reach
+  the database or the dashboard's processes.
 - **Key Vault reports (optional):** once the link is set in Settings the app makes one
   outbound HTTPS request a minute, carrying the bearer token. The URL must be `https`
   (plain `http` only for localhost) and must not resolve to a link-local or unspecified
