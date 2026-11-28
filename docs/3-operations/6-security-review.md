@@ -141,6 +141,17 @@ reports use the same host check and refuse redirects. The connection speaks RTMP
 not HTTP, and only FFmpeg's own error text comes back, so it cannot be used to read the
 content of internal services.
 
+### SRT listener outputs accept connections
+
+An output whose SRT URL has `mode=listener` does not connect out: FFmpeg opens a UDP port
+on the server and sends the pipeline's stream to whoever connects to it, with no stream
+key and with no passphrase unless the URL sets `passphrase=`. It is allowed because some
+receivers can only call in, such as a decoder that runs only as an SRT caller. Only a
+signed-in operator can create one, and the port is reachable only where the host or cloud
+firewall opens it; the [documented firewall ports](../1-getting-started/3-install.md#firewall-ports)
+include none for outputs. An operator who opens such a port should set a passphrase in
+the URL. Revisit if listener outputs are used on hosts with an open firewall.
+
 ### Secrets visible to a signed-in user and in the logs
 
 The dashboard shows publish URLs and the SRT passphrase to any signed-in user, because

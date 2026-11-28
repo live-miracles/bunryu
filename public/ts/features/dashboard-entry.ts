@@ -231,8 +231,9 @@ const PASTE: Record<string, Handler> = {
 function delegate(type: string, attribute: string, handlers: Record<string, Handler>): void {
     document.addEventListener(type, (event) => {
         const el = (event.target as Element | null)?.closest?.<HTMLElement>(`[${attribute}]`);
-        const handler = el && handlers[el.getAttribute(attribute) ?? ''];
-        if (handler) void handler(el, event);
+        const name = el?.getAttribute(attribute) ?? '';
+        // Own keys only: markup must not reach `constructor` or another Object.prototype member.
+        if (el && Object.hasOwn(handlers, name)) void handlers[name](el, event);
     });
 }
 delegate('click', 'data-click', CLICK);
