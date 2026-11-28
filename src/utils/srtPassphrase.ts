@@ -47,12 +47,14 @@ export function replaceRelayPassphrase(json: string, passphrase: string): string
 
 // Temp file in the same directory, then rename: a reader (SRS, Goryu starting at the
 // wrong moment) sees the old file or the new one, never half of one. The mode and
-// owner of the original carry over.
+// owner of the original carry over. The mode is set with chmod, which the service's
+// UMask=0077 does not cut: SRS and Goryu run as another user and read through the group.
 function writeFileAtomic(file: string, content: string): void {
     const stat = fs.statSync(file);
     const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.tmp`);
     try {
-        fs.writeFileSync(tmp, content, { mode: stat.mode & 0o777 });
+        fs.writeFileSync(tmp, content, { mode: 0o600 });
+        fs.chmodSync(tmp, stat.mode & 0o777);
         fs.renameSync(tmp, file);
     } catch (err) {
         fs.rmSync(tmp, { force: true });

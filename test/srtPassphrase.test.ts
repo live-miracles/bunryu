@@ -104,10 +104,17 @@ describe('replaceRelayPassphrase', () => {
 });
 
 describe('writeSrtPassphrase', () => {
-    test('writes both files, keeps their mode and leaves no temp file', () => {
+    // The service runs with UMask=0077, which must not strip the group read that SRS and
+    // Goryu (another user, same group) need to read their file at the next start.
+    test('writes both files, keeps their mode under the service umask and leaves no temp file', () => {
         writeConfigs();
         fs.chmodSync(path.join(tempDir, 'srs.conf'), 0o640);
-        writeSrtPassphrase('NewPassphrase1234');
+        const umask = process.umask(0o077);
+        try {
+            writeSrtPassphrase('NewPassphrase1234');
+        } finally {
+            process.umask(umask);
+        }
 
         assert.match(fs.readFileSync(path.join(tempDir, 'srs.conf'), 'utf8'), /NewPassphrase1234;/);
         assert.equal(

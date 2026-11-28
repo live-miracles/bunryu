@@ -37,6 +37,10 @@ APP_DIR=/opt/bunryu
 DATA_DIR=/var/lib/bunryu
 CONF_DIR=/etc/bunryu
 SERVICE_USER=bunryu
+# SRS and Goryu parse traffic from the internet before any key is checked, so they run as
+# their own user: a flaw in either then reaches neither the database nor the dashboard's
+# processes. The group is the service user's, for reading their two config files.
+MEDIA_USER=bunryu-media
 
 SRS_VERSION=6.0-r3
 SRS_RELEASE_TAG="v${SRS_VERSION}"
@@ -285,6 +289,10 @@ if ! id "$SERVICE_USER" &> /dev/null; then
 else
     echo "User $SERVICE_USER already exists."
 fi
+if ! id "$MEDIA_USER" &> /dev/null; then
+    useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$MEDIA_USER"
+    echo "Created user: $MEDIA_USER"
+fi
 mkdir -p "$APP_DIR"
 # The application tree is root-owned and read-only to the service user. Root
 # runs code from it on every update (this script, npm, the build, set-password),
@@ -294,7 +302,6 @@ mkdir -p "$APP_DIR"
 chown -R root:root "$APP_DIR"
 chmod -R go-w "$APP_DIR"
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 750 "$DATA_DIR" "$CONF_DIR"
-as_service mkdir -p "$DATA_DIR/objs"
 # Root does not hand their contents to the service user; a file someone created
 # there as root (an editor run with sudo, say) is left as it is and named here.
 foreign="$(find "$DATA_DIR" "$CONF_DIR" ! -user "$SERVICE_USER" -printf '  %p\n')"
@@ -455,6 +462,35 @@ net.core.wmem_max = 16777216
 EOF
 sysctl -q -p /etc/sysctl.d/90-bunryu.conf || echo "WARNING: could not apply /etc/sysctl.d/90-bunryu.conf; SRT sockets keep the default UDP buffer cap" >&2
 
+# SRS and Goryu: their own user (MEDIA_USER), and of the disk only their config, read-only
+# through /etc; the data directory, with the database and diagnostics, is hidden. They
+# need no capabilities (every port is above 1024) and only ordinary system calls; netlink
+# is for reading the host's addresses. ProcSubset is not set: SRS reads /proc/stat for the
+# summaries the dashboard shows. MemoryDenyWriteExecute is for Goryu only: the official SRS
+# build asks for an executable stack, so every SRT thread SRS starts would be refused.
+MEDIA_SANDBOX="NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+TemporaryFileSystem=$DATA_DIR:ro
+ProtectProc=invisible
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM"
+
 cat > /etc/systemd/system/srs.service << EOF
 [Unit]
 Description=SRS Streaming Server
@@ -465,18 +501,17 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-User=$SERVICE_USER
+User=$MEDIA_USER
 Group=$SERVICE_USER
-WorkingDirectory=$DATA_DIR
+# SRS writes only its pid file, to ./objs.
+RuntimeDirectory=bunryu-srs bunryu-srs/objs
+WorkingDirectory=/run/bunryu-srs
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do curl -fsS http://127.0.0.1:8080/api/ready >/dev/null && exit 0; sleep 1; done; echo "bunryu readiness check timed out" >&2; exit 1'
 ExecStart=/usr/local/bin/srs -c $CONF_DIR/srs.conf
 Restart=always
 RestartSec=2
 LimitNOFILE=1048576
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=$DATA_DIR $CONF_DIR
+$MEDIA_SANDBOX
 
 [Install]
 WantedBy=multi-user.target
@@ -492,18 +527,16 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-User=$SERVICE_USER
+User=$MEDIA_USER
 Group=$SERVICE_USER
-WorkingDirectory=$DATA_DIR
+WorkingDirectory=/
 Environment=LD_LIBRARY_PATH=$SRT_LIB_DIR
 ExecStart=/usr/local/bin/goryu $CONF_DIR/goryu.json
 Restart=always
 RestartSec=2
 LimitNOFILE=1048576
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=$DATA_DIR $CONF_DIR
+$MEDIA_SANDBOX
+MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target

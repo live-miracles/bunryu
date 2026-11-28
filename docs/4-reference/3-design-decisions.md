@@ -2250,6 +2250,42 @@ environment after the first start.
 **Revisit when:** a second secret needs the same handling, or the Docker image is
 used for real deployments and `docker secret` support matters.
 
+### SRS and Goryu run as their own user in a locked-down unit
+
+**Decision (November 2026):** SRS and Goryu run as `bunryu-media`, with the service
+user's group so they can read `srs.conf` and `goryu.json` (mode 640) and nothing else of
+the app's. Their units hide `/var/lib/bunryu` (`TemporaryFileSystem`), make the system
+read-only (`ProtectSystem=strict`), drop every capability, filter system calls to
+`@system-service`, allow only IP, Unix and netlink sockets and add the kernel, device,
+namespace and personality protections. SRS writes its pid file to a runtime directory.
+The dashboard and FFmpeg stay as `bunryu`.
+
+**Why:**
+- **They are the code reached first from the internet.** SRS parses RTMP and SRT, and
+  Goryu SRT, before any stream key is checked. As the service user, a flaw in either
+  could read the database (every destination's stream key) and the dashboard's files.
+- **Hiding files from one user is not enough.** A process may read `/proc/<pid>/root` of
+  any process of its own user, so with one user a sandboxed SRS could still reach the
+  database through the dashboard's process. A second user closes that.
+- **Nothing needs them to share the user.** The dashboard reads their CPU and memory from
+  world-readable `/proc` files and the rest from their local HTTP APIs.
+
+**Evidence:** a systemd container on Ubuntu 24.04 with the installer's units, the pinned
+SRS 6.0-r3 and Goryu: RTMP, direct SRT and SRT through Goryu publish and go live, SRS's
+summaries and Goryu's status still answer, and `bunryu-media` cannot read the database,
+`bunryu.json` or the dashboard's `/proc/<pid>/root`, nor see its process.
+
+**Not adopted:**
+- **`MemoryDenyWriteExecute` for SRS:** the official SRS build marks its stack executable,
+  so every thread stack it starts needs writable and executable memory and SRT fails to
+  listen. Goryu has it.
+- **`ProcSubset=pid`:** SRS reads `/proc/stat` and `/proc/meminfo` for the summaries.
+- **A separate user for each of SRS and Goryu:** they read the same SRT passphrase, so
+  splitting them would protect nothing more.
+
+**Revisit** when SRS is upgraded: check that the new build still starts and accepts SRT under
+these units, and whether its stack is still executable.
+
 ### The SRT passphrase is reset from Settings by rewriting both files; the app does not restart SRS or Goryu
 
 **Decision (October 2026):** Settings has a **Reset** button, like the stream-key
