@@ -20,7 +20,7 @@ which file and exits with status 78, which systemd does not restart (see
 |-------|---------|-------------|
 | `port` | `8080` | App HTTP port |
 | `hook_port` | `8082` | Loopback-only port for SRS's `on_publish`/`on_play` hooks. Must match the hook URLs in `srs.conf` |
-| `trust_proxy` | `0` | Reverse-proxy hops whose `X-Forwarded-For` is trusted for client IPs (login rate limit, logs). Set `1` behind cloudflared/nginx; leave `0` when the port is reachable directly |
+| `trust_proxy` | `0` | Reverse-proxy hops whose `X-Forwarded-For` is trusted for client IPs (login rate limit, logs). Set `1` behind cloudflared/nginx on this host. The header is used only when the connection comes from loopback, so a client reaching the port directly cannot set its own address, and a proxy on another machine is treated as the client |
 | `database_path` | `./db.sqlite` | SQLite database path |
 | `srs_config_path` | `./srs.conf` | SRS config path |
 | `ffmpeg_path` | `ffmpeg` | FFmpeg binary for outputs and previews |

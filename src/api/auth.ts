@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import type { Db } from '../types.js';
+import { classifyAddress } from '../utils/destination.js';
 
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MIN_PASSWORD_LENGTH = 12;
@@ -54,6 +55,14 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
     } catch {
         return false;
     }
+}
+
+// Express's `trust proxy` for `trust_proxy` hops: the forwarded client address is used
+// only when the connection comes from loopback, where the tunnel runs. A hop count alone
+// trusts whoever connects, so a client that reaches the port directly could pick its own
+// address, and its own login rate-limit bucket, with an X-Forwarded-For header.
+export function proxyTrust(hops: number): (address: string, hop: number) => boolean {
+    return (address, hop) => hop < hops && (hop > 0 || classifyAddress(address) === 'loopback');
 }
 
 function clientIp(req: Request): string {

@@ -93,6 +93,31 @@ describe('auth login integration', () => {
         assert.equal(loginLimiterKey('fe80::1%en0'), 'fe80:0:0:0::/64');
     });
 
+    // trust_proxy is meant for the tunnel on this host. A client reaching the port
+    // directly must not choose its own address (and its rate-limit bucket) with a header.
+    test('X-Forwarded-For is trusted only from a proxy on loopback', async () => {
+        const { proxyTrust } = require('../../src/api/auth') as typeof import('../../src/api/auth');
+        const app = express();
+        app.set('trust proxy', proxyTrust(1));
+        app.get('/ip', (req, res) => res.json({ ip: req.ip }));
+        const ipFrom = async (peer: string) =>
+            (
+                await dispatch(app, 'GET', '/ip', undefined, peer, undefined, {
+                    'x-forwarded-for': '198.51.100.7',
+                })
+            ).body.ip;
+        assert.equal(await ipFrom('127.0.0.1'), '198.51.100.7');
+        assert.equal(await ipFrom('::ffff:127.0.0.1'), '198.51.100.7');
+        assert.equal(await ipFrom('203.0.113.9'), '203.0.113.9');
+
+        // Further hops are trusted only behind a loopback peer, and only as many as set.
+        const trust = proxyTrust(2);
+        assert.equal(trust('127.0.0.1', 0), true);
+        assert.equal(trust('10.0.0.2', 1), true);
+        assert.equal(trust('10.0.0.3', 2), false);
+        assert.equal(trust('10.0.0.2', 0), false);
+    });
+
     test('rejects a wrong password', async () => {
         const harness = await createHarness();
 

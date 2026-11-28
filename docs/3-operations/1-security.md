@@ -23,7 +23,8 @@ Hardening that is on by default:
   with the client IP.
 - **Login rate limit:** 5 failures per minute per client, grouped per IPv6 /64. A wrong current
   password on a password change counts as a failure too.
-  Behind a proxy set `trust_proxy`, or every user shares the proxy's address.
+  Behind a proxy on this host set `trust_proxy`, or every user shares the proxy's address;
+  the forwarded address is taken only from a connection that comes from loopback.
 - **Headers:** `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`,
   `Referrer-Policy: no-referrer`, a `Permissions-Policy` that turns off camera,
   microphone, location and payment, `Cross-Origin-Resource-Policy: same-origin`,

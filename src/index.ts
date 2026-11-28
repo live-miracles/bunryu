@@ -29,6 +29,7 @@ import {
     initializePassword,
     MissingInitialPasswordError,
     checkIsAuthenticated,
+    proxyTrust,
 } from './api/auth.js';
 import { registerVersionApi, readAppVersion } from './api/version.js';
 import { readUdpBufferCeilings } from './utils/procStats.js';
@@ -48,7 +49,7 @@ const app = express();
 const PORT = readAppConfig().port;
 const HOOK_PORT = readAppConfig().hookPort;
 app.disable('x-powered-by');
-if (readAppConfig().trustProxy > 0) app.set('trust proxy', readAppConfig().trustProxy);
+if (readAppConfig().trustProxy > 0) app.set('trust proxy', proxyTrust(readAppConfig().trustProxy));
 app.use(securityHeaders);
 app.use(rejectCrossSiteWrites);
 

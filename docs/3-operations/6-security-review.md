@@ -210,7 +210,10 @@ The five-failure limit is keyed on the client address. Behind a proxy with
 `trust_proxy` unset, everyone shares the proxy's address and a few mistyped passwords
 lock the dashboard for five minutes. This is the safer failure: a guessing flood cannot
 be spread across spoofed headers, and ingest and the running outputs are not affected.
-The remote-access guide sets `trust_proxy` for the tunnel.
+The remote-access guide sets `trust_proxy` for the tunnel. Even then the forwarded
+address is used only on a connection from loopback, where the tunnel runs, so a client
+that reaches the port directly cannot choose its own address with an `X-Forwarded-For`
+header.
 
 ### Sessions last seven days and have no idle timeout
 
