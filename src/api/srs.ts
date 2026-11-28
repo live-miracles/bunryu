@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import net from 'net';
 import type { Express } from 'express';
 import type { Db } from '../types.js';
-import { kickSrsClientsByStream } from '../utils/srs.js';
+import { kickSrsClientsByStreams } from '../utils/srs.js';
 import { RENDITION_APP, isRenditionOutput } from '../utils/renditions.js';
 import type { SrsEvent } from '../services/health.js';
 import type { InputState } from '../services/inputState.js';
@@ -61,6 +61,11 @@ async function readJournalOnlyTail(unit: string, maxLines: number): Promise<LogT
 // the whole map each window so it can't grow unbounded under a flood of
 // distinct (attacker-controlled) stream names.
 const KICK_COOLDOWN_MS = 5000;
+// Anyone can send such a flood over public RTMP, and every sweep lists all of SRS's
+// clients, so only one sweep runs at a time: the names refused meanwhile wait and
+// share the next one. A name beyond this many waiting is not kicked; its publisher
+// is refused anyway and kicked on a later attempt.
+const MAX_WAITING_KICKS = 1000;
 // A refused cross-protocol publish is retried every second by the relay; log it
 // once per pipeline per window and count the rest.
 const CROSS_PROTOCOL_LOG_INTERVAL_MS = 60_000;
@@ -74,7 +79,7 @@ function safeIp(raw: unknown): string {
 }
 const MAX_LISTED_REJECTIONS = 25;
 
-// Kicks are throttled per stream (KICK_COOLDOWN_MS), so this cannot flood.
+// One sweep at a time (MAX_WAITING_KICKS), so this cannot flood.
 function logKickFailure(err: unknown): void {
     console.warn(
         `[srs-hook] kicking a rejected publisher failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -93,6 +98,8 @@ export function registerSrsHooks(
     inputState: InputState,
     rejectedPublishes: RejectedPublishes = createRejectedPublishes(),
     diagnostics?: DiagnosticsLogger,
+    // Disconnects SRS clients on the given "app/stream" names; tests pass a fake.
+    kick: (streams: ReadonlySet<string>) => Promise<void> = kickSrsClientsByStreams,
 ): void {
     // Which keys exist / are assigned only decides how a rejected attempt is
     // labelled in the dashboard (never whether it is accepted), so it is cached
@@ -118,6 +125,24 @@ export function registerSrsHooks(
     };
 
     let recentlyKicked = new Map<string, number>();
+    let waitingKicks = new Set<string>();
+    let sweeping = false;
+    const sweepKicks = async (): Promise<void> => {
+        sweeping = true;
+        while (waitingKicks.size > 0) {
+            const batch = waitingKicks;
+            waitingKicks = new Set();
+            await kick(batch).catch(logKickFailure);
+        }
+        sweeping = false;
+    };
+    const kickRejected = (hookApp: string, stream: string): void => {
+        const kickKey = `${hookApp}/${stream}`;
+        if (recentlyKicked.has(kickKey)) return;
+        recentlyKicked.set(kickKey, Date.now());
+        if (waitingKicks.size < MAX_WAITING_KICKS) waitingKicks.add(kickKey);
+        if (!sweeping) void sweepKicks();
+    };
     const crossProtocolLog = createLogThrottle({ intervalMs: CROSS_PROTOCOL_LOG_INTERVAL_MS });
     setInterval(() => {
         recentlyKicked = new Map();
@@ -189,11 +214,7 @@ export function registerSrsHooks(
                 return res.json({ code: 0 });
             }
             noteRejection(stream, 'unknown', 'not a running shared encode');
-            const kickKey = `${hookApp}/${stream}`;
-            if (!recentlyKicked.has(kickKey)) {
-                recentlyKicked.set(kickKey, Date.now());
-                void kickSrsClientsByStream(hookApp, stream).catch(logKickFailure);
-            }
+            kickRejected(hookApp, stream);
             return res.status(403).json({ code: 403 });
         }
 
@@ -205,11 +226,7 @@ export function registerSrsHooks(
                 keyIsValid ? 'unassigned' : 'unknown',
                 keyIsValid ? 'key not assigned to a pipeline' : 'unknown stream key',
             );
-            const kickKey = `${hookApp ?? ''}/${stream}`;
-            if (hookApp && !recentlyKicked.has(kickKey)) {
-                recentlyKicked.set(kickKey, Date.now());
-                void kickSrsClientsByStream(hookApp, stream).catch(logKickFailure);
-            }
+            if (hookApp) kickRejected(hookApp, stream);
             return res.status(403).json({ code: 403 });
         }
 

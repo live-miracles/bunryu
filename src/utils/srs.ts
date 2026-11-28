@@ -80,7 +80,9 @@ export interface SrsClient {
     kbps?: { recv_30s: number; send_30s: number };
 }
 
-export async function kickSrsClientsByStream(app: string, stream: string): Promise<void> {
+// Disconnects every SRS client on one of the given streams, each written "app/stream".
+// One listing of the clients serves them all.
+export async function kickSrsClientsByStreams(streams: ReadonlySet<string>): Promise<void> {
     const srsApiUrl = readSrsConfigValues().apiUrl;
     const PAGE_SIZE = 100;
 
@@ -98,7 +100,7 @@ export async function kickSrsClientsByStream(app: string, stream: string): Promi
         };
         const clients = data.clients ?? [];
         for (const client of clients) {
-            if (client.app === app && client.stream === stream) {
+            if (streams.has(`${client.app}/${client.stream}`)) {
                 toKick.push(client.id);
             }
         }
@@ -112,7 +114,7 @@ export async function kickSrsClientsByStream(app: string, stream: string): Promi
             signal: AbortSignal.timeout(SRS_CLIENT_FETCH_TIMEOUT_MS),
         }).catch((err: unknown) => {
             console.warn(
-                `[srs] kick of client ${id} on ${app}/${stream} failed: ${err instanceof Error ? err.message : String(err)}`,
+                `[srs] kick of client ${id} failed: ${err instanceof Error ? err.message : String(err)}`,
             );
         });
     }

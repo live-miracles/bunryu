@@ -14,6 +14,7 @@ import type { SrsEvent } from '../../src/services/health';
 import type { Db, Output } from '../../src/types';
 import childProcess from 'node:child_process';
 import { dispatch } from '../helpers/http';
+import { kickSrsClientsByStreams } from '../../src/utils/srs';
 
 type Body = Record<string, unknown>;
 
@@ -65,8 +66,15 @@ function createHarness(
             events.push({ event, ...fields }),
         close: async () => {},
     };
+    // Each kick sweep's names, sorted; holdKicks() keeps the next sweep running until released.
+    const kicks: string[][] = [];
+    let kickGate: Promise<void> = Promise.resolve();
+    const kick = async (streams: ReadonlySet<string>) => {
+        kicks.push([...streams].sort());
+        await kickGate;
+    };
     // The fake has the three methods the hooks call; the rest of Db is not needed.
-    registerSrsHooks(app, db as unknown as Db, inputState, rejectedPublishes, diagnostics);
+    registerSrsHooks(app, db as unknown as Db, inputState, rejectedPublishes, diagnostics, kick);
     registerRejectedPublishesApi(app, rejectedPublishes);
     return {
         calls,
@@ -79,7 +87,21 @@ function createHarness(
         ready: () => dispatch(app, 'GET', '/api/ready'),
         inputState,
         events,
+        kicks,
+        holdKicks: () => {
+            let release!: () => void;
+            kickGate = new Promise((resolve) => (release = resolve));
+            return () => {
+                kickGate = Promise.resolve();
+                release();
+            };
+        },
     };
+}
+
+// Lets every pending sweep (and the one a released sweep starts next) finish.
+async function settleKicks(): Promise<void> {
+    for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
 describe('SRS publish hook integration', () => {
@@ -443,26 +465,63 @@ describe('SRS publish hook integration', () => {
         }
     });
 
-    test('debounces repeated kicks for the same app/stream, but not across different streams', async (t) => {
-        let fetchCalls = 0;
-        t.mock.method(globalThis, 'fetch', async () => {
-            fetchCalls += 1;
-            return { ok: true, json: async () => ({ clients: [] }) };
-        });
+    test('debounces repeated kicks for the same app/stream, but not across different streams', async () => {
         const harness = createHarness(['key01_good']);
 
         await harness.publish({ app: 'live', stream: 'key99_bad' });
         await harness.publish({ app: 'live', stream: 'key99_bad' });
         await harness.publish({ app: 'live', stream: 'key99_bad' });
         await harness.publish({ app: 'live', stream: 'key98_bad' });
+        await settleKicks();
 
-        // kickSrsClientsByStream is fire-and-forget from the handler's point of
-        // view; the mocked fetch's own body still runs synchronously up to its
-        // first await when invoked, so the count is already settled here, but
-        // flush the microtask queue once for safety.
-        await new Promise((resolve) => setImmediate(resolve));
+        assert.deepEqual(harness.kicks.flat().sort(), ['live/key98_bad', 'live/key99_bad']);
+    });
 
-        assert.equal(fetchCalls, 2);
+    // Public RTMP lets anyone send a flood of distinct stream names, and each sweep lists
+    // every SRS client. One sweep at a time: the names refused meanwhile share the next.
+    test('runs one kick sweep at a time, and the names refused during it share the next one', async () => {
+        const harness = createHarness(['key01_good']);
+        const release = harness.holdKicks();
+
+        await harness.publish({ app: 'live', stream: 'key99_bad' });
+        for (const stream of ['key98_bad', 'key97_bad', 'key96_bad']) {
+            await harness.publish({ app: 'live', stream });
+        }
+        assert.deepEqual(harness.kicks, [['live/key99_bad']]);
+
+        release();
+        await settleKicks();
+
+        assert.deepEqual(harness.kicks, [
+            ['live/key99_bad'],
+            ['live/key96_bad', 'live/key97_bad', 'live/key98_bad'],
+        ]);
+    });
+});
+
+describe('kickSrsClientsByStreams', () => {
+    test('lists the clients once and disconnects only those on the given streams', async (t) => {
+        const clients = [
+            { id: 'c1', app: 'live', stream: 'key97_bad' },
+            { id: 'c2', app: 'live', stream: 'key96_bad' },
+            { id: 'c3', app: 'live', stream: 'key01_good' },
+            { id: 'c4', app: 'other', stream: 'key97_bad' },
+        ];
+        let listings = 0;
+        const deleted: string[] = [];
+        t.mock.method(globalThis, 'fetch', async (url: string, init?: RequestInit) => {
+            if (init?.method === 'DELETE') {
+                deleted.push(url.slice(url.lastIndexOf('/') + 1));
+                return { ok: true, json: async () => ({}) };
+            }
+            listings += 1;
+            return { ok: true, json: async () => ({ clients }) };
+        });
+
+        await kickSrsClientsByStreams(new Set(['live/key97_bad', 'live/key96_bad']));
+
+        assert.equal(listings, 1);
+        assert.deepEqual(deleted.sort(), ['c1', 'c2']);
     });
 });
 

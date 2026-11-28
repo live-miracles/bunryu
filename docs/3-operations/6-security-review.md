@@ -19,7 +19,7 @@ reviewed November 2026.
 | SRT ingest, `10080/udp` and `10081/udp` | Public | Passphrase checked at the handshake, then the same stream key check |
 | SRS HTTP API, `1985/tcp` | Loopback only | Bound to `127.0.0.1` in `srs.conf` |
 | SRS hooks, `8082/tcp` | Loopback only | Bound to `127.0.0.1`; a separate listener from the dashboard |
-| Relay status, `8081/tcp` | Never opened in the firewall | Read by the app only |
+| Relay status, `8081/tcp` | Loopback only | Goryu binds it to `127.0.0.1`; read by the app only |
 
 Outbound connections: one FFmpeg per output to the destinations the operator configures,
 and, if set up, one HTTPS report a minute to Key Vault.
