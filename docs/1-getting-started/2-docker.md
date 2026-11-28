@@ -69,8 +69,9 @@ docker run -d --name bunryu --restart unless-stopped \
   refreshed from the image and keep their SRT passphrase, like a reinstall;
   `bunryu.json` keeps any setting you added and gets only the port and paths
   set.
-- **Secrets**: the first start needs `BUNRYU_DASHBOARD_PASSWORD` (only its hash
-  is stored, in the database, so later starts don't) and otherwise stops with an
+- **Secrets**: the first start needs `BUNRYU_DASHBOARD_PASSWORD` of at least 12
+  characters (only its hash is stored, in the database, so later starts don't)
+  and otherwise stops with an
   error in the logs; it never generates or logs a password. To set a new one, see
   [Authentication](../3-operations/1-security.md#authentication). The container does generate a random SRT passphrase.
 - **Public host**: set **Settings → Public Host** to the address encoders use,

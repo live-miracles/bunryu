@@ -48,6 +48,11 @@ prepare_data() {
         log "ERROR: no initial dashboard password; set BUNRYU_DASHBOARD_PASSWORD (e.g. in compose.yaml or docker run -e) and start again"
         exit 1
     fi
+    # The same minimum as the installer and the dashboard's password change.
+    if [[ ! -s db.sqlite && ${#BUNRYU_DASHBOARD_PASSWORD} -lt 12 ]]; then
+        log "ERROR: BUNRYU_DASHBOARD_PASSWORD must be at least 12 characters"
+        exit 1
+    fi
 
     # SRT passphrase: generated on first start, kept afterwards. The configs are
     # refreshed from the image on every start (like a reinstall) so an image
@@ -177,9 +182,11 @@ prepare_data
 
 supervise bunryu no_gate node "$APP_DIR/dist/index.js" &
 app_pid=$!
-supervise srs wait_ready /usr/local/bin/srs -c "$DATA_DIR/srs.conf" &
+# SRS and goryu parse internet traffic; the initial dashboard password is the control
+# plane's only, so it stays out of their environment.
+supervise srs wait_ready env -u BUNRYU_DASHBOARD_PASSWORD /usr/local/bin/srs -c "$DATA_DIR/srs.conf" &
 srs_pid=$!
-supervise goryu wait_ready env LD_LIBRARY_PATH=/usr/local/lib/bunryu-srt /usr/local/bin/goryu "$DATA_DIR/goryu.json" &
+supervise goryu wait_ready env -u BUNRYU_DASHBOARD_PASSWORD LD_LIBRARY_PATH=/usr/local/lib/bunryu-srt /usr/local/bin/goryu "$DATA_DIR/goryu.json" &
 relay_pid=$!
 
 shutdown() {

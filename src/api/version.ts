@@ -59,7 +59,9 @@ async function getSrtRelayVersion(): Promise<string> {
     const bin = SRT_RELAY_BIN_CANDIDATES.find((candidate) => fs.existsSync(candidate));
     if (!bin) return 'unknown';
 
-    const env = { ...process.env };
+    // The minimal environment FFmpeg gets: the app's own variables (an initial
+    // dashboard password in the Docker image) never reach another binary.
+    const env = ffmpegEnv();
     const libDir = SRT_RELAY_LIB_DIR_CANDIDATES.find((candidate) => fs.existsSync(candidate));
     if (libDir) {
         env.LD_LIBRARY_PATH = env.LD_LIBRARY_PATH ? `${libDir}:${env.LD_LIBRARY_PATH}` : libDir;
@@ -94,9 +96,14 @@ export function registerVersionApi(app: Express): void {
         if (cached) return res.json(withLiveFields(cached));
 
         const [commitLine, commitDate, srs, srtRelay, ffmpegOut] = await Promise.all([
-            exec('git', ['log', '-1', '--format=%h %s']),
+            exec('git', ['log', '-1', '--format=%h %s'], undefined, ffmpegEnv()),
             // Format in the server's local timezone, matching journald/log output.
-            exec('git', ['log', '-1', '--date=format-local:%Y-%m-%d %H:%M', '--format=%cd']),
+            exec(
+                'git',
+                ['log', '-1', '--date=format-local:%Y-%m-%d %H:%M', '--format=%cd'],
+                undefined,
+                ffmpegEnv(),
+            ),
             fetchSrsVersion(),
             getSrtRelayVersion(),
             exec(readAppConfig().ffmpegPath, ['-version'], undefined, ffmpegEnv()),
