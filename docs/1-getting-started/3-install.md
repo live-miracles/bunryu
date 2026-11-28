@@ -22,13 +22,14 @@ their process 2 s after it exits and never give up (`StartLimitIntervalSec=0`); 
 ```bash
 sudo apt-get update -q && sudo apt-get install -y -q git  # in case git is not installed
 sudo git clone https://github.com/live-miracles/bunryu /opt/bunryu
-sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash /opt/bunryu/scripts/server-install.sh
+sudo bash /opt/bunryu/scripts/server-install.sh
 ```
 
-A fresh install needs the initial dashboard password. If the variable is missing
-(and `/etc/bunryu/bunryu.json` has no `dashboard_password`), the installer stops
-before changing anything and says so; it never generates or prints a password. A
-re-run that keeps the existing database needs none.
+A fresh install asks for the initial dashboard password (at least 12 characters) and
+stores only its hash. For an unattended install, pass it as
+`sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash …`; without a terminal
+or the variable, the installer stops before changing anything. It never generates or
+prints a password. A re-run that keeps the existing database needs none.
 
 **Set server timezone (optional, for readable log timestamps):**
 
@@ -63,7 +64,7 @@ terminal it stops, and you re-run it with `WIPE_DB=y`. A database that still fit
 sudo bash /opt/bunryu/scripts/server-down.sh
 ```
 
-Open the dashboard: `http://SERVER_IP:8080` — log in with the password you gave the installer (it is stored as `dashboard_password` in `/etc/bunryu/bunryu.json`; `scripts/server-reset-password.sh` re-applies it).
+Open the dashboard: `http://SERVER_IP:8080` — log in with the password you gave the installer. Forgot it? `sudo bash /opt/bunryu/scripts/server-set-password.sh` sets a new one.
 
 After the first login, set **Settings → Public Host** to the address your
 encoders use, so the publish URLs shown in the dashboard are correct. To reach
@@ -93,7 +94,7 @@ The repository copies both runtime config files during install:
 - `/etc/bunryu/srs.conf`
 - `/etc/bunryu/goryu.json`
 
-The app's own `/etc/bunryu/bunryu.json` (the unit sets `BUNRYU_CONFIG` to it) is updated, not replaced: the installer sets only `port`, the file paths and, when it has one, `dashboard_password`. Any other setting you add, such as `trust_proxy` or watchdog values, stays across updates. A file that is not valid JSON is replaced by the defaults, with a notice.
+The app's own `/etc/bunryu/bunryu.json` (the unit sets `BUNRYU_CONFIG` to it) is updated, not replaced: the installer sets only `port` and the file paths, and removes a `dashboard_password` an older version left there. Any other setting you add, such as `trust_proxy` or watchdog values, stays across updates. A file that is not valid JSON is replaced by the defaults, with a notice.
 
 SRS only reads its config at startup, and Goryu only reads its
 JSON config file at startup.

@@ -38,11 +38,10 @@ bonded-input status.
 npm run dev           # tsx watch + tsc watch + tailwind watch
 ```
 
-A fresh database is seeded with the `dashboard_password` in `bunryu.json`, which
-the repo ships as `admin` for development only (the installer and the Docker image
-never use that file). The app has no built-in default: if you empty or delete that
-line it refuses to start on a fresh database, unless `BUNRYU_DASHBOARD_PASSWORD` is
-set. Later starts use the hash stored in the database.
+`npm run dev` seeds a fresh database with the password `admin`, or
+`BUNRYU_DASHBOARD_PASSWORD` when it is set. The app itself has no default: started
+another way on a fresh database without that variable, it refuses to start. Later
+starts use the hash stored in the database.
 
 There are no migrations. When a change bumps the schema version, `npm run dev` finds
 the old `db.sqlite` before it starts the watchers and asks whether to wipe it. Answer

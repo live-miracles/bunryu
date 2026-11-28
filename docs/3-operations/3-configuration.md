@@ -4,9 +4,9 @@ The app reads runtime settings from `bunryu.json`. A dev checkout reads the one
 in the app root; the native install keeps it at `/etc/bunryu/bunryu.json` next to
 `srs.conf` and `goryu.json` (outside the git checkout, which every update resets)
 and the unit points the app at it with `BUNRYU_CONFIG`. The Docker image keeps it
-in the `/data` volume. The installer and the Docker entrypoint set only `port`, the
-file paths and `dashboard_password`; every other setting you add stays when you
-update.
+in the `/data` volume. The installer and the Docker entrypoint set only `port` and the
+file paths; every other setting you add stays when you update. The dashboard password
+is not in this file (see `BUNRYU_DASHBOARD_PASSWORD` below).
 
 The app reads `bunryu.json`, `srs.conf` and `goryu.json` once, when it starts:
 restart the app after changing any of them. SRS and Goryu read their own file only
@@ -25,7 +25,6 @@ which file and exits with status 78, which systemd does not restart (see
 | `srs_config_path` | `./srs.conf` | SRS config path |
 | `ffmpeg_path` | `ffmpeg` | FFmpeg binary for outputs and previews |
 | `ffprobe_path` | `ffprobe` | FFprobe binary for input media probing and validation |
-| `dashboard_password` | none (the repo's dev `bunryu.json` ships `admin`) | Initial dashboard password, used only when the database has no password yet (first boot or after a reset). There is no default: with an empty database and no password the server does not start (exit status 78). The installer and the Docker image require one on a fresh install and never generate or print it. Stored in plain text; the installer sets the file to mode `0600` |
 | `stream_key_count` | `100` | Stream keys generated for pipelines to publish with. One pipeline uses one key, so this is also the most inputs the server accepts. A whole number from 1 to 10000; anything else gives 100. Raising it adds keys at the next start; lowering it removes the unassigned keys above it (keys a pipeline uses stay). The inputs and outputs recommended in the [introduction](../1-getting-started/1-introduction.md#capacity-and-limits) are not enforced |
 | `output_watchdog.warmup_ms` | `90000` | Warmup before stall checks, used by the output progress watchdog |
 | `output_watchdog.stall_ms` | `45000` | Output progress stall window before restarting FFmpeg |
@@ -272,7 +271,7 @@ Installer/development overrides:
 | `SRT_RELEASE_TAG` | `server-install.sh` | Relay GitHub release tag to install |
 | `SRT_URL` | `server-install.sh` | Custom relay release archive URL |
 | `SRT_SHA256` | `server-install.sh` | Expected SHA256 for the relay archive; blank skips verification |
-| `BUNRYU_DASHBOARD_PASSWORD` | the app, `server-install.sh`, Docker entrypoint | Initial dashboard password, required when the database is empty (first install, a wipe, or an empty `/data` volume). Overrides `dashboard_password` in `bunryu.json` |
+| `BUNRYU_DASHBOARD_PASSWORD` | the app, `server-install.sh`, `server-set-password.sh`, Docker entrypoint | Initial dashboard password, required when the database is empty (first install, a wipe, or an empty `/data` volume); the installer asks for it when it is unset and it runs in a terminal. Only its hash is stored, in the database. There is no default: with an empty database and no password the server does not start (exit status 78). `npm run dev` uses `admin` when it is unset |
 | `BUNRYU_CONFIG` | the app | Path of `bunryu.json`; unset reads `./bunryu.json`. Set by the installer's unit |
 | `WIPE_DB` | `server-install.sh` | Set `y` to wipe the existing SQLite DB without asking (needed when its schema changed and there is no terminal); `n` never wipes. A wipe first copies it to `db.sqlite.<timestamp>.bak` (owner-only, it holds stream keys and destination URLs) |
 | `SRS_LOCAL_BIN` | `dev-server-install.sh` | Local executable SRS binary to copy into `./objs/srs` |

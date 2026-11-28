@@ -155,14 +155,14 @@ function pruneSessions(db: Db): void {
 // A database with no password hash and no initial password to seed it with.
 export class MissingInitialPasswordError extends Error {}
 
-// initialPassword (bunryu.json's dashboard_password) only seeds a database
-// that has no password hash yet; an existing hash is never overwritten. There
-// is no default password: without one the server does not start.
+// initialPassword (BUNRYU_DASHBOARD_PASSWORD) only seeds a database that has no
+// password hash yet; an existing hash is never overwritten. There is no default
+// password: without one the server does not start.
 export async function initializePassword(db: Db, initialPassword: string): Promise<void> {
     if (!db.getSetting('dashboardPasswordHash')) {
         if (!initialPassword) {
             throw new MissingInitialPasswordError(
-                'No dashboard password is set and the database has none. Set dashboard_password in bunryu.json (or BUNRYU_DASHBOARD_PASSWORD) and start again.',
+                'No dashboard password is set and the database has none. Set one with scripts/server-set-password.sh (or BUNRYU_DASHBOARD_PASSWORD) and start again.',
             );
         }
         db.setSetting('dashboardPasswordHash', await hashPassword(initialPassword));
@@ -173,6 +173,23 @@ export async function initializePassword(db: Db, initialPassword: string): Promi
     }
     // Expired sessions are also dropped hourly, not only at boot.
     setInterval(() => pruneSessions(db), SESSION_PRUNE_INTERVAL_MS).unref();
+}
+
+// Sets the dashboard password without the current one and signs out every session: the
+// set-password command, for a first install or a forgotten or compromised password. A
+// running server keeps its sessions in memory until it restarts, which the command's
+// wrapper does. Returns how many sessions were signed out.
+export async function setDashboardPassword(db: Db, password: string): Promise<number> {
+    if (password.length < MIN_PASSWORD_LENGTH) {
+        throw new Error(`The password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    }
+    db.setSetting('dashboardPasswordHash', await hashPassword(password));
+    const revoked = db.listSessions();
+    for (const hashed of revoked) {
+        sessions.delete(hashed);
+        db.deleteSession(hashed);
+    }
+    return revoked.length;
 }
 
 export function registerAuthApi(app: Express, db: Db): void {

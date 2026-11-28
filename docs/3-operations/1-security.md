@@ -76,7 +76,7 @@ Hardening that is on by default:
   this. Existing longer names are kept but must comply when edited.
 - **Installer ownership:** `/opt/bunryu` is root-owned and read-only to the
   service user (root runs code from it on every update); the service user writes
-  only to the data and config directories. `server-reset-password.sh` also signs
+  only to the data and config directories. `server-set-password.sh` also signs
   out every existing session.
 - **Key Vault reports (optional):** once the link is set in Settings the app makes one
   outbound HTTPS request a minute, carrying the bearer token. The URL must be `https`
@@ -122,10 +122,10 @@ talks to those over loopback.
 
 ## Authentication
 
-The dashboard is protected by a password. `dashboard_password` in `bunryu.json` is only the *initial* password: it is hashed into the database on first boot, and ignored whenever the database already has a password. The installer requires one on a fresh install (`BUNRYU_DASHBOARD_PASSWORD`, or `dashboard_password` in `/etc/bunryu/bunryu.json`) and fails before changing anything if there is none; it never generates or prints a password, so none ends up in install logs. A reinstall that keeps the database needs none. The Docker image works the same way, and the app itself exits with status 78 (not restarted by systemd) if it finds an empty database and no password; there is no default password. Change it in **Settings → Change Password** after logging in — that updates the database only, not `bunryu.json`.
+The dashboard is protected by a password, stored only as a salted scrypt hash in the database, never in a file. A fresh install asks for it (or takes `BUNRYU_DASHBOARD_PASSWORD` for an unattended install) and fails before changing anything if there is none; it never generates or prints a password, so none ends up in install logs. A reinstall that keeps the database needs none. The Docker image takes `BUNRYU_DASHBOARD_PASSWORD` on its first start, and the app itself exits with status 78 (not restarted by systemd) if it finds an empty database and no password; there is no default password. Change it in **Settings → Change Password** after logging in.
 
-To reset a forgotten password, set `dashboard_password` in `/etc/bunryu/bunryu.json`, then:
+To set a new password when it has been forgotten:
 ```bash
-sudo bash /opt/bunryu/scripts/server-reset-password.sh
+sudo bash /opt/bunryu/scripts/server-set-password.sh
 ```
-This clears the stored password and restarts the service, which re-seeds it from `dashboard_password` in `/etc/bunryu/bunryu.json`. The script refuses to run when that field is empty.
+It asks for the new password, signs out every session and restarts the dashboard service. In Docker, run `docker exec -it -e BUNRYU_DASHBOARD_PASSWORD= bunryu node /app/dist/setPassword.js`, then `docker restart bunryu`.

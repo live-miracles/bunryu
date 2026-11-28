@@ -8,9 +8,9 @@
 #   sudo bash /opt/bunryu/scripts/server-install.sh
 #
 # A fresh install (no database yet, or one being wiped) needs the initial
-# dashboard password. Pass it as BUNRYU_DASHBOARD_PASSWORD (sudo only keeps it
-# when set on the command line) or put {"dashboard_password": "..."} in
-# /etc/bunryu/bunryu.json beforehand. The installer never generates or prints one.
+# dashboard password. The installer asks for it, or, for an unattended install,
+# takes BUNRYU_DASHBOARD_PASSWORD (sudo only keeps it when set on the command line).
+# Only its hash is stored, in the database; it is never generated or printed.
 #   sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash scripts/server-install.sh
 #
 # Optional:
@@ -127,17 +127,14 @@ else
 fi
 
 # Initial dashboard password and database decision, settled before the long
-# downloads. The password only seeds an empty database, so it is required exactly
+# downloads. The password is set only on an empty database, so it is required exactly
 # when this run leaves the database empty (first install, or a wipe); a kept
-# database needs none. It comes from BUNRYU_DASHBOARD_PASSWORD, else from the
-# deployed $CONF_DIR/bunryu.json (outside the git checkout every update resets).
-# It is never generated and never printed.
+# database needs none. It comes from BUNRYU_DASHBOARD_PASSWORD, else it is asked for.
+# It is never generated, printed or written to a file: only its hash is stored, by
+# the set-password command once the database exists.
 DB_FILE="$DATA_DIR/db.sqlite"
 APP_CONFIG="$CONF_DIR/bunryu.json"
 DASHBOARD_PASSWORD="${BUNRYU_DASHBOARD_PASSWORD:-}"
-if [[ -z "$DASHBOARD_PASSWORD" && -f "$APP_CONFIG" ]]; then
-    DASHBOARD_PASSWORD="$(node -e 'const fs=require("fs");try{const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' "$APP_CONFIG")"
-fi
 fresh_db=yes
 wipe_db=no
 if [[ -s "$DB_FILE" ]]; then
@@ -173,10 +170,30 @@ if [[ -s "$DB_FILE" ]]; then
     [[ "$wipe_db" == "yes" ]] || fresh_db=no
 fi
 if [[ "$fresh_db" == "yes" && -z "$DASHBOARD_PASSWORD" ]]; then
-    echo "ERROR: no initial dashboard password. This install starts with an empty database." >&2
-    echo "  Nothing has been changed yet; choose a password and re-run:" >&2
-    echo "    sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash $0" >&2
-    echo "  or put {\"dashboard_password\": \"...\"} in $APP_CONFIG first." >&2
+    if [[ ! -t 0 ]]; then
+        echo "ERROR: no initial dashboard password. This install starts with an empty database." >&2
+        echo "  Nothing has been changed yet; run it in a terminal to be asked, or re-run with:" >&2
+        echo "    sudo BUNRYU_DASHBOARD_PASSWORD='choose-a-long-password' bash $0" >&2
+        exit 1
+    fi
+    echo "This install starts with an empty database; choose the dashboard password."
+    while :; do
+        read -rsp "Dashboard password (at least 12 characters): " DASHBOARD_PASSWORD
+        echo
+        read -rsp "Repeat it: " reply
+        echo
+        # 12 is the app's minimum (MIN_PASSWORD_LENGTH); checked here too, before the downloads.
+        if [[ ${#DASHBOARD_PASSWORD} -lt 12 ]]; then
+            echo "Too short, try again."
+        elif [[ "$DASHBOARD_PASSWORD" != "$reply" ]]; then
+            echo "They do not match, try again."
+        else
+            break
+        fi
+    done
+    unset reply
+elif [[ "$fresh_db" == "yes" && ${#DASHBOARD_PASSWORD} -lt 12 ]]; then
+    echo "ERROR: BUNRYU_DASHBOARD_PASSWORD must be at least 12 characters. Nothing has been changed yet." >&2
     exit 1
 fi
 
@@ -324,15 +341,14 @@ node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=fs.
 node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
     "$CONF_DIR/goryu.json" "$RELAY_SRT_PASSPHRASE"
 # App config, next to the other deployed configs and outside the git checkout.
-# The installer owns only what it must: the port (the units check it), the file
-# paths and, when it has one, dashboard_password. Every other key an operator added
-# (trust_proxy behind a tunnel, watchdog tuning, ...) stays; a missing or unreadable
-# file starts from the defaults below. Written via node for the same reason as the
-# passphrases above: a hand-typed password containing quotes or backslashes must not
-# corrupt the JSON.
+# The installer owns only what it must: the port (the units check it) and the file
+# paths. Every other key an operator added (trust_proxy behind a tunnel, watchdog
+# tuning, ...) stays; a missing or unreadable file starts from the defaults below.
+# A dashboard_password left by an older install is removed: the app no longer reads
+# it, and it would keep the password in plain text.
 node -e '
 const fs = require("fs");
-const [p, dataDir, confDir, pass] = process.argv.slice(1);
+const [p, dataDir, confDir] = process.argv.slice(1);
 let c = null;
 try {
     c = JSON.parse(fs.readFileSync(p, "utf8"));
@@ -349,9 +365,9 @@ Object.assign(c, {
     ffmpeg_path: "/usr/local/bin/ffmpeg",
     ffprobe_path: "/usr/local/bin/ffprobe",
 });
-if (pass) c.dashboard_password = pass;
+delete c.dashboard_password;
 fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n");
-' "$APP_CONFIG" "$DATA_DIR" "$CONF_DIR" "$DASHBOARD_PASSWORD"
+' "$APP_CONFIG" "$DATA_DIR" "$CONF_DIR"
 echo "Config: refreshed $APP_CONFIG"
 # Database. We don't run data migrations, so a db.sqlite left over from an older
 # version could be schema-incompatible and cause hard-to-debug issues. Whether to
@@ -368,12 +384,19 @@ elif [[ "$fresh_db" == "no" ]]; then
 fi
 touch "$DB_FILE"
 chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json" "$APP_CONFIG" "$DB_FILE"
-# bunryu.json now holds the dashboard password in plain text. The database holds
-# the password hash, stream keys and destination URLs (platform stream keys), and
-# the two configs hold the SRT passphrase: nothing here is for other local users.
+# The database holds the password hash, stream keys and destination URLs (platform
+# stream keys), and the two configs hold the SRT passphrase: nothing here is for
+# other local users.
 chmod 600 "$APP_CONFIG" "$DB_FILE"
 chmod 640 "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json"
 chmod 750 "$DATA_DIR" "$CONF_DIR"
+if [[ "$fresh_db" == "yes" ]]; then
+    # The command behind scripts/server-set-password.sh, before the service (re)starts.
+    # The password reaches node through the environment, never its command line.
+    (cd "$APP_DIR" && BUNRYU_CONFIG="$APP_CONFIG" BUNRYU_DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD" \
+        runuser -u "$SERVICE_USER" -- node "$APP_DIR/dist/setPassword.js")
+fi
+unset DASHBOARD_PASSWORD
 echo "Config: $CONF_DIR/srs.conf"
 echo "App config: $APP_CONFIG"
 echo "Data:   $DB_FILE"
@@ -522,12 +545,11 @@ echo " Setup complete"
 echo "=============================="
 echo "Dashboard: http://<server-ip>:8080/"
 if [[ "$fresh_db" == "yes" ]]; then
-    echo "  Password: the one you provided (stored as dashboard_password in $APP_CONFIG;"
-    echo "   change it in Settings -> Change Password after logging in)"
+    echo "  Password: the one you provided (change it in Settings -> Change Password)"
 else
     echo "  Password: unchanged (kept existing database)"
-    echo "  Forgot it? Set dashboard_password in $APP_CONFIG, then run scripts/server-reset-password.sh"
 fi
+echo "  Forgot it? sudo bash $APP_DIR/scripts/server-set-password.sh"
 echo "  Set your public host in Settings → Public Host"
 echo "App config: $APP_CONFIG"
 echo "Config:    $CONF_DIR/srs.conf"

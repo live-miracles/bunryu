@@ -2190,57 +2190,57 @@ real load.
 
 ## Install and secrets
 
-### The initial dashboard password is supplied, never generated or printed; the app config lives in `/etc/bunryu`
+### The initial dashboard password is supplied, never generated, printed or kept in a file; the app config lives in `/etc/bunryu`
 
-**Decision (October 2026):** a fresh install must be given the initial dashboard
-password: `BUNRYU_DASHBOARD_PASSWORD`, or `dashboard_password` in
-`/etc/bunryu/bunryu.json`. Without one the installer stops before changing
+**Decision (October 2026, password storage November 2026):** a fresh install must be
+given the initial dashboard password: the installer asks for it, or takes
+`BUNRYU_DASHBOARD_PASSWORD` when unattended. Without one it stops before changing
 anything. The Docker entrypoint applies the same rule on an empty `/data` volume. A
-run that keeps the database needs none, because the password only seeds an empty
-one. `bunryu.json` moved from `/opt/bunryu` to `/etc/bunryu`, and the app finds it
-through `BUNRYU_CONFIG` (unset means `./bunryu.json`, so dev checkouts are
-unchanged). The installer and the Docker entrypoint set only `port`, the file paths
-and the password in that file and keep every other key. `server-reset-password.sh` refuses to run when the file has no
-`dashboard_password`.
+run that keeps the database needs none. Only the scrypt hash is stored, in the
+database, by the set-password command (`dist/setPassword.js`), which
+`server-set-password.sh` also runs to recover a forgotten password. `bunryu.json` moved
+from `/opt/bunryu` to `/etc/bunryu`, and the app finds it through `BUNRYU_CONFIG`
+(unset means `./bunryu.json`, so dev checkouts are unchanged). The installer and the
+Docker entrypoint set only `port` and the file paths in that file and keep every other
+key.
 
 **Why:**
 - **Install output is copied.** The old installer printed a generated password at
   the end, and the container logged one. Startup scripts, SSH session logs,
   `docker logs` and pasted tickets all kept it. A password the operator chose is
   never shown.
+- **A password kept in a file outlives its use.** It is needed once, to set the hash,
+  yet a copy in `bunryu.json` stayed in config backups and copies of `/etc/bunryu`
+  long after it was changed in Settings. Setting the hash directly leaves nothing to
+  leak, and recovery is one command instead of editing the file and then resetting.
 - **The file was inside the git checkout.** `bunryu.json` is tracked, so the
-  installer's `git reset --hard` restored the repo copy, which has no password. A
-  reinstall therefore generated a new password into the file that no longer
-  matched the kept database, and `server-reset-password.sh` would then apply the
-  wrong one. `srs.conf` and `goryu.json` were already in `/etc/bunryu`, which is why
+  installer's `git reset --hard` restored the repo copy and lost any value the
+  installer had put there. `srs.conf` and `goryu.json` were already in `/etc/bunryu`, which is why
   the SRT passphrase survived reinstalls. The app config now sits beside them.
 - **Failing early beats a default.** The app used to fall back to the public
   `admin` when it had no password to seed an empty database with, so a wiped
   database or a hand-made config could silently create that login. It now exits
-  with status 78 instead, and the installer, the entrypoint and the reset script
-  check first and say how to fix it. The repo's own `bunryu.json` ships `admin` for
-  development, which the installer, the unit and the image never read.
+  with status 78 instead, and the installer and the entrypoint check first and say
+  how to fix it. Only `npm run dev` supplies `admin`, for development.
 - **Hand edits must survive an update.** The installer used to write the whole
   file from a template, so a value an operator added, such as `trust_proxy` behind
   the Cloudflare Tunnel (without it every user shares one login rate-limit bucket),
   was lost on the next update without a message. Its template values equalled the
   app's own defaults, so rewriting them changed nothing except undoing edits. It now
-  sets only what it has to (`port`, which the units' readiness check hardcodes, the
-  file paths and the password) and keeps every other key.
+  sets only what it has to (`port`, which the units' readiness check hardcodes, and
+  the file paths) and keeps every other key.
 
 **Not adopted:**
-- **Carrying over a named list of keys** (first `dashboard_password`, then
+- **Carrying over a named list of keys** (first the password, then
   `trust_proxy`): every setting someone needs next would need adding to the list.
 - **The same merge for `srs.conf` and `goryu.json`:** they are refreshed from the
   repo on purpose, because the app, the units and the docs assume their hook URLs,
   ports and SRT settings. Only the SRT passphrase is kept.
 - **Generate and print once**, the previous behavior: the leak above.
 - **Generate and write only to the file**: the operator would then have to read a
-  root-only file to log in, and the installer could not tell a deliberate empty
-  value from a missing one.
-- **A real password in the tracked `bunryu.json`**: it invites editing a tracked
-  file in a public repository, so the repo ships only the `admin` dev
-  placeholder.
+  root-only file to log in, and the password would stay there in plain text.
+- **The app removing the password from the file after seeding**: the app would
+  rewrite the operator's config, and it cannot remove an environment variable.
 
 **Tradeoffs:** `compose.yaml` passes the variable through, so `docker compose up`
 without it restarts the container with the error in `docker compose logs` until it

@@ -53,7 +53,6 @@ describe('readAppConfig: BUNRYU_CONFIG', () => {
             otherPath,
             JSON.stringify({
                 port: 9191,
-                dashboard_password: 'chosen-pass',
                 database_path: './x.sqlite',
             }),
         );
@@ -65,7 +64,6 @@ describe('readAppConfig: BUNRYU_CONFIG', () => {
                 require('../src/utils/appConfig') as typeof import('../src/utils/appConfig')
             ).readAppConfig();
             assert.equal(config.port, 9191);
-            assert.equal(config.dashboardPassword, 'chosen-pass');
             assert.equal(config.databasePath, path.join(otherDir, 'x.sqlite'));
         } finally {
             delete process.env.BUNRYU_CONFIG;
@@ -127,28 +125,18 @@ describe('readAppConfig: hook_port', () => {
     });
 });
 
-describe('readAppConfig: dashboard_password', () => {
-    test('is empty (no default) when absent', () => {
+// The initial password comes only from the environment: a password in bunryu.json would
+// stay there in plain text for good.
+describe('readAppConfig: BUNRYU_DASHBOARD_PASSWORD', () => {
+    test('is empty (no default) when unset, and a dashboard_password in the file is ignored', () => {
         assert.equal(loadAppConfig({})().dashboardPassword, '');
+        assert.equal(loadAppConfig({ dashboard_password: 'from-file' })().dashboardPassword, '');
     });
 
     test('is used as given, without trimming', () => {
-        const readAppConfig = loadAppConfig({ dashboard_password: '  s3cret pw ' });
-        assert.equal(readAppConfig().dashboardPassword, '  s3cret pw ');
-    });
-
-    for (const bad of ['', 12345, null, true, ['x']]) {
-        test(`treats ${JSON.stringify(bad)} as no password`, () => {
-            const readAppConfig = loadAppConfig({ dashboard_password: bad });
-            assert.equal(readAppConfig().dashboardPassword, '');
-        });
-    }
-
-    test('BUNRYU_DASHBOARD_PASSWORD wins over the file', () => {
-        process.env.BUNRYU_DASHBOARD_PASSWORD = 'from-env';
+        process.env.BUNRYU_DASHBOARD_PASSWORD = '  s3cret pw ';
         try {
-            const readAppConfig = loadAppConfig({ dashboard_password: 'from-file' });
-            assert.equal(readAppConfig().dashboardPassword, 'from-env');
+            assert.equal(loadAppConfig({})().dashboardPassword, '  s3cret pw ');
         } finally {
             delete process.env.BUNRYU_DASHBOARD_PASSWORD;
         }

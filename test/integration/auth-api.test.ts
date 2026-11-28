@@ -27,14 +27,15 @@ function makeDb(): Db {
 // so each test loads a fresh copy.
 async function createHarness(initialPassword = 'admin', existingDb?: Db) {
     delete require.cache[require.resolve('../../src/api/auth')];
-    const { registerAuthApi, initializePassword } =
-        require('../../src/api/auth') as typeof import('../../src/api/auth');
+    const auth = require('../../src/api/auth') as typeof import('../../src/api/auth');
+    const { registerAuthApi, initializePassword } = auth;
     const app = express();
     const db = existingDb ?? makeDb();
     await initializePassword(db, initialPassword);
     registerAuthApi(app, db);
     return {
         db,
+        auth,
         login: (password: string, ip?: string, headers?: Record<string, string>) =>
             dispatch(app, 'POST', '/api/auth/login', { password }, ip, undefined, headers),
         logout: (cookie?: string) =>
@@ -315,6 +316,32 @@ describe('auth session integration', () => {
         assert.equal(res.status, 400);
         assert.match(res.body.error, /at least 12/);
         assert.equal((await harness.login('admin')).status, 200);
+    });
+
+    // What the set-password command does: no current password, and every session goes,
+    // since it is how an operator recovers a forgotten or compromised password.
+    test('setDashboardPassword replaces the password and signs out every session', async () => {
+        const harness = await createHarness();
+        const cookie = sessionCookieFrom(await harness.login('admin'));
+
+        await assert.rejects(
+            harness.auth.setDashboardPassword(harness.db, 'short-pw'),
+            /at least 12/,
+        );
+        assert.equal(
+            (await harness.request('POST', '/api/auth/logout', undefined, cookie)).status,
+            200,
+        );
+
+        const again = sessionCookieFrom(await harness.login('admin'));
+        assert.equal(await harness.auth.setDashboardPassword(harness.db, 'brand-new-password'), 1);
+        assert.equal(
+            (await harness.request('POST', '/api/auth/logout', undefined, again)).status,
+            401,
+        );
+        assert.deepEqual(harness.db.listSessions(), []);
+        assert.equal((await harness.login('admin')).status, 401);
+        assert.equal((await harness.login('brand-new-password')).status, 200);
     });
 
     test('session tokens are stored only as hashes, never the cookie value', async () => {

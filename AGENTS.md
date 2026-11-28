@@ -290,7 +290,8 @@ only for a new module.
   response headers on every dashboard answer and the refusal of cross-site writes. `events.ts`
   serves the Logs page's Events table, which `utils/activityFeed.ts` merges on request from the
   pipeline log lines, each output's History and the Server events. `srs.ts` has the SRS `on_publish`/`on_play` hooks
-  and journal log tails; `auth.ts` login/sessions.
+  and journal log tails; `auth.ts` login/sessions. `src/setPassword.ts` is the set-password command
+  (`scripts/server-set-password.sh`, and the installer on a fresh database).
 - `src/utils/destination.ts` is the output destination policy (blocked and loopback hosts,
   the reserved `internal` app, `ownIngestKey`: the stream key a destination publishes into on
   this server); `restreamLoop.ts` uses it to find an output that feeds its own pipeline's

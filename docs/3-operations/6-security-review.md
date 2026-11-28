@@ -40,7 +40,7 @@ interrupt a live stream.
 
 | Area | Control | Detail |
 |---|---|---|
-| Authentication | scrypt password hash, 12-character minimum on change, 7-day sessions stored as SHA-256 hashes, revoked on password change and logout | [Security](1-security.md#authentication) |
+| Authentication | scrypt password hash (the password is never stored in a file), 12-character minimum when set or changed, 7-day sessions stored as SHA-256 hashes, revoked on password change and logout | [Security](1-security.md#authentication) |
 | Brute force | 5 failures a minute per client (IPv6 grouped by /64), then a 5-minute block; scrypt runs off the event loop | [Security](1-security.md) |
 | Cross-site requests | `SameSite=Strict` cookie, JSON-only bodies, and a browser-declared cross-site write is refused | [Security](1-security.md) |
 | Browser hardening | Frame, sniffing, referrer, device-feature and cross-origin-embedding headers; HSTS over TLS; API answers are `no-store`; the dashboard escapes everything it renders | [Security](1-security.md) |
@@ -87,8 +87,8 @@ listeners and adding a CSP is planned as hardening, not a known hole.
 
 ### Defaults in the repository
 
-The development `bunryu.json` ships the password `admin`, and `srs.conf` and `goryu.json`
-ship a public SRT passphrase. They exist so a first run from a checkout works without
+`npm run dev` seeds a fresh development database with the password `admin`, and
+`srs.conf` and `goryu.json` ship a public SRT passphrase. They exist so a first run from a checkout works without
 setup, and the password can be changed straight away in Settings. Neither reaches a
 production system:
 
@@ -149,8 +149,8 @@ and the destination URL as arguments, so any local account on the host can read 
 the process list. There is no way to pass them through an option file or environment
 variable to FFmpeg's network protocols without losing the URL-based configuration, and the
 server is meant to be a dedicated machine with no untrusted local users. The installer
-and the Docker entrypoint also pass the initial password and passphrase to short-lived
-helper commands, for seconds.
+and the Docker entrypoint also pass the SRT passphrase to short-lived helper commands, for
+seconds. The dashboard password only ever travels in the environment, never in arguments.
 
 ### Services share one user and the units are lightly hardened
 

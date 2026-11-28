@@ -13,8 +13,9 @@ export interface AppConfig {
     srsConfigPath: string;
     ffmpegPath: string;
     ffprobePath: string;
-    // Seeds the dashboard password hash on first boot only (when the database
-    // has none yet); changing it later has no effect on an existing database.
+    // BUNRYU_DASHBOARD_PASSWORD: seeds the dashboard password hash on first boot only
+    // (when the database has none yet); changing it later has no effect on an existing
+    // database. Never read from bunryu.json, where it would stay in plain text.
     dashboardPassword: string;
     // Stream keys generated for the pipelines to publish with; one pipeline
     // uses one key, so this is also the most inputs the server can have.
@@ -40,7 +41,6 @@ interface RawAppConfig {
     srs_config_path?: unknown;
     ffmpeg_path?: unknown;
     ffprobe_path?: unknown;
-    dashboard_password?: unknown;
     stream_key_count?: unknown;
     output_watchdog?: unknown;
 }
@@ -92,11 +92,6 @@ function asPort(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 65535
         ? value
         : fallback;
-}
-
-function asPassword(fromEnv: string | undefined, fromFile: unknown): string {
-    if (fromEnv) return fromEnv;
-    return typeof fromFile === 'string' ? fromFile : '';
 }
 
 function asStreamKeyCount(value: unknown): number {
@@ -228,14 +223,10 @@ export function readAppConfig(): AppConfig {
             asString(raw.ffprobe_path, DEFAULT_RAW_CONFIG.ffprobe_path as string),
             configDir,
         ),
-        // Not run through asString(): a password must not be trimmed. Empty means
-        // none; there is no default, initializePassword() refuses to start without
-        // one when the database needs it. BUNRYU_DASHBOARD_PASSWORD wins over the
-        // file, like PORT and DATABASE_PATH above.
-        dashboardPassword: asPassword(
-            process.env.BUNRYU_DASHBOARD_PASSWORD,
-            raw.dashboard_password,
-        ),
+        // Not trimmed: a password is used as given. Empty means none; there is no
+        // default, initializePassword() refuses to start without one when the
+        // database needs it.
+        dashboardPassword: process.env.BUNRYU_DASHBOARD_PASSWORD ?? '',
         streamKeyCount: asStreamKeyCount(raw.stream_key_count),
         outputWatchdog: readWatchdogConfig(raw.output_watchdog),
     };

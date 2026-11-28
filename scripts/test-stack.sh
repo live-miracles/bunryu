@@ -66,7 +66,6 @@ case "${1:-}" in
         fi
         cat > "$WORK/bunryu.json" << JSON
 { "port": $APP_PORT, "hook_port": $HOOK_PORT, "database_path": "./db.sqlite", "srs_config_path": "./srs.conf",
-  "dashboard_password": "admin",
   "ffmpeg_path": "$WORK/ffmpeg-shim.sh", "ffprobe_path": "$REPO/objs/ffprobe",
   "output_watchdog": { $WATCHDOG,
                        "socket_warmup_ms": 3600000, "socket_grace_ms": 3600000 } }
@@ -148,7 +147,7 @@ done
 SHIM
         chmod +x "$WORK/ffmpeg-shim.sh"
         rm -f "$WORK/flood" "$WORK/real-outputs" "$WORK/db.sqlite"*
-        PORT=$APP_PORT DATABASE_PATH="$WORK/db.sqlite" bg "$WORK/app.log" "$REPO/node_modules/.bin/tsx" "$REPO/src/index.ts"
+        PORT=$APP_PORT DATABASE_PATH="$WORK/db.sqlite" BUNRYU_DASHBOARD_PASSWORD=admin bg "$WORK/app.log" "$REPO/node_modules/.bin/tsx" "$REPO/src/index.ts"
         bg "$WORK/srs.out" "$REPO/objs/srs" -c "$WORK/srs.conf"
         for _ in $(seq 40); do
             curl -sf "$B/login.html" > /dev/null && break

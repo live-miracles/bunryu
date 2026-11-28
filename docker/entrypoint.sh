@@ -40,15 +40,11 @@ prepare_data() {
     chmod 750 "$DATA_DIR"
     cd "$DATA_DIR" || exit 1
 
-    # Dashboard password: only seeds an empty database (see the Authentication
-    # section of docs/3-operations/1-security.md), so it is required exactly when
-    # there is no database yet. It comes from BUNRYU_DASHBOARD_PASSWORD, else from
-    # the bunryu.json in the volume; it is never generated and never logged.
-    local password="${BUNRYU_DASHBOARD_PASSWORD:-}"
-    if [[ -z "$password" && -f bunryu.json ]]; then
-        password="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof c.dashboard_password==="string"?c.dashboard_password:"");}catch{}' bunryu.json)"
-    fi
-    if [[ -z "$password" && ! -s db.sqlite ]]; then
+    # Dashboard password: BUNRYU_DASHBOARD_PASSWORD, which the app hashes into an
+    # empty database (see the Authentication section of docs/3-operations/1-security.md),
+    # so it is required exactly when there is no database yet. It is never generated,
+    # logged or written to a file.
+    if [[ -z "${BUNRYU_DASHBOARD_PASSWORD:-}" && ! -s db.sqlite ]]; then
         log "ERROR: no initial dashboard password; set BUNRYU_DASHBOARD_PASSWORD (e.g. in compose.yaml or docker run -e) and start again"
         exit 1
     fi
@@ -77,11 +73,12 @@ prepare_data() {
     node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
         goryu.json "$relay_pass"
 
-    # The entrypoint owns only the port, the paths and the initial password; any
-    # other key already in the volume's bunryu.json stays.
+    # The entrypoint owns only the port and the paths; any other key already in the
+    # volume's bunryu.json stays. A dashboard_password left by an older image is
+    # removed: the app no longer reads it, and it would keep the password in plain text.
     node -e '
 const fs = require("fs");
-const [p, pass] = process.argv.slice(1);
+const [p] = process.argv.slice(1);
 let c = null;
 try {
     c = JSON.parse(fs.readFileSync(p, "utf8"));
@@ -106,9 +103,9 @@ Object.assign(c, {
     ffmpeg_path: "/usr/local/bin/ffmpeg",
     ffprobe_path: "/usr/local/bin/ffprobe",
 });
-if (pass) c.dashboard_password = pass;
+delete c.dashboard_password;
 fs.writeFileSync(p, JSON.stringify(c, null, 4) + "\n", { mode: 0o600 });
-' bunryu.json "$password"
+' bunryu.json
     chmod 600 bunryu.json
     chmod 640 srs.conf goryu.json
 }
