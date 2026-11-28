@@ -313,7 +313,12 @@ diagnostics. The outputs that read it are ordinary outputs that copy from it.
   `rendition-dependents-restarted`. `ffmpeg-started`, `ffmpeg-exited` and
   `ffmpeg-restart` carry `role` (`rendition` or `output`) and, for an output that
   reads one, `renditionId`; the once-a-minute `health-snapshot` has `role`,
-  `renditionId` and `ready` per output.
+  `renditionId` and `ready` per output. A process that transcodes audio (a shared
+  encode, or an output with a track selection) runs FFmpeg at `info` level instead
+  of `warning` and writes one `ffmpeg-input-info` event per start with the input
+  streams as FFmpeg read them (container, codec, sample rate, channel layout) and
+  its stream mapping, the pull URL masked. A wrong reading at start is otherwise
+  invisible, and it stays until the process restarts.
 - **Recovery after a restart.** The rows live in the database, so a shared encode and
   its History survive an app restart for as long as two outputs use its recipe. An
   encode left behind by a crashed app is killed at startup with the other orphaned

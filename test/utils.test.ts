@@ -31,6 +31,7 @@ fs.writeFileSync(
 
 const {
     buildFfmpegArgs,
+    createInputInfoCollector,
     validateOutputUrl,
     validateAudioEncoding,
     isOutputFfmpegArgs,
@@ -101,6 +102,16 @@ describe('buildFfmpegArgs', () => {
             buildFfmpegArgs('srt://in:10080', 'srt://out:10080', 'copy'),
         ];
         for (const args of cases) assert.ok(!args.includes('-readrate'));
+    });
+
+    test('an audio transcode logs the input streams at info, a copy stays at warning', () => {
+        const level = (args: string[]) => args[args.indexOf('-loglevel') + 1];
+        const transcode = buildFfmpegArgs('srt://in:10080', 'rtmp://out', '0', 'copy');
+        assert.equal(level(transcode), 'info');
+        assert.ok(transcode.includes('-hide_banner'));
+        const copy = buildFfmpegArgs('srt://in:10080', 'rtmp://out', 'copy', 'copy');
+        assert.equal(level(copy), 'warning');
+        assert.ok(!copy.includes('-hide_banner'));
     });
 
     test('includes input URL after -i', () => {
@@ -503,5 +514,42 @@ describe('URL builders', () => {
         fs.writeFileSync(srsConfPath, 'listen 1935;\n', 'utf8');
         delete require.cache[require.resolve('../src/utils/srsConfig')];
         delete require.cache[require.resolve('../src/utils/srs')];
+    });
+});
+
+describe('createInputInfoCollector', () => {
+    const feed = (lines: string[]) => {
+        const collector = createInputInfoCollector();
+        return lines.map((l) => collector.push(l)).find((r) => r !== null) ?? null;
+    };
+
+    test('returns the input block once, with the pull URL masked', () => {
+        const collector = createInputInfoCollector();
+        const lines = [
+            "Input #0, mpegts, from 'srt://127.0.0.1:10080?streamid=#!::r=live/key08_secret,m=request':",
+            '  Duration: N/A, start: 1.4, bitrate: N/A',
+            '  Stream #0:1[0x101]: Audio: aac (LC), 48000 Hz, stereo, fltp, 130 kb/s',
+            'Stream mapping:',
+            '  Stream #0:0 -> #0:0 (copy)',
+            'Press [q] to stop, [?] for help',
+            'Output #0, flv, to ...',
+        ];
+        const results = lines.map((l) => collector.push(l));
+        assert.deepEqual(results.slice(0, 5), [null, null, null, null, null]);
+        assert.deepEqual(results[5], [
+            "Input #0, mpegts, from '<input>':",
+            '  Duration: N/A, start: 1.4, bitrate: N/A',
+            '  Stream #0:1[0x101]: Audio: aac (LC), 48000 Hz, stereo, fltp, 130 kb/s',
+            'Stream mapping:',
+            '  Stream #0:0 -> #0:0 (copy)',
+        ]);
+        assert.equal(results[6], null, 'reported once');
+    });
+
+    test('ignores lines before the input block and stops at the line cap', () => {
+        assert.equal(feed(['[mpegts @ 0x1] PES packet size mismatch', 'Press [q] to stop']), null);
+        const long = ['Input #0, mpegts, from x:', ...Array.from({ length: 40 }, () => '  line')];
+        const got = feed(long);
+        assert.ok(got && got.length === 24);
     });
 });

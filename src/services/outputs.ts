@@ -3,7 +3,9 @@ import type { ChildProcess } from 'child_process';
 import {
     isOutputFfmpegArgs,
     buildFfmpegArgs,
+    createInputInfoCollector,
     ffmpegEnv,
+    logsInputInfo,
     validateOutputUrl,
 } from '../utils/ffmpeg.js';
 import { readAppConfig, outputMemoryLimitBytes } from '../utils/appConfig.js';
@@ -1729,6 +1731,10 @@ export function createOutputService(
         let stderrTail = '';
         // Warnings are matched per line; a pipe read can end mid-line.
         let stderrPartial = '';
+        // How this process read its input: logged once, only by an audio transcode
+        // (see logsInputInfo).
+        const inputInfo =
+            !rendition && logsInputInfo(output.audioEncoding) ? createInputInfoCollector() : null;
         child.stderr?.on('data', (d: Buffer) => {
             const text = d.toString();
             stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
@@ -1738,6 +1744,19 @@ export function createOutputService(
             if (p) {
                 p.stderrTail = stderrTail;
                 if (lines.length > 0) noteTimestampWarning(output.id, lines.join('\n'));
+            }
+            if (inputInfo) {
+                for (const line of lines) {
+                    const info = inputInfo.push(line);
+                    if (info) {
+                        logEvent('ffmpeg-input-info', {
+                            outputId: output.id,
+                            outputName: output.name,
+                            ...roleFields(output),
+                            lines: info,
+                        });
+                    }
+                }
             }
         });
 

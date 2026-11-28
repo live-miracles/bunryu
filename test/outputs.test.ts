@@ -1174,6 +1174,41 @@ describe('output stop/start race', () => {
         service.shutdown();
     });
 
+    test('an audio transcode logs how FFmpeg read its input once; a copy logs nothing', async (t) => {
+        const block = [
+            "Input #0, mpegts, from 'srt://127.0.0.1:10080?streamid=#!::r=live/key08_secret':\n",
+            '  Stream #0:1[0x101]: Audio: aac (LC), 48000 Hz, stereo, fltp, 130 kb/s\n',
+            'Stream mapping:\n',
+            'Press [q] to stop, [?] for help\n',
+            'Input #0, mpegts, from again:\n',
+        ];
+        const infoLines = async (audioEncoding: string) => {
+            const proc = new FakeFfmpeg();
+            const db = makeDb();
+            const output = db.getOutput('out1');
+            assert.ok(output);
+            output.audioEncoding = audioEncoding;
+            const diagnostics = makeDiagnosticsSpy();
+            const createOutputService = loadOutputService(t, proc, { progressStallMs: 60_000 });
+            const service = createOutputService(db, makeReadyInputState(), diagnostics);
+            await service.start('out1');
+            proc.stderr.write(block.join(''));
+            await sleep(10);
+            service.shutdown();
+            return diagnostics.events.filter((e) => e.event === 'ffmpeg-input-info');
+        };
+
+        const transcode = await infoLines('0');
+        assert.equal(transcode.length, 1);
+        assert.equal(transcode[0].outputId, 'out1');
+        assert.deepEqual(transcode[0].lines, [
+            "Input #0, mpegts, from '<input>':",
+            '  Stream #0:1[0x101]: Audio: aac (LC), 48000 Hz, stereo, fltp, 130 kb/s',
+            'Stream mapping:',
+        ]);
+        assert.equal((await infoLines('copy')).length, 0);
+    });
+
     test('stopping after repeated failed attempts records the count and the last failure', async (t) => {
         const proc = new FakeFfmpeg();
         const db = makeDb();
@@ -3015,7 +3050,8 @@ describe('shared renditions', () => {
             assert.deepEqual(fleet.spawned[1].args, [
                 '-nostats',
                 '-loglevel',
-                'warning',
+                'info',
+                '-hide_banner',
                 '-stats_period',
                 '3',
                 '-fflags',

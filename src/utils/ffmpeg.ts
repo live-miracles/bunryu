@@ -142,6 +142,49 @@ export function isKnownEncoding(name: string): boolean {
     return Object.hasOwn(ENCODINGS, name);
 }
 
+// An audio transcode decodes the input's audio, so a wrong reading of it at start
+// (sample rate, channel layout) is heard on every output until the process is
+// restarted (fail-reports/2026-11-28-shared-encode-audio-distortion.md). Only
+// those processes run at `info` so the stream description is on stderr; the
+// others, which copy, stay at `warning`.
+export function logsInputInfo(audioEncoding: string): boolean {
+    return audioEncoding !== 'copy';
+}
+
+// What FFmpeg printed about its input: from the first `Input #` line to the
+// `Press [q]` / `Output #` line that follows the stream mapping. `push` returns
+// those lines (the pull URL, which carries the stream key, masked) once, when the
+// block ends, and null for every other line.
+const INPUT_INFO_MAX_LINES = 24;
+const INPUT_INFO_MAX_LINE_CHARS = 300;
+
+export function createInputInfoCollector(): { push(line: string): string[] | null } {
+    let lines: string[] | null = null;
+    let done = false;
+    return {
+        push(raw) {
+            if (done) return null;
+            const line = raw.trimEnd();
+            if (lines === null) {
+                if (!/^Input #\d+/.test(line)) return null;
+                lines = [];
+            } else if (
+                /^(Press \[q\]|Output #\d+)/.test(line) ||
+                lines.length >= INPUT_INFO_MAX_LINES
+            ) {
+                done = true;
+                return lines;
+            }
+            lines.push(
+                line
+                    .replace(/ from '[^']*'/, " from '<input>'")
+                    .slice(0, INPUT_INFO_MAX_LINE_CHARS),
+            );
+            return null;
+        },
+    };
+}
+
 export function buildFfmpegArgs(
     inputUrl: string,
     url: string,
@@ -157,10 +200,13 @@ export function buildFfmpegArgs(
         // '-loglevel warning' the one-time info banner. With hundreds of outputs
         // those stderr writes are pure GC/event-loop pressure on the parent, and we
         // already read live bitrate from '-progress pipe:1'. Warnings/errors are
-        // still emitted so the stderr tail explains failures.
+        // still emitted so the stderr tail explains failures. An audio transcode
+        // (a handful at a time) keeps the banner, which says how FFmpeg read the
+        // input's streams; see logsInputInfo.
         '-nostats',
         '-loglevel',
-        'warning',
+        logsInputInfo(audioEncoding) ? 'info' : 'warning',
+        ...(logsInputInfo(audioEncoding) ? ['-hide_banner'] : []),
         // Emit '-progress pipe:1' every 3s instead of the default ~1s. The only
         // consumer (live bitrate) is sampled at the 5s health-poll cadence, so a
         // sub-5s update rate is invisible — at hundreds of outputs the extra

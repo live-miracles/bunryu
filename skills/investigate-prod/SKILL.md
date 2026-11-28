@@ -75,7 +75,7 @@ into the scratchpad - never into the repo (it holds keys and IPs).
 
 ## Event names (`event` field)
 
-`ffmpeg-started`, `ffmpeg-exited` (includes the stderr tail), `ffmpeg-restart`
+`ffmpeg-started`, `ffmpeg-input-info` (audio-transcoding processes only: the input streams as FFmpeg read them), `ffmpeg-exited` (includes the stderr tail), `ffmpeg-restart`
 (watchdog action; socket and stall restarts carry `inputSource`, the SRS stream and
 shared-encode state), `output-user-start` (a person pressed Start), `output-recovered` (an output ran for a minute after a crash), `ffmpeg-retry-scheduled`, `ffmpeg-timestamp-warning` /
 `-summary` / `-recovered` (one burst per output), `ffmpeg-warning-started` /
