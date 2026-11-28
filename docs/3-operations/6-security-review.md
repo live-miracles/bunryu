@@ -107,6 +107,15 @@ cross an untrusted network the same input accepts SRT, which is encrypted with a
 per-server passphrase checked at the handshake. The RTMP port is a non-default one to keep
 scanner noise out of the logs.
 
+### A publisher chooses the protocol it is labelled with
+
+The publish hook tells SRT from RTMP by the client's `tcUrl`, which an RTMP client sets
+itself. A wrong label changes only the protocol shown in the logs and the rejected
+publishers list, and whether a second publish with the same stream key is refused as a
+change of protocol, which is a reliability guard: that publisher already holds the key.
+It grants nothing, since the shared-encode app accepts only an RTMP publish from this host,
+and claiming SRT only gets such a publish refused.
+
 ### RTMPS output certificates are not verified
 
 FFmpeg's default for `rtmps://` destinations is not to verify the server certificate, and
@@ -151,6 +160,13 @@ variable to FFmpeg's network protocols without losing the URL-based configuratio
 server is meant to be a dedicated machine with no untrusted local users. The installer
 and the Docker entrypoint also pass the SRT passphrase to short-lived helper commands, for
 seconds. The dashboard password only ever travels in the environment, never in arguments.
+
+### Connections through the relay reach SRS from loopback
+
+SRS allows playback only from this host, and a connection that arrives through the Goryu
+relay comes from loopback, so the play check would let it through. The relay only carries
+streams into SRS, never out, and connecting to it needs the SRT passphrase, so no stream
+can be read through it.
 
 ### Services share one user and the units are lightly hardened
 
@@ -200,6 +216,14 @@ The remote-access guide sets `trust_proxy` for the tunnel.
 A session is valid for seven days from login so an operator is not signed out during a
 multi-day event. Sessions are stored only as hashes, are revoked by logout and by a
 password change, and the cookie is `HttpOnly` and `SameSite=Strict`.
+
+### `no-store` is matched on the exact `/api/` path
+
+API answers carry `Cache-Control: no-store`, matched on a path starting with `/api/`.
+Express routes case-insensitively, so `/API/...` reaches the same handlers without that
+header. Such a request still needs a session, and its answer goes only to that signed-in
+browser, so the effect is at most a private cached copy of a response the user could
+already read.
 
 ### The database is not encrypted
 
