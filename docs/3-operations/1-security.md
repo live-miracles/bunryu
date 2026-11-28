@@ -76,8 +76,11 @@ Hardening that is on by default:
   this. Existing longer names are kept but must comply when edited.
 - **Installer ownership:** `/opt/bunryu` is root-owned and read-only to the
   service user (root runs code from it on every update); the service user writes
-  only to the data and config directories. `server-set-password.sh` also signs
-  out every existing session.
+  only to the data and config directories, and the installer reads and writes the
+  files in them only as that user, so a symlink planted there cannot redirect a
+  root write. It names any file there not owned by the service user (one edited
+  with `sudo` and saved as a new file, say) instead of taking it over.
+  `server-set-password.sh` also signs out every existing session.
 - **Key Vault reports (optional):** once the link is set in Settings the app makes one
   outbound HTTPS request a minute, carrying the bearer token. The URL must be `https`
   (plain `http` only for localhost) and must not resolve to a link-local or unspecified

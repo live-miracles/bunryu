@@ -169,14 +169,15 @@ journal, which is how the dashboard shows the three services' logs.
 ### The installer runs as root and trusts what it fetches
 
 The installer is run by an administrator. It installs Node.js from the NodeSource
-repository, updates the application from the repository's default branch, installs the
-npm dependencies and does file operations in the configuration and data directories, which
-the service user owns. The media binaries are fetched at pinned versions and verified by
+repository, updates the application from the repository's default branch and installs the
+npm dependencies. In the configuration and data directories, which the service user owns,
+root only creates the two directories; every file inside is read, written and given its mode
+as the service user. A link that user plants there therefore reaches nothing it could not
+already write. The media binaries are fetched at pinned versions and verified by
 SHA-256, and `npm ci` runs with install scripts disabled apart from the one native module the
 application needs. The remaining trust is in the project's own repository and in the
 NodeSource script, the same trust a package-manager install of any server software places
-in its source. Misusing the directories would first need code execution as the service
-user. Revisit with the service-user split above.
+in its source.
 
 ### The Docker image publishes the dashboard on every interface
 

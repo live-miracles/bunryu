@@ -87,6 +87,16 @@ verify_sha256() {
     echo "Checksum OK: $(basename "$file")"
 }
 
+# Everything inside $DATA_DIR and $CONF_DIR is read and written as the service user,
+# never as root. That user owns both directories, so it could replace any file there
+# with a symlink (or a hard link) at any moment; a root cp, chown or chmod would then
+# land on whatever it points to, such as a root cron script, and hand it to the
+# service user. Root only creates the two directories themselves, whose parents are
+# root-owned and cannot be swapped.
+as_service() {
+    (cd / && runuser -u "$SERVICE_USER" -- "$@")
+}
+
 step "1/9 System packages"
 apt-get update -q
 apt-get install -y -q curl tar xz-utils unzip git ca-certificates build-essential
@@ -135,13 +145,21 @@ fi
 DB_FILE="$DATA_DIR/db.sqlite"
 APP_CONFIG="$CONF_DIR/bunryu.json"
 DASHBOARD_PASSWORD="${BUNRYU_DASHBOARD_PASSWORD:-}"
+# Kept in a plain shell variable from here on, so the commands below do not inherit it;
+# only the set-password command is given it.
+unset BUNRYU_DASHBOARD_PASSWORD
 fresh_db=yes
 wipe_db=no
 if [[ -s "$DB_FILE" ]]; then
     # The app refuses to start on another schema version (exit 78, which systemd
     # does not restart), so a database of another version cannot be kept: say so
     # now, before anything is changed, instead of leaving a failed service.
-    db_version="$(bash "$APP_DIR/scripts/db-schema-version.sh" "$DB_FILE")"
+    # Read as the service user (see as_service) when it exists.
+    if id "$SERVICE_USER" &> /dev/null; then
+        db_version="$(as_service bash "$APP_DIR/scripts/db-schema-version.sh" "$DB_FILE")"
+    else
+        db_version="$(bash "$APP_DIR/scripts/db-schema-version.sh" "$DB_FILE")"
+    fi
     build_version="$(bash "$APP_DIR/scripts/db-schema-version.sh" --build)"
     if [[ "$db_version" != "$build_version" ]]; then
         shown_version="${db_version:-unknown (not a SQLite database)}"
@@ -267,15 +285,24 @@ if ! id "$SERVICE_USER" &> /dev/null; then
 else
     echo "User $SERVICE_USER already exists."
 fi
-mkdir -p "$APP_DIR" "$DATA_DIR" "$DATA_DIR/objs" "$CONF_DIR"
+mkdir -p "$APP_DIR"
 # The application tree is root-owned and read-only to the service user. Root
-# runs code from it on every update (this script, npm, the build, the password
-# reset), so a service user that owns it could turn a compromised SRS/FFmpeg/
-# Node process into root on the next update. The service user only writes to
-# the data and config directories.
+# runs code from it on every update (this script, npm, the build, set-password),
+# so a service user that owns it could turn a compromised SRS/FFmpeg/Node process
+# into root on the next update. The service user only writes to the data and
+# config directories, and root only creates those (see as_service).
 chown -R root:root "$APP_DIR"
 chmod -R go-w "$APP_DIR"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR" "$DATA_DIR/objs" "$CONF_DIR"
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 750 "$DATA_DIR" "$CONF_DIR"
+as_service mkdir -p "$DATA_DIR/objs"
+# Root does not hand their contents to the service user; a file someone created
+# there as root (an editor run with sudo, say) is left as it is and named here.
+foreign="$(find "$DATA_DIR" "$CONF_DIR" ! -user "$SERVICE_USER" -printf '  %p\n')"
+if [[ -n "$foreign" ]]; then
+    echo "WARNING: not owned by $SERVICE_USER, so the services may not be able to use them:"
+    echo "$foreign"
+    echo "  Fix: sudo chown $SERVICE_USER:$SERVICE_USER <file>"
+fi
 
 step "7/9 Application"
 cd "$APP_DIR"
@@ -304,14 +331,14 @@ step "8/9 Config and data"
 # check), edit both files by hand and restart the services.
 NEW_SRT_PASSPHRASE="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
 if [[ -f "$CONF_DIR/srs.conf" ]]; then
-    SRS_SRT_PASSPHRASE="$(sed -n 's/^[[:space:]]*passphrase[[:space:]]\{1,\}\(.*\);[[:space:]]*$/\1/p' "$CONF_DIR/srs.conf" | head -1)"
+    SRS_SRT_PASSPHRASE="$(as_service sed -n 's/^[[:space:]]*passphrase[[:space:]]\{1,\}\(.*\);[[:space:]]*$/\1/p' "$CONF_DIR/srs.conf" | head -1)"
     echo "SRT passphrase (srs.conf): keeping existing value"
 else
     SRS_SRT_PASSPHRASE="$NEW_SRT_PASSPHRASE"
     echo "SRT passphrase (srs.conf): generated new secret"
 fi
 if [[ -f "$CONF_DIR/goryu.json" ]]; then
-    RELAY_SRT_PASSPHRASE="$(node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(c.passphrase||"");' "$CONF_DIR/goryu.json")"
+    RELAY_SRT_PASSPHRASE="$(as_service node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(c.passphrase||"");' "$CONF_DIR/goryu.json")"
     echo "SRT passphrase (goryu.json): keeping existing value"
 else
     RELAY_SRT_PASSPHRASE="$NEW_SRT_PASSPHRASE"
@@ -326,19 +353,19 @@ if [[ "$SRS_SRT_PASSPHRASE" == "$PUBLIC_DEFAULT_SRT_PASSPHRASE" || "$RELAY_SRT_P
     RELAY_SRT_PASSPHRASE="$NEW_SRT_PASSPHRASE"
     echo "SRT passphrase: replaced the public default with a generated secret"
 fi
-cp "$APP_DIR/srs.conf" "$CONF_DIR/srs.conf"
+as_service cp "$APP_DIR/srs.conf" "$CONF_DIR/srs.conf"
 # goryu.json is replaced from the repository on every update. Bunryu does not use goryu's
 # optional "output_passphrase" (SRS on this host shares the one passphrase), so a key added
 # to the deployed file by hand would be dropped here; it would need an installer setting.
-cp "$APP_DIR/goryu.json" "$CONF_DIR/goryu.json"
+as_service cp "$APP_DIR/goryu.json" "$CONF_DIR/goryu.json"
 echo "Config: refreshed $CONF_DIR/srs.conf from repository"
 echo "Config: refreshed $CONF_DIR/goryu.json from repository"
 # Written via node, not sed -i: a hand-typed passphrase containing "&" or "\"
 # would otherwise be reinterpreted as sed replacement syntax and silently
 # corrupted instead of applied verbatim.
-node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=fs.readFileSync(p,"utf8").replace(/^([ \t]*passphrase[ \t]+).*;/m,(_,prefix)=>prefix+pass+";");fs.writeFileSync(p,c);' \
+as_service node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=fs.readFileSync(p,"utf8").replace(/^([ \t]*passphrase[ \t]+).*;/m,(_,prefix)=>prefix+pass+";");fs.writeFileSync(p,c);' \
     "$CONF_DIR/srs.conf" "$SRS_SRT_PASSPHRASE"
-node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
+as_service node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSON.parse(fs.readFileSync(p,"utf8"));c.passphrase=pass;fs.writeFileSync(p,JSON.stringify(c,null,4)+"\n");' \
     "$CONF_DIR/goryu.json" "$RELAY_SRT_PASSPHRASE"
 # App config, next to the other deployed configs and outside the git checkout.
 # The installer owns only what it must: the port (the units check it) and the file
@@ -346,7 +373,7 @@ node -e 'const fs=require("fs");const [p,pass]=process.argv.slice(1);const c=JSO
 # tuning, ...) stays; a missing or unreadable file starts from the defaults below.
 # A dashboard_password left by an older install is removed: the app no longer reads
 # it, and it would keep the password in plain text.
-node -e '
+as_service node -e '
 const fs = require("fs");
 const [p, dataDir, confDir] = process.argv.slice(1);
 let c = null;
@@ -376,25 +403,23 @@ if [[ "$wipe_db" == "yes" ]]; then
     # Keep a copy (same owner-only mode: it holds the stream keys and
     # destination URLs) so the pipelines and outputs can be re-created.
     DB_BACKUP="$DB_FILE.$(date +%Y%m%d-%H%M%S).bak"
-    cp -p "$DB_FILE" "$DB_BACKUP"
-    rm -f "$DB_FILE"
+    as_service cp -p "$DB_FILE" "$DB_BACKUP"
+    as_service rm -f "$DB_FILE"
     echo "Database wiped (backup: $DB_BACKUP); defaults will be re-seeded on first boot."
 elif [[ "$fresh_db" == "no" ]]; then
     echo "Keeping existing database."
 fi
-touch "$DB_FILE"
-chown "$SERVICE_USER:$SERVICE_USER" "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json" "$APP_CONFIG" "$DB_FILE"
+as_service touch "$DB_FILE"
 # The database holds the password hash, stream keys and destination URLs (platform
 # stream keys), and the two configs hold the SRT passphrase: nothing here is for
 # other local users.
-chmod 600 "$APP_CONFIG" "$DB_FILE"
-chmod 640 "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json"
-chmod 750 "$DATA_DIR" "$CONF_DIR"
+as_service chmod 600 "$APP_CONFIG" "$DB_FILE"
+as_service chmod 640 "$CONF_DIR/srs.conf" "$CONF_DIR/goryu.json"
 if [[ "$fresh_db" == "yes" ]]; then
     # The command behind scripts/server-set-password.sh, before the service (re)starts.
     # The password reaches node through the environment, never its command line.
-    (cd "$APP_DIR" && BUNRYU_CONFIG="$APP_CONFIG" BUNRYU_DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD" \
-        runuser -u "$SERVICE_USER" -- node "$APP_DIR/dist/setPassword.js")
+    BUNRYU_CONFIG="$APP_CONFIG" BUNRYU_DASHBOARD_PASSWORD="$DASHBOARD_PASSWORD" \
+        as_service node "$APP_DIR/dist/setPassword.js"
 fi
 unset DASHBOARD_PASSWORD
 echo "Config: $CONF_DIR/srs.conf"
